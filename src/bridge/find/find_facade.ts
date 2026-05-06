@@ -89,37 +89,6 @@ export type FindFacadeResult = {
     renderFrame: unknown | null;
 };
 
-// ── Review types ──
-
-export type ReviewChangeEntry = {
-    patchKey: string;
-    pageIndex: number;
-    regionId: string;
-    kind: string | null;
-    originalText: string;
-    currentText: string;
-    source: string;
-};
-
-export type ReviewFeedResult = {
-    revision: number;
-    pendingCount: number;
-    changes: ReviewChangeEntry[];
-};
-
-export type ReviewLocateResult = {
-    pageIndex: number;
-    regionId: string;
-    kind: string | null;
-    originalText: string;
-};
-
-export type ReviewFacadeResult = {
-    changed: boolean;
-    feed: ReviewFeedResult | null;
-    locateResult: ReviewLocateResult | null;
-    renderFrame: unknown | null;
-};
 
 // ── Helpers ──
 
@@ -136,10 +105,6 @@ function callWasm<T>(fnName: string, arg?: unknown): T | null {
 
 // ── Search API ──
 
-export function findInPage(request: SearchPageRequest): SearchResult | null {
-    return null;
-}
-
 export async function findInPageAsync(request: SearchPageRequest): Promise<SearchResult | null> {
     try {
         return await targetInvokeV3('find_in_page', {
@@ -151,10 +116,6 @@ export async function findInPageAsync(request: SearchPageRequest): Promise<Searc
     } catch {
         return null;
     }
-}
-
-export function findInDocument(request: SearchDocumentRequest): SearchResult | null {
-    return null;
 }
 
 export async function findInDocumentAsync(request: SearchDocumentRequest): Promise<SearchResult | null> {
@@ -194,33 +155,4 @@ export function getFindSession(): FindSession | null {
     return callWasm<FindSession>('searchFacadeGetSession');
 }
 
-// ── Review API ──
-
-export function getReviewFeed(): ReviewFeedResult | null {
-    return callWasm<ReviewFeedResult>('reviewFacadeReadFeed');
-}
-
-export function acceptChange(patchKey: string): ReviewFacadeResult | null {
-    const r = callWasm<{ changed: boolean }>('reviewFacadeAccept', patchKey);
-    return r ? { changed: r.changed, feed: null, locateResult: null, renderFrame: null } : null;
-}
-
-export function rejectChange(patchKey: string): ReviewFacadeResult | null {
-    const r = callWasm<{ changed: boolean }>('reviewFacadeReject', patchKey);
-    return r ? { changed: r.changed, feed: null, locateResult: null, renderFrame: null } : null;
-}
-
-export function acceptAllChanges(): ReviewFacadeResult | null {
-    const r = callWasm<{ changed: boolean }>('reviewFacadeAcceptAll');
-    return r ? { changed: r.changed, feed: null, locateResult: null, renderFrame: null } : null;
-}
-
-export function rejectAllChanges(): ReviewFacadeResult | null {
-    const r = callWasm<{ changed: boolean }>('reviewFacadeRejectAll');
-    return r ? { changed: r.changed, feed: null, locateResult: null, renderFrame: null } : null;
-}
-
-export function locateChange(patchKey: string): ReviewLocateResult | null {
-    return callWasm<ReviewLocateResult>('locate_review_change', patchKey);
-}
 

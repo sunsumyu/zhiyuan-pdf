@@ -9,7 +9,7 @@ import {
     type ReviewChangeEntry,
     type ReviewFeedResult,
     type ReviewLocateResult,
-} from '../find/find_facade';
+} from './review_wasm_facade';
 import { setToolbarButtonActive } from '../viewer/pdf_viewer_dom';
 
 type ViewerSessionSnapshot = {
