@@ -149,6 +149,10 @@ pub fn resolve_glyph_geom(
         let lower = font.name.to_lowercase();
         lower.contains("symbol") || lower.contains("wingdings") || lower.contains("dingbats")
     };
+    let multibyte = font.is_multibyte();
+    let has_cmap = font.cmap.is_some();
+    crate::pdf_log!(2, "[GLYPH-DECODE] font='{}' subtype={:?} multibyte={} has_cmap={} is_symbol={} data_len={}",
+        font.name, font.font_subtype, multibyte, has_cmap, is_symbol, data.len());
 
     while i < data.len() {
         let code: u32;
@@ -158,12 +162,18 @@ pub fn resolve_glyph_geom(
             let hi = *data.get(i).unwrap_or(&0) as u32;
             let lo = *data.get(i + 1).unwrap_or(&0) as u32;
             code = (hi << 8) | lo;
-            unicode = font.cmap.as_ref().and_then(|m| m.mappings.get(&(code as u16))).cloned()
+            let cmap_hit = font.cmap.as_ref().and_then(|m| m.mappings.get(&(code as u16))).cloned();
+            let had_hit = cmap_hit.is_some();
+            unicode = cmap_hit
                 .unwrap_or_else(|| char::from_u32(code).map(|c| c.to_string()).unwrap_or_else(|| format!("[0x{:04X}]", code)));
+            crate::pdf_log!(2, "[GLYPH-DECODE] 2byte code=0x{:04X} cmap_hit={} unicode={:?} (U+{:04X})",
+                code, had_hit, unicode, unicode.chars().next().map(|c| c as u32).unwrap_or(0));
             i += 2;
         } else {
             code = data[i] as u32;
-            unicode = font.cmap.as_ref().and_then(|m| m.mappings.get(&(code as u16))).cloned()
+            let cmap_hit = font.cmap.as_ref().and_then(|m| m.mappings.get(&(code as u16))).cloned();
+            let had_hit = cmap_hit.is_some();
+            unicode = cmap_hit
                 .unwrap_or_else(|| char::from_u32(code).map(|c| c.to_string()).unwrap_or_else(|| "".to_string()));
             
             // Symbol Patching
@@ -178,6 +188,8 @@ pub fn resolve_glyph_geom(
                 };
                 if !patched.is_empty() { unicode = patched.to_string(); }
             }
+            crate::pdf_log!(2, "[GLYPH-DECODE] 1byte code=0x{:02X} cmap_hit={} symbol_patched={} unicode={:?} (U+{:04X})",
+                code, had_hit, is_symbol, unicode, unicode.chars().next().map(|c| c as u32).unwrap_or(0));
             i += 1;
         }
 

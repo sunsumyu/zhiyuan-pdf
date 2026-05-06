@@ -759,6 +759,18 @@ fn draw_text_vector(
             return true;
         }
 
+        // Stage-3 trace: embedded render failed, falling back to cosmic_text
+        let has_suspect = text.text.chars().any(|c| c as u32 > 0x7F);
+        if has_suspect {
+            eprintln!("[COSMIC-FALLBACK] font='{}' subtype={:?} has_cmap={} text={:?} codepoints={:?}",
+                text.font_name,
+                text.font_subtype,
+                text.has_to_unicode_cmap,
+                &text.text,
+                text.text.chars().map(|c| format!("U+{:04X}", c as u32)).collect::<Vec<_>>(),
+            );
+        }
+
         let real_font_size = if text.scale_y.abs() > 1.0 {
             text.scale_y.abs()
         } else {
@@ -1121,12 +1133,26 @@ fn resolve_embedded_glyph_id(
         font_ref: &swash::FontRef<'_>,
         glyph_index: usize,
     ) -> u16 {
+        let ch_for_log = text.text.chars().nth(glyph_index);
+        let raw_code_for_log = text.pdf_char_codes.get(glyph_index).copied();
+        let is_suspect = ch_for_log.map(|c| c as u32 > 0x7F).unwrap_or(false);
+
         if let Some(raw_code) = text.pdf_char_codes.get(glyph_index).copied() {
             if let Some(mapped) = self.resolve_cached_cid_glyph_id(text, raw_code) {
+                if is_suspect {
+                    eprintln!("[GLYPH-RESOLVE] font='{}' idx={} raw=0x{:04X} ch={:?}(U+{:04X}) -> CID_MAP gid={}",
+                        text.font_name, glyph_index, raw_code,
+                        ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0), mapped);
+                }
                 return mapped;
             }
             let charmap_gid = font_ref.charmap().map(raw_code);
             if charmap_gid != 0 {
+                if is_suspect {
+                    eprintln!("[GLYPH-RESOLVE] font='{}' idx={} raw=0x{:04X} ch={:?}(U+{:04X}) -> RAW_CHARMAP gid={}",
+                        text.font_name, glyph_index, raw_code,
+                        ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0), charmap_gid);
+                }
                 return charmap_gid;
             }
         }
@@ -1135,6 +1161,10 @@ fn resolve_embedded_glyph_id(
             if !ch.is_control() && !ch.is_whitespace() {
                 let glyph_id = font_ref.charmap().map(ch);
                 if glyph_id != 0 {
+                    if is_suspect {
+                        eprintln!("[GLYPH-RESOLVE] font='{}' idx={} raw={:?} ch={:?}(U+{:04X}) -> UNICODE_CHARMAP gid={}",
+                            text.font_name, glyph_index, raw_code_for_log, ch, ch as u32, glyph_id);
+                    }
                     return glyph_id;
                 }
             }
@@ -1145,10 +1175,20 @@ fn resolve_embedded_glyph_id(
                 && raw_code > 0
                 && raw_code <= u16::MAX as u32
             {
+                if is_suspect {
+                    eprintln!("[GLYPH-RESOLVE] font='{}' idx={} raw=0x{:04X} ch={:?}(U+{:04X}) -> DIRECT_CODE gid={}",
+                        text.font_name, glyph_index, raw_code,
+                        ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0), raw_code as u16);
+                }
                 return raw_code as u16;
             }
         }
 
+        if is_suspect {
+            eprintln!("[GLYPH-RESOLVE] font='{}' idx={} raw={:?} ch={:?}(U+{:04X}) -> FAILED gid=0 (will skip or fallback to cosmic)",
+                text.font_name, glyph_index, raw_code_for_log,
+                ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0));
+        }
         0
     }
 fn resolve_cached_cid_glyph_id(&self, text: &NativeTextModel, raw_code: u32) -> Option<u16> {
