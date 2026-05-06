@@ -7,8 +7,7 @@ pub mod render;
 pub mod text;
 pub mod typography;
 pub mod utils;
-#[path = "analysis/analyzer.rs"]
-pub mod analyzer;
+pub mod analysis;
 pub use geometry::bbox_utils;
 pub use geometry::coordinate_transform;
 pub use geometry::field_projection;

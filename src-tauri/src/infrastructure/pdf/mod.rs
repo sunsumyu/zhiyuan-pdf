@@ -9,7 +9,6 @@ pub mod engine;
 
 pub mod annotation_store;
 pub mod commands;
-pub mod domain;
 pub mod font;
 pub mod layout_analyzer;
 pub mod models;

@@ -1,9 +1,6 @@
 use crate::infrastructure::pdf::models::{
     GlyphPaintPlan, LayoutInferenceResult, LightPageModel, VectorPageModel, PdfMetadata,
 };
-use crate::infrastructure::pdf::domain::{
-    DocumentId, PageNumber, BoundingBox, Document as DomainDocument, Page, DomainResult, DomainError,
-};
 use crate::log_step;
 use lopdf::Document as LopdfDocument;
 use std::collections::HashMap;
@@ -202,91 +199,4 @@ impl PdfReadService {
         HashMap::new()
     }
 
-    // === 新增：领域模型支持方法 ===
-
-    /// 创建文档领域模型
-    pub async fn create_document(
-        state: tauri::State<'_, crate::AppState>,
-        document_id: DocumentId,
-    ) -> DomainResult<DomainDocument> {
-        log_step!("[READ_SERVICE] Creating document domain model: {}", document_id);
-        
-        // 获取文档元数据
-        let metadata = Self::get_pdf_metadata(&state, document_id.as_str().to_string())
-            .await
-            .map_err(|e| DomainError::PdfProcessingError(e))?;
-        
-        // 获取页面数量
-        let docs = state.pdf_documents.lock().unwrap();
-        let doc = docs
-            .get(document_id.as_str())
-            .ok_or_else(|| DomainError::DocumentNotFound(document_id.as_str().to_string()))?;
-        
-        let page_count = crate::infrastructure::pdf::pdf_read::get_page_count(doc)
-            .map_err(|e| DomainError::PdfProcessingError(e.to_string()))?;
-        
-        // 创建文档元数据
-        let domain_metadata = crate::infrastructure::pdf::domain::DocumentMetadata::new()
-            .with_title(metadata.title.unwrap_or_default())
-            .with_author(metadata.author.unwrap_or_default());
-        
-        // 创建文档
-        let mut document = DomainDocument::new(document_id)?;
-        document.update_metadata(domain_metadata)?;
-        
-        // 添加页面
-        for page_idx in 1..=page_count {
-            let page_number = PageNumber::new(page_idx as u16)?;
-            
-            // 获取页面边界框
-            let page_bbox = crate::infrastructure::pdf::pdf_read::extract_page_bbox(doc, page_idx as u16)
-                .map_err(|e| DomainError::PdfProcessingError(e.to_string()))?;
-            
-            let bbox = BoundingBox::from_array(page_bbox)?;
-            let page = Page::new(page_number, bbox)?;
-            
-            document.add_page(page)?;
-        }
-        
-        Ok(document)
-    }
-
-    /// 获取文档领域模型（从缓存）
-    pub async fn get_document(
-        state: tauri::State<'_, crate::AppState>,
-        document_id: DocumentId,
-    ) -> DomainResult<DomainDocument> {
-        // TODO: 添加领域模型缓存到 AppState 后启用缓存逻辑
-        // 目前直接创建新文档模型
-        Self::create_document(state, document_id).await
-    }
-
-    /// 获取页面领域模型
-    pub async fn get_page(
-        state: tauri::State<'_, crate::AppState>,
-        document_id: DocumentId,
-        page_number: PageNumber,
-    ) -> DomainResult<Page> {
-        let document = Self::get_document(state, document_id).await?;
-        document.get_page(page_number).cloned()
-    }
-
-    /// 刷新文档缓存
-    pub async fn refresh_document_cache(
-        state: tauri::State<'_, crate::AppState>,
-        document_id: DocumentId,
-    ) -> DomainResult<()> {
-        // TODO: 添加领域模型缓存后清除缓存
-        Self::create_document(state, document_id).await?;
-        Ok(())
-    }
-
-    /// 验证文档完整性
-    pub async fn validate_document(
-        state: tauri::State<'_, crate::AppState>,
-        document_id: DocumentId,
-    ) -> DomainResult<()> {
-        let document = Self::get_document(state, document_id).await?;
-        document.validate()
-    }
 }
