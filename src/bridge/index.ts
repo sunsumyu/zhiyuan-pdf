@@ -1,6 +1,3 @@
-import { Plugin } from '../core/types';
-import { pluginLoader } from '../core/plugin-loader';
-import { registerWindowActions } from '../core/window-actions';
 import { registerPdfViewerAPI } from './viewer/pdf_viewer_api';
 import { clearVectorHost } from './render/vector_host';
 import { bindSaveFocusGuard } from './viewer/pdf_viewer_dom';
@@ -8,16 +5,15 @@ import { createPdfViewerRuntime } from './viewer/pdf_runtime';
 
 const runtime = createPdfViewerRuntime();
 
-export const plugin: Plugin = {
+export const plugin = {
     id: 'pdf-viewer',
     name: 'pdf-viewer',
     version: '1.0.0',
     initialize: async () => {
         await runtime.ensureWasmInitialized();
 
-        registerWindowActions({
-            'open-pdf': (args: any) => runtime.openTextPdfFlow(args.path),
-        });
+        // Register global open-pdf action on window
+        (window as any)['open-pdf'] = (args: any) => runtime.openTextPdfFlow(args.path);
 
         runtime.bindWheelZoom();
         runtime.bindTileRefreshOnScroll();
@@ -60,6 +56,4 @@ registerPdfViewerAPI({
 });
 
 bindSaveFocusGuard();
-
-pluginLoader.register(plugin);
 

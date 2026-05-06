@@ -2,6 +2,47 @@
 
 > 原则：**TS 只保留 DOM 操作、Canvas 绑定、事件监听**。所有决策逻辑、状态管理、算法均迁至 Rust (WASM/Tauri)。
 
+## 0. TS 架构评估
+
+### 问题 1：死亡的多插件架构 (`src/core/`)
+
+`src/core/` 是从旧多插件平台遗留的基础设施：
+- `plugin-loader.ts` (162行) — 加载/卸载插件，但只有 1 个插件 (pdf-viewer)
+- `plugin-catalog.ts` (61行) — 列举 13 个不存在的插件 (ai-chat, algorithm-viz, dictionary...)
+- `router.ts` (111行) — Hash 路由，但应用只有 1 个页面
+- `event-bus.ts` (58行) — 只发射 `plugin:loaded` 事件，无订阅者
+- `window-actions.ts` (100行) — 全局命名空间注册，只注册了 1 个 action
+- `template-loader.ts` (152行) — HTML 模板加载，未被使用
+- `interfaces.ts` (25行) — `IVisualizer`, `IAlgorithmManager` — 完全未实现
+
+**结论**：`src/core/` 全部 ~670 行是死代码，应删除并用直接初始化替代。
+
+### 问题 2：`main.ts` 职责混合
+
+193 行的单一 `init()` 函数混合了：
+- 应用初始化
+- 20+ 个 DOM 事件绑定
+- Toolbar/sidebar UI 逻辑
+
+应拆分为：init + toolbar_bindings + sidebar_bindings
+
+### 问题 3：全局类型安全缺失
+
+`getWasmApi: () => any` 在 16+ 处使用，导致 WASM 接口无类型保护。
+
+### ✅ 良好的部分
+
+- `src/bridge/` 按域分目录（editor/render/viewer/find/comment/review/zoom/ai）— 结构清晰
+- Facade 模式在用（每域一个 facade.ts 封装 WASM 调用）
+- 依赖注入模式 (createXxxController(deps)) — 可测试性好
+- 分层清晰：main.ts → bridge/index.ts → 各域 controller
+
+### 行动计划
+
+1. **立即执行**：删除 `src/core/`，简化初始化流程
+2. **随迁移进行**：为 WASM API 添加类型声明 (.d.ts)
+3. **后续**：拆分 main.ts UI 绑定为独立模块
+
 ## 1. 总览
 
 | 指标 | 当前值 |
