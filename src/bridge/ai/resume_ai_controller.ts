@@ -1,7 +1,7 @@
 import { save } from '@tauri-apps/plugin-dialog';
 import type { ViewerSessionSnapshot } from '../viewer/viewer_session';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
-import type { DocumentEditApi, PdfRegionTextEdit } from '../document/document_edit_api';
+import type { DocumentEditApi } from '../document/document_edit_api';
 import { renderResumeAiConversation, syncResumeAiSuggestionSummary } from './resume_ai_panel_view';
 import {
   applyResumeAiBusyState,
@@ -11,15 +11,19 @@ import {
   syncResumeAiApiKeySection,
 } from './resume_ai_panel_state_view';
 import {
-  applyResumeAiEdits,
   clearResumeAiSuggestions,
-  markResumeAiSuggestionApplied,
   markResumeAiSuggestionFailed,
   submitResumeAiPrompt,
   syncResumeAiSession,
 } from './resume_ai_client';
 import type { ResumeAiScope, ResumeAiSuggestion, ResumeAiThreadView, ResumeChatTurn } from './resume_ai_types';
 import { loadAiSettings, saveAiSettings } from '../../../utils/ai-settings';
+import {
+  applySingleSuggestion,
+  applyAllPendingSuggestions,
+  saveAsSeparatePdf,
+  type ApplyContext,
+} from './resume_ai_apply';
 
 type StatusTone = 'idle' | 'working' | 'success' | 'error';
 
@@ -59,6 +63,15 @@ function buildSuggestedPdfCopyPath(sourcePath: string): string {
     return sourcePath.replace(/\.pdf$/i, '.ai.pdf');
   }
   return `${sourcePath}.ai.pdf`;
+}
+
+function buildApplyContext(deps: ResumeAiControllerDeps, logFn: (node: string, payload: Record<string, unknown>) => void): ApplyContext {
+  return {
+    getViewerSession: deps.getViewerSession,
+    documentEdits: deps.documentEdits,
+    setCurrentPage: deps.setCurrentPage,
+    logAiChain: logFn,
+  };
 }
 
 function formatScopeLabel(scope: ResumeAiScope): string {
@@ -247,66 +260,12 @@ class PdfResumeAiController implements ResumeAiController {
     }
     this.setBusy(true, `正在通过编辑器应用 ${pendingSuggestions.length} 条建议...`);
     try {
-      this.logAiChain('ts.apply_all.click', { count: pendingSuggestions.length, path: currentSession.path });
-      const failed: Array<{ id: string; message: string }> = [];
-      const grouped = new Map<number, ResumeAiSuggestion[]>();
-      for (const suggestion of pendingSuggestions) {
-        const bucket = grouped.get(suggestion.pageIndex) || [];
-        bucket.push(suggestion);
-        grouped.set(suggestion.pageIndex, bucket);
+      const ctx = buildApplyContext(this.deps, (n, p) => this.logAiChain(n, p));
+      const { applied, views } = await applyAllPendingSuggestions(ctx, pendingSuggestions);
+      for (const view of views) {
+        this.applyThreadView(view);
       }
-
-      for (const [pageIndex, pageSuggestions] of grouped) {
-        if (currentSession.currentPage !== pageIndex) {
-          this.deps.setCurrentPage(pageIndex);
-        }
-        let pageSaveFailed = false;
-        for (const suggestion of pageSuggestions) {
-          try {
-            this.deps.documentEdits.editRegionText(this.toTextEdit(suggestion), 'ai-apply-all');
-          } catch (error) {
-            failed.push({ id: suggestion.id, message: describeError(error) });
-          }
-        }
-        const saveResult = await this.deps.documentEdits.saveEdits('ai-apply-all');
-        if (!saveResult.saved) {
-          pageSaveFailed = true;
-          const message = saveResult.errorMessage || `第 ${pageIndex + 1} 页保存失败`;
-          for (const suggestion of pageSuggestions) {
-            if (!failed.find((item) => item.id === suggestion.id)) {
-              failed.push({ id: suggestion.id, message });
-            }
-          }
-        }
-        for (const suggestion of pageSuggestions) {
-          if (pageSaveFailed || failed.find((item) => item.id === suggestion.id)) {
-            continue;
-          }
-          try {
-            const view = await markResumeAiSuggestionApplied({
-              path: currentSession.path,
-              suggestionId: suggestion.id,
-            });
-            this.applyThreadView(view);
-          } catch (error) {
-            failed.push({ id: suggestion.id, message: describeError(error) });
-          }
-        }
-      }
-
-      for (const item of failed) {
-        try {
-          const view = await markResumeAiSuggestionFailed({
-            path: currentSession.path,
-            suggestionId: item.id,
-            errorMessage: item.message,
-          });
-          this.applyThreadView(view);
-        } catch (error) {
-          this.logAiChain('ts.apply_all.error.secondary', { message: describeError(error) });
-        }
-      }
-      this.setStatus(`已应用 ${pendingSuggestions.length - failed.length} 条建议`, 'success');
+      this.setStatus(`已应用 ${applied} 条建议`, 'success');
       this.scheduleIdleStatusSync();
     } catch (error) {
       this.logAiChain('ts.apply_all.error', { message: describeError(error) });
@@ -351,11 +310,8 @@ class PdfResumeAiController implements ResumeAiController {
 
     this.setBusy(true, '正在生成 AI 改写副本...');
     try {
-      const result = await applyResumeAiEdits({
-        path: session.path,
-        suggestions: pendingSuggestions,
-        targetPath,
-      });
+      const ctx = buildApplyContext(this.deps, (n, p) => this.logAiChain(n, p));
+      const result = await saveAsSeparatePdf(ctx, pendingSuggestions, targetPath);
 
       await this.deps.openPdfPath(result.path);
       this.pushTurn('assistant', '已生成 AI 改写副本，并自动切换到新文件。原始PDF 没有被覆盖');
@@ -395,20 +351,8 @@ class PdfResumeAiController implements ResumeAiController {
 
     this.setBusy(true, '正在通过编辑器写回...');
     try {
-      this.logAiChain('ts.apply_one.invoke', { suggestionId, path: currentSession.path || suggestion.path });
-      if (isCurrentDocument && currentSession.currentPage !== suggestion.pageIndex) {
-        this.deps.setCurrentPage(suggestion.pageIndex);
-      }
-      this.deps.documentEdits.editRegionText(this.toTextEdit(suggestion), 'ai-apply-one');
-      const saveResult = await this.deps.documentEdits.saveEdits('ai-apply-one');
-      if (!saveResult.saved) {
-                    throw new Error(saveResult.errorMessage || '编辑器保存失败');
-      }
-      const view = await markResumeAiSuggestionApplied({
-        path: currentSession.path || suggestion.path,
-        suggestionId,
-      });
-      this.logAiChain('ts.apply_one.result', { suggestionId, notice: view.notice ?? null });
+      const ctx = buildApplyContext(this.deps, (n, p) => this.logAiChain(n, p));
+      const view = await applySingleSuggestion(ctx, suggestion);
       this.applyThreadView(view);
       if (isCurrentDocument && this.deps.getViewerSession().currentPage !== suggestion.pageIndex) {
         await this.showSuggestionPage(suggestion.pageIndex);
@@ -479,17 +423,6 @@ class PdfResumeAiController implements ResumeAiController {
     event.preventDefault();
     event.stopPropagation();
     this.triggerApplySuggestion(suggestionId, 'panel-click');
-  }
-
-  private toTextEdit(suggestion: ResumeAiSuggestion): PdfRegionTextEdit {
-    return {
-      id: suggestion.id,
-      pageIndex: suggestion.pageIndex,
-      regionId: suggestion.regionId,
-      kind: suggestion.kind,
-      originalText: suggestion.originalText,
-      newText: suggestion.suggestedText,
-    };
   }
 
   private async handleSendMessage(): Promise<void> {
