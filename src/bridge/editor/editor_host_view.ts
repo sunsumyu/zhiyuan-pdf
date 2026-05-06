@@ -296,7 +296,7 @@ export function hideInteractionTargets(nodes: EditorHostNodes): void {
     nodes.targetLayer.style.display = 'none';
 }
 
-export function showInteractionTargets(nodes: EditorHostNodes): void {
+function showInteractionTargets(nodes: EditorHostNodes): void {
     nodes.targetLayer.style.display = 'block';
 }
 

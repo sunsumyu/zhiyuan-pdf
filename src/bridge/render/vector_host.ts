@@ -157,7 +157,7 @@ export function commitVectorRenderResult(result: VectorRenderResult): void {
     });
 }
 
-export async function renderVectorPage(path: string, pageIndex: number, zoom: number): Promise<VectorRenderResult> {
+async function renderVectorPage(path: string, pageIndex: number, zoom: number): Promise<VectorRenderResult> {
     return renderVectorPageWithPlan(path, pageIndex, {
         displayZoom: zoom,
         renderZoom: zoom,
