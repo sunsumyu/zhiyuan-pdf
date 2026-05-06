@@ -154,9 +154,11 @@ pub fn resolve_glyph_geom(
         let code: u32;
         let mut unicode: String;
 
-        if data.len() >= i + 2 && font.cmap.is_some() {
-            code = ((data[i] as u32) << 8) | (data[i + 1] as u32);
-            unicode = font.cmap.as_ref().unwrap().mappings.get(&(code as u16)).cloned()
+        if font.is_multibyte() {
+            let hi = *data.get(i).unwrap_or(&0) as u32;
+            let lo = *data.get(i + 1).unwrap_or(&0) as u32;
+            code = (hi << 8) | lo;
+            unicode = font.cmap.as_ref().and_then(|m| m.mappings.get(&(code as u16))).cloned()
                 .unwrap_or_else(|| char::from_u32(code).map(|c| c.to_string()).unwrap_or_else(|| format!("[0x{:04X}]", code)));
             i += 2;
         } else {
