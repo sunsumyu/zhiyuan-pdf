@@ -71,25 +71,6 @@ export type BatchReplaceResult = {
     touchedPages: number[];
 };
 
-export type FindSession = {
-    query: string;
-    scope: string;
-    pageIndices: number[];
-    currentPage: number;
-    activeIndex: number;
-};
-
-export type FindFacadeResult = {
-    changed: boolean;
-    session: FindSession | null;
-    navigation: {
-        activeIndex: number;
-        targetPage: number | null;
-    } | null;
-    renderFrame: unknown | null;
-};
-
-
 // ── Helpers ──
 
 function callWasm<T>(fnName: string, arg?: unknown): T | null {
@@ -138,21 +119,3 @@ export function replaceOne(request: ReplaceRequest): ReplaceResult | null {
 export function replaceAll(request: BatchReplaceRequest): BatchReplaceResult | null {
     return callWasm<BatchReplaceResult>('searchFacadeBatchReplace', request);
 }
-
-export function setFindSession(session: FindSession): FindFacadeResult | null {
-    return callWasm<FindFacadeResult>('searchFacadeSetSession', session);
-}
-
-export function clearFindSession(): FindFacadeResult | null {
-    return callWasm<FindFacadeResult>('searchFacadeClearSession');
-}
-
-export function moveFindMatch(step: number): FindFacadeResult | null {
-    return callWasm<FindFacadeResult>('searchFacadeMoveMatch', step);
-}
-
-export function getFindSession(): FindSession | null {
-    return callWasm<FindSession>('searchFacadeGetSession');
-}
-
-
