@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use pdf_viewer_core::persistence_models::PersistableRegionPatch;
-use crate::interfaces::multimedia::pdf::execute_region_patches;
+use crate::interfaces::pdf::execute_region_patches;
 
 #[derive(Debug, Clone, Default)]
 pub(crate)

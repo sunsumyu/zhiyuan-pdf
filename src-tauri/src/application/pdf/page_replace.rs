@@ -7,8 +7,8 @@ use pdf_viewer_core::persistence_models::PersistableRegionPatch;
 use pdf_viewer_core::text::search_replace::{replace_query_matches, SearchReplaceOptions};
 use crate::application::pdf::page_context::build_page_region_context_from_vector_model;
 use crate::application::pdf::region_patch_service::apply_region_patch_batch;
-use crate::infrastructure::multimedia::pdf::engine::PdfPageModelService;
-use crate::interfaces::multimedia::pdf::ensure_document_loaded;
+use crate::infrastructure::pdf::engine::PdfPageModelService;
+use crate::interfaces::pdf::ensure_document_loaded;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

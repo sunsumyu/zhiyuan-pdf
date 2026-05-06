@@ -1,9 +1,9 @@
 use crate::application::pdf::page_context::build_page_region_context_from_vector_model;
-use crate::infrastructure::multimedia::pdf::annotation_store::{
+use crate::infrastructure::pdf::annotation_store::{
     read_page_comments, read_page_highlights,
 };
-use crate::infrastructure::multimedia::pdf::engine::PdfPageModelService;
-use crate::interfaces::multimedia::pdf::{
+use crate::infrastructure::pdf::engine::PdfPageModelService;
+use crate::interfaces::pdf::{
     apply_highlight_annotation, apply_text_comment, ensure_document_loaded,
 };
 use crate::log_step;
@@ -428,7 +428,7 @@ pub(crate) async fn delete_page_annotation(
 ) -> Result<PdfDeleteAnnotationResult, String> {
     let annot_id = parse_annotation_object_id(&request.annotation_id)?;
 
-    crate::interfaces::multimedia::pdf::delete_annotation_internal(
+    crate::interfaces::pdf::delete_annotation_internal(
         app_state,
         path.to_string(),
         request.page_index,
@@ -453,7 +453,7 @@ pub(crate) async fn update_page_comment(
     }
 
     let annot_id = parse_annotation_object_id(&request.annotation_id)?;
-    crate::interfaces::multimedia::pdf::update_text_comment(
+    crate::interfaces::pdf::update_text_comment(
         app_state,
         path.to_string(),
         request.page_index,

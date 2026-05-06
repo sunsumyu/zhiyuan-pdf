@@ -1,1 +1,1 @@
-pub mod multimedia;
+pub mod pdf;

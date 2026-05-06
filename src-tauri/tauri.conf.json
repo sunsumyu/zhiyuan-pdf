@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Standalone PDF Viewer",
+  "productName": "纸鸢",
   "version": "0.1.0",
-  "identifier": "com.pdf.standalone",
+  "identifier": "com.zhiyuan.app",
   "build": {
     "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Standalone PDF Viewer",
+        "title": "纸鸢 PDF",
         "width": 1200,
         "height": 800,
         "resizable": true,

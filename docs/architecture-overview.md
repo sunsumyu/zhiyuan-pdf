@@ -28,7 +28,7 @@
 
 - **TS 层**：UI 框架（React-style 但当前是手写 controllers）。负责 DOM、Canvas 2D 命令、事件分发。
 - **WASM 核心**：所有"决策"逻辑——光标定位、缩放策略、渲染计划、文本编辑、撤销/重做、补丁队列。前后端共享数据结构通过 `pdf_viewer_core` crate 提供模型。
-- **Tauri 后端**：磁盘 IO、PDF 编解码（基于 `pdfium-render` 等库）、系统集成（文件对话框、shell）。
+- **Tauri 后端**：磁盘 IO、PDF 编解码（基于 `lopdf` + `vello`/`wgpu`）、系统集成（文件对话框、shell）。
 
 ## 2. 数据流（核心场景）
 
@@ -151,7 +151,52 @@ src/
     └── ...
 ```
 
-待 Phase 4 重组：把 38 个 bridge 文件按职责拆子目录（`editor/` `render/` `viewer/` 等）。
+Bridge 已按域重组为子目录（`editor/` `render/` `viewer/` `find/` `comment/` `review/` `ai/` `document/` `zoom/`）。
+
+## 5.5 模块组织（Tauri 后端）
+
+```
+src-tauri/src/
+├── lib.rs              # AppState + Tauri builder + command 注册
+├── state.rs            # LoadingStatus enum
+│
+├── interfaces/         # Tauri command 层（IPC 入口）
+│   └── pdf.rs          # 31 个 #[command] 函数
+│
+├── application/        # 应用业务层
+│   └── pdf/
+│       ├── page_annotation.rs
+│       ├── page_replace.rs
+│       ├── page_search.rs
+│       ├── page_context.rs
+│       ├── comment_review.rs
+│       └── region_patch_service.rs
+│
+└── infrastructure/     # 基础设施层
+    ├── pdf/            # PDF 处理核心
+    │   ├── cache.rs            # 统一缓存管理（page/layout/image/font）
+    │   ├── document_service.rs # 文档打开/保存/撤销/重做
+    │   ├── page_model_service.rs # 页面模型构建
+    │   ├── geometry_service.rs # 编辑器几何计算
+    │   ├── engine.rs           # 兼容性 re-export
+    │   ├── font/               # 字体子系统
+    │   │   ├── catalog.rs      # 系统字体枚举
+    │   │   ├── matching.rs     # 字体匹配
+    │   │   ├── metrics.rs      # 字体度量
+    │   │   ├── ttc.rs          # TTC 解析
+    │   │   └── embedded_program.rs # 嵌入字体规范化
+    │   ├── models.rs           # infra 层数据结构
+    │   ├── pdf_read.rs         # lopdf 读取
+    │   ├── pdf_write.rs        # lopdf 写出
+    │   ├── vector_engine.rs    # 矢量页面模型构建
+    │   ├── vello_renderer.rs   # GPU 渲染
+    │   └── ...                 # 其余辅助模块
+    └── pdf_read/               # 只读阅读模式
+        ├── facade.rs
+        ├── backend.rs
+        ├── scanned_backend.rs
+        └── vector_backend.rs
+```
 
 ## 6. 关键不变量
 

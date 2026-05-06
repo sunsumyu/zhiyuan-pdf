@@ -1,4 +1,4 @@
-use crate::infrastructure::multimedia::pdf::models::{
+use crate::infrastructure::pdf::models::{
     NativeTextModel as VectorTextModel, RenderObject, VectorPageModel,
 };
 use pdf_viewer_core::models::{

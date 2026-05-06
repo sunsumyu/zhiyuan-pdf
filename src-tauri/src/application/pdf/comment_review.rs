@@ -1,5 +1,5 @@
 use crate::application::pdf::page_annotation::{list_page_comments, PdfPageCommentItem};
-use crate::interfaces::multimedia::pdf::ensure_document_loaded;
+use crate::interfaces::pdf::ensure_document_loaded;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
