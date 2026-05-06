@@ -1,0 +1,215 @@
+[INFO]: Checking for the Wasm target...
+[INFO]: Compiling to Wasm...
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\search_facade.rs:197:9
+    |
+197 |     let request: BatchReplaceRequest = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+
+warning: unused variable: `path`
+  --> crates\pdf-viewer-ui\src\editor\review_facade.rs:75:24
+   |
+75 | pub fn facade_get_feed(path: String, scope: String, page_index: Option<u16>) -> JsValue {
+   |                        ^^^^ help: if this is intentional, prefix it with an underscore: `_path`
+
+
+warning: unused variable: `scope`
+  --> crates\pdf-viewer-ui\src\editor\review_facade.rs:75:38
+   |
+75 | pub fn facade_get_feed(path: String, scope: String, page_index: Option<u16>) -> JsValue {
+   |                                      ^^^^^ help: if this is intentional, prefix it with an underscore: `_scope`
+
+
+warning: unused variable: `page_index`
+  --> crates\pdf-viewer-ui\src\editor\review_facade.rs:75:53
+   |
+75 | pub fn facade_get_feed(path: String, scope: String, page_index: Option<u16>) -> JsValue {
+   |                                                     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_page_index`
+
+
+warning: unused variable: `request`
+  --> crates\pdf-viewer-ui\src\editor\review_facade.rs:89:9
+   |
+89 |     let request: ReviewAcceptRequest = match serde_wasm_bindgen::from_value(request_js) {
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\review_facade.rs:106:9
+    |
+106 |     let request: ReviewRejectRequest = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\review_facade.rs:123:9
+    |
+123 |     let request: ReviewAcceptAllRequest = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\review_facade.rs:140:9
+    |
+140 |     let request: ReviewRejectAllRequest = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\review_facade.rs:157:9
+    |
+157 |     let request: ReviewLocateRequest = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+  --> crates\pdf-viewer-ui\src\editor\ai_facade.rs:95:9
+   |
+95 |     let request: ResumeAiSessionRequest = match serde_wasm_bindgen::from_value(request_js) {
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\ai_facade.rs:112:9
+    |
+112 |     let request: ResumeAiPromptRequest = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\ai_facade.rs:129:9
+    |
+129 |     let request: ResumeAiApplyRequest = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\ai_facade.rs:146:9
+    |
+146 |     let request: ResumeAiApplyAllRequest = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\ai_facade.rs:182:9
+    |
+182 |     let request: ResumeAiClearRequest = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+  --> crates\pdf-viewer-ui\src\editor\render_facade.rs:98:9
+   |
+98 |     let request: VectorRenderRequest = match serde_wasm_bindgen::from_value(request_js) {
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\render_facade.rs:117:9
+    |
+117 |     let request: VectorRenderLayer = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `request`
+   --> crates\pdf-viewer-ui\src\editor\render_facade.rs:133:9
+    |
+133 |     let request: RenderCacheInvalidateRequest = match serde_wasm_bindgen::from_value(request_js) {
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+
+warning: unused variable: `frame_token`
+   --> crates\pdf-viewer-ui\src\editor\render_facade.rs:170:32
+    |
+170 | pub fn facade_is_frame_current(frame_token: u32) -> JsValue {
+    |                                ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_frame_token`
+
+
+warning: unused variable: `path`
+  --> crates\pdf-viewer-ui\src\editor\annotation_facade.rs:96:34
+   |
+96 | pub fn facade_extract_highlights(path: String, page_index: u16) -> JsValue {
+   |                                  ^^^^ help: if this is intentional, prefix it with an underscore: `_path`
+
+
+warning: unused variable: `page_index`
+  --> crates\pdf-viewer-ui\src\editor\annotation_facade.rs:96:48
+   |
+96 | pub fn facade_extract_highlights(path: String, page_index: u16) -> JsValue {
+   |                                                ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_page_index`
+
+
+warning: unused variable: `path`
+   --> crates\pdf-viewer-ui\src\editor\annotation_facade.rs:102:31
+    |
+102 | pub fn facade_extract_targets(path: String, page_index: u16) -> JsValue {
+    |                               ^^^^ help: if this is intentional, prefix it with an underscore: `_path`
+
+
+warning: unused variable: `page_index`
+   --> crates\pdf-viewer-ui\src\editor\annotation_facade.rs:102:45
+    |
+102 | pub fn facade_extract_targets(path: String, page_index: u16) -> JsValue {
+    |                                             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_page_index`
+
+
+warning: function `build_frame_request` is never used
+  --> crates\pdf-viewer-ui\src\editor\render_facade.rs:92:4
+   |
+92 | fn build_frame_request() -> crate::present::plan_builder::FramePlanRequest {
+   |    ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+
+warning: function `measure_dom_to_page_scale` is never used
+   --> crates\pdf-viewer-ui\src\wasm_api\viewer.rs:208:15
+    |
+208 | pub(crate) fn measure_dom_to_page_scale(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+warning: function `take_pending_anchor_scroll` is never used
+   --> crates\pdf-viewer-ui\src\wasm_api\viewer.rs:579:15
+    |
+579 | pub(crate) fn take_pending_anchor_scroll(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+warning: function `set_visual_layout` is never used
+   --> crates\pdf-viewer-ui\src\wasm_api\viewer.rs:599:15
+    |
+599 | pub(crate) fn set_visual_layout(display_zoom: f32, content_left: f32, content_top: f32) {
+    |               ^^^^^^^^^^^^^^^^^
+
+
+warning: function `peek_pending_anchor_scroll` is never used
+   --> crates\pdf-viewer-ui\src\wasm_api\viewer.rs:613:15
+    |
+613 | pub(crate) fn peek_pending_anchor_scroll(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+warning: function `peek_pending_anchor_layout` is never used
+   --> crates\pdf-viewer-ui\src\wasm_api\viewer.rs:628:15
+    |
+628 | pub(crate) fn peek_pending_anchor_layout(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+warning: function `take_pending_anchor_layout` is never used
+   --> crates\pdf-viewer-ui\src\wasm_api\viewer.rs:643:15
+    |
+643 | pub(crate) fn take_pending_anchor_layout(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+    Finished `release` profile [optimized] target(s) in 0.47s
+[INFO]: Installing wasm-bindgen...
+[INFO]: Optimizing wasm binaries with `wasm-opt`...
+[INFO]: Optional fields missing from Cargo.toml: 'repository', 'license'. These are not necessary, but recommended
+[INFO]: :-) Done in 23.36s
+[INFO]: :-) Your wasm pkg is ready to publish at e:\chain\pdf-viewer-standalone\crates\pdf-viewer-ui\pkg.

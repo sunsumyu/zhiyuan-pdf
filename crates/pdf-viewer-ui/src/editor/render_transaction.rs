@@ -1,0 +1,224 @@
+use serde::{Deserialize, Serialize};
+
+use crate::editor::activation::{
+    activate_editor_from_client_point, activate_region_editor,
+    OpenEditorAtClientPointRequest,
+};
+use crate::editor::command::{
+    apply_editor_input_command, apply_input_with_host, EditorInputCommand,
+};
+use crate::editor::commit::commit_active_editor_text;
+use crate::editor::debug_trace::{
+    editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
+};
+use crate::editor::mode::close_active_editor;
+use crate::editor::runtime::{
+    apply_active_editor_format_action, sync_editor_input, EditorFormatAction,
+};
+use crate::editor::session::{active_editor_draft_text, active_editor_has_session_changes};
+use crate::present::plan_builder::FramePlanRequest;
+use crate::present::runtime::schedule_render_frame_request;
+use crate::render::workflow::RenderFrameEnvelope;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorRenderTransactionResult {
+    pub changed: bool,
+    pub render_frame: Option<RenderFrameEnvelope>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorInputRenderTransactionResult {
+    pub text_changed: bool,
+    pub caret_changed: bool,
+    pub scene_changed: bool,
+    pub caret_index: usize,
+    pub render_frame: Option<RenderFrameEnvelope>,
+}
+
+fn schedule_editor_render(
+    frame_request: &FramePlanRequest,
+    should_render: bool,
+) -> Option<RenderFrameEnvelope> {
+    schedule_editor_render_with_reason(frame_request, should_render, "editorVisibility")
+}
+
+fn schedule_editor_render_with_reason(
+    frame_request: &FramePlanRequest,
+    should_render: bool,
+    render_reason: &str,
+) -> Option<RenderFrameEnvelope> {
+    if !should_render {
+        return None;
+    }
+
+    let mut render_request = frame_request.clone();
+    render_request.render_reason = render_reason.to_string();
+    schedule_render_frame_request(&render_request)
+}
+
+pub fn open_editor_tx(
+    request: OpenEditorAtClientPointRequest,
+    frame_request: FramePlanRequest,
+) -> EditorRenderTransactionResult {
+    let action = activate_editor_from_client_point(request);
+    EditorRenderTransactionResult {
+        changed: action.changed,
+        render_frame: schedule_editor_render(&frame_request, action.request_visibility_render),
+    }
+}
+
+pub fn open_region_editor_tx(
+    page_index: u16,
+    region_id: String,
+    kind: String,
+    original_text: String,
+    frame_request: FramePlanRequest,
+) -> EditorRenderTransactionResult {
+    let action = activate_region_editor(page_index, &region_id, &kind, &original_text);
+    EditorRenderTransactionResult {
+        changed: action.changed,
+        render_frame: schedule_editor_render(&frame_request, action.request_visibility_render),
+    }
+}
+
+pub fn sync_input_tx(
+    new_text: String,
+    caret_index: usize,
+    frame_request: FramePlanRequest,
+) -> EditorInputRenderTransactionResult {
+    let result = sync_editor_input(new_text, caret_index);
+    EditorInputRenderTransactionResult {
+        text_changed: result.text_changed,
+        caret_changed: result.caret_changed,
+        scene_changed: result.scene_changed,
+        caret_index: result.caret_index,
+        render_frame: schedule_editor_render(&frame_request, result.request_visibility_render),
+    }
+}
+
+pub fn apply_input_tx(
+    command: EditorInputCommand<'_>,
+    frame_request: FramePlanRequest,
+) -> EditorInputRenderTransactionResult {
+    let result = apply_editor_input_command(command);
+    let should_render =
+        result.request_visibility_render || result.scene_changed || result.text_changed;
+    EditorInputRenderTransactionResult {
+        text_changed: result.text_changed,
+        caret_changed: result.caret_changed,
+        scene_changed: result.scene_changed,
+        caret_index: result.caret_index,
+        render_frame: schedule_editor_render(&frame_request, should_render),
+    }
+}
+
+pub fn apply_host_input_tx(
+    command: EditorInputCommand<'_>,
+    host_text: Option<String>,
+    host_caret_index: Option<usize>,
+    frame_request: FramePlanRequest,
+) -> EditorInputRenderTransactionResult {
+    let result = apply_input_with_host(command, host_text, host_caret_index);
+    let should_render =
+        result.request_visibility_render || result.scene_changed || result.text_changed;
+    EditorInputRenderTransactionResult {
+        text_changed: result.text_changed,
+        caret_changed: result.caret_changed,
+        scene_changed: result.scene_changed,
+        caret_index: result.caret_index,
+        render_frame: schedule_editor_render(&frame_request, should_render),
+    }
+}
+
+pub fn commit_editor_tx(
+    new_text: String,
+    caret_index: usize,
+    frame_request: FramePlanRequest,
+) -> EditorRenderTransactionResult {
+    let has_session_changes = active_editor_has_session_changes();
+    let commit_text = if has_session_changes {
+        let _sync_result = sync_editor_input(new_text.clone(), caret_index);
+        new_text
+    } else {
+        dbg_event(
+            "render-tx.commit",
+            "clean-session-skip-host-sync",
+            vec![
+                dbg_field("caretIndex", caret_index),
+                dbg_field("hostText", &new_text),
+            ],
+        );
+        active_editor_draft_text().unwrap_or(new_text)
+    };
+    let action = commit_active_editor_text(commit_text);
+    let render_reason = if action.changed {
+        "documentMutation"
+    } else {
+        "editorVisibility"
+    };
+    let should_render = action.request_visibility_render || action.changed;
+    EditorRenderTransactionResult {
+        changed: action.changed,
+        render_frame: schedule_editor_render_with_reason(
+            &frame_request,
+            should_render,
+            render_reason,
+        ),
+    }
+}
+
+pub fn commit_editor_silent_tx(
+    new_text: String,
+    caret_index: usize,
+) -> EditorRenderTransactionResult {
+    let has_session_changes = active_editor_has_session_changes();
+    let commit_text = if has_session_changes {
+        let _sync_result = sync_editor_input(new_text.clone(), caret_index);
+        new_text
+    } else {
+        dbg_event(
+            "render-tx.commit",
+            "clean-session-skip-host-sync-silent",
+            vec![
+                dbg_field("caretIndex", caret_index),
+                dbg_field("hostText", &new_text),
+            ],
+        );
+        active_editor_draft_text().unwrap_or(new_text)
+    };
+    let action = commit_active_editor_text(commit_text);
+    EditorRenderTransactionResult {
+        changed: action.changed,
+        render_frame: None,
+    }
+}
+
+pub fn close_editor_tx(frame_request: FramePlanRequest) -> EditorRenderTransactionResult {
+    let changed = close_active_editor();
+    EditorRenderTransactionResult {
+        changed,
+        render_frame: schedule_editor_render(&frame_request, changed),
+    }
+}
+
+fn format_render_tx(
+    frame_request: FramePlanRequest,
+    changed: bool,
+) -> EditorRenderTransactionResult {
+    EditorRenderTransactionResult {
+        changed,
+        render_frame: schedule_editor_render(&frame_request, changed),
+    }
+}
+
+pub fn apply_format_action_tx(
+    action: EditorFormatAction,
+    frame_request: FramePlanRequest,
+) -> EditorRenderTransactionResult {
+    format_render_tx(
+        frame_request,
+        apply_active_editor_format_action(action).changed,
+    )
+}

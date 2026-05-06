@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sovereignty PDF Viewer</title>
+    <link rel="stylesheet" href="./src/index.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div id="pdf-viewer-root">
+        <!-- Main Navbar / Top Bar -->
+        <header class="pdf-navbar">
+            <div class="navbar-left">
+                <div class="app-logo">
+                    <i class="fas fa-file-pdf"></i>
+                    <span>Sovereignty</span>
+                </div>
+                <div class="v-divider"></div>
+                <div class="toolbar-group">
+                    <button id="open-btn" class="nav-btn" title="Open PDF">
+                        <i class="fas fa-folder-open"></i>
+                    </button>
+                    <button id="pdf-save-btn" class="nav-btn" title="Save Changes">
+                        <i class="fas fa-save"></i>
+                    </button>
+                    <button id="pdf-print-btn" class="nav-btn" title="Print Document">
+                        <i class="fas fa-print"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="navbar-center">
+                <div class="toolbar-group">
+                    <button id="pdf-undo-btn" class="nav-btn" title="Undo">
+                        <i class="fas fa-undo"></i>
+                    </button>
+                    <button id="pdf-redo-btn" class="nav-btn" title="Redo">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                </div>
+                <div class="v-divider"></div>
+                <div class="toolbar-group">
+                    <button id="pdf-prev-page-btn" class="nav-btn"><i class="fas fa-chevron-left"></i></button>
+                    <div class="page-counter">
+                        <input type="text" id="pdf-current-page-input" value="1">
+                        <span>/</span>
+                        <span id="pdf-total-pages">0</span>
+                    </div>
+                    <button id="pdf-next-page-btn" class="nav-btn"><i class="fas fa-chevron-right"></i></button>
+                </div>
+                <div class="v-divider"></div>
+                <div class="toolbar-group">
+                    <button id="pdf-zoom-out-btn" class="nav-btn"><i class="fas fa-search-minus"></i></button>
+                    <select id="pdf-zoom-select" class="zoom-select">
+                        <option value="0.5">50%</option>
+                        <option value="0.75">75%</option>
+                        <option value="1.0" selected>100%</option>
+                        <option value="1.25">125%</option>
+                        <option value="1.5">150%</option>
+                        <option value="2.0">200%</option>
+                    </select>
+                    <button id="pdf-zoom-in-btn" class="nav-btn"><i class="fas fa-search-plus"></i></button>
+                </div>
+            </div>
+
+            <div class="navbar-right">
+                <div class="toolbar-group">
+                    <button id="pdf-search-btn" class="nav-btn" title="Find in Document">
+                        <i class="fas fa-search"></i>
+                    </button>
+                    <button id="pdf-ai-toggle-btn" class="nav-btn ai-btn" title="AI Assistant">
+                        <i class="fas fa-robot"></i>
+                        <span>AI Assistant</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Secondary Sub-Toolbar (Contextual Tools) -->
+        <div class="pdf-sub-toolbar">
+            <div class="toolbar-group">
+                <button id="pdf-select-mode-btn" class="tool-btn active" title="Select Tool">
+                    <i class="fas fa-mouse-pointer"></i>
+                </button>
+                <button id="pdf-hand-mode-btn" class="tool-btn" title="Hand Tool">
+                    <i class="fas fa-hand-paper"></i>
+                </button>
+            </div>
+            <div class="v-divider"></div>
+            <div class="toolbar-group">
+                <button id="pdf-add-text-btn" class="tool-btn" title="Add Text">
+                    <i class="fas fa-font"></i>
+                </button>
+                <button id="pdf-draw-btn" class="tool-btn" title="Draw">
+                    <i class="fas fa-pen"></i>
+                </button>
+                <button id="pdf-highlight-btn" class="tool-btn" title="Highlight">
+                    <i class="fas fa-highlighter"></i>
+                </button>
+            </div>
+            <div class="v-divider"></div>
+            <div class="toolbar-group" id="format-toolbar" style="opacity: 0.5; pointer-events: none;">
+                <button id="pdf-format-bold-btn" class="tool-btn"><i class="fas fa-bold"></i></button>
+                <button id="pdf-format-italic-btn" class="tool-btn"><i class="fas fa-italic"></i></button>
+                <button id="pdf-format-underline-btn" class="tool-btn"><i class="fas fa-underline"></i></button>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="pdf-format-color-input" value="#ffffff">
+                </div>
+            </div>
+            <div style="flex: 1;"></div>
+            <div class="file-info">
+                <i class="fas fa-file-alt"></i>
+                <span id="file-path">No file selected</span>
+            </div>
+        </div>
+
+        <div class="pdf-main-container">
+            <!-- Left Sidebar: Thumbnails / Outline -->
+            <aside class="pdf-sidebar-left" id="pdf-sidebar-left">
+                <div class="sidebar-tabs">
+                    <button class="sidebar-tab active" title="Thumbnails"><i class="fas fa-th-large"></i></button>
+                    <button class="sidebar-tab" title="Outline"><i class="fas fa-list-ul"></i></button>
+                    <button class="sidebar-tab" title="Bookmarks"><i class="fas fa-bookmark"></i></button>
+                </div>
+                <div class="sidebar-content" id="pdf-thumbnails-container">
+                    <div class="sidebar-empty">
+                        <i class="fas fa-images"></i>
+                        <p>Thumbnails</p>
+                    </div>
+                </div>
+                <div class="sidebar-footer">
+                    <button id="pdf-sidebar-toggle-btn" class="sidebar-toggle">
+                        <i class="fas fa-angle-left"></i>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Center Area: PDF Content -->
+            <main id="pdf-scroll-container">
+                <div id="pdf-empty-state">
+                    <div class="hero-icon">
+                        <i class="fas fa-file-pdf"></i>
+                    </div>
+                    <h2>Welcome to Sovereignty PDF</h2>
+                    <p>Open a document to start viewing and editing with AI assistance.</p>
+                    <button class="primary-btn" onclick="document.getElementById('open-btn').click()">
+                        <i class="fas fa-plus"></i> Open PDF File
+                    </button>
+                </div>
+
+                <div id="pdf-content-wrapper">
+                    <img id="pdf-render-target" draggable="false">
+                    <div id="vector-render-container"></div>
+                </div>
+            </main>
+
+            <!-- Right Sidebar: AI Panel -->
+            <aside class="pdf-side-panel" id="pdf-ai-panel" style="display: none;">
+                <div class="panel-header">
+                    <div class="panel-title-group">
+                        <div class="ai-avatar">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div class="panel-title-text">
+                            <span class="panel-title">Resume AI Assistant</span>
+                            <span id="pdf-ai-status" class="status-dot"></span>
+                        </div>
+                    </div>
+                    <div class="panel-actions">
+                        <button id="pdf-ai-wide-btn" class="icon-btn" title="Toggle Wide Mode"><i class="fas fa-arrows-left-right"></i></button>
+                        <button id="pdf-ai-close-btn" class="icon-btn" title="Close"><i class="fas fa-xmark"></i></button>
+                    </div>
+                </div>
+
+                <div id="pdf-ai-doc-meta" class="ai-meta-bar">
+                    <span>Scope: Current Page</span>
+                    <i class="fas fa-circle-info"></i>
+                </div>
+                
+                <div class="panel-content" id="resume-ai-panel-scroll">
+                    <div id="pdf-ai-chat-messages"></div>
+                </div>
+
+                <div class="ai-input-area">
+                    <div id="pdf-ai-actions-summary" class="ai-suggestions-preview">
+                        No suggestions yet
+                    </div>
+
+                    <div id="pdf-ai-api-key-section" class="ai-key-section">
+                        <div id="pdf-ai-key-summary">
+                            <span id="pdf-ai-key-summary-inline"><i class="fas fa-key"></i> Checking API Key...</span>
+                            <button id="pdf-ai-key-edit-btn" class="link-btn">Edit</button>
+                        </div>
+                        <div id="pdf-ai-key-editor" style="display: none;">
+                            <input type="password" id="pdf-ai-api-key" placeholder="Enter Gemini API Key...">
+                            <div class="btn-group">
+                                <button id="pdf-ai-save-key" class="compact-btn primary">Save</button>
+                                <button id="pdf-ai-cancel-key-edit" class="compact-btn">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ai-chat-controls">
+                        <div class="chat-header-actions">
+                            <select id="pdf-ai-scope-select" class="scope-select">
+                                <option value="current-page">Current Page</option>
+                                <option value="whole-document">Whole Resume</option>
+                            </select>
+                            <button id="pdf-ai-clear-btn" class="link-btn">Clear Chat</button>
+                        </div>
+                        <div class="chat-input-wrapper">
+                            <textarea id="pdf-ai-chat-input" placeholder="Ask AI to modify your resume..."></textarea>
+                            <button id="pdf-ai-send-btn" class="send-btn" title="Send message">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                        <div class="chat-footer-actions">
+                            <button id="pdf-ai-apply-all-btn" class="outline-btn" disabled>Apply All</button>
+                            <button id="pdf-ai-save-as-btn" class="outline-btn" disabled>Save As...</button>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Floating Find Container -->
+    <div id="pdf-find-container" style="display: none;">
+        <div class="find-wrapper">
+            <i class="fas fa-search find-icon"></i>
+            <input type="text" id="pdf-find-input" placeholder="Find in document...">
+            <span id="pdf-find-results">0 / 0</span>
+            <div class="v-divider"></div>
+            <button id="pdf-find-prev-btn" class="icon-btn"><i class="fas fa-chevron-up"></i></button>
+            <button id="pdf-find-next-btn" class="icon-btn"><i class="fas fa-chevron-down"></i></button>
+            <button id="pdf-find-close-btn" class="icon-btn"><i class="fas fa-xmark"></i></button>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+    <input type="file" id="pdf-hidden-file-input" accept=".pdf" style="display: none;">
+</body>
+</html>

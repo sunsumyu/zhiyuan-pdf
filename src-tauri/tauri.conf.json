@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Standalone PDF Viewer",
+  "version": "0.1.0",
+  "identifier": "com.pdf.standalone",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Standalone PDF Viewer",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "transparent": false,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' tauri:; img-src 'self' asset: pdfasset: http://asset.localhost https://asset.localhost blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' tauri: http://localhost:* ws://localhost:* ipc: tauri-plugin-shell:;",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "icon": [
+      "icons/32x32.png"
+    ]
+  }
+}

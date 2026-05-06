@@ -1,0 +1,24 @@
+[package]
+name = "pdf-viewer-ui"
+version = "0.1.0"
+edition = "2021"
+description = "Rust-WASM PDF viewer engine and host adapter."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pdf-viewer-core = { path = "../pdf-viewer-core", features = ["wasm"] }
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+serde_json = "1.0.149"
+serde-wasm-bindgen = "0.6.5"
+wasm-bindgen = "0.2.117"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+serde-wasm-bindgen = "0.6"
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+web-sys = { version = "0.3", features = ["CanvasRenderingContext2d", "console", "CssStyleDeclaration", "Document", "Element", "HtmlCanvasElement", "HtmlElement", "HtmlImageElement", "Node", "TextMetrics", "Window", "ContextAttributes2d"] }

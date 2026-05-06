@@ -1,0 +1,41 @@
+# Build outputs
+/target/
+/target_alt/
+/dist/
+/node_modules/
+**/pkg/
+**/target/
+
+# WASM build artifacts
+crates/*/pkg/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and dumps
+*.log
+errors_*.txt
+errors*.txt
+error_count.txt
+check*.txt
+
+# Temporary work / scratch
+scratch/
+*.bak
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Profile / perf data
+src/prof/
+
+# docs/ is part of source (architecture, API contracts, development guide)
