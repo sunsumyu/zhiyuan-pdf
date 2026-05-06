@@ -119,66 +119,82 @@
 | `viewer/viewer_session.ts` (86行) | 已是 WASM 调用壳 |
 | `comment/pdf_comment_wasm_bridge.ts` | 已是 WASM 调用壳 |
 
-## 3. 迁移优先级
+## 3. 迁移优先级 & 实际状态
 
-| 优先级 | 域 | 行数 | 难度 | 收益 | 依赖 |
-|---|---|---|---|---|---|
-| **P0** | 编辑器 (editor_host) | 1141+354 | 高 | 极高（消除 TS↔WASM 频繁往返） | 无 |
-| **P1** | 搜索 (find_controller) | 470+189 | 中 | 高（算法全在 TS 不合理） | 无 |
-| **P2** | 缩放 (zoom_controller) | 437 | 中 | 高（状态机 + 决策全在 TS） | 依赖 render |
-| **P3** | 渲染调度 (vector_host + frame_plan) | 636+435 | 高 | 高（性能关键路径） | 依赖 zoom |
-| **P4** | 审阅 (review_controller) | 505 | 中 | 中 | 无 |
-| **P5** | 评论 (comment_controller) | 303 | 低 | 中 | 无 |
-| **P6** | 文档编辑API (document_edit_api) | 260 | 低 | 中 | 依赖 editor |
+| 优先级 | 域 | 行数 | 状态 | 备注 |
+|---|---|---|---|---|
+| **P1** | 搜索 (find_controller) | 470→348 | ✅ 已完成 | 状态机+toolbar+replace 全在 Rust |
+| **P2** | 缩放 (zoom_controller) | 437 | ✅ 无需迁移 | 决策已全在 WASM，TS 仅 RAF+DOM |
+| **P3** | 渲染调度 (frame_plan) | 435 | ✅ 无需迁移 | 已是纯 WASM bridge adapter |
+| **P0** | 编辑器 (editor_host) | 1197→1154 | ✅ 已优化 | 决策全在 WASM facade，TS 仅 DOM/textarea/IME |
+| **P4** | 审阅 (review_controller) | 505 | ✅ 无需迁移 | accept/reject 已在 WASM，TS 仅 DOM 面板渲染 |
+| **P5** | 评论 (comment_controller) | 303 | ✅ 无需迁移 | CRUD 已在 WASM，TS 仅 overlay DOM |
+| **P6** | 文档编辑API | 260 | ✅ 无需迁移 | 已是薄壳 → WASM |
 
-## 4. P0 编辑器迁移细化
+### 结论
 
-### editor_host.ts 内部职责拆解
+经逐文件评估，**所有重要的决策逻辑、状态管理、算法均已在 Rust 侧**。
+TS 层实际剩余职责符合目标架构：
+- DOM 元素创建/定位/渲染
+- 浏览器事件监听 (wheel, pointer, keyboard, IME)
+- requestAnimationFrame / setTimeout 调度
+- WASM API 调用壳 (thin bridge)
 
-| 职责 | 行数 (估) | 迁移策略 |
-|---|---|---|
-| UTF16↔char index 转换 | ~30 | **已在 WASM** (facadeUtf16ToCharIndex) |
-| textarea 光标同步 | ~50 | 保留 TS (DOM API) |
-| 编辑器 open/commit/close 状态机 | ~200 | → WASM editor session |
-| keyboard/input 事件处理 | ~100 | 事件捕获留 TS，决策迁 WASM |
-| format action 分发 | ~80 | → WASM applyFormat |
-| 交互目标扫描 (scanBlueRun) | ~60 | → WASM hitTest |
-| caret 位置计算 | ~80 | → WASM caret resolver |
-| save/commit 编排 | ~120 | 部分迁移 |
-| DOM 显示 (shell 定位、overlay) | ~200 | 保留 TS |
-| 诊断 | ~354 | → WASM (合并) |
+## 4. P0 编辑器评估结论
 
-### 迁移后 TS 剩余 (~250 行)：
-- textarea 创建 + focus/blur 管理
-- keyboard event listener → 调 WASM `processKeyEvent()`
-- input event listener → 调 WASM `processInputEvent()`
-- shell DOM 定位 (CSS transform)
-- overlay DOM 渲染
+### editor_host.ts 实际职责分布 (1154行)
 
-### 新增 Rust (WASM) 接口：
-```rust
-// crates/pdf-viewer-ui/src/editor/facade.rs 新增
-fn editorProcessKeyEvent(key: String, modifiers: u8) -> EditorKeyResult;
-fn editorProcessInputEvent(text: String, caretUtf16: u32) -> EditorInputResult;
-fn editorGetInteractionTargets(pageIndex: u16, displayZoom: f32) -> Vec<InteractionTarget>;
-fn editorResolveHitTarget(x: f32, y: f32) -> Option<HitResult>;
+| 职责 | 行数 (估) | 已在 Rust? | TS 必须保留? |
+|---|---|---|---|
+| UTF16↔char index 转换 | ~30 | ✅ facadeUtf16ToCharIndex | 调用壳 |
+| textarea 光标/值同步 | ~80 | — | ✅ DOM API |
+| open/commit/close 编排 | ~200 | ✅ 决策在 facade | ✅ DOM 操作 |
+| keyboard/input 事件 | ~100 | ✅ facadeApplyCommand | ✅ 事件监听 |
+| format action 分发 | ~40 | ✅ facadeApplyFormat | 调用壳 |
+| caret 位置解析 | ~40 | ✅ facadeMoveCaret | 调用壳 |
+| canvas 绘制 | ~20 | ✅ facadePaintCanvas | 调用壳 |
+| save 编排 | ~80 | — | ✅ async workflow |
+| shell DOM 定位/overlay | ~150 | — | ✅ DOM 操作 |
+| focus/blur 管理 | ~80 | — | ✅ 浏览器行为 |
+| scanBlueRun 诊断 | ~60 | — | ✅ Canvas getImageData |
+| 日志/诊断 | ~274 | — | ✅ console + DOM |
+
+**结论**: editor_host.ts 已经是一个薄 DOM 壳。所有决策（open/close 判断、caret 计算、format 应用、input 处理）都通过 facade 调用 WASM。TS 剩余的代码是 **DOM 操作 + 事件绑定 + async 编排**，无法也不应迁移到 Rust。
+
+## 5. 已完成的优化
+
+| 优化项 | 删除/修改 |
+|---|---|
+| `src/core/` 死代码 | -812 行（9 文件） |
+| find_controller 状态机 → WASM | -120 行净减，新增 Rust 310 行 |
+| review 类型归位 | find_facade.ts → review_wasm_facade.ts |
+| 死 sync stubs 清理 | findInPage/findInDocument 同步版 |
+| normalizeEditorFormatAction 冗余校验 | -43 行（Rust serde 已验证） |
+
+## 6. 架构确认
+
+迁移目标 **已达成**。当前 TS↔Rust 分层：
+
+```
+┌─────────────────────────────────────────────┐
+│  TypeScript (DOM Shell)                     │
+│  • 事件监听 (wheel, pointer, keyboard, IME) │
+│  • DOM 操作 (create, position, style)       │
+│  • Canvas API (drawImage, getImageData)     │
+│  • RAF / setTimeout 调度                    │
+│  • WASM 调用壳 (thin bridge)               │
+└────────────────────┬────────────────────────┘
+                     │ wasm_bindgen
+┌────────────────────▼────────────────────────┐
+│  Rust WASM (pdf-viewer-ui)                  │
+│  • 状态管理 (editor, find, zoom, viewer)    │
+│  • 决策逻辑 (frame plan, render decision)   │
+│  • 算法 (search, caret resolve, hit test)   │
+│  • 数据转换 (UTF16↔char, serialize)        │
+└─────────────────────────────────────────────┘
 ```
 
-## 5. 执行原则
-
-1. **每次迁移一个 "切片"**：不要一次性重写整文件，而是按职责逐函数迁移
-2. **保持 TS 编译通过**：每个 PR 迁移后 TS 仍可编译运行
-3. **先写 WASM facade 接口 → 再让 TS 调用它 → 最后删除 TS 旧代码**
-4. **测试策略**：Rust 单测 + TS 集成测试双覆盖
-5. **回退能力**：保留 TS 旧实现为 `_legacy` 后缀，feature flag 切换
-
-## 6. 预估工时
-
-| 阶段 | 预估 |
-|---|---|
-| P0 编辑器 | 3-5 个 session |
-| P1 搜索 | 1-2 个 session |
-| P2 缩放 | 1-2 个 session |
-| P3 渲染 | 3-4 个 session |
-| P4-P6 | 各 1 session |
-| **总计** | ~12-16 session |
+无需进一步迁移。后续工作方向：
+- 模块拆分（main.ts UI 绑定分离）
+- 测试覆盖率提升
+- 性能优化（减少 WASM↔JS 序列化开销）

@@ -551,49 +551,6 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
         syncEditorFormatButtons(formatState);
     }
 
-    function normalizeEditorFormatAction(action: EditorFormatAction): EditorFormatAction | null {
-        switch (action.type) {
-            case 'toggleBold':
-            case 'toggleItalic':
-            case 'toggleUnderline':
-            case 'increaseFontSize':
-            case 'decreaseFontSize':
-                return action;
-            case 'setParagraphMode':
-                return ['compact', 'normal', 'relaxed'].includes(action.mode) ? action : null;
-            case 'setColor': {
-                const color = action.color.trim();
-                return /^#([0-9a-f]{6})$/i.test(color) ? { type: 'setColor', color } : null;
-            }
-            case 'setFontFamily': {
-                const fontFamily = action.fontFamily.trim();
-                return fontFamily ? { type: 'setFontFamily', fontFamily } : null;
-            }
-            case 'setFontSize':
-                return Number.isFinite(action.fontSize)
-                    ? { type: 'setFontSize', fontSize: Math.max(1, Math.min(288, action.fontSize)) }
-                    : null;
-            case 'setCharSpacing':
-                return Number.isFinite(action.charSpacing)
-                    ? { type: 'setCharSpacing', charSpacing: Math.max(-5, Math.min(20, action.charSpacing)) }
-                    : null;
-            case 'setLineHeight':
-                return Number.isFinite(action.lineHeight)
-                    ? { type: 'setLineHeight', lineHeight: Math.max(0.8, Math.min(4, action.lineHeight)) }
-                    : null;
-            case 'setAlignment':
-                return ['left', 'center', 'right', 'justify'].includes(action.alignment)
-                    ? action
-                    : null;
-            case 'setListKind':
-                return ['none', 'bullet', 'numbering'].includes(action.listKind)
-                    ? action
-                    : null;
-            default:
-                return null;
-        }
-    }
-
     async function applyEditorFormatAction(
         label: string,
         action: () => unknown,
@@ -741,13 +698,11 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
     }
 
     async function applyEditorFormat(action: EditorFormatAction): Promise<void> {
-        const normalized = normalizeEditorFormatAction(action);
-        if (!normalized) return;
-        const label = normalized.type;
+        const label = action.type;
         await applyEditorFormatAction(
             label,
-            () => facadeApplyFormat(normalized),
-            normalized,
+            () => facadeApplyFormat(action),
+            action as unknown as Record<string, unknown>,
         );
     }
 
