@@ -175,7 +175,16 @@ pub fn apply_patch_with_history(patch: PersistableRegionPatch) {
     let mut state = get_patch_state().write().unwrap();
     let old_patch = capture_existing_patch(&state, &patch);
     state.accepted_patch_keys.remove(&patch.patch_key);
+    let new_text_preview: String = patch.new_text.chars().take(40).collect();
+    let original_text_preview: String = patch.original_text.chars().take(40).collect();
+    web_sys::console::log_1(&format!(
+        "[PATCH-APPLY] regionId={} patchKey={} pageIndex={} originalLen={} originalPreview='{}' newLen={} newPreview='{}'",
+        patch.region_id, patch.patch_key, patch.page_index,
+        patch.original_text.chars().count(), original_text_preview,
+        patch.new_text.chars().count(), new_text_preview
+    ).into());
     apply_patch_maps(&mut state, &patch);
+    let total_paragraph_patches = state.paragraph_patches.len();
     bump_patch_revision(&mut state);
     state.history.push(PatchCommand {
         patch_key: patch.patch_key.clone(),
@@ -183,6 +192,10 @@ pub fn apply_patch_with_history(patch: PersistableRegionPatch) {
         new_patch: patch,
     });
     state.redo_stack.clear();
+    web_sys::console::log_1(&format!(
+        "[PATCH-APPLY] done totalParagraphPatches={}",
+        total_paragraph_patches
+    ).into());
 }
 
 pub fn collect_persistable_patches() -> Vec<PersistableRegionPatch> {

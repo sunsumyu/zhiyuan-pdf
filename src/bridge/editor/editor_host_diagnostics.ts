@@ -285,6 +285,15 @@ export function createEditorHostDiagnostics(
             'ts.shell.positioned',
             'ts.render-active-editor',
             'ts.blue-scan',
+            // === Commit/blur/input diagnostics (added for marker-restore bug) ===
+            'ts.commit',
+            'ts.blur.commit-requested',
+            'ts.blur.commit-suppressed',
+            'ts.beforeinput',
+            'ts.shell-mousedown.input',
+            'ts.shell-mousedown.result',
+            'ts.open.focus-stabilized',
+            'ts.close',
         ]);
         if (!interestingNodes.has(node)) return;
         const parts = Object.entries(details)

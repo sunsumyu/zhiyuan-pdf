@@ -8,9 +8,34 @@ use crate::state_manager::{
     apply_patch_with_history, clear_persistable_patches as core_clear_persistable_patches, collect_persistable_patches,
 };
 
+/// Direct Rust-to-Rust patch application (no JsValue roundtrip).
+/// Use this from internal Rust callers; only `apply_document_patch` should
+/// be used when receiving a `JsValue` from the JS bridge.
+pub fn apply_document_patch_direct(patch: PersistableRegionPatch) {
+    web_sys::console::log_1(&format!(
+        "[APPLY-DOC-PATCH] direct regionId={} source={} pageIndex={} newLen={}",
+        patch.region_id, patch.source, patch.page_index,
+        patch.new_text.chars().count()
+    ).into());
+    apply_patch_with_history(patch);
+}
+
 pub fn apply_document_patch(patch_js: JsValue) {
-    if let Ok(patch) = serde_wasm_bindgen::from_value::<PersistableRegionPatch>(patch_js) {
-        apply_patch_with_history(patch);
+    match serde_wasm_bindgen::from_value::<PersistableRegionPatch>(patch_js) {
+        Ok(patch) => {
+            web_sys::console::log_1(&format!(
+                "[APPLY-DOC-PATCH] from-js regionId={} source={} pageIndex={} newLen={}",
+                patch.region_id, patch.source, patch.page_index,
+                patch.new_text.chars().count()
+            ).into());
+            apply_patch_with_history(patch);
+        }
+        Err(err) => {
+            web_sys::console::log_1(&format!(
+                "[APPLY-DOC-PATCH] !!! DESERIALIZE FAILED: {:?}",
+                err
+            ).into());
+        }
     }
 }
 

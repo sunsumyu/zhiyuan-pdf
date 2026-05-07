@@ -176,8 +176,9 @@ pub fn resolve_glyph_geom(
             unicode = cmap_hit
                 .unwrap_or_else(|| char::from_u32(code).map(|c| c.to_string()).unwrap_or_else(|| "".to_string()));
             
-            // Symbol Patching
-            if is_symbol && (unicode.is_empty() || unicode.chars().count() == 1 && unicode.chars().next().unwrap() as u32 <= 127) {
+            // Symbol Patching: patch when no CMap, CMap result is ASCII, or CMap result is PUA (U+E000-U+F8FF)
+            let cp = unicode.chars().next().map(|c| c as u32).unwrap_or(0);
+            if is_symbol && (unicode.is_empty() || cp <= 127 || (cp >= 0xE000 && cp <= 0xF8FF)) {
                 let patched = match code {
                     0x7A | 0x6C | 0x6A | 0x6B | 0xB7 => "●",
                     0xA7 => "●",
@@ -193,6 +194,22 @@ pub fn resolve_glyph_geom(
             i += 1;
         }
 
+        // Secondary Patching for CID-mapped symbols (0xF000/0xE000 range)
+        if unicode.chars().count() == 1 {
+            let cp = unicode.chars().next().unwrap() as u32;
+            if (cp >= 0xF000 && cp <= 0xF0FF) || (cp >= 0xE000 && cp <= 0xE0FF) {
+                let patched = match cp & 0xFF {
+                    0x6A | 0x6B | 0x6C | 0xB7 => Some("●"),
+                    0x6E => Some("■"),
+                    0xFC => Some("✓"),
+                    _ => None,
+                };
+                if let Some(p) = patched {
+                    unicode = p.to_string();
+                }
+            }
+        }
+
         let w0 = font.widths.get(&code).cloned().unwrap_or(font.default_width);
         let spacing = if unicode == " " { word_spacing } else { 0.0 };
         let advance = ((w0 / 1000.0) * font_size + char_spacing + spacing) * h_scale;
@@ -202,6 +219,27 @@ pub fn resolve_glyph_geom(
         pdf_char_codes.push(code);
         current_offset += advance;
         combined_text.push_str(&unicode);
+    }
+
+    // Always-on diagnostic: log any suspicious decoding results
+    let has_empty_or_nonbmp = combined_text.is_empty()
+        || combined_text.contains('\u{FFFD}')
+        || combined_text.chars().any(|c| { let cp = c as u32; cp > 0xFFFF || (cp < 0x20 && cp != 0x0A && cp != 0x0D) });
+    if has_empty_or_nonbmp || data.len() <= 4 || is_symbol {
+        let decoded_codes: Vec<String> = (0..data.len().min(32))
+            .map(|idx| format!("0x{:02X}", data[idx]))
+            .collect();
+        let result_codes: Vec<String> = combined_text.chars()
+            .take(32)
+            .map(|c| format!("U+{:04X}({})", c as u32, c))
+            .collect();
+        eprintln!(
+            "[GLYPH-DECODE-RESULT] font='{}' subtype={:?} multibyte={} is_symbol={} data=[{}] => text={:?} chars=[{}]",
+            font.name, font.font_subtype, multibyte, is_symbol,
+            decoded_codes.join(","),
+            combined_text,
+            result_codes.join(",")
+        );
     }
 
     (combined_text, origins, widths, pdf_char_codes, current_offset)

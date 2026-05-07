@@ -18,6 +18,7 @@ use crate::editor::text_geometry::caret_index_at_page_point_with_plan;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
+use web_sys;
 use crate::editor::edit_target::{
     collect_edit_targets_from_session, resolve_edit_target_from_session,
 };
@@ -343,6 +344,127 @@ fn same_document_line(reference_origin_y: f32, run: &LayoutRun) -> bool {
     (reference_origin_y - run.origin_y).abs() <= tolerance
 }
 
+/// Font-aware marker detection for symbolic-font bullets.
+///
+/// `derive_list_text_semantics` is text-only: it checks for Unicode bullet
+/// characters (U+2022, U+25CF, etc.). Many PDFs encode bullets via symbolic
+/// fonts (Wingdings, Symbol) where the codepoint is a PUA character or an
+/// ASCII letter that renders as a bullet glyph. This function detects such
+/// markers by inspecting the font metadata of leading runs.
+fn detect_symbolic_font_marker(session: &EditorSession) -> Option<(usize, ListMarkerKind)> {
+    let runs = &session.paragraph.runs;
+    let non_empty_runs: Vec<&LayoutRun> = runs.iter().filter(|r| !r.text.is_empty()).collect();
+    if non_empty_runs.len() < 2 {
+        return None;
+    }
+
+    // Check if the first non-empty run uses a symbolic font
+    let first_run = non_empty_runs[0];
+    if !looks_like_symbolic_font(&first_run.style.font_name) {
+        return None;
+    }
+
+    // Accumulate characters from leading symbolic-font runs
+    let mut marker_char_count = 0usize;
+    for run in runs.iter() {
+        if run.text.is_empty() {
+            continue;
+        }
+        if !looks_like_symbolic_font(&run.style.font_name) {
+            break;
+        }
+        marker_char_count += run.text.chars().count();
+    }
+
+    if marker_char_count == 0 {
+        return None;
+    }
+
+    // Skip whitespace between marker and body in the combined text
+    let full_text: String = runs.iter().map(|r| r.text.as_str()).collect();
+    let chars: Vec<char> = full_text.chars().collect();
+    let mut body_start = marker_char_count;
+    while body_start < chars.len() && chars[body_start].is_whitespace() {
+        body_start += 1;
+    }
+
+    if body_start >= chars.len() {
+        return None;
+    }
+
+    Some((body_start, ListMarkerKind::Symbol))
+}
+
+/// Recover a list marker that the body-only segment dropped.
+///
+/// The editor's `target.session` is built from a single visual segment; if the
+/// layout pipeline placed the bullet on a different visual line (typical when
+/// Wingdings/Symbol baselines differ from CJK baselines) or in a separate
+/// paragraph, the body session does not see it and `derive_list_text_semantics`
+/// returns `has_marker = false`. This helper falls back to the FULL paragraph
+/// runs (`paragraph.editor_session`) and synthesises a marker from any nearby
+/// symbolic/bullet run that sits to the left of the body on roughly the same
+/// vertical band.
+fn synthesize_marker_from_paragraph(
+    paragraph: &GlyphPaintParagraph,
+    body_session: &EditorSession,
+) -> Option<ParagraphEditorMarker> {
+    let body_runs = &body_session.paragraph.runs;
+    let body_first = body_runs.iter().find(|run| !run.text.is_empty())?;
+    let body_origin_y = body_first.origin_y;
+    let body_origin_x = body_first.origin_x;
+    let body_font_size = body_first.style.font_size.max(1.0);
+    let line_tolerance = (body_font_size * 0.9).max(4.0);
+
+    use std::collections::HashSet;
+    let body_run_ids: HashSet<&str> = body_runs.iter().map(|r| r.id.as_str()).collect();
+
+    let candidates: Vec<LayoutRun> = paragraph
+        .editor_session
+        .paragraph
+        .runs
+        .iter()
+        .filter(|run| !run.text.trim().is_empty())
+        .filter(|run| !body_run_ids.contains(run.id.as_str()))
+        .filter(|run| (run.origin_y - body_origin_y).abs() <= line_tolerance)
+        .filter(|run| run.bbox.right <= body_origin_x + 1.0)
+        .filter(|run| {
+            let first_char = run.text.trim_start().chars().next();
+            first_char
+                .map(|c| {
+                    matches!(
+                        c,
+                        '•' | '●' | '▪' | '◦' | '·' | '○' | '-' | '▶' | '➤'
+                    )
+                })
+                .unwrap_or(false)
+                || looks_like_symbolic_font(&run.style.font_name)
+        })
+        .cloned()
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let bbox = bbox_from_runs(&candidates)?;
+    let advance = (body_origin_x - bbox.left).max(0.0);
+    let text: String = candidates.iter().map(|r| r.text.clone()).collect();
+    let kind = derive_list_text_semantics(&text).kind;
+    let kind = if kind == ListMarkerKind::None {
+        ListMarkerKind::Bullet
+    } else {
+        kind
+    };
+
+    Some(ParagraphEditorMarker {
+        kind,
+        text,
+        advance,
+        runs: candidates,
+    })
+}
+
 fn normalize_template_run_for_draft(run: &LayoutRun) -> LayoutRun {
     let mut normalized = run.clone();
     // Preserve source spacing semantics so draft layout uses the same horizontal
@@ -460,10 +582,31 @@ fn build_plan_for_target_session(
     }
 
     let semantics = derive_list_text_semantics(&full_source_text);
-    let split = if semantics.has_marker && semantics.body_char_start > 0 {
+    let run_count = full_session.paragraph.runs.len();
+    let first_run_font = full_session.paragraph.runs.iter().find(|r| !r.text.is_empty()).map(|r| r.style.font_name.clone()).unwrap_or_default();
+    let first_run_text: String = full_session.paragraph.runs.iter().find(|r| !r.text.is_empty()).map(|r| r.text.chars().take(4).collect()).unwrap_or_default();
+    let first_run_codepoints: String = first_run_text.chars().map(|c| format!("U+{:04X}", c as u32)).collect::<Vec<_>>().join(",");
+    web_sys::console::log_1(&format!(
+        "[MARKER-DETECT] paragraphId={} hasMarker={} bodyCharStart={} kind={:?} runCount={} firstRunFont='{}' firstRunText='{}' firstRunCPs={} fullTextLen={} symbolicFontFallback={}",
+        &target_id, semantics.has_marker, semantics.body_char_start, semantics.kind, run_count,
+        &first_run_font, &first_run_text, &first_run_codepoints, full_source_text.len(),
+        detect_symbolic_font_marker(&full_session).is_some()
+    ).into());
+    let mut split = if semantics.has_marker && semantics.body_char_start > 0 {
         let raw_body_char_start =
             full_text_plan.map_reconstructed_to_raw(semantics.body_char_start);
         split_editor_session(&full_session, raw_body_char_start, semantics.kind).unwrap_or(
+            SessionSplit {
+                body_session: full_session.clone(),
+                marker: None,
+            },
+        )
+    } else if let Some((body_char_start, marker_kind)) = detect_symbolic_font_marker(&full_session) {
+        // Font-aware fallback: symbolic font bullets whose codepoints are not
+        // recognized by text-based derive_list_text_semantics (e.g. Wingdings
+        // 'l' rendering as ●, Symbol PUA characters, etc.)
+        let raw_body_char_start = full_text_plan.map_reconstructed_to_raw(body_char_start);
+        split_editor_session(&full_session, raw_body_char_start, marker_kind).unwrap_or(
             SessionSplit {
                 body_session: full_session.clone(),
                 marker: None,
@@ -475,6 +618,28 @@ fn build_plan_for_target_session(
             marker: None,
         }
     };
+
+    // Architectural fallback: when the editor's selected segment does not
+    // contain the bullet (e.g. layout-pipeline placed the marker glyph in a
+    // separate paragraph or a different visual line due to font baseline
+    // differences between Wingdings/Symbol and CJK runs), recover the marker
+    // by scanning the full GlyphPaintParagraph for an adjacent bullet run.
+    // This keeps the editor scene self-describing so the shell canvas can
+    // self-paint the marker without relying on page-canvas show-through.
+    if split.marker.is_none() {
+        if let Some(marker) = synthesize_marker_from_paragraph(paragraph, &split.body_session) {
+            split.marker = Some(marker);
+        }
+    }
+
+    web_sys::console::log_1(&format!(
+        "[MARKER-SPLIT] paragraphId={} markerPresent={} markerText='{}' markerRunCount={} bodyRunCount={}",
+        &target_id,
+        split.marker.is_some(),
+        split.marker.as_ref().map(|m| m.text.as_str()).unwrap_or(""),
+        split.marker.as_ref().map(|m| m.runs.len()).unwrap_or(0),
+        split.body_session.paragraph.runs.len()
+    ).into());
 
     let body_text_plan = build_editor_session_text_plan(&split.body_session);
     let source_body_text = session_source_text(&split.body_session);

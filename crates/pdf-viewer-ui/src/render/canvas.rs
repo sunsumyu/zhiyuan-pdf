@@ -515,16 +515,6 @@ impl CanvasRenderer {
                         continue;
                     }
                     let resolved_font = resolve_font_face(&run.font_name, run.font_hints.as_ref());
-                    // Trace: log any run that contains non-ASCII characters
-                    if run.text.chars().any(|c| { let cp = c as u32; cp > 0x7F && cp < 0x2E80 }) {
-                        let codepoints: Vec<String> = run.text.chars()
-                            .map(|c| format!("U+{:04X}({})", c as u32, c))
-                            .collect();
-                        web_sys::console::log_1(&JsValue::from_str(&format!(
-                            "[TEXT-TRACE] font='{}' resolved='{}' text={:?} codes={:?}",
-                            run.font_name, resolved_font.render_family, run.text, codepoints
-                        )));
-                    }
                     draw_text_run_core(
                         &self.ctx,
                         self.dpr,
@@ -1129,6 +1119,13 @@ fn draw_editor_marker_page(
     active_target: &ActiveEditorTarget,
     marker_text_override: Option<&str>,
 ) {
+    let has_marker = active_target.scene.document_plan.marker.is_some();
+    let marker_run_count = active_target.scene.document_plan.marker.as_ref().map(|m| m.runs.len()).unwrap_or(0);
+    let marker_text = active_target.scene.document_plan.marker.as_ref().map(|m| m.text.clone()).unwrap_or_default();
+    web_sys::console::log_1(&format!(
+        "[MARKER-DRAW] hasMarker={} markerRunCount={} markerText='{}' override={:?} paragraphId={}",
+        has_marker, marker_run_count, marker_text, marker_text_override, active_target.paragraph_id
+    ).into());
     let synthetic_marker_text = marker_text_override
         .filter(|text| active_target.scene.document_plan.marker.is_none() && !text.is_empty());
     if let Some(marker) = &active_target.scene.document_plan.marker {

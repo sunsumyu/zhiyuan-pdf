@@ -61,10 +61,22 @@ pub fn collect_paragraph_render_overlays(
     let marker_overrides = collect_marker_overrides(Some(plan), active_state.as_ref());
 
     if let Ok(state) = get_patch_state().read() {
+        web_sys::console::log_1(&format!(
+            "[OVERLAY-COLLECT] pageIndex={} totalParagraphPatches={} activeEditor={}",
+            plan.page_index, state.paragraph_patches.len(), active_state.is_some()
+        ).into());
         for (paragraph_id, patch) in &state.paragraph_patches {
             if patch.page_index != plan.page_index {
+                web_sys::console::log_1(&format!(
+                    "[OVERLAY-COLLECT] skip patch (page mismatch): paragraphId={} patchPage={} planPage={}",
+                    paragraph_id, patch.page_index, plan.page_index
+                ).into());
                 continue;
             }
+            web_sys::console::log_1(&format!(
+                "[OVERLAY-COLLECT] persisted paragraphId={} originalLen={} newLen={}",
+                paragraph_id, patch.original_text.chars().count(), patch.new_text.chars().count()
+            ).into());
             let Some(target) = state
                 .paragraph_replacement_targets
                 .get(paragraph_id)
@@ -72,8 +84,16 @@ pub fn collect_paragraph_render_overlays(
                 .or_else(|| replacement_target_from_patch_snapshot(patch))
                 .or_else(|| build_paragraph_render_target(plan, vector_model, paragraph_id))
             else {
+                web_sys::console::log_1(&format!(
+                    "[OVERLAY-COLLECT] !!! target resolution FAILED for paragraphId={}",
+                    paragraph_id
+                ).into());
                 continue;
             };
+            web_sys::console::log_1(&format!(
+                "[OVERLAY-COLLECT] target resolved for paragraphId={}, building PersistedPageCanvas overlay",
+                paragraph_id
+            ).into());
             let base_paragraph_id =
                 edit_target_base_paragraph_id(&target.paragraph_id).to_string();
             let source_object_indices = persisted_patch_source_indices(

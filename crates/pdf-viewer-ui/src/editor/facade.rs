@@ -247,7 +247,14 @@ pub fn facade_commit_editor(request_js: JsValue) -> JsValue {
         Err(_) => return JsValue::NULL,
     };
 
+    let draft_preview: String = request.draft_text.chars().take(40).collect();
+    web_sys::console::log_1(&format!(
+        "[COMMIT] enter draftLen={} caretIndex={} draftPreview='{}'",
+        request.draft_text.chars().count(), request.caret_index, draft_preview
+    ).into());
+
     if !host_begin_commit() {
+        web_sys::console::log_1(&"[COMMIT] aborted: host_begin_commit=false".to_string().into());
         return to_value(&EditorFacadeResult::default()).unwrap_or(JsValue::NULL);
     }
 
@@ -255,6 +262,11 @@ pub fn facade_commit_editor(request_js: JsValue) -> JsValue {
     let result = host_commit_tx(request.draft_text, request.caret_index as usize, frame_request);
 
     host_finish_commit();
+
+    web_sys::console::log_1(&format!(
+        "[COMMIT] done changed={} renderFrame={}",
+        result.changed, result.render_frame.is_some()
+    ).into());
 
     let facade_result = EditorFacadeResult {
         changed: result.changed,

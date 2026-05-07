@@ -86,7 +86,9 @@ export function emitPdfDiagnostic(
     if (options.verboseOnly && !verbosePdfDiagnosticsEnabled()) return;
     const message = formatPdfDiagnostic(channel, event, fields);
     try {
-        console.debug(message);
+        // Use console.log so messages appear at default DevTools log level
+        // (console.debug is hidden unless "Verbose" filter is enabled).
+        console.log(message);
     } catch {
         // Console diagnostics are best-effort only; terminal_log remains the authoritative sink.
     }
