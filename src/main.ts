@@ -1,6 +1,8 @@
 import { plugin } from './bridge';
 import { getPdfViewerAPI } from './bridge/viewer/pdf_viewer_api';
 import { open } from '@tauri-apps/plugin-dialog';
+// 应用内自验证：挂 `window.verifyEditorBugs()` 到全局，DevTools 控制台可直调。
+import './dev/verify_editor_bugs';
 
 function api() {
     return getPdfViewerAPI();

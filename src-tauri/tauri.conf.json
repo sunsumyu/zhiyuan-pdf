@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' tauri:; img-src 'self' asset: pdfasset: http://asset.localhost https://asset.localhost blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' tauri: http://localhost:* ws://localhost:* ipc: tauri-plugin-shell:;",
+      "csp": "default-src 'self' tauri:; img-src 'self' asset: pdfasset: http://asset.localhost https://asset.localhost blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' tauri: http://localhost:* ws://localhost:* ipc: http://ipc.localhost https://ipc.localhost tauri-plugin-shell:;",
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]

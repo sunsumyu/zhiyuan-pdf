@@ -371,7 +371,7 @@ export function renderInteractionTargets(
             `top:${target.top}px`,
             `width:${target.width}px`,
             `height:${target.height}px`,
-            'pointer-events:auto',
+            'pointer-events:none',
             'cursor:text',
             'background:transparent',
             'border:none',

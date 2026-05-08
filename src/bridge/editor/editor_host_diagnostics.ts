@@ -313,7 +313,7 @@ export function createEditorHostDiagnostics(
                 if (key.toLowerCase().includes('text') || key === 'textareaValue' || key === 'rustText') {
                     return [`${key}="${formatEditorTextForLog(value)}"`];
                 }
-                if (['command', 'inputType', 'caretIndex', 'rustCaretIndex', 'snapshotCaretIndex', 'lastRustCaretIndex', 'selectionStart', 'selectionEnd', 'displayZoom', 'committed', 'changed', 'targetCount', 'childCount', 'suppressForSave', 'suppressForOpen', 'sessionDirty', 'activeElementIsTextarea'].includes(key)) {
+                if (['command', 'inputType', 'caretIndex', 'rustCaretIndex', 'snapshotCaretIndex', 'lastRustCaretIndex', 'restoredCaretIndex', 'selectionStart', 'selectionEnd', 'displayZoom', 'committed', 'changed', 'targetCount', 'childCount', 'suppressForSave', 'suppressForOpen', 'sessionDirty', 'activeElementIsTextarea'].includes(key)) {
                     return [`${key}=${stringifyTerminalValue(value)}`];
                 }
                 if ([

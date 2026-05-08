@@ -1,17 +1,52 @@
 use crate::editor::mode::{close_active_editor, get_active_editor_state};
 use crate::editor::runtime::build_active_editor_patch;
 use crate::editor::runtime::EditorVisibilityAction;
+use crate::editor::session::active_editor_draft_text;
 use crate::document::patch_persistence::apply_document_patch_direct;
 use crate::state_manager::remember_paragraph_replacement_target;
 
+/// 高层入口：若当前有未提交的 live state，强制走 commit 持久化它。
+/// 用于"退出 edit mode / 切换 edit mode / 关闭编辑器"等所有路径，
+/// 保证 Editing → Idle 的迁移必经 Persisting（见 docs/edit-save-architecture.md §4.1）。
+/// 返回 true 表示有 patch 被持久化。
+pub fn commit_pending_edit_if_any() -> bool {
+    let Some(draft_text) = active_editor_draft_text() else {
+        crate::chain_trace!("exit.no-live-state");
+        return false;
+    };
+    crate::chain_trace!(
+        "exit.force-commit",
+        "draftLen" => draft_text.chars().count(),
+    );
+    let action = commit_active_editor_text(draft_text);
+    action.changed
+}
+
 pub fn commit_active_editor_text(new_text: String) -> EditorVisibilityAction {
     let active_state = get_active_editor_state();
+    crate::chain_trace!(
+        "commit.start",
+        "newLen" => new_text.chars().count(),
+        "hasActive" => active_state.is_some(),
+    );
     let new_text_preview: String = new_text.chars().take(40).collect();
     web_sys::console::log_1(&format!(
         "[COMMIT-TEXT] enter newTextLen={} newTextPreview='{}' hasActiveState={}",
         new_text.chars().count(), new_text_preview, active_state.is_some()
     ).into());
-    let Some(patch) = build_active_editor_patch(new_text) else {
+    let patch_opt = build_active_editor_patch(new_text);
+    web_sys::console::log_1(&format!(
+        "[AREN_COMMIT] patch_opt.is_some={} patch_preview={}",
+        patch_opt.is_some(),
+        patch_opt.as_ref().map(|p| format!(
+            "source={} kind={:?} newMarker='{}' regionId={}",
+            p.source, p.kind,
+            p.new_marker_text.as_deref().unwrap_or("<empty>"),
+            p.region_id
+        )).unwrap_or_else(|| "None".to_string())
+    ).into());
+    let Some(patch) = patch_opt else {
+        crate::chain_trace!("commit.build", "ok" => false, "reason" => "noop-or-no-state");
         web_sys::console::log_1(&"[COMMIT-TEXT] !!! build_active_editor_patch returned None (noop or no active state)".to_string().into());
         let changed = close_active_editor();
         return EditorVisibilityAction {
@@ -19,6 +54,14 @@ pub fn commit_active_editor_text(new_text: String) -> EditorVisibilityAction {
             request_visibility_render: changed,
         };
     };
+    crate::chain_trace!(
+        "commit.build",
+        "ok" => true,
+        "regionId" => &patch.region_id,
+        "source" => &patch.source,
+        "origLen" => patch.original_text.chars().count(),
+        "newLen" => patch.new_text.chars().count(),
+    );
     web_sys::console::log_1(&format!(
         "[COMMIT-TEXT] patch built regionId={} source={} originalLen={} newLen={}",
         patch.region_id, patch.source,
@@ -32,6 +75,11 @@ pub fn commit_active_editor_text(new_text: String) -> EditorVisibilityAction {
             remember_paragraph_replacement_target(&active_paragraph_id, replacement_target);
         }
     }
+    web_sys::console::log_1(&format!(
+        "[AREN_COMMIT] applying patch regionId={} source={} kind={:?} newMarker='{}'",
+        patch.region_id, patch.source, patch.kind,
+        patch.new_marker_text.as_deref().unwrap_or("<empty>")
+    ).into());
     apply_document_patch_direct(patch);
     let changed = close_active_editor();
     EditorVisibilityAction {

@@ -124,6 +124,16 @@ pub fn set_text_edit_enabled(enabled: bool) {
         let mut mode = mode.borrow_mut();
         mode.text_edit_enabled = enabled;
         if !enabled {
+            // 不变量保护：到这一步 live_state 必须已经被上层 commit 过了
+            // （见 host_mode.rs 的 set_text_edit_mode / toggle_text_edit_mode）。
+            // 若仍有 live_state，说明有路径绕过了 commit，记录 warning 便于定位。
+            if mode.live_state.is_some() {
+                web_sys::console::log_1(
+                    &"[SESSION-WARN] set_text_edit_enabled(false) called with live_state still present \
+                       — this is a bug, edit will be lost. See docs/edit-save-architecture.md §4.1"
+                        .into(),
+                );
+            }
             mode.active_paragraph_id = None;
             mode.live_state = None;
         }

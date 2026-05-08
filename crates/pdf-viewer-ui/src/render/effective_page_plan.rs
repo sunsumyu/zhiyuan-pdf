@@ -280,15 +280,23 @@ pub fn build_effective_vector_render_plan(
             if suppress_text_source {
                 let text_object_index_match = overlay.object_indices.contains(&object_index)
                     && matches!(object, VectorRenderObject::Text(_));
-                let text_object_source_match = text_object_matches_overlay_source_text(
-                    &object,
-                    &overlay.overlay.source_text,
-                    &overlay.replacement_region,
-                );
-                if text_object_index_match || text_object_source_match {
+                // 只有显式的 index 匹配才整对象 suppress。
+                // source-text 启发式（同一文本对象包含 body + marker）会把 marker
+                // 一起干掉，所以这里 fall through 给下面的 matching_text_run_refs
+                // 做精细的 run 级 suppress（只 suppress 空间上落在 body 区域的 run）
+                if text_object_index_match {
                     overlay.suppressed_text_object_count =
                         overlay.suppressed_text_object_count.saturating_add(1);
-                    suppress_entire_object = true;
+                    // 同 object_id 命中：可能包含 marker run，按 run 级别 suppress 非 marker run
+                    if let VectorRenderObject::Text(text) = &object {
+                        for (run_index, run) in text.runs.iter().enumerate() {
+                            if !crate::render::source_suppression::run_text_is_list_marker_only(
+                                &run.text,
+                            ) {
+                                suppressed_text_runs.run_indices.insert(run_index);
+                            }
+                        }
+                    }
                     if !overlay.inserted && !overlay_renders_last(&overlay.overlay) {
                         entries.push(EffectiveVectorRenderEntry::ParagraphOverlay(
                             overlay.overlay.clone(),
@@ -360,7 +368,17 @@ pub fn build_effective_vector_render_plan(
                 if text_object_should_be_suppressed(&object, &overlay.object_ids) {
                     overlay.suppressed_text_object_count =
                         overlay.suppressed_text_object_count.saturating_add(1);
-                    suppress_entire_object = true;
+                    // 对象 ID 命中，但同一文本对象内可能包含 list marker run（如 "●"），
+                    // 不能整对象 suppress —— 把所有非 marker run 标记为 suppress，保留 marker。
+                    if let VectorRenderObject::Text(text) = &object {
+                        for (run_index, run) in text.runs.iter().enumerate() {
+                            if !crate::render::source_suppression::run_text_is_list_marker_only(
+                                &run.text,
+                            ) {
+                                suppressed_text_runs.run_indices.insert(run_index);
+                            }
+                        }
+                    }
                     if !overlay.inserted && !overlay_renders_last(&overlay.overlay) {
                         entries.push(EffectiveVectorRenderEntry::ParagraphOverlay(
                             overlay.overlay.clone(),
@@ -1321,5 +1339,112 @@ mod tests {
         assert!(entries
             .iter()
             .any(|entry| matches!(entry, EffectiveVectorRenderEntry::ParagraphOverlay(_))));
+    }
+
+    /// 关键回归测试：当 PDF 的 list-item 把 marker (●) 和 body 放在同一个文本对象里时，
+    /// 编辑后 marker run 必须被保留（不能被 spatial suppress 干掉）。
+    #[wasm_bindgen_test::wasm_bindgen_test]
+    fn list_item_marker_run_is_not_suppressed_when_body_is_replaced() {
+        // 模拟真实 PDF：单个文本对象，runs[0] = "●", runs[1..] = body 字符
+        let body_left = 90.0;
+        let body_right = 330.0;
+        let body_top = 100.0;
+        let body_bottom = 112.0;
+        let marker_x = 70.0; // marker 在 body 左侧 20px
+
+        let mut runs = vec![StyledRun {
+            text: "●".to_string(),
+            tx: marker_x,
+            ty: body_bottom,
+            width: 10.0,
+            font_size: 12.0,
+            object_id: None,
+            ..Default::default()
+        }];
+        // 模拟 body 的若干 run（每个字符一个）
+        let body_chars = ["编", "程", "语", "言", ":", "R", "u", "s", "t"];
+        let mut x = body_left;
+        for ch in body_chars {
+            runs.push(StyledRun {
+                text: ch.to_string(),
+                tx: x,
+                ty: body_bottom,
+                width: 12.0,
+                font_size: 12.0,
+                object_id: None,
+                ..Default::default()
+            });
+            x += 12.0;
+        }
+        let total_run_count = runs.len();
+
+        let model = VectorPageModel {
+            width: 595.0,
+            height: 842.0,
+            objects: vec![VectorRenderObject::Text(VectorTextObject {
+                id: "text-with-marker".to_string(),
+                runs,
+                ..Default::default()
+            })],
+            ..Default::default()
+        };
+        let overlay = persisted_overlay_for_source_object("text-with-marker");
+        let viewport = BoundingBox {
+            left: 0.0,
+            top: 0.0,
+            right: 595.0,
+            bottom: 842.0,
+        };
+        let _ = (body_left, body_right, body_top); // silence unused
+
+        let entries = build_effective_vector_render_plan(&model, None, &viewport, &[overlay]);
+
+        // 整对象不应该被 skip — 应该有一个 Object entry
+        let obj_entry = entries.iter().find_map(|e| {
+            if let EffectiveVectorRenderEntry::Object { object_index, suppressed_text_runs } = e {
+                if *object_index == 0 { Some(suppressed_text_runs) } else { None }
+            } else { None }
+        });
+        let suppressed = obj_entry.expect(
+            "marker text object must remain in render plan (entire object got suppressed!)",
+        );
+
+        // marker run (index 0) 不能被 suppress
+        let marker_run = match &model.objects[0] {
+            VectorRenderObject::Text(t) => &t.runs[0],
+            _ => unreachable!(),
+        };
+        assert!(
+            !suppressed.suppresses_run(0, marker_run),
+            "marker run (●) must NOT be suppressed; suppressed_runs={:?}",
+            suppressed
+        );
+
+        // body runs 应该被 suppress
+        let body_run_1 = match &model.objects[0] {
+            VectorRenderObject::Text(t) => &t.runs[1],
+            _ => unreachable!(),
+        };
+        assert!(
+            suppressed.suppresses_run(1, body_run_1),
+            "body run must be suppressed"
+        );
+
+        // 不能全部 run 都被 suppress（否则整对象会被 should_skip_entire_object 干掉）
+        let suppressed_count = (0..total_run_count)
+            .filter(|i| {
+                let run = match &model.objects[0] {
+                    VectorRenderObject::Text(t) => &t.runs[*i],
+                    _ => unreachable!(),
+                };
+                suppressed.suppresses_run(*i, run)
+            })
+            .count();
+        assert!(
+            suppressed_count < total_run_count,
+            "not all runs should be suppressed; suppressed {}/{}",
+            suppressed_count,
+            total_run_count
+        );
     }
 }

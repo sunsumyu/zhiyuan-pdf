@@ -36,6 +36,18 @@ vello_renderer: std::sync::Mutex::new(None),
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        // Debug 构建下自动打开 DevTools，方便从控制台调用 window.verifyEditorBugs()。
+        .setup(|app| {
+            #[cfg(debug_assertions)]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    window.open_devtools();
+                }
+            }
+            let _ = app;
+            Ok(())
+        })
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             interfaces::pdf::read_metadata,

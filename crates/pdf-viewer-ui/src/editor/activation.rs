@@ -8,9 +8,11 @@ use pdf_viewer_core::models::BoundingBox;
 use crate::editor::bridge::{
     collect_paragraph_interaction_targets, ParagraphInteractionTarget,
 };
+use crate::editor::edit_target::edit_target_base_paragraph_id;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
+use crate::editor::commit::commit_pending_edit_if_any;
 use crate::editor::mode::{close_active_editor, get_active_editor_state};
 use crate::editor::runtime::{
     find_paragraph_shell_bbox, open_editor_at_page_point, open_region_editor,
@@ -130,24 +132,6 @@ fn point_in_bbox(x: f32, y: f32, bbox: BoundingBox, tolerance: f32) -> bool {
         && y <= bbox.bottom + tolerance
 }
 
-fn bbox_distance_sq(x: f32, y: f32, bbox: BoundingBox) -> f32 {
-    let dx = if x < bbox.left {
-        bbox.left - x
-    } else if x > bbox.right {
-        x - bbox.right
-    } else {
-        0.0
-    };
-    let dy = if y < bbox.top {
-        bbox.top - y
-    } else if y > bbox.bottom {
-        y - bbox.bottom
-    } else {
-        0.0
-    };
-    (dx * dx) + (dy * dy)
-}
-
 fn resolve_target_at_page_point(
     page_x: f32,
     page_y: f32,
@@ -192,43 +176,109 @@ fn resolve_target_at_page_point(
         return None;
     }
 
-    if let Some(target) = targets
+    let hit = strict_hit_test(&targets, page_x, page_y);
+    match &hit {
+        Some(target) => {
+            // Per-run verification: paragraph bbox hit, but is it on actual text?
+            let on_run = is_click_on_paragraph_runs(&target.paragraph_id, page_x, page_y);
+            if !on_run {
+                dbg_event(
+                    "activation.client",
+                    "target-hit-blank-within",
+                    vec![
+                        dbg_field("paragraphId", &target.paragraph_id),
+                        dbg_field("pageX", page_x),
+                        dbg_field("pageY", page_y),
+                    ],
+                );
+                return None;
+            }
+            dbg_event(
+                "activation.client",
+                "target-hit",
+                vec![
+                    dbg_field("paragraphId", &target.paragraph_id),
+                    dbg_field("pageX", page_x),
+                    dbg_field("pageY", page_y),
+                ],
+            );
+        }
+        None => dbg_event(
+            "activation.client",
+            "target-hit-miss",
+            vec![dbg_field("pageX", page_x), dbg_field("pageY", page_y)],
+        ),
+    }
+    hit
+}
+
+/// 纯函数：在已收集到的 `targets` 中做严格 hit-test。
+///
+/// 仅当 `(page_x, page_y)` 落在某个 target 的 bbox（含 4px 容差）内才算命中。
+/// 不再做"距离最近"的 fallback —— 点击段落之间的空白处必须严格返回 `None`，
+/// 让上层据此触发"退出编辑"语义。
+///
+/// 抽出来是为了让 `cargo test` 能在不依赖 `HOST_PAGE_STATE` 的情况下覆盖 hit-test 行为。
+pub(crate) fn strict_hit_test(
+    targets: &[ParagraphInteractionTarget],
+    page_x: f32,
+    page_y: f32,
+) -> Option<ParagraphInteractionTarget> {
+    targets
         .iter()
         .find(|target| point_in_bbox(page_x, page_y, target.bbox, 4.0))
-    {
-        dbg_event(
-            "activation.client",
-            "target-hit",
-            vec![
-                dbg_field("paragraphId", &target.paragraph_id),
-                dbg_field("pageX", page_x),
-                dbg_field("pageY", page_y),
-            ],
-        );
-        return Some(target.clone());
-    }
+        .cloned()
+}
 
-    let nearest = targets
-        .iter()
-        .map(|target| (bbox_distance_sq(page_x, page_y, target.bbox), target))
-        .min_by(|(left, _): &(f32, _), (right, _)| left.total_cmp(right));
-    if let Some((distance_sq, target)) = nearest {
-        dbg_event(
-            "activation.client",
-            "target-hit-nearest",
-            vec![
-                dbg_field("paragraphId", &target.paragraph_id),
-                dbg_field("pageX", page_x),
-                dbg_field("pageY", page_y),
-                dbg_field("distanceSq", distance_sq),
-            ],
-        );
-        if distance_sq <= 900.0 {
-            return Some(target.clone());
+/// Check if a page point falls on any text run within the paragraph.
+/// Returns true if the click is on actual text, false if it's on blank space
+/// within the paragraph's overall bounding box (e.g. end of a short line in
+/// a multi-line paragraph).
+fn is_click_on_paragraph_runs(paragraph_id: &str, page_x: f32, page_y: f32) -> bool {
+    const RUN_TOLERANCE: f32 = 4.0;
+    HOST_PAGE_STATE.with(|state| {
+        let state = state.borrow();
+        let Some(plan) = state.paint_plan.as_ref() else {
+            return true; // no plan → don't block
+        };
+        let base_id = edit_target_base_paragraph_id(paragraph_id);
+        for region in &plan.regions {
+            for paragraph in &region.paragraphs {
+                if paragraph.id != base_id {
+                    continue;
+                }
+                // Check paint-plan runs (source geometry from PDF)
+                for run in &paragraph.runs {
+                    if point_in_bbox(page_x, page_y, run.bbox, RUN_TOLERANCE) {
+                        return true;
+                    }
+                }
+                // Also check editor session runs (may include patched geometry)
+                for run in &paragraph.editor_session.paragraph.runs {
+                    if point_in_bbox(page_x, page_y, run.bbox, RUN_TOLERANCE) {
+                        return true;
+                    }
+                }
+                // Paragraph found but click doesn't hit any run
+                dbg_event(
+                    "activation.client",
+                    "blank-click-run-miss",
+                    vec![
+                        dbg_field("paragraphId", paragraph_id),
+                        dbg_field("pageX", page_x),
+                        dbg_field("pageY", page_y),
+                        dbg_field("paintRunCount", paragraph.runs.len() as u32),
+                        dbg_field(
+                            "sessionRunCount",
+                            paragraph.editor_session.paragraph.runs.len() as u32,
+                        ),
+                    ],
+                );
+                return false;
+            }
         }
-    }
-
-    None
+        true // paragraph not found in plan → don't block
+    })
 }
 
 pub fn activate_editor_from_client_point(
@@ -252,6 +302,16 @@ pub fn activate_editor_from_client_point(
             y: request.client_y,
         });
         let Some(target) = resolve_target_at_page_point(page_point.x, page_point.y) else {
+            // 点空白 = 退出编辑：先 commit pending edit 持久化当前编辑，
+            // 再 close 当前 active editor，让 UI 回到 idle。
+            let committed = commit_pending_edit_if_any();
+            let had_active = get_active_editor_state().is_some();
+            close_active_editor();
+            crate::chain_trace!(
+                "activate.hit-miss-exit",
+                "committed" => committed,
+                "hadActive" => had_active,
+            );
             dbg_event(
                 "activation.client",
                 "target-hit-missing",
@@ -260,9 +320,14 @@ pub fn activate_editor_from_client_point(
                     dbg_field("clientY", request.client_y),
                     dbg_field("pageX", page_point.x),
                     dbg_field("pageY", page_point.y),
+                    dbg_field("committed", committed),
+                    dbg_field("hadActive", had_active),
                 ],
             );
-            return EditorVisibilityAction::default();
+            return EditorVisibilityAction {
+                changed: had_active,
+                request_visibility_render: had_active,
+            };
         };
         target.paragraph_id
     } else {

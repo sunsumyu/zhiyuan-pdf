@@ -227,9 +227,19 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
                     // Ignore host focus failures here; the main goal is avoiding an immediate blur-commit loop.
                 }
             }
+            // 修复"第一次点击 caret 错位"：pointerdown 同步设置的 caret
+            // 会被随后的浏览器原生 click 事件按 click pixel 重置。等
+            // requestAnimationFrame + setTimeout(120) 让浏览器完成原生 click
+            // 处理后，按 wasm 算的 lastRustCaretIndex 把 caret 强制定回点击位置。
+            if (lastRustCaretIndex !== null && Number.isFinite(lastRustCaretIndex)) {
+                withSuppressedNativeInput(() => {
+                    writeTextareaCaret(nodes.textarea, lastRustCaretIndex as number);
+                });
+            }
             suppressBlurCommitForOpen = false;
             diagnostics.logNode('ts.open.focus-stabilized', {
                 activeElementIsTextarea: document.activeElement === nodes.textarea,
+                restoredCaretIndex: lastRustCaretIndex,
             });
         };
         window.requestAnimationFrame(() => {

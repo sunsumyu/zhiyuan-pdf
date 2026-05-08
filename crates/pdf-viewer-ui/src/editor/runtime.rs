@@ -7,6 +7,7 @@ use super::target_resolution::{
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
+use crate::editor::commit::commit_pending_edit_if_any;
 use crate::editor::list_format::resolve_active_marker_text;
 use crate::editor::replacement_snapshot::build_edit_replacement_snapshot;
 use crate::editor::session::{
@@ -152,6 +153,19 @@ pub fn open_editor_at_page_point(
     click_page_x: f32,
     click_page_y: f32,
 ) -> EditorVisibilityAction {
+    // 切换段落 / 同段落点击重新定位光标 — 都会替换 live_state。
+    // 替换前必须 commit 旧的 dirty edit，避免编辑丢失。
+    // 见 docs/edit-save-architecture.md §4.1。
+    let prev_paragraph_id = host_active_edit_paragraph_id();
+    if prev_paragraph_id.as_deref() != Some(paragraph_id) {
+        let committed = commit_pending_edit_if_any();
+        crate::chain_trace!(
+            "open.flush-prev",
+            "prev" => prev_paragraph_id.as_deref().unwrap_or(""),
+            "next" => paragraph_id,
+            "committed" => committed,
+        );
+    }
     let zoom = HOST_ZOOM_STATE.with(|state| sanitize_positive(state.borrow().visual_zoom, 1.0));
     let active_target = HOST_PAGE_STATE.with(|state: &std::cell::RefCell<pdf_viewer_core::models::PageState>| {
         host_open_paragraph_editor_workflow(
@@ -311,6 +325,18 @@ pub fn open_region_editor(
         return EditorVisibilityAction::default();
     }
 
+    // 与 open_editor_at_page_point 同样的不变量：替换 live_state 前先 commit 旧 dirty。
+    let prev_paragraph_id = host_active_edit_paragraph_id();
+    if prev_paragraph_id.as_deref() != Some(region_id) {
+        let committed = commit_pending_edit_if_any();
+        crate::chain_trace!(
+            "open-region.flush-prev",
+            "prev" => prev_paragraph_id.as_deref().unwrap_or(""),
+            "next" => region_id,
+            "committed" => committed,
+        );
+    }
+
     let zoom = HOST_ZOOM_STATE.with(|state| sanitize_positive(state.borrow().visual_zoom, 1.0));
     let active_target = HOST_PAGE_STATE.with(|state: &std::cell::RefCell<pdf_viewer_core::models::PageState>| {
         let state = state.borrow();
@@ -367,11 +393,21 @@ pub fn build_active_editor_patch(new_text: String) -> Option<PersistableRegionPa
                 None
             };
         patch.new_marker_text = resolve_active_marker_text(&active_state, &page_state);
+        web_sys::console::log_1(&format!(
+            "[AREN_LIST-MARKER] resolved='{}' source_marker='{}' listKind={:?}",
+            patch.new_marker_text.as_deref().unwrap_or("<empty>"),
+            patch.marker_text.as_deref().unwrap_or("<empty>"),
+            active_state.active_list_kind()
+        ).into());
         let active_list_kind = active_state.active_list_kind();
         if patch.source == "paragraph-region" && active_list_kind != ListMarkerKind::None {
             patch.source = "list-item-region".to_string();
             patch.kind = Some("list-item".to_string());
             patch.full_target_indices = patch.target_indices.clone();
+            web_sys::console::log_1(&format!(
+                "[AREN_LIST-CONVERT] switched to list-item-region listKind={:?} target_indices={:?}",
+                active_list_kind, patch.target_indices
+            ).into());
         }
         patch.snapshot = Some(build_edit_replacement_snapshot(
             active_state.target.clone(),
@@ -433,11 +469,18 @@ fn patch_is_noop(
         .unwrap_or("")
         .trim();
     let marker_unchanged = source_marker == next_marker;
-    text_unchanged
+    let noop = text_unchanged
         && style_unchanged
         && alignment_unchanged
         && line_height_unchanged
-        && marker_unchanged
+        && marker_unchanged;
+    web_sys::console::log_1(&format!(
+        "[AREN_PATCH-NOOP-DBG] noop={} text_u={} style_u={} align_u={} lh_u={} marker_u={} sourceMarker='{}' nextMarker='{}' origTextLen={} newTextLen={}",
+        noop, text_unchanged, style_unchanged, alignment_unchanged, line_height_unchanged, marker_unchanged,
+        source_marker, next_marker,
+        patch.original_text.chars().count(), patch.new_text.chars().count()
+    ).into());
+    noop
 }
 
 pub fn toggle_active_editor_bold() -> ActiveEditorFormatState {

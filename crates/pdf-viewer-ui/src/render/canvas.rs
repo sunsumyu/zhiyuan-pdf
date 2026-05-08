@@ -657,6 +657,10 @@ impl CanvasRenderer {
         ]);
         self.prepare_page_surface(state, plan.width, plan.height);
         let overlays = collect_paragraph_render_overlays(plan, state.vector_model.as_ref());
+        web_sys::console::log_1(&format!(
+            "[AREN_RENDER-PAGE] overlays.len={} has_vector_model={}",
+            overlays.len(), state.vector_model.is_some()
+        ).into());
 
         if let Some(vector_model) = &state.vector_model {
             let effective_plan = build_effective_vector_render_plan(
@@ -665,9 +669,14 @@ impl CanvasRenderer {
                 &viewport_bbox,
                 &overlays,
             );
-            dbg_event("canvas.render", "effective_plan.ready", vec![
-                dbg_field("entry_count", effective_plan.len()),
-            ]);
+            let overlay_entry_count = effective_plan.iter()
+                .filter(|e| matches!(e, EffectiveVectorRenderEntry::ParagraphOverlay(_)))
+                .count();
+            web_sys::console::log_1(&format!(
+                "[AREN_RENDER-PAGE] effective_plan.len={} overlayEntries={} viewport=[{:.1},{:.1},{:.1},{:.1}]",
+                effective_plan.len(), overlay_entry_count,
+                viewport_bbox.left, viewport_bbox.top, viewport_bbox.right, viewport_bbox.bottom
+            ).into());
 
             for entry in effective_plan {
                 match entry {
@@ -689,7 +698,14 @@ impl CanvasRenderer {
                         let replacement_region = paragraph_replacement_region(&overlay.target);
                         let overlay_cull_bbox =
                             replacement_region.viewport_cull_bbox_for_page_width(plan.width);
-                        if bbox_intersects(&overlay_cull_bbox, &viewport_bbox) {
+                        let intersects = bbox_intersects(&overlay_cull_bbox, &viewport_bbox);
+                        web_sys::console::log_1(&format!(
+                            "[AREN_RENDER-PAGE] overlay hit! paragraphId={} intersects={} cullBbox=[{:.1},{:.1},{:.1},{:.1}] marker_override={:?}",
+                            overlay.target.paragraph_id, intersects,
+                            overlay_cull_bbox.left, overlay_cull_bbox.top, overlay_cull_bbox.right, overlay_cull_bbox.bottom,
+                            overlay.marker_text_override
+                        ).into());
+                        if intersects {
                             dbg_event(
                                 "paint.overlay",
                                 "method.render-page.overlay-entry",
@@ -1123,7 +1139,7 @@ fn draw_editor_marker_page(
     let marker_run_count = active_target.scene.document_plan.marker.as_ref().map(|m| m.runs.len()).unwrap_or(0);
     let marker_text = active_target.scene.document_plan.marker.as_ref().map(|m| m.text.clone()).unwrap_or_default();
     web_sys::console::log_1(&format!(
-        "[MARKER-DRAW] hasMarker={} markerRunCount={} markerText='{}' override={:?} paragraphId={}",
+        "[AREN__MARKER-DRAW] hasMarker={} markerRunCount={} markerText='{}' override={:?} paragraphId={}",
         has_marker, marker_run_count, marker_text, marker_text_override, active_target.paragraph_id
     ).into());
     let synthetic_marker_text = marker_text_override
@@ -1291,6 +1307,13 @@ fn draw_persisted_paragraph_overlay_page(
     marker_text_override: Option<&str>,
     owner_label: &str,
 ) {
+    crate::chain_trace!(
+        "render.draw-overlay",
+        "owner" => owner_label,
+        "paragraphId" => &active_target.paragraph_id,
+        "draftLen" => draft_text.chars().count(),
+        "markerOverride" => marker_text_override.unwrap_or("none"),
+    );
     let shell_bbox = active_target.scene.shell_bbox;
     let shell_width = (shell_bbox.right - shell_bbox.left).max(1.0);
     let shell_height = (shell_bbox.bottom - shell_bbox.top).max(1.0);
@@ -1308,15 +1331,8 @@ fn draw_persisted_paragraph_overlay_page(
             dbg_field("owner", owner_label),
         ],
     );
-    renderer.ctx.save();
-    renderer.ctx.set_fill_style_str("#ffffff");
-    renderer.ctx.fill_rect(
-        source_replacement_bbox.left as f64,
-        source_replacement_bbox.top as f64,
-        replacement_width as f64,
-        replacement_height as f64,
-    );
-    renderer.ctx.restore();
+    // 背景保持透明 — 原始 body run 已在 effective_page_plan 中按 run 级 suppress，
+    // 不需要任何 fill_rect 遮盖
     dbg_event(
         "paint.overlay",
         "method.draw-editor-paragraph.shell-occlusion",
@@ -1345,6 +1361,12 @@ fn draw_persisted_paragraph_overlay_page(
             dbg_field("sourceReplacementHeight", replacement_height),
         ],
     );
+    web_sys::console::log_1(&format!(
+        "[AREN_DRAW-ORDER] 1.whiteFill=[{:.1},{:.1},{:.1},{:.1}] 2.markerDraw next 3.bodyTextDraw paragraphId={}",
+        source_replacement_bbox.left, source_replacement_bbox.top,
+        source_replacement_bbox.right, source_replacement_bbox.bottom,
+        active_target.paragraph_id
+    ).into());
     draw_editor_marker_page(renderer, active_target, marker_text_override);
 
     let document_plan = &active_target.scene.document_plan;

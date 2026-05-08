@@ -196,6 +196,30 @@ pub fn commit_editor_silent_tx(
 }
 
 pub fn close_editor_tx(frame_request: FramePlanRequest) -> EditorRenderTransactionResult {
+    // P0 止血：原实现直接丢弃 live state，走该路径的退出（外部点击 / ESC / blur /
+    // Ctrl+R 前清理）会丢失编辑。当存在 live draft 时强制走 commit，保证
+    // "Editing → Idle" 的迁移必经 Persisting（见 docs/edit-save-architecture.md §4.1）。
+    if let Some(draft_text) = active_editor_draft_text() {
+        dbg_event(
+            "render-tx.close",
+            "force-commit-pending-edit",
+            vec![dbg_field("draftLen", draft_text.chars().count())],
+        );
+        let action = commit_active_editor_text(draft_text);
+        let should_render = action.changed || action.request_visibility_render;
+        return EditorRenderTransactionResult {
+            changed: action.changed,
+            render_frame: schedule_editor_render_with_reason(
+                &frame_request,
+                should_render,
+                if action.changed {
+                    "documentMutation"
+                } else {
+                    "editorVisibility"
+                },
+            ),
+        };
+    }
     let changed = close_active_editor();
     EditorRenderTransactionResult {
         changed,

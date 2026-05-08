@@ -3,6 +3,7 @@ pub mod bridge;
 pub mod command;
 pub mod commit;
 pub mod debug_trace;
+pub mod edit_chain_trace;
 pub mod engine_state;
 pub mod host_mode;
 pub mod host_runtime;

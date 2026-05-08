@@ -27,12 +27,26 @@ pub fn start_progressive_render() -> ProgressiveRenderStartResult {
                 return ProgressiveRenderStart::default();
             };
             let overlays = collect_paragraph_render_overlays(paint_plan, Some(vector_model));
+            web_sys::console::log_1(&format!(
+                "[AREN_PROGRESSIVE-START] overlays.len={}", overlays.len()
+            ).into());
             let task = ProgressiveVectorRenderTask::build(
                 vector_model,
                 prepared_scene.as_ref(),
                 viewport_bbox,
                 &overlays,
             );
+            if let Some(ref t) = task {
+                let overlay_count = t.entries.iter()
+                    .filter(|e| matches!(e, crate::render::effective_page_plan::EffectiveVectorRenderEntry::ParagraphOverlay(_)))
+                    .count();
+                web_sys::console::log_1(&format!(
+                    "[AREN_PROGRESSIVE-START] task.total_items={} overlayEntries={}",
+                    t.total_items(), overlay_count
+                ).into());
+            } else {
+                web_sys::console::log_1(&"[AREN_PROGRESSIVE-START] task=None".into());
+            }
             HOST_PROGRESSIVE_RENDER_TASK.with(|task_state| {
                 *task_state.borrow_mut() = task.clone();
             });

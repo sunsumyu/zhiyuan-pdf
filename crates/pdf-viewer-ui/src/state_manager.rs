@@ -192,6 +192,10 @@ pub fn apply_patch_with_history(patch: PersistableRegionPatch) {
         new_patch: patch,
     });
     state.redo_stack.clear();
+    crate::chain_trace!(
+        "commit.persist",
+        "totalPatches" => total_paragraph_patches,
+    );
     web_sys::console::log_1(&format!(
         "[PATCH-APPLY] done totalParagraphPatches={}",
         total_paragraph_patches

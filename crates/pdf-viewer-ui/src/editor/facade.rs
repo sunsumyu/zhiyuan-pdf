@@ -145,6 +145,7 @@ fn build_frame_request() -> FramePlanRequest {
 
 #[wasm_bindgen(js_name = "editorFacadeOpen")]
 pub fn facade_open_editor(request_js: JsValue) -> JsValue {
+    crate::chain_trace!("facade.open");
     let request: EditorOpenRequest = match serde_wasm_bindgen::from_value(request_js) {
         Ok(r) => r,
         Err(_) => return JsValue::NULL,
@@ -187,6 +188,7 @@ pub fn facade_open_editor(request_js: JsValue) -> JsValue {
 
 #[wasm_bindgen(js_name = "editorFacadeOpenRegion")]
 pub fn facade_open_region_editor(request_js: JsValue) -> JsValue {
+    crate::chain_trace!("facade.open-region");
     let request: EditorOpenRegionRequest = match serde_wasm_bindgen::from_value(request_js) {
         Ok(r) => r,
         Err(_) => return JsValue::NULL,
@@ -221,6 +223,7 @@ pub fn facade_open_region_editor(request_js: JsValue) -> JsValue {
 
 #[wasm_bindgen(js_name = "editorFacadeSyncInput")]
 pub fn facade_sync_input(request_js: JsValue) -> JsValue {
+    crate::chain_trace!("facade.sync-input");
     let request: EditorSyncInputRequest = match serde_wasm_bindgen::from_value(request_js) {
         Ok(r) => r,
         Err(_) => return JsValue::NULL,
@@ -242,6 +245,7 @@ pub fn facade_sync_input(request_js: JsValue) -> JsValue {
 
 #[wasm_bindgen(js_name = "editorFacadeCommit")]
 pub fn facade_commit_editor(request_js: JsValue) -> JsValue {
+    crate::chain_trace!("facade.commit");
     let request: EditorCommitRequest = match serde_wasm_bindgen::from_value(request_js) {
         Ok(r) => r,
         Err(_) => return JsValue::NULL,
@@ -281,6 +285,7 @@ pub fn facade_commit_editor(request_js: JsValue) -> JsValue {
 
 #[wasm_bindgen(js_name = "editorFacadeCommitSilent")]
 pub fn facade_commit_silent(request_js: JsValue) -> JsValue {
+    crate::chain_trace!("facade.commit-silent");
     let request: EditorCommitRequest = match serde_wasm_bindgen::from_value(request_js) {
         Ok(r) => r,
         Err(_) => return JsValue::NULL,
@@ -307,6 +312,7 @@ pub fn facade_commit_silent(request_js: JsValue) -> JsValue {
 
 #[wasm_bindgen(js_name = "editorFacadeApplyCommand")]
 pub fn facade_apply_command(request_js: JsValue) -> JsValue {
+    crate::chain_trace!("facade.apply-command");
     let request: EditorCommandRequest = match serde_wasm_bindgen::from_value(request_js) {
         Ok(r) => r,
         Err(_) => return JsValue::NULL,
@@ -337,6 +343,7 @@ pub fn facade_apply_command(request_js: JsValue) -> JsValue {
 
 #[wasm_bindgen(js_name = "editorFacadeClose")]
 pub fn facade_close_editor() -> JsValue {
+    crate::chain_trace!("facade.close");
     let frame_request = build_frame_request();
     let result = host_close_editor_tx(frame_request);
 
@@ -413,6 +420,7 @@ pub fn facade_read_snapshot(display_zoom: f32) -> JsValue {
 
 #[wasm_bindgen(js_name = "editorFacadeSetEditMode")]
 pub fn facade_set_edit_mode(enabled: bool) -> JsValue {
+    crate::chain_trace!("facade.set-edit-mode", "enabled" => enabled);
     let result = host_set_text_edit_mode(enabled);
 
     to_value(&EditorFacadeResult {
@@ -426,7 +434,9 @@ pub fn facade_set_edit_mode(enabled: bool) -> JsValue {
 
 #[wasm_bindgen(js_name = "editorFacadeHasSessionChanges")]
 pub fn facade_has_session_changes() -> bool {
-    host_has_session_changes()
+    let dirty = host_has_session_changes();
+    crate::chain_trace!("facade.has-session-changes", "dirty" => dirty);
+    dirty
 }
 
 #[wasm_bindgen(js_name = "editorFacadeUtf16ToCharIndex")]
@@ -466,6 +476,7 @@ pub fn facade_read_runtime() -> JsValue {
 
 #[wasm_bindgen(js_name = "editorFacadeResetRuntime")]
 pub fn facade_reset_runtime() {
+    crate::chain_trace!("facade.reset-runtime");
     host_reset_runtime_state();
 }
 
@@ -486,6 +497,7 @@ pub fn facade_finish_commit() {
 
 #[wasm_bindgen(js_name = "editorFacadeToggleMode")]
 pub fn facade_toggle_mode() -> JsValue {
+    crate::chain_trace!("facade.toggle-mode");
     to_value(&host_toggle_edit_mode()).unwrap_or(JsValue::NULL)
 }
 
@@ -496,6 +508,7 @@ pub fn facade_read_format_state() -> JsValue {
 
 #[wasm_bindgen(js_name = "editorFacadeSaveSession")]
 pub async fn facade_save_session(path: String, page_index: u16) -> JsValue {
+    crate::chain_trace!("facade.save-session");
     to_value(&host_save_session(path, page_index).await).unwrap_or(JsValue::NULL)
 }
 
