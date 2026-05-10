@@ -11,7 +11,6 @@ pub mod path_suppression;
 pub mod prepared_scene;
 pub mod progressive;
 pub mod progressive_workflow;
-pub mod render_api;
 pub mod render_store;
 pub mod source_suppression;
 pub mod tile_cache;

@@ -10,19 +10,16 @@ use wasm_bindgen::prelude::*;
 use crate::document::comment::{
     add_region_comment,
     delete_page_annotation,
-    list_page_annotation_targets,
-    list_page_comments,
     load_comment_overlay,
     load_comment_review,
     load_comment_target_overlay,
-    review_document_comments,
     select_comment_review_and_load,
     set_comment_review_panel_open_and_load,
     set_comment_review_query_and_load,
     set_comment_review_scope_and_load,
     toggle_comment_review_panel_and_load,
     update_page_comment,
-    PdfCommentReviewRequest, PdfDeleteAnnotationRequest, PdfRegionCommentRequest,
+    PdfDeleteAnnotationRequest, PdfRegionCommentRequest,
     PdfUpdateCommentRequest,
 };
 use crate::review::review_store::{
@@ -62,40 +59,7 @@ impl CommentManager {
         to_value(&get_comment_review_session()).unwrap_or(JsValue::NULL)
     }
 
-    // ── Listings ────────────────────────────────────────────────
-
-    #[wasm_bindgen(js_name = "listPageComments")]
-    pub async fn list_page_comments(
-        &self,
-        path: String,
-        page_index: u16,
-    ) -> Result<JsValue, JsValue> {
-        let result = list_page_comments(path, page_index).await?;
-        Ok(to_value(&result).unwrap_or(JsValue::NULL))
-    }
-
-    #[wasm_bindgen(js_name = "listPageAnnotationTargets")]
-    pub async fn list_page_annotation_targets(
-        &self,
-        path: String,
-        page_index: u16,
-    ) -> Result<JsValue, JsValue> {
-        let result = list_page_annotation_targets(path, page_index).await?;
-        Ok(to_value(&result).unwrap_or(JsValue::NULL))
-    }
-
     // ── Review pipeline ─────────────────────────────────────────
-
-    #[wasm_bindgen(js_name = "reviewDocument")]
-    pub async fn review_document(
-        &self,
-        path: String,
-        request_js: JsValue,
-    ) -> Result<JsValue, JsValue> {
-        let request: PdfCommentReviewRequest = from_value(request_js).unwrap_or_default();
-        let result = review_document_comments(path, request).await?;
-        Ok(to_value(&result).unwrap_or(JsValue::NULL))
-    }
 
     #[wasm_bindgen(js_name = "loadReview")]
     pub async fn load_review(

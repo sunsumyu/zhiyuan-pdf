@@ -18,19 +18,13 @@
 //! | [`DocumentSession`] | `document/` | document lifecycle (open/save/undo) |
 //! | [`EditorSession`] | `editor/` | text-editing session |
 //! | [`FindSession`] | `find/` | search-in-document |
-//! | [`HistoryController`] | `history/` | global undo/redo coordination |
-//! | [`RenderPipeline`] | `render/` | progressive rendering control |
 //! | [`ReviewSession`] | `review/` | review feed (accept/reject) |
 //! | [`ViewerSession`] | `viewer/` | viewport / page navigation |
-//! | [`ZoomController`] | `zoom/` | zoom state machine |
 
 pub use crate::annotation::annotation_api::AnnotationManager;
 pub use crate::comment::comment_api::CommentManager;
 pub use crate::document::document_api::DocumentSession;
 pub use crate::editor::editor_api::EditorSession;
 pub use crate::find::find_api::FindSession;
-pub use crate::history::history_api::HistoryController;
-pub use crate::render::render_api::RenderPipeline;
 pub use crate::review::review_api::ReviewSession;
 pub use crate::viewer::viewer_api::ViewerSession;
-pub use crate::zoom::zoom_api::ZoomController;

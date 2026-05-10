@@ -5,7 +5,6 @@ pub mod comment;
 pub mod document;
 pub mod editor;
 pub mod find;
-pub mod history;
 pub mod host;
 pub mod review;
 pub mod page;
