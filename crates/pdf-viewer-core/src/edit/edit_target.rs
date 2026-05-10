@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::typography::font_resolver::looks_like_symbolic_font;
 use crate::text::list_semantics::derive_list_text_semantics;
-use crate::models::{BoundingBox, EditorSession, LayoutParagraph, LayoutRun};
+use crate::models::{BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun};
 
 use crate::geometry::source_geometry::{source_run_visual_bbox, source_visual_bbox_from_runs};
 
@@ -12,7 +12,7 @@ const EDIT_SEGMENT_DELIMITER: &str = "::edit-segment::";
 pub struct EditorEditTarget {
     pub target_id: String,
     pub base_paragraph_id: String,
-    pub session: EditorSession,
+    pub session: ParagraphEditContext,
     pub source_run_indices: Vec<usize>,
     pub source_object_ids: BTreeSet<String>,
 }
@@ -36,7 +36,7 @@ pub fn edit_target_segment_key(target_id: &str) -> Option<&str> {
 
 pub fn collect_edit_targets_from_session(
     base_paragraph_id: &str,
-    session: &EditorSession,
+    session: &ParagraphEditContext,
 ) -> Vec<EditorEditTarget> {
     let segments = build_visual_segments(session);
     if segments.is_empty() {
@@ -62,7 +62,7 @@ pub fn collect_edit_targets_from_session(
 pub fn resolve_edit_target_from_session(
     base_paragraph_id: &str,
     requested_target_id: &str,
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     click_page_point: Option<(f32, f32)>,
 ) -> EditorEditTarget {
     let targets = collect_edit_targets_from_session(base_paragraph_id, session);
@@ -109,7 +109,7 @@ struct VisualSegment {
 
 type IndexedRunRef<'a> = (usize, &'a LayoutRun);
 
-fn build_visual_segments(session: &EditorSession) -> Vec<VisualSegment> {
+fn build_visual_segments(session: &ParagraphEditContext) -> Vec<VisualSegment> {
     let mut indexed_runs = session
         .paragraph
         .runs
@@ -237,7 +237,7 @@ fn visual_segment_from_indices(run_indices: Vec<usize>) -> VisualSegment {
 
 fn build_segment_target(
     base_paragraph_id: &str,
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     segment: VisualSegment,
 ) -> Option<EditorEditTarget> {
     let runs = segment
@@ -264,7 +264,7 @@ fn build_segment_target(
     Some(EditorEditTarget {
         target_id: paragraph.id.clone(),
         base_paragraph_id: base_paragraph_id.to_string(),
-        session: EditorSession {
+        session: ParagraphEditContext {
             anchor_bbox,
             paragraph,
         },
@@ -275,7 +275,7 @@ fn build_segment_target(
 
 fn whole_session_target(
     base_paragraph_id: &str,
-    session: &EditorSession,
+    session: &ParagraphEditContext,
 ) -> EditorEditTarget {
     let mut session = session.clone();
     session.paragraph.id = base_paragraph_id.to_string();
@@ -362,7 +362,7 @@ fn target_hit_score(bbox: &BoundingBox, click_x: f32, click_y: f32) -> f32 {
 mod tests {
     use super::collect_edit_targets_from_session;
     use crate::models::{
-        BoundingBox, EditorSession, LayoutParagraph, LayoutRun, RunStyle,
+        BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun, RunStyle,
     };
 
     fn test_run(id: &str, text: &str, left: f32, baseline_y: f32) -> LayoutRun {
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn segmented_targets_use_baseline_font_visual_bbox() {
-        let session = EditorSession {
+        let session = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 0.0,
                 top: 100.0,

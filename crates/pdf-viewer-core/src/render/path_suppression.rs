@@ -179,7 +179,7 @@ mod tests {
     use crate::edit::active_target::ActiveEditorTarget;
     use crate::edit::replacement_region::paragraph_replacement_region;
     use crate::models::{
-        BoundingBox, EditorSession, LayoutParagraph, VectorImageObject, VectorRenderObject,
+        BoundingBox, ParagraphEditContext, LayoutParagraph, VectorImageObject, VectorRenderObject,
     };
 
     fn replacement_target() -> ActiveEditorTarget {
@@ -190,7 +190,7 @@ mod tests {
             right: 360.0,
             bottom: 116.0,
         };
-        target.scene.body_session = EditorSession {
+        target.scene.body_session = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 90.0,
                 top: 100.0,

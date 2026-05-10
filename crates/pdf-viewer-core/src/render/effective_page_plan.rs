@@ -680,7 +680,7 @@ mod tests {
         ParagraphRenderOverlay, ParagraphRenderOverlayOwner,
     };
     use crate::models::{
-        BoundingBox, EditorControlStyle, EditorSession, GlyphPaintParagraph, GlyphPaintPlan,
+        BoundingBox, EditorControlStyle, ParagraphEditContext, GlyphPaintParagraph, GlyphPaintPlan,
         GlyphPaintRegion, GlyphPaintRun, LayoutMode, LayoutParagraph, LayoutRole, LayoutRun,
         StyledRun, VectorPageModel, VectorPathObject, VectorPathSegment, VectorRenderObject,
         VectorTextObject,
@@ -724,7 +724,7 @@ mod tests {
             right: 360.0,
             bottom: 116.0,
         };
-        target.scene.body_session = EditorSession {
+        target.scene.body_session = ParagraphEditContext {
             anchor_bbox: body_bbox,
             paragraph: LayoutParagraph::default(),
         };
@@ -801,7 +801,7 @@ mod tests {
                     region_id: "r-1".to_string(),
                     bbox,
                     style: Default::default(),
-                    editor_session: EditorSession {
+                    editor_session: ParagraphEditContext {
                         anchor_bbox: bbox,
                         paragraph: LayoutParagraph::default(),
                     },

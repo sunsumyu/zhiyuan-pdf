@@ -1,5 +1,5 @@
 use crate::infrastructure::pdf::models::{
-    LightPageKind, LightPageModel, VectorPageModel,
+    LightPageKind, LightPageModel, NativeVectorPageModel,
 };
 use crate::infrastructure::pdf::document_service::PdfDocumentService;
 use crate::log_step;
@@ -78,7 +78,7 @@ impl PdfPageModelService {
         path: String,
         page_index: u16,
         _target_zoom: f32,
-    ) -> Result<VectorPageModel, String> {
+    ) -> Result<NativeVectorPageModel, String> {
         log_step!("[PDF][get_vector_page_model] START page={}", page_index);
         let working_path = path.clone();
         let cache_key = page_cache_key(&path, page_index);
@@ -161,7 +161,7 @@ impl PdfPageModelService {
         path: String,
         page_index: u16,
         target_zoom: f32,
-    ) -> Result<VectorPageModel, String> {
+    ) -> Result<NativeVectorPageModel, String> {
         Self::get_vector_page_model_from_app_state(&state, path, page_index, target_zoom).await
     }
 

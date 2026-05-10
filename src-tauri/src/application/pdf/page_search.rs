@@ -1,4 +1,4 @@
-use crate::infrastructure::pdf::models::VectorPageModel;
+use crate::infrastructure::pdf::models::NativeVectorPageModel;
 use pdf_viewer_core::document::page_region_context::{BoundingBoxOutput, PageRegionContextOutput};
 use serde::{Deserialize, Serialize};
 use super::page_context::build_page_region_context_from_vector_model;
@@ -56,7 +56,7 @@ pub matches: Vec<PdfPageSearchMatch>,
 }
 pub(crate)
 fn search_page_regions(
-    page_model: &VectorPageModel,
+    page_model: &NativeVectorPageModel,
     request: &PdfPageSearchRequest,
 ) -> PdfPageSearchResult {
     let query = request.query.trim().to_string();
@@ -102,7 +102,7 @@ fn search_page_regions(
 }
 pub(crate)
 fn search_document_regions(
-    page_models: &[VectorPageModel],
+    page_models: &[NativeVectorPageModel],
     request: &PdfPageSearchRequest,
 ) -> PdfDocumentSearchResult {
     let query = request.query.trim().to_string();
@@ -144,7 +144,7 @@ fn search_document_regions(
     }
 }
 fn search_page_matches(
-    page_model: &VectorPageModel,
+    page_model: &NativeVectorPageModel,
     request: &PdfPageSearchRequest,
 ) -> Vec<PdfPageSearchMatch> {
     let query = request.query.trim();

@@ -1,5 +1,5 @@
 use crate::models::{
-    BoundingBox, EditorSession, GlyphPaintParagraph, GlyphPaintRun, LayoutRun, StyledRun,
+    BoundingBox, ParagraphEditContext, GlyphPaintParagraph, GlyphPaintRun, LayoutRun, StyledRun,
     VectorPageModel, VectorRenderObject,
 };
 
@@ -12,7 +12,7 @@ use crate::utils::debug::truncate_debug_text;
 
 pub fn original_paint_runs_for_target(
     paragraph: &GlyphPaintParagraph,
-    body_session: &EditorSession,
+    body_session: &ParagraphEditContext,
     target: &crate::edit::edit_target::EditorEditTarget,
 ) -> Vec<GlyphPaintRun> {
     let body_object_indices = body_session
@@ -119,7 +119,7 @@ fn summarize_layout_runs(runs: &[LayoutRun]) -> String {
 pub fn resolve_preferred_editor_session(
     paragraph: &GlyphPaintParagraph,
     vector_model: Option<&VectorPageModel>,
-) -> Option<EditorSession> {
+) -> Option<ParagraphEditContext> {
     let vector_runs = vector_model
         .and_then(|model| resolve_vector_model_source_runs(paragraph, model))
         .filter(|item| !item.1.is_empty());
@@ -208,7 +208,7 @@ pub fn resolve_preferred_editor_session(
         ],
     );
 
-    Some(EditorSession {
+    Some(ParagraphEditContext {
         anchor_bbox,
         paragraph: paragraph_layout,
     })

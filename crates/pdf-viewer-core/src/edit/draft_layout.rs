@@ -1,7 +1,7 @@
 use crate::typography::font_resolver::looks_like_symbolic_font;
 use crate::text::glyph_layout::is_decorative_text;
 use crate::geometry::layout_engine::{layout_paragraph, ParagraphLayout, VisualLine};
-use crate::models::{BoundingBox, EditorSession, LayoutParagraph, LayoutRun};
+use crate::models::{BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun};
 
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
@@ -75,7 +75,7 @@ fn summarize_render_plan_lines(plan: &EditorDraftRenderPlan) -> String {
         .join(" || ")
 }
 
-fn shell_width(session: &EditorSession) -> f32 {
+fn shell_width(session: &ParagraphEditContext) -> f32 {
     (session.anchor_bbox.right - session.anchor_bbox.left).max(1.0)
 }
 
@@ -840,7 +840,7 @@ mod tests {
     use crate::edit::document_plan::EditorDocumentPlan;
     use crate::text::glyph_layout::build_editor_session_text_plan;
     use crate::models::{
-        BoundingBox, EditorSession, LayoutParagraph, LayoutRun, RunStyle,
+        BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun, RunStyle,
     };
 
     fn test_run(id: &str, text: &str, left: f32, right: f32, underline: bool) -> LayoutRun {
@@ -890,7 +890,7 @@ mod tests {
         let source_text =
             "智能合约: Anchor Framework, Solana Program Library (SPL), ERC-20/721".to_string();
         let runs = vec![test_run_with_origins("r1", &source_text, 10.0, false)];
-        let body_session = EditorSession {
+        let body_session = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 10.0,
                 top: 40.0,
@@ -934,7 +934,7 @@ mod tests {
             test_run("r1", "专业：", 10.0, 40.0, true),
             test_run("r2", "计算机科学与技术", 40.0, 130.0, false),
         ];
-        let body_session = EditorSession {
+        let body_session = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 10.0,
                 top: 40.0,
@@ -970,7 +970,7 @@ mod tests {
             test_run("r1", "编程语言:", 10.0, 60.0, false),
             test_run("r2", "Rust", 80.0, 110.0, false),
         ];
-        let body_session = EditorSession {
+        let body_session = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 10.0,
                 top: 40.0,
@@ -1044,7 +1044,7 @@ mod tests {
             test_run("r1", "A", 0.0, 5.0, false),
             test_run("r2", "nchor", 8.0, 33.0, false),
         ];
-        let body_session = EditorSession {
+        let body_session = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 0.0,
                 top: 40.0,

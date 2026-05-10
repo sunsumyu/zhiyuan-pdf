@@ -3,7 +3,7 @@
 //! 含 wasm 平台依赖的函数（canvas.measureText、ActiveEditorTarget 相关）仍留在 ui 侧。
 
 use crate::text::glyph_layout::{build_editor_session_text_plan, EditorSessionTextPlan};
-use crate::models::EditorSession;
+use crate::models::ParagraphEditContext;
 
 #[derive(Debug, Clone, Copy)]
 pub struct EditorCaretVisualPosition {
@@ -61,13 +61,13 @@ pub fn dedupe_caret_stops(line: &mut CaretLine) {
         .dedup_by(|a, b| a.index == b.index && (a.left - b.left).abs() <= 0.5);
 }
 
-pub fn caret_index_at_page_point(session: &EditorSession, page_x: f32, page_y: f32) -> usize {
+pub fn caret_index_at_page_point(session: &ParagraphEditContext, page_x: f32, page_y: f32) -> usize {
     let text_plan = build_editor_session_text_plan(session);
     caret_index_at_page_point_with_plan(session, &text_plan, page_x, page_y)
 }
 
 pub fn caret_index_at_page_point_with_plan(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     text_plan: &EditorSessionTextPlan,
     page_x: f32,
     page_y: f32,
@@ -79,7 +79,7 @@ pub fn caret_index_at_page_point_with_plan(
 }
 
 pub fn caret_visual_for_session(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     caret_index: usize,
     fallback_height: f32,
 ) -> EditorCaretVisualPosition {
@@ -88,7 +88,7 @@ pub fn caret_visual_for_session(
 }
 
 pub fn caret_visual_for_session_plan(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     text_plan: &EditorSessionTextPlan,
     caret_index: usize,
     fallback_height: f32,
@@ -120,7 +120,7 @@ pub fn caret_visual_for_session_plan(
 }
 
 pub fn build_session_caret_lines(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     text_plan: &EditorSessionTextPlan,
     fallback_height: f32,
 ) -> Vec<CaretLine> {

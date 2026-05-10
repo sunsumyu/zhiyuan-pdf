@@ -1,5 +1,5 @@
 use crate::infrastructure::pdf::models::{
-    NativeTextModel as VectorTextModel, RenderObject, VectorPageModel,
+    NativeTextModel as VectorTextModel, RenderObject, NativeVectorPageModel,
 };
 use pdf_viewer_core::models::{
     NativePageModel, NativePageObject, NativeTextModel as CoreNativeTextModel,
@@ -7,13 +7,13 @@ use pdf_viewer_core::models::{
 use pdf_viewer_core::document::page_region_context::{build_page_region_context, PageRegionContextOutput};
 pub(crate)
 fn build_page_region_context_from_vector_model(
-    page_model: &VectorPageModel,
+    page_model: &NativeVectorPageModel,
 ) -> PageRegionContextOutput {
     let native_page = native_page_from_vector_model(page_model);
     build_page_region_context(&native_page)
 }
 pub(crate)
-fn native_page_from_vector_model(page_model: &VectorPageModel) -> NativePageModel {
+fn native_page_from_vector_model(page_model: &NativeVectorPageModel) -> NativePageModel {
     NativePageModel {
         page_index: page_model.page_index,
         width: page_model.width,

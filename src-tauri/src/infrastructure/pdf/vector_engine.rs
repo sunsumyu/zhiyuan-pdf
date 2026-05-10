@@ -1,6 +1,6 @@
 use crate::infrastructure::pdf::layout_analyzer::LayoutGraphAnalyzer;
 use crate::infrastructure::pdf::models::{
-    LayoutInferenceResult, NativeTextModel, RenderObject, StyledRun, VectorPageModel,
+    LayoutInferenceResult, NativeTextModel, RenderObject, StyledRun, NativeVectorPageModel,
 };
 use crate::log_step;
 use std::time::Instant;
@@ -9,7 +9,7 @@ use std::time::Instant;
 pub fn get_vector_page_model_with_doc(
     doc: &lopdf::Document,
     page_index: u16,
-) -> Result<VectorPageModel, String> {
+) -> Result<NativeVectorPageModel, String> {
     let start_total = Instant::now();
     log_step!("[PDF-Vector] Pure Vector Extraction starting...");
 
@@ -354,7 +354,7 @@ use rayon::prelude::*;
         fonts: palette_fonts,
     };
 
-    let mut model = VectorPageModel {
+    let mut model = NativeVectorPageModel {
         page_index,
         width: pw,
         height: ph,

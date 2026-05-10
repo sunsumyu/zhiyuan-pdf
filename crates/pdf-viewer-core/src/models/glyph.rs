@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::font::ResolvedFontFace;
 use super::geometry::BoundingBox;
 use super::layout::{
-    EditorSession, LayoutMode, LayoutRole, PaintMode, ParagraphStyle, SemanticRole,
+    ParagraphEditContext, LayoutMode, LayoutRole, PaintMode, ParagraphStyle, SemanticRole,
 };
 
 fn default_scale_x() -> f32 {
@@ -58,7 +58,7 @@ pub struct GlyphPaintParagraph {
     pub region_id: String,
     pub bbox: BoundingBox,
     pub style: ParagraphStyle,
-    pub editor_session: EditorSession,
+    pub editor_session: ParagraphEditContext,
     pub control_style: EditorControlStyle,
     #[serde(default)]
     pub semantic_role: SemanticRole,

@@ -7,7 +7,7 @@ pub mod state;
 pub struct AppState {
 pub pdf_documents: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<lopdf::Document>>>,
 pub pdf_light_page_cache: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<infrastructure::pdf::models::LightPageModel>>>,
-pub pdf_page_cache: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<infrastructure::pdf::models::VectorPageModel>>>,
+pub pdf_page_cache: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<infrastructure::pdf::models::NativeVectorPageModel>>>,
 pub pdf_layout_cache: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<pdf_viewer_core::models::LayoutInferenceResult>>>,
 pub read_document_meta_cache: std::sync::Mutex<std::collections::HashMap<String, infrastructure::pdf_read::types::ReadDocumentMeta>>,
 pub page_preview_cache: std::sync::Mutex<std::collections::HashMap<String, infrastructure::pdf_read::types::PagePreview>>,

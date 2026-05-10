@@ -179,7 +179,7 @@ mod persisted_overlay_tests {
     use crate::models::PersistableRegionPatch;
     use crate::state_manager::{apply_patch_with_history, get_patch_state};
     use pdf_viewer_core::models::{
-        BoundingBox, EditorSession, GlyphPaintPlan, GlyphPaintRegion, LayoutMode, LayoutParagraph,
+        BoundingBox, ParagraphEditContext, GlyphPaintPlan, GlyphPaintRegion, LayoutMode, LayoutParagraph,
         LayoutRole,
     };
     use serde_json::json;
@@ -194,7 +194,7 @@ mod persisted_overlay_tests {
             right: 360.0,
             bottom: 116.0,
         };
-        target.scene.body_session = EditorSession {
+        target.scene.body_session = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 90.0,
                 top: 100.0,

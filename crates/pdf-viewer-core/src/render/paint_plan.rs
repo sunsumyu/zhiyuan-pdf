@@ -1,6 +1,6 @@
 use crate::typography::font_resolver::resolve_font_face;
 use crate::models::{
-    BoundingBox, EditorControlStyle, EditorSession, FieldEditorParamsRequest, FieldEditorParams,
+    BoundingBox, EditorControlStyle, ParagraphEditContext, FieldEditorParamsRequest, FieldEditorParams,
     FontHints, GlyphPaintParagraph, GlyphPaintPlan, GlyphPaintRegion, GlyphPaintRun, LayoutInferenceResult,
     LayoutParagraph, LayoutRun, PaintMode, ResolvedFontFace,
 };
@@ -59,7 +59,7 @@ fn build_paint_run(
     }
 }
 
-fn build_editor_session(paragraph: &crate::models::LayoutParagraph) -> EditorSession {
+fn build_editor_session(paragraph: &crate::models::LayoutParagraph) -> ParagraphEditContext {
     let mut normalized_paragraph = paragraph.clone();
     normalized_paragraph.runs = paragraph
         .runs
@@ -82,7 +82,7 @@ fn build_editor_session(paragraph: &crate::models::LayoutParagraph) -> EditorSes
                 bottom: acc.bottom.max(run.bbox.bottom),
             }
         });
-    EditorSession {
+    ParagraphEditContext {
         anchor_bbox,
         paragraph: normalized_paragraph,
     }
@@ -181,7 +181,7 @@ pub fn build_field_editor_params(request: &FieldEditorParamsRequest) -> FieldEdi
         wrap_width: (request.anchor_bbox.right - request.anchor_bbox.left).max(1.0),
     };
 
-    let session = EditorSession {
+    let session = ParagraphEditContext {
         anchor_bbox: request.anchor_bbox,
         paragraph: paragraph.clone(),
     };

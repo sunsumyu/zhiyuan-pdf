@@ -455,7 +455,7 @@ pub fn extract_page_bbox(doc: &Document, page_index: u16) -> Result<[f32; 4], St
     Ok(result)
 }
 
-pub fn extract_vector_page_model(doc: &Document, page_index: u16) -> Result<crate::infrastructure::pdf::models::VectorPageModel, String> {
+pub fn extract_vector_page_model(doc: &Document, page_index: u16) -> Result<crate::infrastructure::pdf::models::NativeVectorPageModel, String> {
     crate::infrastructure::pdf::vector_engine::get_vector_page_model_with_doc(doc, page_index)
 }
 

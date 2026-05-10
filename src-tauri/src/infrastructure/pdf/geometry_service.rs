@@ -89,7 +89,7 @@ impl PdfEditorGeometryService {
     }
 
     pub fn resolve_editor_caret_index(
-        session: pdf_viewer_core::models::EditorSession,
+        session: pdf_viewer_core::models::ParagraphEditContext,
         click_x_from_anchor_left: f32,
     ) -> Result<usize, String> {
         Ok(

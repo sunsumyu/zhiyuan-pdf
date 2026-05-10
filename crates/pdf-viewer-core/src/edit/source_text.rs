@@ -1,4 +1,4 @@
-use crate::models::{EditorSession, LayoutRun};
+use crate::models::{ParagraphEditContext, LayoutRun};
 
 fn run_gap(previous: &LayoutRun, next: &LayoutRun) -> f32 {
     let previous_width = (previous.bbox.right - previous.bbox.left).max(0.0);
@@ -178,7 +178,7 @@ fn run_text_with_visual_spaces(run: &LayoutRun) -> String {
     normalize_compact_pdf_text(&text)
 }
 
-pub fn session_source_text(session: &EditorSession) -> String {
+pub fn session_source_text(session: &ParagraphEditContext) -> String {
     let mut text = String::new();
     let mut previous_text_run: Option<&LayoutRun> = None;
     for run in &session.paragraph.runs {

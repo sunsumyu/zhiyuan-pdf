@@ -18,7 +18,7 @@ use crate::infrastructure::pdf_read::facade::PdfReadFacade;
 use crate::infrastructure::pdf_read::types::{PagePreview, ReadDocumentMeta};
 use crate::infrastructure::pdf::models::{
     GlyphPaintPlan, LayoutInferenceResult, LightPageModel, PdfMaterializationReport, PdfMetadata,
-    PdfModifications, VectorPageModel, RenderObject, NativeTextModel,
+    PdfModifications, NativeVectorPageModel, RenderObject, NativeTextModel,
 };
 use crate::log_step;
 use crate::pdf_log;
@@ -647,7 +647,7 @@ pub async fn read_vector(
     path: String,
     page_index: u16,
     target_zoom: Option<f32>,
-) -> Result<VectorPageModel, String> {
+) -> Result<NativeVectorPageModel, String> {
     PdfPageModelService::get_vector_page_model(state, path, page_index, target_zoom.unwrap_or(1.0)).await
 }
 
@@ -844,7 +844,7 @@ pub fn read_images(
 
 #[command]
 pub fn resolve_caret(
-    session: pdf_viewer_core::models::EditorSession,
+    session: pdf_viewer_core::models::ParagraphEditContext,
     click_x_from_anchor_left: f32,
 ) -> Result<usize, String> {
     PdfEditorGeometryService::resolve_editor_caret_index(session, click_x_from_anchor_left)

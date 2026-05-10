@@ -5,7 +5,7 @@ use crate::edit::document_plan::{
     ParagraphEditorMarker,
 };
 use crate::models::{
-    BoundingBox, EditorSession, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph,
+    BoundingBox, ParagraphEditContext, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph,
     VectorPageModel,
 };
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ pub struct ParagraphEditorScene {
     pub shell_bbox: BoundingBox,
     pub document_plan: EditorDocumentPlan,
     pub body_text: String,
-    pub body_session: EditorSession,
+    pub body_session: ParagraphEditContext,
     #[serde(default)]
     pub body_initial_caret: usize,
     #[serde(default)]
@@ -37,7 +37,7 @@ impl Default for ParagraphEditorScene {
             shell_bbox: BoundingBox::default(),
             document_plan: EditorDocumentPlan::default(),
             body_text: String::new(),
-            body_session: EditorSession {
+            body_session: ParagraphEditContext {
                 anchor_bbox: BoundingBox::default(),
                 paragraph: LayoutParagraph::default(),
             },

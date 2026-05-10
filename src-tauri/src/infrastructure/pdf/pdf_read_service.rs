@@ -1,5 +1,5 @@
 use crate::infrastructure::pdf::models::{
-    GlyphPaintPlan, LayoutInferenceResult, LightPageModel, VectorPageModel, PdfMetadata,
+    GlyphPaintPlan, LayoutInferenceResult, LightPageModel, NativeVectorPageModel, PdfMetadata,
 };
 use crate::log_step;
 use lopdf::Document as LopdfDocument;
@@ -139,7 +139,7 @@ impl PdfReadService {
         app_state: &crate::AppState,
         path: &str,
         page_index: u16,
-    ) -> Result<VectorPageModel, String> {
+    ) -> Result<NativeVectorPageModel, String> {
         let docs = app_state.pdf_documents.lock().unwrap();
         let doc = docs
             .get(path)
@@ -156,7 +156,7 @@ impl PdfReadService {
         state: tauri::State<'_, crate::AppState>,
         path: String,
         page_index: u16,
-    ) -> Result<VectorPageModel, String> {
+    ) -> Result<NativeVectorPageModel, String> {
         Self::get_vector_page_model_from_app_state(&state, &path, page_index).await
     }
 

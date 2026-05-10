@@ -1,6 +1,6 @@
-use crate::models::{BoundingBox, EditorSession, LayoutRun};
+use crate::models::{BoundingBox, ParagraphEditContext, LayoutRun};
 
-pub fn source_session_visual_bbox(session: &EditorSession) -> Option<BoundingBox> {
+pub fn source_session_visual_bbox(session: &ParagraphEditContext) -> Option<BoundingBox> {
     source_visual_bbox_from_runs(&session.paragraph.runs)
 }
 
@@ -19,7 +19,7 @@ pub fn source_visual_bbox_from_runs(runs: &[LayoutRun]) -> Option<BoundingBox> {
 }
 
 pub fn source_line_visual_bbox_for_caret(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     caret_baseline_y: f32,
 ) -> Option<BoundingBox> {
     let anchor_top = session.anchor_bbox.top;
@@ -152,7 +152,7 @@ fn union_bbox(left: BoundingBox, right: BoundingBox) -> BoundingBox {
 mod tests {
     use super::{source_line_visual_bbox_for_caret, source_visual_bbox_from_runs};
     use crate::models::{
-        BoundingBox, EditorSession, LayoutParagraph, LayoutRun, RunStyle,
+        BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun, RunStyle,
     };
 
     fn test_run(id: &str, left: f32, baseline_y: f32, font_size: f32) -> LayoutRun {
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn caret_line_bbox_uses_same_source_visual_geometry() {
         let run = test_run("r1", 70.0, 112.0, 12.0);
-        let session = EditorSession {
+        let session = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 70.0,
                 top: 100.0,

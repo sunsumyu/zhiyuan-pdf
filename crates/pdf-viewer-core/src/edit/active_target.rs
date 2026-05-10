@@ -2,7 +2,7 @@
 //! thread_local / state 管理仍位于 ui 侧。
 
 use crate::edit::paragraph_scene::ParagraphEditorScene;
-use crate::models::{BoundingBox, EditorSession, LayoutParagraph};
+use crate::models::{BoundingBox, ParagraphEditContext, LayoutParagraph};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,7 +25,7 @@ pub struct ActiveEditorTarget {
     pub text_decoration: String,
     #[serde(default)]
     pub initial_caret_index: usize,
-    pub editor_session: EditorSession,
+    pub editor_session: ParagraphEditContext,
     #[serde(default)]
     pub scene: ParagraphEditorScene,
 }
@@ -48,7 +48,7 @@ impl Default for ActiveEditorTarget {
             color: String::new(),
             text_decoration: String::new(),
             initial_caret_index: 0,
-            editor_session: EditorSession {
+            editor_session: ParagraphEditContext {
                 anchor_bbox: BoundingBox::default(),
                 paragraph: LayoutParagraph::default(),
             },

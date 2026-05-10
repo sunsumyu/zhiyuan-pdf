@@ -221,7 +221,7 @@ impl LayoutParagraph {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct EditorSession {
+pub struct ParagraphEditContext {
     pub anchor_bbox: BoundingBox,
     pub paragraph: LayoutParagraph,
 }

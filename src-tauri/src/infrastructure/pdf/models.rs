@@ -421,7 +421,7 @@ pub enum RenderObject {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct VectorPageModel {
+pub struct NativeVectorPageModel {
 pub page_index: u16,
 pub width: f32,
 pub height: f32,
@@ -430,7 +430,7 @@ pub palette: VectorPalette,
 pub background_image: Option<String>,
 }
 
-impl VectorPageModel {
+impl NativeVectorPageModel {
     pub fn flip_y(&mut self) {
         let h = self.height;
         for obj in &mut self.objects {

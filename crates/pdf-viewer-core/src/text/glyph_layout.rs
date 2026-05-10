@@ -13,7 +13,7 @@
 //! 本域的所有逻辑都假定输入的数据已经完全遵守了 `Y-Down` 的底线防线，这里不再干涉任何垂直 Y 维度的极性问题。
 
 use crate::models::{
-    EditorSession, FieldHitBatchRequest, FieldHitMatch, FieldHitRequest,
+    ParagraphEditContext, FieldHitBatchRequest, FieldHitMatch, FieldHitRequest,
     FieldHitResolution, FieldPartKind, LayoutRun,
 };
 use serde::{Deserialize, Serialize};
@@ -194,7 +194,7 @@ pub fn infer_run_advance(run: &LayoutRun) -> f32 {
 /// 
 /// 该方法内部使用前缀和 (Prefix Sum) 技巧逐游程消耗掉字符数，当命中目标游程内部时，
 /// 提取对应的原生物理 `char_origins` 做到 `O(N)` 像素级高精定位。
-pub fn compute_run_aware_caret_left(session: &EditorSession, caret_index: usize) -> f32 {
+pub fn compute_run_aware_caret_left(session: &ParagraphEditContext, caret_index: usize) -> f32 {
     let mut consumed = 0usize;
     for run in &session.paragraph.runs {
         let glyph_count = run.text.chars().count();
@@ -240,7 +240,7 @@ pub fn compute_run_aware_caret_left(session: &EditorSession, caret_index: usize)
 /// # 算法策略
 /// 使用 `O(N)` 穷举所有游程及其包含的字元槽，维护最近距离 (Nearest Neighbor Euclidean Distance)。
 /// 由于 PDF 单段通常字符不超过 100~200，此处不引入基于二分查找或者 Quad-Tree 的过早优化。
-pub fn resolve_caret_index_for_click(session: &EditorSession, click_x_from_anchor_left: f32) -> usize {
+pub fn resolve_caret_index_for_click(session: &ParagraphEditContext, click_x_from_anchor_left: f32) -> usize {
     let mut best_index = 0usize;
     let mut best_distance = f32::INFINITY;
     let mut consumed = 0usize;
@@ -377,7 +377,7 @@ pub fn resolve_field_hit_target_for_click(request: &FieldHitBatchRequest) -> Opt
 }
 
 pub fn extract_decorative_prefix<F>(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     looks_like_symbol_font: F,
 ) -> Option<DecorativePrefixLayout>
 where
@@ -592,7 +592,7 @@ fn should_insert_visual_gap_space_with_context(
     should_insert_visual_gap_space(prev, next)
 }
 
-pub fn build_editor_session_text_plan(session: &EditorSession) -> EditorSessionTextPlan {
+pub fn build_editor_session_text_plan(session: &ParagraphEditContext) -> EditorSessionTextPlan {
     let ordered_runs: Vec<&LayoutRun> = session
         .paragraph
         .runs
@@ -702,7 +702,7 @@ pub fn build_editor_session_text_plan(session: &EditorSession) -> EditorSessionT
 }
 
 pub fn has_suspicious_run_geometry<F, G>(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     is_symbol_font: F,
     measure_run_width: G,
 ) -> bool

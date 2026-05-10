@@ -113,7 +113,7 @@ mod tests {
     use super::paragraph_replacement_region;
     use crate::edit::active_target::ActiveEditorTarget;
     use crate::models::{
-        BoundingBox, EditorSession, LayoutParagraph, LayoutRun, RunStyle,
+        BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun, RunStyle,
     };
 
     fn target_for_body(body_bbox: BoundingBox) -> ActiveEditorTarget {
@@ -124,7 +124,7 @@ mod tests {
             right: 180.0,
             bottom: 112.0,
         };
-        target.scene.body_session = EditorSession {
+        target.scene.body_session = ParagraphEditContext {
             anchor_bbox: body_bbox,
             paragraph: LayoutParagraph::default(),
         };

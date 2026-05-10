@@ -1,4 +1,4 @@
-use super::{BoundingBox, EditorControlStyle, EditorSession, GlyphPaintRun};
+use super::{BoundingBox, EditorControlStyle, ParagraphEditContext, GlyphPaintRun};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Default, PartialEq)]
@@ -54,9 +54,9 @@ pub struct FieldHitRequest {
     pub editable_value_text: String,
     pub click_page_x: f32,
     #[serde(default)]
-    pub key_session: Option<EditorSession>,
+    pub key_session: Option<ParagraphEditContext>,
     #[serde(default)]
-    pub value_session: Option<EditorSession>,
+    pub value_session: Option<ParagraphEditContext>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -75,9 +75,9 @@ pub struct FieldHitTarget {
     pub editable_key_text: String,
     pub editable_value_text: String,
     #[serde(default)]
-    pub key_session: Option<EditorSession>,
+    pub key_session: Option<ParagraphEditContext>,
     #[serde(default)]
-    pub value_session: Option<EditorSession>,
+    pub value_session: Option<ParagraphEditContext>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -109,7 +109,7 @@ pub struct FieldEditorParamsRequest {
 #[serde(rename_all = "camelCase")]
 pub struct FieldEditorParams {
     #[serde(default)]
-    pub session: Option<EditorSession>,
+    pub session: Option<ParagraphEditContext>,
     #[serde(default)]
     pub control_style: Option<EditorControlStyle>,
 }

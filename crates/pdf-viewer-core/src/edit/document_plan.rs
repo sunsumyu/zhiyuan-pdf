@@ -17,7 +17,7 @@ use crate::text::glyph_layout::{
 };
 use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind};
 use crate::models::{
-    BoundingBox, EditorSession, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, LayoutRun,
+    BoundingBox, ParagraphEditContext, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, LayoutRun,
     VectorPageModel,
 };
 use crate::text::caret_geometry::caret_index_at_page_point_with_plan;
@@ -41,7 +41,7 @@ pub struct EditorDocumentPlan {
     #[serde(default)]
     pub base_paragraph_id: String,
     pub shell_bbox: BoundingBox,
-    pub body_session: EditorSession,
+    pub body_session: ParagraphEditContext,
     pub source_body_text: String,
     pub body_text_plan: EditorSessionTextPlan,
     #[serde(default)]
@@ -62,7 +62,7 @@ impl Default for EditorDocumentPlan {
             target_id: String::new(),
             base_paragraph_id: String::new(),
             shell_bbox: BoundingBox::default(),
-            body_session: EditorSession {
+            body_session: ParagraphEditContext {
                 anchor_bbox: BoundingBox::default(),
                 paragraph: LayoutParagraph::default(),
             },
@@ -100,7 +100,7 @@ impl EditorDocumentPlan {
 
 // ── Build functions ─────────────────────────────────────────────
 
-fn resolve_shell_bbox(target_session: &EditorSession, split: &SessionSplit) -> BoundingBox {
+fn resolve_shell_bbox(target_session: &ParagraphEditContext, split: &SessionSplit) -> BoundingBox {
     if let Some(marker) = split.marker.as_ref() {
         let mut shell_bbox = split.body_session.anchor_bbox;
         if let Some(marker_bbox) = bbox_from_runs(&marker.runs) {
@@ -116,7 +116,7 @@ fn resolve_shell_bbox(target_session: &EditorSession, split: &SessionSplit) -> B
 }
 
 pub fn build_editor_document_plan_from_session(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
 ) -> EditorDocumentPlan {
     let body_text_plan = build_editor_session_text_plan(session);
     let body_lines = build_body_line_plans(session, &body_text_plan);
@@ -138,7 +138,7 @@ pub fn build_editor_document_plan_from_session(
 
 #[derive(Debug, Clone)]
 struct SessionSplit {
-    body_session: EditorSession,
+    body_session: ParagraphEditContext,
     marker: Option<ParagraphEditorMarker>,
 }
 
@@ -214,7 +214,7 @@ fn normalize_draft_template_run(run: &LayoutRun) -> LayoutRun {
 }
 
 fn select_draft_template_run(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     body_lines: &[EditorDocumentLinePlan],
 ) -> LayoutRun {
     let source_candidate = body_lines
@@ -257,7 +257,7 @@ fn select_draft_template_run(
 }
 
 fn split_editor_session(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     body_char_start: usize,
     marker_kind: ListMarkerKind,
 ) -> Option<SessionSplit> {
@@ -324,7 +324,7 @@ fn split_editor_session(
     body_paragraph.runs = body_runs;
 
     Some(SessionSplit {
-        body_session: EditorSession {
+        body_session: ParagraphEditContext {
             anchor_bbox: body_bbox,
             paragraph: body_paragraph,
         },
@@ -343,7 +343,7 @@ fn same_document_line(reference_origin_y: f32, run: &LayoutRun) -> bool {
 }
 
 /// Font-aware marker detection for symbolic-font bullets.
-fn detect_symbolic_font_marker(session: &EditorSession) -> Option<(usize, ListMarkerKind)> {
+fn detect_symbolic_font_marker(session: &ParagraphEditContext) -> Option<(usize, ListMarkerKind)> {
     let runs = &session.paragraph.runs;
     let non_empty_runs: Vec<&LayoutRun> = runs.iter().filter(|r| !r.text.is_empty()).collect();
     if non_empty_runs.len() < 2 {
@@ -386,7 +386,7 @@ fn detect_symbolic_font_marker(session: &EditorSession) -> Option<(usize, ListMa
 
 fn synthesize_marker_from_paragraph(
     paragraph: &GlyphPaintParagraph,
-    body_session: &EditorSession,
+    body_session: &ParagraphEditContext,
 ) -> Option<ParagraphEditorMarker> {
     let body_runs = &body_session.paragraph.runs;
     let body_first = body_runs.iter().find(|run| !run.text.is_empty())?;
@@ -457,7 +457,7 @@ fn normalize_template_run_for_draft(run: &LayoutRun) -> LayoutRun {
 }
 
 fn build_body_line_plans(
-    session: &EditorSession,
+    session: &ParagraphEditContext,
     _text_plan: &EditorSessionTextPlan,
 ) -> Vec<EditorDocumentLinePlan> {
     let mut rebuilt_lines: Vec<EditorDocumentLinePlan> = Vec::new();
@@ -545,7 +545,7 @@ pub fn build_editor_document_plan_for_target(
 
 fn build_plan_for_target_session(
     paragraph: &GlyphPaintParagraph,
-    _full_session: &EditorSession,
+    _full_session: &ParagraphEditContext,
     target: EditorEditTarget,
     click_page_point: Option<(f32, f32)>,
 ) -> Option<EditorDocumentPlan> {
@@ -811,7 +811,7 @@ mod tests {
         run
     }
 
-    fn session_from_runs(runs: Vec<LayoutRun>) -> EditorSession {
+    fn session_from_runs(runs: Vec<LayoutRun>) -> ParagraphEditContext {
         let anchor_bbox = runs.iter().fold(
             BoundingBox {
                 left: f32::INFINITY,
@@ -827,7 +827,7 @@ mod tests {
             },
         );
 
-        EditorSession {
+        ParagraphEditContext {
             anchor_bbox,
             paragraph: LayoutParagraph {
                 id: "p1".to_string(),
