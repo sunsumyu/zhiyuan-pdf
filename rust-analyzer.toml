@@ -1,0 +1,15 @@
+# rust-analyzer workspace config (read by rust-analyzer 0.4+ natively).
+#
+# Why we need this: pdf-viewer-ui is wasm32-only (cdylib + js-sys/web-sys
+# under target.'cfg(target_arch = "wasm32")'.dependencies), but src-tauri
+# is native-only. With the default single-target check, one of the two
+# always shows red squiggles.
+#
+# By listing BOTH targets here, rust-analyzer runs `cargo check` against
+# each and a diagnostic is suppressed if it disappears in any target.
+# An item like `js_sys::Function` resolves under wasm32 → no error;
+# an item like `tauri::Manager` resolves under x86_64 → no error.
+# Tradeoff: every save triggers two cargo checks (~2x analysis time).
+
+[check]
+targets = ["wasm32-unknown-unknown", "x86_64-pc-windows-msvc"]
