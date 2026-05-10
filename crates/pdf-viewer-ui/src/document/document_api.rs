@@ -75,6 +75,39 @@ impl DocumentSession {
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
 
+    // ── Dirty tracking (Nutrient borrowing #2) ─────────────────
+
+    /// Whether the document has unsaved edits (patches pending persist).
+    ///
+    /// Equivalent to Nutrient's `instance.hasUnsavedChanges()`.
+    #[wasm_bindgen(js_name = "hasUnsavedChanges")]
+    pub fn has_unsaved_changes(&self) -> bool {
+        use crate::state_manager::{get_patch_state, has_visible_patches};
+        get_patch_state()
+            .read()
+            .map(|state| has_visible_patches(&state))
+            .unwrap_or(false)
+    }
+
+    /// Number of persistable patches currently in memory.
+    #[wasm_bindgen(js_name = "patchCount")]
+    pub fn patch_count(&self) -> usize {
+        use crate::state_manager::collect_persistable_patches;
+        collect_persistable_patches().len()
+    }
+
+    /// Whether an undo step is available.
+    #[wasm_bindgen(js_name = "canUndo")]
+    pub fn can_undo(&self) -> bool {
+        crate::state_manager::can_undo()
+    }
+
+    /// Whether a redo step is available.
+    #[wasm_bindgen(js_name = "canRedo")]
+    pub fn can_redo(&self) -> bool {
+        crate::state_manager::can_redo()
+    }
+
 }
 
 impl Default for DocumentSession {

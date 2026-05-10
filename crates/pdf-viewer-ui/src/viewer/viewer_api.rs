@@ -11,7 +11,7 @@
 //! (`get_viewer_session`, `set_viewer_document`, `set_current_page`, …),
 //! which remain for backward compatibility while the TS bridge migrates.
 
-use serde_wasm_bindgen::to_value;
+use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
 use crate::viewer::viewer_controller;
@@ -70,6 +70,59 @@ impl ViewerSession {
     #[wasm_bindgen(js_name = "getState")]
     pub fn get_state(&self) -> JsValue {
         to_value(&viewer_store::get_viewer_state()).unwrap_or(JsValue::NULL)
+    }
+
+    /// Functional (Nutrient-style) atomic state update.
+    ///
+    /// ```js
+    /// viewerSession.setState(s => ({ ...s, currentPage: 2, currentZoom: 1.5 }));
+    /// ```
+    ///
+    /// The `updater` callback receives the current snapshot and must return
+    /// the desired new state.  Only **mutable** fields are applied:
+    ///
+    ///   `currentPage`, `currentZoom`, `pageWidth`, `pageHeight`
+    ///
+    /// `path`, `pageCount`, and `documentRevision` are lifecycle-managed
+    /// and silently ignored if the updater changes them.
+    ///
+    /// Returns the resulting snapshot after applying the update.
+    #[wasm_bindgen(js_name = "setState")]
+    pub fn set_state(&self, updater: &js_sys::Function) -> JsValue {
+        use crate::viewer::viewer_store::VIEWER_SESSION;
+        use pdf_viewer_core::render::viewer_session::HostViewerSession;
+
+        // 1. Read current snapshot
+        let current = viewer_store::get_viewer_session();
+        let current_js = to_value(&current).unwrap_or(JsValue::NULL);
+
+        // 2. Call JS updater(currentState) → newState
+        let new_js = match updater.call1(&JsValue::NULL, &current_js) {
+            Ok(v) => v,
+            Err(_) => return current_js,
+        };
+
+        // 3. Deserialize the returned object
+        let updated: HostViewerSession = match from_value(new_js) {
+            Ok(v) => v,
+            Err(_) => return current_js,
+        };
+
+        // 4. Apply only mutable fields atomically
+        VIEWER_SESSION.with(|session| {
+            let mut s = session.borrow_mut();
+            s.current_page = updated.current_page;
+            s.current_zoom = if updated.current_zoom.is_finite() && updated.current_zoom > 0.0 {
+                updated.current_zoom
+            } else {
+                s.current_zoom
+            };
+            s.page_width = if updated.page_width > 0.0 { updated.page_width } else { s.page_width };
+            s.page_height = if updated.page_height > 0.0 { updated.page_height } else { s.page_height };
+        });
+
+        // 5. Return the resulting snapshot
+        to_value(&viewer_store::get_viewer_session()).unwrap_or(JsValue::NULL)
     }
 }
 
