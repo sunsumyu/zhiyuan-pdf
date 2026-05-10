@@ -62,6 +62,15 @@ impl ViewerSession {
     pub fn set_page_dimensions(&self, page_width: f32, page_height: f32) {
         viewer_store::set_page_dimensions(page_width, page_height);
     }
+
+    /// Current session state (NoDocument / DocumentOpen).
+    ///
+    /// See `ViewerSessionState` in `viewer::viewer_store` for semantics.
+    /// Derived from the live session's `path` field on every call.
+    #[wasm_bindgen(js_name = "getState")]
+    pub fn get_state(&self) -> JsValue {
+        to_value(&viewer_store::get_viewer_state()).unwrap_or(JsValue::NULL)
+    }
 }
 
 impl Default for ViewerSession {

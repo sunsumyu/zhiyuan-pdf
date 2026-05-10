@@ -1,7 +1,46 @@
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 
 // Re-export pure data structure from core.
 pub use pdf_viewer_core::render::viewer_session::*;
+
+// ─── ViewerSessionState (Batch 2 sec 4) ─────────────────────────
+//
+// Explicit enum for the Viewer session state, complementing
+// EditorSession's SessionState and FindSession's FindSessionState.
+// Derived from `path: Option<String>` — no redundant storage needed.
+//
+// Semantics
+//
+//   NoDocument    no PDF loaded (path is None)
+//   DocumentOpen  a PDF is loaded and active (path is Some)
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ViewerSessionState {
+    NoDocument,
+    DocumentOpen,
+}
+
+impl ViewerSessionState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ViewerSessionState::NoDocument => "NoDocument",
+            ViewerSessionState::DocumentOpen => "DocumentOpen",
+        }
+    }
+}
+
+/// Snapshot of the current viewer session state.
+pub fn get_viewer_state() -> ViewerSessionState {
+    VIEWER_SESSION.with(|session| {
+        if session.borrow().path.is_some() {
+            ViewerSessionState::DocumentOpen
+        } else {
+            ViewerSessionState::NoDocument
+        }
+    })
+}
 
 thread_local! {
     pub static VIEWER_SESSION: RefCell<HostViewerSession> =

@@ -56,6 +56,16 @@ impl FindSession {
     pub fn set_current_page(&self, page: u16) -> JsValue {
         to_value(&controller::set_current_page(page)).unwrap_or(JsValue::NULL)
     }
+
+    /// Current session state (Closed / Open / Searching / Active).
+    ///
+    /// See `FindSessionState` in `find::find_store` for semantics. The
+    /// value is derived from live controller data on every call — it is
+    /// always in sync with the controller state, never stale.
+    #[wasm_bindgen(js_name = "getState")]
+    pub fn get_state(&self) -> JsValue {
+        to_value(&controller::get_find_state()).unwrap_or(JsValue::NULL)
+    }
 }
 
 impl Default for FindSession {

@@ -48,6 +48,71 @@ pub enum FindScope {
     Document,
 }
 
+// ─── FindSessionState (Batch 2 sec 4) ────────────────────────────
+//
+// Explicit enum for the Find toolbar state machine, complementing the
+// `SessionState` enum on `EditorSession`. Unlike EditorSession — which
+// *stores* its state in a dedicated `Cell<SessionState>` because its
+// transitions guard re-entrant saves — Find's state is fully
+// **derivable** from already-stored data (`is_open` + `query` +
+// `matches`). Storing a redundant copy would invite drift, so we
+// compute the enum on demand via `derive()`.
+//
+// Semantics
+//
+//   Closed    toolbar not open (is_open == false)
+//   Open      toolbar open, no active search (empty query)
+//   Searching toolbar open, has query, zero matches (in-flight or no hits)
+//   Active    toolbar open, has query, >= 1 match
+//
+// The UI can use the state to disable / gray out buttons, show empty
+// state copy, etc. TS reads it via `FindSession::getState()`.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FindSessionState {
+    Closed,
+    Open,
+    Searching,
+    Active,
+}
+
+impl FindSessionState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FindSessionState::Closed => "Closed",
+            FindSessionState::Open => "Open",
+            FindSessionState::Searching => "Searching",
+            FindSessionState::Active => "Active",
+        }
+    }
+
+    fn derive(is_open: bool, query: &str, total_matches: usize) -> Self {
+        if !is_open {
+            return FindSessionState::Closed;
+        }
+        if query.is_empty() {
+            return FindSessionState::Open;
+        }
+        if total_matches == 0 {
+            return FindSessionState::Searching;
+        }
+        FindSessionState::Active
+    }
+}
+
+/// Snapshot of the current find session state, suitable for TS consumption.
+pub fn get_find_state() -> FindSessionState {
+    CONTROLLER.with(|c| {
+        let ctrl = c.borrow();
+        FindSessionState::derive(
+            ctrl.is_open,
+            &ctrl.last_result.query,
+            ctrl.last_result.total_matches,
+        )
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct FindControllerState {

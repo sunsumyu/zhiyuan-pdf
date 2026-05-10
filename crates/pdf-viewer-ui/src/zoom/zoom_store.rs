@@ -1,7 +1,53 @@
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 
 // Re-export pure data structures from core.
 pub use pdf_viewer_core::render::zoom_state::*;
+
+// ─── ZoomSessionState (Batch 2 sec 4) ───────────────────────────
+//
+// Explicit enum for the Zoom domain state machine. Since ZoomController
+// (the WASM session handle) was deleted as TS-dead, this enum is
+// exposed only to Rust callers. A future re-created ZoomSession could
+// surface it via getState().
+//
+// Derived from HostZoomState fields on demand:
+//
+//   Idle        current_zoom == target_zoom, no preview
+//   Animating   current_zoom != target_zoom (zoom-to-fit / pinch release)
+//   Previewing  preview_transform is Some (live pinch/scroll gesture)
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ZoomSessionState {
+    Idle,
+    Animating,
+    Previewing,
+}
+
+impl ZoomSessionState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ZoomSessionState::Idle => "Idle",
+            ZoomSessionState::Animating => "Animating",
+            ZoomSessionState::Previewing => "Previewing",
+        }
+    }
+}
+
+/// Snapshot of the current zoom state.
+pub fn get_zoom_session_state() -> ZoomSessionState {
+    ZOOM_STATE.with(|state| {
+        let s = state.borrow();
+        if s.preview_transform.is_some() {
+            ZoomSessionState::Previewing
+        } else if (s.current_zoom - s.target_zoom).abs() > f32::EPSILON {
+            ZoomSessionState::Animating
+        } else {
+            ZoomSessionState::Idle
+        }
+    })
+}
 
 thread_local! {
     pub static ZOOM_STATE: RefCell<HostZoomState> =
