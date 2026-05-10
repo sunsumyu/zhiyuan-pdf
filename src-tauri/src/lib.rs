@@ -1,10 +1,12 @@
 pub mod app_state;
+pub mod error;
 pub mod infrastructure;
 pub mod interfaces;
 pub mod application;
 pub mod state;
 
 pub use app_state::{AppState, CacheStore, DocumentStore, HistoryStore, RendererState};
+pub use error::{PdfError, PdfResult};
 
 pub fn run() {
     let app_state = AppState::new();

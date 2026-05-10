@@ -120,8 +120,8 @@ impl PdfReadService {
         let docs = app_state.docs.pdf_documents.lock().unwrap();
         let doc = docs
             .get(path)
-            .ok_or_else(|| format!("Document not found in cache: {}", path))?;
-        
+            .ok_or_else(|| crate::PdfError::DocumentNotFound { path: path.to_string() })?;
+
         crate::infrastructure::pdf::pdf_read::extract_metadata(doc)
             .map_err(|e| format!("Metadata extraction failed: {}", e))
     }
@@ -143,8 +143,8 @@ impl PdfReadService {
         let docs = app_state.docs.pdf_documents.lock().unwrap();
         let doc = docs
             .get(path)
-            .ok_or_else(|| format!("Document not found in cache: {}", path))?;
-        
+            .ok_or_else(|| crate::PdfError::DocumentNotFound { path: path.to_string() })?;
+
         crate::infrastructure::pdf::pdf_read::extract_vector_page_model(
             doc, page_index,
         )
@@ -169,8 +169,8 @@ impl PdfReadService {
         let docs = state.docs.pdf_documents.lock().unwrap();
         let doc = docs
             .get(&path)
-            .ok_or_else(|| format!("Document not found in cache: {}", path))?;
-        
+            .ok_or_else(|| crate::PdfError::DocumentNotFound { path: path.clone() })?;
+
         crate::infrastructure::pdf::pdf_read::extract_layout_inference(
             doc, page_index,
         )
@@ -186,8 +186,8 @@ impl PdfReadService {
         let docs = state.docs.pdf_documents.lock().unwrap();
         let doc = docs
             .get(&path)
-            .ok_or_else(|| format!("Document not found in cache: {}", path))?;
-        
+            .ok_or_else(|| crate::PdfError::DocumentNotFound { path: path.clone() })?;
+
         crate::infrastructure::pdf::pdf_read::extract_glyph_paint_plan(
             doc, page_index,
         )
