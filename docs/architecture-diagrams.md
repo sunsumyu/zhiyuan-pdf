@@ -457,6 +457,40 @@ graph LR
 
 ---
 
+## 11. 架构约束（已知限制）
+
+### 11.1 单页面单文档
+
+**约束**：同一 WASM 实例同时只能打开 **一个 PDF 文档**。
+
+**根因**：所有 Session 的状态存储在 `thread_local!` 全局变量中（WASM 单线程 = 只有一个 thread），没有按 `document_id` 分桶。具体涉及：
+
+| thread_local | 所在文件 |
+|---|---|
+| `VIEWER_SESSION` | `viewer/viewer_store.rs` |
+| `ZOOM_STATE` | `zoom/zoom_store.rs` |
+| `FIND_SESSION` (host) | `find/host_find_store.rs` |
+| `CONTROLLER` (find) | `find/find_store.rs` |
+| `COMMENT_REVIEW_SESSION` | `review/review_store.rs` |
+| `SESSION_STATE` (editor) | `editor/editor_store.rs` |
+| `RENDER_STATE` | `render/render_store.rs` |
+| `PRESENT_STATE` | `present/present_store.rs` |
+
+**影响**：
+- ❌ 同一页面无法并排打开两个 PDF（diff view）
+- ❌ Tab 模式多文档需 Web Worker per tab（每个 Worker 独立 WASM 实例）
+- ✅ 切换文档通过 `Application.close()` → `Application.open()` 实现，状态完全重置
+
+**未来迁移路径**（如需多文档）：
+- **方案 A（激进）**：`thread_local` → `Box<Cell<State>>` 作为 Session 字段。破坏性大。
+- **方案 B（折中）**：`thread_local<State>` → `thread_local<HashMap<DocId, State>>`，方法额外接收 `doc_id`。
+- **方案 C（当前）**：保持单文档，明确文档化此约束。✅ 已选择。
+
+> 参考：Nutrient Web SDK 支持多 Instance 并存（每次 `NutrientViewer.load()` 创建独立实例）。
+> 本项目选择方案 C，在真实需求出现前不承担多文档重构的复杂度成本。
+
+---
+
 ## 附录：图册维护规则
 
 - **数据来源**：每张图必须从代码静态扫描得来。生成方法见仓库根 `scripts/`（如有）。

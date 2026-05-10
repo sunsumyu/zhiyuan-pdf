@@ -1,5 +1,6 @@
 pub mod api;
 pub mod application;
+pub mod geometry_api;
 
 pub mod annotation;
 pub mod comment;

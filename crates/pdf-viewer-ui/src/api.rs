@@ -14,6 +14,7 @@
 //! | Handle | Domain folder | Role |
 //! |--------|---------------|------|
 //! | [`Application`] | (top-level) | composition root / document lifecycle |
+//! | [`GeometryApi`] | (top-level) | coordinate-space transforms |
 //! | [`AnnotationManager`] | `annotation/` | annotation CRUD |
 //! | [`CommentManager`] | `comment/` | comment thread management |
 //! | [`DocumentSession`] | `document/` | document lifecycle (open/save/undo) |
@@ -23,6 +24,7 @@
 //! | [`ViewerSession`] | `viewer/` | viewport / page navigation |
 
 pub use crate::application::Application;
+pub use crate::geometry_api::GeometryApi;
 pub use crate::annotation::annotation_api::AnnotationManager;
 pub use crate::comment::comment_api::CommentManager;
 pub use crate::document::document_api::DocumentSession;
