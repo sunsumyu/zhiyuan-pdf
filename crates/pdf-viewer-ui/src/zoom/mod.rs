@@ -1,4 +1,5 @@
 pub mod event;
+pub mod free_api;
 pub mod host;
 pub mod interaction;
 pub mod preview_host;

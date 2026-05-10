@@ -19,7 +19,6 @@ pub mod utils;
 pub mod viewer;
 pub mod viewport_culling;
 pub mod viewport_refresh;
-pub mod wasm_api;
 pub mod zoom;
 
 pub mod bridge;
