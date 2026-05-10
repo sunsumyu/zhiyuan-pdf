@@ -32,5 +32,5 @@ pub use system::*;
 
 pub(crate) use helpers::{
     apply_highlight_annotation, apply_text_comment, delete_annotation_internal,
-    ensure_document_loaded, execute_region_patches, update_text_comment,
+    ensure_document_loaded, update_text_comment,
 };

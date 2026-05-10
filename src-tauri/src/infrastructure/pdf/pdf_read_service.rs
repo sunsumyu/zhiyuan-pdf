@@ -1,5 +1,5 @@
 use crate::infrastructure::pdf::models::{
-    GlyphPaintPlan, LayoutInferenceResult, LightPageModel, NativeVectorPageModel, PdfMetadata,
+    GlyphPaintPlan, LayoutInferenceResult, NativeVectorPageModel, PdfMetadata,
 };
 use crate::log_step;
 use lopdf::Document as LopdfDocument;
