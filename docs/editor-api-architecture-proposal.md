@@ -2696,14 +2696,14 @@ export function onStateChange(cb: (s: SessionState) => void): EditorResponse {
 
 ---
 
-### 14.8 优先级排序
+### 14.8 优先级排序与落地状态
 
-| 优先级 | 编号 | 修复内容 | 时机 |
-|--------|------|---------|------|
-| **P0** | 14.1 | 退不出编辑状态 — 方案 A 止血 | **立即**（重构前） |
-| **P0** | 14.2 | close_block auto-commit 语义明确 | 新架构实现时 |
-| **P1** | 14.3 | commit/end 语义注释 + 增加 end() | 新架构 Phase 1 |
-| **P1** | 14.4 | begin() 重复调用报错 | 新架构 Phase 1 |
-| **P1** | 14.5 | undo/redo Step 反转设计 | 新架构 Phase 2 |
-| **P1** | 14.6 | getTextBlocks(pageIndex) 参数 | 新架构 Phase 1 |
-| **P1** | 14.7 | 事件回调技术验证 | 新架构 Phase 1 启动前 |
+| 优先级 | 编号 | 修复内容 | 状态 | 落地点 |
+|--------|------|---------|:---:|--------|
+| **P0** | 14.1 | 退不出编辑状态 — 方案 A 止血 | ✅ | `editor_host.ts` 三条退出路径 |
+| **P0** | 14.2 | `close_block` auto-commit 语义明确 | ✅ | `render_transaction.rs::close_editor_tx` |
+| **P1** | 14.3 | commit/end 语义注释 + 增加 `end()` | ✅ | `EditorSession::end` (`editor_api.rs`) |
+| **P1** | 14.4 | `begin()` 重复调用报错 | ✅ | `guard_state!(SessionState::Viewing, "begin")` |
+| **P1** | 14.5 | undo/redo Step 反转设计 | ⏸️ Phase 2 | 待 `text_ops` / `format_ops` 加 `push_op` 钩子 |
+| **P1** | 14.6 | `getTextBlocks(pageIndex)` 参数 | ✅ | `EditorSession::get_text_blocks(u16)` |
+| **P1** | 14.7 | 事件回调技术验证 | ✅ | `EditorSession::onStateChange` / `onChange`，`editor_store::{set_state_change_callback, set_change_callback}` |

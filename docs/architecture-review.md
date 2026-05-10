@@ -70,11 +70,16 @@ pdf-viewer-core/src/
 ├── persistence/       (4 个模块)
 ├── render/            (3 个模块)
 ├── document/          (3 个模块)
-├── algorithms/        (2 个模块)
+├── annotation/        (1 个模块，跨端 schema)
+├── history/           (1 个模块，跨端 schema)
+├── edit/              (20 个模块，纯数据 + 可 native 测试)
 ├── typography/        (4 个模块)
-├── analysis/          (1 个模块)
 └── utils/             (2 个模块)
 ```
+
+> 2026-05-10 update: `algorithms/` + `analysis/` 已迁出至 `src-tauri/src/infrastructure/pdf/` (P3 阶段)。
+> `lca.rs` (62 行死码) 已删除。`annotation/` `history/` `edit/` 经审视后保留：均为
+> 纯数据契约或 native-target 可测算法，符合 core 的真实定位。
 
 #### 问题诊断
 
@@ -105,13 +110,23 @@ pdf-viewer-core/src/
     └── bbox_utils.rs       ← 保留
 ```
 
-**移出的模块：**
-- `persistence/*` → 移入 `src-tauri`（只有 native 端用）
-- `typography/*` → 移入 `src-tauri`
-- `geometry/{layout_engine, reflow_engine, field_projection}` → 移入 `src-tauri`
-- `document/*`, `algorithms/*`, `analysis/*` → 移入 `src-tauri`
-- `text/{list_semantics, editable_segments, style_preservation}` → 移入 `pdf-viewer-ui`
-- `render/paint_plan` → 移入 `pdf-viewer-ui`
+**移出的模块（已落地与待办）：**
+
+| 模块 | 计划 | 状态 |
+|------|------|------|
+| `algorithms/*` | 移入 `src-tauri` | ✅ 已完成（→ `infrastructure/pdf/spatial_graph.rs`），`lca.rs` 死码删除 |
+| `analysis/*` | 移入 `src-tauri` | ✅ 已完成（→ `infrastructure/pdf/layout_engine.rs`） |
+| `persistence/*` | 移入 `src-tauri` | 🔁 **保留在 core**（实际为 ui=4/tauri=5，跨端共享） |
+| `typography/*` | 移入 `src-tauri` | 🔁 **保留在 core**（实际为 ui=2/tauri=3，跨端共享） |
+| `document/*` | 移入 `src-tauri` | 🔁 **保留在 core**（实际为 ui=2/tauri=4，跨端共享） |
+| `geometry/{layout_engine, reflow_engine, field_projection}` | 移入 `src-tauri` | ⏸️ 待审计 |
+| `text/{list_semantics, editable_segments, style_preservation}` | 移入 `pdf-viewer-ui` | ⏸️ 待审计 |
+| `render/paint_plan` | 移入 `pdf-viewer-ui` | ⏸️ 待审计 |
+
+> 复盘：原始 audit 假设的"~70% 单端"在精确计数后被高估。实际单端模块多为
+> **跨端类型契约**（如 `annotation_types`、`history_types`）或 **native 可测纯算法**
+> （如 `edit/` 的布局/段落代码），保留在 core 反而提升可测性与共享性。仅
+> `algorithms`/`analysis`（`vector_engine` 专属调用）是真正错位，已迁出。
 
 **重命名冲突：**
 - `core::EditorSession` → `core::types::ParagraphEditContext`（它实际上就是 anchor_bbox + paragraph）
@@ -401,22 +416,24 @@ impl From<PdfError> for String {
 
 ### Phase 1：分拆神文件（1-2 天）
 
-- [ ] `wasm_api/viewer.rs` (65 fn) → 5 个领域文件
+- [x] `wasm_api/viewer.rs` (65 fn) → 5 个领域文件 *(viewer/zoom/frame 三拆已落地)*
 - [ ] `interfaces/pdf.rs` (40 cmd) → 8 个领域文件
-- [ ] `AppState` 拆分为 `DocumentStore` / `CacheStore` / `HistoryStore` / `RendererState`
+- [x] `AppState` 拆分为 `DocumentStore` / `CacheStore` / `HistoryStore` / `RendererState`
 
 ### Phase 2：core 瘦身（1 天）
 
 - [ ] `models.rs` (782 行) → 按领域拆为 6 个小文件
-- [ ] 单端模块归位（persistence → src-tauri，list_semantics → pdf-viewer-ui）
+- [x] 单端模块归位 *(algorithms + analysis → src-tauri，lca.rs 死码删除)*
 - [ ] 消除 `VectorPageModel` 重复定义
 
 ### Phase 3：渐进优化（持续）
 
-- [ ] `src-tauri` 引入 `PdfError` 错误枚举
+- [x] `src-tauri` 引入 `PdfError` 错误枚举
 - [ ] WASM 全局状态收口到 `AppContext`
 - [ ] 关键管线（编辑→保存、打开→渲染）的端到端数据流文档
 - [ ] TS 侧拆分 `pdf_runtime.ts` (17KB) 和 `vector_host.ts` (23KB)
+- [x] TS bridge 全面 Session 化 *(find/document/viewer/editor/comment/review/annotation/history)*
+- [x] §14 P1 polish *(end()/getTextBlocks(pageIndex)/onChange/onStateChange)*
 
 ### 不做的事（避免过度设计）
 
