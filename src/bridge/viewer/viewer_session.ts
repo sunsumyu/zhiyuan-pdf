@@ -1,3 +1,16 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// viewer_session.ts — adapter over the ViewerSession struct API.
+//
+// Migrated 2025: the prior raw `wasm.get_viewer_session()` /
+// `wasm.set_viewer_document()` / `wasm.set_current_page()` / etc. free-function
+// calls are now routed through the struct-based `ViewerSession` exported from
+// `crates/pdf-viewer-ui/src/viewer/viewer_api.rs`. Singleton handle — all state
+// lives in the wasm `HOST_VIEWER_SESSION` thread_local.
+//
+// The adapter shape is preserved for backwards compatibility with all the
+// existing callers in `pdf_runtime.ts` etc. — only the implementation changed.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export type ViewerSessionSnapshot = {
     path: string | null;
     currentPage: number;
@@ -22,18 +35,31 @@ type ViewerSessionDeps = {
     getFallbackPageHeight: () => number;
 };
 
+let _session: any = null;
+
+function getViewerSession(getWasmApi: () => any): any {
+    if (!_session) {
+        const api = getWasmApi() as any;
+        if (typeof api?.ViewerSession === 'function') {
+            _session = new api.ViewerSession();
+        }
+    }
+    return _session;
+}
+
 export function createViewerSessionAdapter(deps: ViewerSessionDeps): ViewerSessionAdapter {
+    function session(): any { return getViewerSession(deps.getWasmApi); }
+
     function read(): ViewerSessionSnapshot {
         try {
-            const wasm = deps.getWasmApi();
-            const session = wasm.get_viewer_session();
+            const snap = session()?.read();
             return {
-                path: session?.path ?? null,
-                currentPage: session?.currentPage ?? 0,
-                pageCount: session?.pageCount ?? 0,
-                currentZoom: session?.currentZoom ?? 1.0,
-                pageWidth: session?.pageWidth ?? deps.getFallbackPageWidth(),
-                pageHeight: session?.pageHeight ?? deps.getFallbackPageHeight(),
+                path: snap?.path ?? null,
+                currentPage: snap?.currentPage ?? 0,
+                pageCount: snap?.pageCount ?? 0,
+                currentZoom: snap?.currentZoom ?? 1.0,
+                pageWidth: snap?.pageWidth ?? deps.getFallbackPageWidth(),
+                pageHeight: snap?.pageHeight ?? deps.getFallbackPageHeight(),
             };
         } catch {
             return {
@@ -48,28 +74,23 @@ export function createViewerSessionAdapter(deps: ViewerSessionDeps): ViewerSessi
     }
 
     function setDocument(path: string, pageCount: number, initialZoom: number): void {
-        const wasm = deps.getWasmApi();
-        wasm.set_viewer_document(path, pageCount, initialZoom);
+        session()?.setDocument(path, pageCount, initialZoom);
     }
 
     function reset(): void {
-        const wasm = deps.getWasmApi();
-        wasm.reset_viewer_session();
+        session()?.reset();
     }
 
     function setCurrentPage(pageIndex: number): void {
-        const wasm = deps.getWasmApi();
-        wasm.set_current_page(pageIndex);
+        session()?.setCurrentPage(pageIndex);
     }
 
     function setCurrentZoom(zoom: number): void {
-        const wasm = deps.getWasmApi();
-        wasm.set_current_zoom(zoom);
+        session()?.setCurrentZoom(zoom);
     }
 
     function setPageDimensions(pageWidth: number, pageHeight: number): void {
-        const wasm = deps.getWasmApi();
-        wasm.set_page_dimensions(pageWidth, pageHeight);
+        session()?.setPageDimensions(pageWidth, pageHeight);
     }
 
     return {
