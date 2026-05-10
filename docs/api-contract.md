@@ -234,4 +234,6 @@
 
 ## 7. 待办（实施）
 
-参考 `progress.txt` Phase 2B / 2C / 3 / 4。
+facade-era 的 Phase 2B / 2C / 3 / 4 已全部完成并被 Session API 重构取代。当前进度参考
+`docs/architecture-review.md` §5（推荐行动计划），历史快照见
+`docs/archive/progress-2026-05-06-facade-era.txt`。

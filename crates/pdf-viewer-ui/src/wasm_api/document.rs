@@ -8,7 +8,8 @@
 // Find / comment / review groupings will be split into dedicated facades
 // (find::facade, comment::facade, review::facade) in subsequent phases.
 //
-// Do NOT add new functions here. (Tracked in progress.txt phase 5.)
+// Do NOT add new functions here — all new APIs go through the Session structs
+// (DocumentSession / FindSession / CommentManager / ReviewSession / ...).
 // ─────────────────────────────────────────────────────────────────────────────
 
 #![allow(deprecated)]

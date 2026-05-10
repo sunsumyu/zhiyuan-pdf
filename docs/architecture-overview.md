@@ -231,5 +231,5 @@ npm run tauri build
 - `docs/api-contract.md` — API 命名规范、稳定性等级、所有域 API 清单、弃用流程
 - `docs/development-guide.md` — 如何添加 API、新模块、测试
 - `docs/architecture-principles.md` — 架构演进史与设计决策
-- `progress.txt` — 阶段化整改进度
-- `docs/archive/` — 历史 ADR 与设计文档归档
+- `docs/architecture-review.md` — 当前架构审查 + phase checkboxes（最新进度记录于此）
+- `docs/archive/` — 历史 ADR 与设计文档归档（含 `progress-2026-05-06-facade-era.txt`）

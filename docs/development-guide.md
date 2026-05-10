@@ -206,7 +206,7 @@ const text = await invoke<string>('extract_text_from_page', { path, pageIndex })
 - [ ] `npm run build` 通过
 - [ ] 改了 facade？同步更新 `docs/api-contract.md`
 - [ ] 改了架构？同步更新 `docs/architecture-overview.md`
-- [ ] 加了 Stub？记录到 `progress.txt` 待办
+- [ ] 加了 Stub？在对应 Session 模块里用 `XxxError::NotImplemented { method }` 占位
 - [ ] commit message 描述哪个域 + 哪个 API
 
 ## 9. 常见任务
@@ -248,4 +248,5 @@ pub fn facade_open(...) -> ... { ... }
 - `docs/architecture-overview.md` — 三层架构总览
 - `docs/api-contract.md` — 9 域 API 清单
 - `docs/architecture-principles.md` — 设计原则
-- `progress.txt` — 整改阶段进度
+- `docs/architecture-review.md` — 当前架构审查与 phase checkboxes
+- `docs/archive/progress-2026-05-06-facade-era.txt` — 历史阶段进度（facade 时期，已被 Session API 取代）
