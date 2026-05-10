@@ -107,10 +107,22 @@ pub fn set_page(page_index: u16) {
         reset_editor_mode: false,
         clear_patches: false,
     });
+    // Unified EventBus (Nutrient borrowing #1)
+    #[cfg(target_arch = "wasm32")]
+    crate::events::emit(
+        crate::events::event_names::VIEWER_PAGE_CHANGE,
+        &wasm_bindgen::JsValue::from(page_index),
+    );
 }
 
 pub fn set_zoom(zoom: f32) {
     set_current_zoom(zoom);
+    // Unified EventBus (Nutrient borrowing #1)
+    #[cfg(target_arch = "wasm32")]
+    crate::events::emit(
+        crate::events::event_names::VIEWER_ZOOM_CHANGE,
+        &wasm_bindgen::JsValue::from(zoom),
+    );
 }
 
 pub fn set_page_size(page_width: f32, page_height: f32) {

@@ -113,8 +113,18 @@ impl Application {
 
         let request: OpenDocumentPipelineRequest =
             from_value(request_js).unwrap_or_default();
+        let path_for_event = request.path.clone();
         let result: OpenDocumentPipelineResult =
             open_document_pipeline(request).await?;
+
+        // Emit document.open event with the path as payload
+        if result.opened {
+            crate::events::emit(
+                crate::events::event_names::DOCUMENT_OPEN,
+                &JsValue::from_str(&path_for_event),
+            );
+        }
+
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
 
@@ -131,6 +141,13 @@ impl Application {
         let result: CloseDocumentPipelineResult =
             close_document_pipeline(default_page_width, default_page_height);
         reset_find_controller();
+
+        // Emit document.close event
+        crate::events::emit(
+            crate::events::event_names::DOCUMENT_CLOSE,
+            &JsValue::UNDEFINED,
+        );
+
         to_value(&result).unwrap_or(JsValue::NULL)
     }
 
@@ -154,6 +171,35 @@ impl Application {
     #[wasm_bindgen(js_name = "getState")]
     pub fn get_state(&self) -> JsValue {
         to_value(&snapshot_state()).unwrap_or(JsValue::NULL)
+    }
+
+    // ── Event system (Nutrient borrowing #1) ────────────────────
+
+    /// Register an event listener. DOM-style: multiple listeners per event.
+    ///
+    /// ```js
+    /// app.addEventListener("editor.stateChange", (state) => { ... });
+    /// app.addEventListener("viewer.pageChange", (pageIndex) => { ... });
+    /// ```
+    ///
+    /// See `events::event_names` for the full list of event names.
+    #[wasm_bindgen(js_name = "addEventListener")]
+    pub fn add_event_listener(&self, event: String, listener: js_sys::Function) {
+        crate::events::add_listener(&event, listener);
+    }
+
+    /// Remove a previously registered listener (same function reference).
+    ///
+    /// Returns `true` if a listener was found and removed.
+    #[wasm_bindgen(js_name = "removeEventListener")]
+    pub fn remove_event_listener(&self, event: String, listener: &js_sys::Function) -> bool {
+        crate::events::remove_listener(&event, listener)
+    }
+
+    /// Remove all event listeners (all events). Called internally by `resetAll`.
+    #[wasm_bindgen(js_name = "removeAllEventListeners")]
+    pub fn remove_all_event_listeners(&self) {
+        crate::events::clear_all();
     }
 }
 

@@ -71,19 +71,25 @@ pub fn set_change_callback(cb: Option<js_sys::Function>) {
 
 #[cfg(target_arch = "wasm32")]
 fn notify_state_change(state: SessionState) {
+    let arg = wasm_bindgen::JsValue::from_str(state_camel_case(state));
+    // Legacy single-slot callback (backward compat)
     let cb = STATE_CHANGE_CB.with(|slot| slot.borrow().clone());
     if let Some(cb) = cb {
-        let arg = wasm_bindgen::JsValue::from_str(state_camel_case(state));
         let _ = cb.call1(&wasm_bindgen::JsValue::NULL, &arg);
     }
+    // Unified EventBus (Nutrient borrowing #1)
+    crate::events::emit(crate::events::event_names::EDITOR_STATE_CHANGE, &arg);
 }
 
 #[cfg(target_arch = "wasm32")]
 fn notify_change() {
+    // Legacy single-slot callback (backward compat)
     let cb = CHANGE_CB.with(|slot| slot.borrow().clone());
     if let Some(cb) = cb {
         let _ = cb.call0(&wasm_bindgen::JsValue::NULL);
     }
+    // Unified EventBus (Nutrient borrowing #1)
+    crate::events::emit(crate::events::event_names::EDITOR_CHANGE, &wasm_bindgen::JsValue::UNDEFINED);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
