@@ -843,63 +843,6 @@ impl EditorSession {
         ok_empty(false)
     }
 
-    // ── P2 stubs (editor-level clipboard & selection) ───────────
-
-    #[wasm_bindgen(js_name = "selectRange")]
-    pub fn select_range(&self, _start: u32, _end: u32) -> JsValue {
-        guard_state!(SessionState::EditingBlock, "select_range");
-        err_response(EditorError::NotImplemented {
-            method: "select_range".to_string(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "cut")]
-    pub fn cut(&self) -> JsValue {
-        guard_state!(SessionState::EditingBlock, "cut");
-        err_response(EditorError::NotImplemented {
-            method: "cut".to_string(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "copy")]
-    pub fn copy(&self) -> JsValue {
-        guard_state!(SessionState::EditingBlock, "copy");
-        err_response(EditorError::NotImplemented {
-            method: "copy".to_string(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "paste")]
-    pub fn paste(&self, _text: &str) -> JsValue {
-        guard_state!(SessionState::EditingBlock, "paste");
-        err_response(EditorError::NotImplemented {
-            method: "paste".to_string(),
-        })
-    }
-
-    // ── P3 stubs (in-block search) ──────────────────────────────
-
-    #[wasm_bindgen(js_name = "findInBlock")]
-    pub fn find_in_block(&self, _query: &str, _case_sensitive: bool) -> JsValue {
-        guard_state!(SessionState::EditingBlock, "find_in_block");
-        err_response(EditorError::NotImplemented {
-            method: "find_in_block".to_string(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "replaceInBlock")]
-    pub fn replace_in_block(
-        &self,
-        _query: &str,
-        _replacement: &str,
-        _case_sensitive: bool,
-        _replace_all: bool,
-    ) -> JsValue {
-        guard_state!(SessionState::EditingBlock, "replace_in_block");
-        err_response(EditorError::NotImplemented {
-            method: "replace_in_block".to_string(),
-        })
-    }
 }
 
 // ── Internal helpers (not exported to JS) ───────────────────────

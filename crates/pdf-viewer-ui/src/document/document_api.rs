@@ -14,7 +14,6 @@
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
-use crate::document::document_types::{err_response, DocumentError};
 use crate::document::host_pipeline::{
     close_document_pipeline,
     open_document_pipeline,
@@ -165,127 +164,6 @@ impl DocumentSession {
             .unwrap_or(JsValue::NULL)
     }
 
-    // ── Reserved stubs (return DocumentError::NotImplemented) ──
-    //
-    // These mirror the stub list in `docs/editor-api-architecture-proposal.md`
-    // section 1.1 (Nutrient capability matrix) for future parity.
-
-    #[wasm_bindgen(js_name = "insertPage")]
-    pub fn insert_page(&self, _index: u16, _source_path: Option<String>) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.insertPage".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "removePage")]
-    pub fn remove_page(&self, _index: u16) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.removePage".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "movePage")]
-    pub fn move_page(&self, _from: u16, _to: u16) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.movePage".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "rotatePage")]
-    pub fn rotate_page(&self, _index: u16, _delta: i32) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.rotatePage".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "readMetadata")]
-    pub fn read_metadata(&self) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.readMetadata".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "setMetadata")]
-    pub fn set_metadata(&self, _metadata_js: JsValue) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.setMetadata".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "exportPages")]
-    pub fn export_pages(
-        &self,
-        _page_indices_js: JsValue,
-        _format: String,
-        _output_path: String,
-    ) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.exportPages".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "setPassword")]
-    pub fn set_password(&self, _owner: String, _user: String) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.setPassword".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "removePassword")]
-    pub fn remove_password(&self) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.removePassword".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "readOutline")]
-    pub fn read_outline(&self) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.readOutline".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "setOutline")]
-    pub fn set_outline(&self, _outline_js: JsValue) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.setOutline".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "flatten")]
-    pub fn flatten(&self) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.flatten".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "readFormFields")]
-    pub fn read_form_fields(&self) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.readFormFields".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "fillFormField")]
-    pub fn fill_form_field(&self, _field_name: String, _value: String) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.fillFormField".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "readSignatures")]
-    pub fn read_signatures(&self) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.readSignatures".into(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = "readAttachments")]
-    pub fn read_attachments(&self) -> JsValue {
-        err_response(DocumentError::NotImplemented {
-            method: "document.readAttachments".into(),
-        })
-    }
 }
 
 impl Default for DocumentSession {

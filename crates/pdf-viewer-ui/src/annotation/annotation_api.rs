@@ -112,56 +112,6 @@ impl AnnotationManager {
         }
     }
 
-    // ── Reserved stubs (Tauri backend support pending) ─────────
-    //
-    // These methods complete the PDF /Annot CRUD surface but require new
-    // backend Tauri commands (`read_annotation`, `add_annotation`,
-    // `update_annotation`, `flatten_annotations`, `read_all_annotations`).
-
-    /// Read a single annotation by id on the given page.
-    #[wasm_bindgen(js_name = "get")]
-    pub fn get(&self, _path: String, _page_index: u16, _annotation_id: String) -> JsValue {
-        err_response(AnnotationError::NotImplemented {
-            method: "annotation.get".into(),
-        })
-    }
-
-    /// Add a new annotation to the given page.
-    #[wasm_bindgen(js_name = "add")]
-    pub fn add(&self, _path: String, _annotation_js: JsValue) -> JsValue {
-        err_response(AnnotationError::NotImplemented {
-            method: "annotation.add".into(),
-        })
-    }
-
-    /// Update an existing annotation's properties.
-    #[wasm_bindgen(js_name = "update")]
-    pub fn update(
-        &self,
-        _path: String,
-        _annotation_id: String,
-        _patch_js: JsValue,
-    ) -> JsValue {
-        err_response(AnnotationError::NotImplemented {
-            method: "annotation.update".into(),
-        })
-    }
-
-    /// Flatten all annotations on a page into the page content stream.
-    #[wasm_bindgen(js_name = "flatten")]
-    pub fn flatten(&self, _path: String, _page_index: u16) -> JsValue {
-        err_response(AnnotationError::NotImplemented {
-            method: "annotation.flatten".into(),
-        })
-    }
-
-    /// Read every annotation in the document (all pages).
-    #[wasm_bindgen(js_name = "readAll")]
-    pub fn read_all(&self, _path: String) -> JsValue {
-        err_response(AnnotationError::NotImplemented {
-            method: "annotation.readAll".into(),
-        })
-    }
 }
 
 impl Default for AnnotationManager {
