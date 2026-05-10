@@ -170,7 +170,7 @@ impl EditorSession {
 
         // Delegate to existing activation logic
         use crate::editor::activation::OpenEditorAtClientPointRequest;
-        use crate::editor::render_transaction::open_editor_tx;
+        use crate::editor::orchestrator::render_transaction::open_editor_tx;
 
         let open_request = OpenEditorAtClientPointRequest {
             paragraph_id: request.block_id.clone(),
@@ -272,7 +272,7 @@ impl EditorSession {
     pub fn close_block(&self) -> JsValue {
         guard_state!(SessionState::EditingBlock, "close_block");
 
-        use crate::editor::render_transaction::close_editor_tx;
+        use crate::editor::orchestrator::render_transaction::close_editor_tx;
         let frame_request = build_frame_request();
         let result = close_editor_tx(frame_request);
 
@@ -301,7 +301,7 @@ impl EditorSession {
         };
 
         use crate::editor::host_runtime::{begin_commit, finish_commit};
-        use crate::editor::render_transaction::commit_editor_tx;
+        use crate::editor::orchestrator::render_transaction::commit_editor_tx;
 
         if !begin_commit() {
             return err_response(EditorError::InvalidState {
@@ -437,7 +437,7 @@ impl EditorSession {
             }
         };
 
-        use crate::editor::render_transaction::sync_input_tx;
+        use crate::editor::orchestrator::render_transaction::sync_input_tx;
         let frame_request = build_frame_request();
         let result = sync_input_tx(request.text, request.caret_index as usize, frame_request);
 
@@ -473,7 +473,7 @@ impl EditorSession {
         };
 
         use crate::editor::command::EditorInputCommand;
-        use crate::editor::render_transaction::apply_input_tx;
+        use crate::editor::orchestrator::render_transaction::apply_input_tx;
         use crate::editor::host_snapshot::resolve_editor_host_snapshot;
 
         let command = match request.command.as_str() {
@@ -608,7 +608,7 @@ impl EditorSession {
             }
         };
 
-        use crate::editor::render_transaction::open_region_editor_tx;
+        use crate::editor::orchestrator::render_transaction::open_region_editor_tx;
         let frame_request = build_frame_request();
         let result = open_region_editor_tx(
             request.page_index,
@@ -681,7 +681,7 @@ impl EditorSession {
         guard_state!(SessionState::EditingBlock, "insert_text");
 
         use crate::editor::command::EditorInputCommand;
-        use crate::editor::render_transaction::apply_input_tx;
+        use crate::editor::orchestrator::render_transaction::apply_input_tx;
         use crate::editor::host_snapshot::resolve_editor_host_snapshot;
 
         let frame_request = build_frame_request();
@@ -704,7 +704,7 @@ impl EditorSession {
         guard_state!(SessionState::EditingBlock, "delete_text");
 
         use crate::editor::command::EditorInputCommand;
-        use crate::editor::render_transaction::apply_input_tx;
+        use crate::editor::orchestrator::render_transaction::apply_input_tx;
         use crate::editor::host_snapshot::resolve_editor_host_snapshot;
 
         let command = match direction {
@@ -737,7 +737,7 @@ impl EditorSession {
         guard_state!(SessionState::EditingBlock, "apply_format");
 
         use crate::editor::editor_controller::EditorFormatAction;
-        use crate::editor::render_transaction::apply_format_action_tx;
+        use crate::editor::orchestrator::render_transaction::apply_format_action_tx;
 
         let action: EditorFormatAction = match serde_wasm_bindgen::from_value(action_js) {
             Ok(a) => a,
@@ -849,7 +849,7 @@ impl EditorSession {
 
 impl EditorSession {
     fn do_commit_internal(&self) {
-        use crate::editor::commit::commit_pending_edit_if_any;
+        use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
         commit_pending_edit_if_any();
     }
 }

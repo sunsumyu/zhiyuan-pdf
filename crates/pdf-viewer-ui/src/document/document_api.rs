@@ -26,7 +26,7 @@ use crate::document::host_pipeline::{
 use crate::document::mutation_pipeline::request_document_refresh;
 use crate::document::patch_persistence::apply_document_patch;
 use crate::editor::editor_controller::build_region_text_patch;
-use crate::editor::replace_pipeline::{
+use crate::editor::orchestrator::replace_pipeline::{
     apply_region_text_replacements_tx,
     RegionTextReplaceRequest,
 };

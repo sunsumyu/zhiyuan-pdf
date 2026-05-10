@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::editor::commit::commit_pending_edit_if_any;
+use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
 use crate::editor::mode::{is_text_edit_mode_enabled, set_text_edit_mode_enabled};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

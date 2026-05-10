@@ -12,7 +12,7 @@ use crate::editor::edit_target::edit_target_base_paragraph_id;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::commit::commit_pending_edit_if_any;
+use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
 use crate::editor::mode::{close_active_editor, get_active_editor_state};
 use crate::editor::editor_controller::{
     find_paragraph_shell_bbox, open_editor_at_page_point, open_region_editor,

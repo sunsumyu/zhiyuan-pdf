@@ -7,7 +7,7 @@ use super::target_resolution::{
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::commit::commit_pending_edit_if_any;
+use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
 use crate::editor::list_format::resolve_active_marker_text;
 use crate::editor::replacement_snapshot::build_edit_replacement_snapshot;
 use crate::editor::session::{

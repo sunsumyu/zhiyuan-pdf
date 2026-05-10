@@ -1,7 +1,6 @@
 pub mod activation;
 pub mod bridge;
 pub mod command;
-pub mod commit;
 pub mod debug_trace;
 pub mod editor_api;
 pub mod editor_types;
@@ -11,8 +10,7 @@ pub mod host_runtime;
 pub mod host_snapshot;
 pub mod host_workflow;
 pub mod mode;
-pub mod render_transaction;
-pub mod replace_pipeline;
+pub mod orchestrator;
 pub mod replacement_region;
 pub mod replacement_snapshot;
 pub mod editor_controller;

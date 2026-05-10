@@ -7,7 +7,7 @@ use crate::editor::activation::{
 use crate::editor::command::{
     apply_editor_input_command, apply_input_with_host, EditorInputCommand,
 };
-use crate::editor::commit::commit_active_editor_text;
+use crate::editor::orchestrator::commit::commit_active_editor_text;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };

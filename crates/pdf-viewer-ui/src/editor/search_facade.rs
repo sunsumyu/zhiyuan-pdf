@@ -9,7 +9,7 @@ use crate::find::host_find_store::{
     set_find_session,
     HostFindScope,
 };
-use crate::editor::replace_pipeline::{
+use crate::editor::orchestrator::replace_pipeline::{
     apply_region_text_replacements_tx, RegionTextReplaceRequest,
 };
 use crate::present::plan_builder::FramePlanRequest;
