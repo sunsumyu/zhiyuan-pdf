@@ -431,7 +431,13 @@ impl From<PdfError> for String {
 - [x] `src-tauri` 引入 `PdfError` 错误枚举
 - [ ] WASM 全局状态收口到 `AppContext`
 - [ ] 关键管线（编辑→保存、打开→渲染）的端到端数据流文档
-- [ ] TS 侧拆分 `pdf_runtime.ts` (17KB) 和 `vector_host.ts` (23KB)
+- [x] TS 侧拆分 `vector_host.ts` *(已在前期重构中完成 — 文件不复存在)*
+- 🔁 **`pdf_runtime.ts` 保留不拆**（421 行 / 17KB）
+    经审视实为 **composition root**（DI 容器）：~75% 是 `createXxxController({deps})` 装配代码，~10%
+    是跨域编排（`renderCurrentPage` / `openTextPdfFlow` / `resetPdfViewerState`），<1% 业务逻辑。各域
+    controller 已分别在 `find/`、`annotation/`、`comment/`、`review/`、`editor/`、`zoom/`、`document/`
+    自己的文件中。强行按域再拆只会把装配迁到新文件 + 引入回调注入跨文件链，反而削弱可读性。原 audit
+    的 flag 基于纯行数，未审视职责密度。
 - [x] TS bridge 全面 Session 化 *(find/document/viewer/editor/comment/review/annotation/history)*
 - [x] §14 P1 polish *(end()/getTextBlocks(pageIndex)/onChange/onStateChange)*
 
