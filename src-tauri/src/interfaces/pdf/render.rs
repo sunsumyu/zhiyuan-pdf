@@ -43,7 +43,7 @@ pub async fn render_tile(
 ) -> Result<String, String> {
     // 1. Get lopdf paths and text runs from cache
     let (mut objects, runs, _pw, _ph) = {
-        let cache = state.pdf_documents.lock().unwrap();
+        let cache = state.docs.pdf_documents.lock().unwrap();
         let doc = cache
             .get(&path)
             .ok_or_else(|| format!("Doc not in cache: {}", path))?;
@@ -91,7 +91,7 @@ pub async fn render_tile(
 
     // 2. Get or init renderer (handle poisoned mutex from prior panics)
     let needs_init = {
-        let opt = state.vello_renderer.lock().unwrap_or_else(|e| {
+        let opt = state.renderer.vello_renderer.lock().unwrap_or_else(|e| {
             eprintln!("[PDF-VELLO] Recovering poisoned mutex");
             e.into_inner()
         });
@@ -101,7 +101,7 @@ pub async fn render_tile(
         let new_renderer =
             crate::infrastructure::pdf::vello_renderer::VelloRenderer::new().await?;
         let mut opt = state
-            .vello_renderer
+            .renderer.vello_renderer
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         if opt.is_none() {
@@ -109,7 +109,7 @@ pub async fn render_tile(
         }
     }
 
-    let mut vello_renderer_opt = state.vello_renderer.lock().unwrap_or_else(|e| {
+    let mut vello_renderer_opt = state.renderer.vello_renderer.lock().unwrap_or_else(|e| {
         eprintln!("[PDF-VELLO] Recovering poisoned mutex (render phase)");
         e.into_inner()
     });

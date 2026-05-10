@@ -16,7 +16,7 @@ pub async fn read_preview(
     let total_start = std::time::Instant::now();
     let cache_key = format!("{}::{}", path, page_index);
     if let Some(preview) = state
-        .page_preview_cache
+        .cache.page_preview_cache
         .lock()
         .unwrap()
         .get(&cache_key)
@@ -47,7 +47,7 @@ pub async fn read_preview(
     .map_err(|e: tokio::task::JoinError| e.to_string())??;
 
     state
-        .page_preview_cache
+        .cache.page_preview_cache
         .lock()
         .unwrap()
         .insert(cache_key, preview.clone());
@@ -71,7 +71,7 @@ pub async fn prefetch_preview(
 ) -> Result<(), String> {
     let cache_key = format!("{}::{}", path, page_index);
     if state
-        .page_preview_cache
+        .cache.page_preview_cache
         .lock()
         .unwrap()
         .contains_key(&cache_key)
@@ -94,7 +94,7 @@ pub async fn prefetch_preview(
     .map_err(|e: tokio::task::JoinError| e.to_string())??;
 
     state
-        .page_preview_cache
+        .cache.page_preview_cache
         .lock()
         .unwrap()
         .insert(cache_key, preview.clone());

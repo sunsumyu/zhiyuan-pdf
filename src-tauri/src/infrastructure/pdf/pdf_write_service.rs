@@ -18,7 +18,7 @@ impl PdfWriteService {
         log_step!("[PDF][save_pdf] START path={}", path);
         
         let working_path = {
-            let docs = state.pdf_documents.lock().unwrap();
+            let docs = state.docs.pdf_documents.lock().unwrap();
             let current_doc = docs
                 .get(&path)
                 .ok_or_else(|| "Document not found in cache".to_string())?;
@@ -53,7 +53,7 @@ impl PdfWriteService {
         .map_err(|e| e.to_string())??;
 
         {
-            let mut cache = state.pdf_documents.lock().unwrap();
+            let mut cache = state.docs.pdf_documents.lock().unwrap();
             cache.insert(path.clone(), new_doc);
         }
 
@@ -73,7 +73,7 @@ impl PdfWriteService {
 
         // 获取历史记录
         let previous_doc = {
-            let mut txs = state.pdf_transactions.lock().unwrap();
+            let mut txs = state.history.pdf_transactions.lock().unwrap();
             let history = txs.get_mut(path);
             
             if let Some(history) = history {
@@ -102,7 +102,7 @@ impl PdfWriteService {
 
             // 更新内存缓存
             {
-                let mut cache = state.pdf_documents.lock().unwrap();
+                let mut cache = state.docs.pdf_documents.lock().unwrap();
                 cache.insert(path.to_string(), previous_doc);
             }
 
@@ -111,7 +111,7 @@ impl PdfWriteService {
 
             // 清除重做历史
             {
-                let mut redo = state.pdf_redo_transactions.lock().unwrap();
+                let mut redo = state.history.pdf_redo_transactions.lock().unwrap();
                 redo.remove(path);
             }
 
@@ -131,16 +131,16 @@ impl PdfWriteService {
 
         // 获取重做历史
         let redo_doc = {
-            let mut redo = state.pdf_redo_transactions.lock().unwrap();
+            let mut redo = state.history.pdf_redo_transactions.lock().unwrap();
             redo.get(path).cloned()
         };
 
         if let Some(redo_doc) = redo_doc.as_ref().and_then(|v| v.last()).map(|arc| (**arc).clone()) {
             // 保存当前版本到撤销历史
             {
-                let docs = state.pdf_documents.lock().unwrap();
+                let docs = state.docs.pdf_documents.lock().unwrap();
                 if let Some(current_doc) = docs.get(path) {
-                    let mut txs = state.pdf_transactions.lock().unwrap();
+                    let mut txs = state.history.pdf_transactions.lock().unwrap();
                     let history = txs.entry(path.to_string()).or_insert_with(Vec::new);
                     history.push(current_doc.clone());
                     if history.len() > 20 {
@@ -162,7 +162,7 @@ impl PdfWriteService {
 
             // 更新内存缓存
             {
-                let mut cache = state.pdf_documents.lock().unwrap();
+                let mut cache = state.docs.pdf_documents.lock().unwrap();
                 cache.insert(path.to_string(), Arc::new(redo_doc));
             }
 
@@ -171,7 +171,7 @@ impl PdfWriteService {
 
             // 清除重做历史
             {
-                let mut redo = state.pdf_redo_transactions.lock().unwrap();
+                let mut redo = state.history.pdf_redo_transactions.lock().unwrap();
                 redo.remove(path);
             }
 
@@ -229,19 +229,19 @@ startxref
     fn invalidate_caches(state: &tauri::State<'_, crate::AppState>, path: &str) {
         // 清除轻量页面缓存
         {
-            let mut cache = state.pdf_light_page_cache.lock().unwrap();
+            let mut cache = state.cache.pdf_light_page_cache.lock().unwrap();
             cache.retain(|key, _| !key.starts_with(&format!("light::{}::", path)));
         }
 
         // 清除页面缓存
         {
-            let mut cache = state.pdf_page_cache.lock().unwrap();
+            let mut cache = state.cache.pdf_page_cache.lock().unwrap();
             cache.retain(|key, _| !key.starts_with(&format!("{}::", path)));
         }
 
         // 清除布局缓存
         {
-            let mut cache = state.pdf_layout_cache.lock().unwrap();
+            let mut cache = state.cache.pdf_layout_cache.lock().unwrap();
             cache.retain(|key, _| !key.starts_with(&format!("{}::", path)));
         }
     }

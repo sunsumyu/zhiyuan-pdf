@@ -48,7 +48,7 @@ impl PdfDocumentService {
 
     pub fn release_pdf_resources(state: &crate::AppState, path: &str) {
         {
-            let mut docs = state.pdf_documents.lock().unwrap();
+            let mut docs = state.docs.pdf_documents.lock().unwrap();
             docs.remove(path);
         }
 
@@ -57,16 +57,16 @@ impl PdfDocumentService {
         invalidate_pdf_layout_cache(state, path);
 
         {
-            let mut tx = state.pdf_transactions.lock().unwrap();
+            let mut tx = state.history.pdf_transactions.lock().unwrap();
             tx.remove(path);
         }
         {
-            let mut redo = state.pdf_redo_transactions.lock().unwrap();
+            let mut redo = state.history.pdf_redo_transactions.lock().unwrap();
             redo.remove(path);
         }
 
         {
-            let mut loading = state.loading_docs.lock().unwrap();
+            let mut loading = state.docs.loading_docs.lock().unwrap();
             loading.remove(path);
         }
 
@@ -77,7 +77,7 @@ impl PdfDocumentService {
             image_cache.clear();
         }
         {
-            let mut reports = state.pdf_materialization_reports.lock().unwrap();
+            let mut reports = state.cache.pdf_materialization_reports.lock().unwrap();
             reports.remove(path);
         }
 
@@ -87,7 +87,7 @@ impl PdfDocumentService {
 
     pub fn release_all_pdf_resources(state: &crate::AppState) {
         let paths: Vec<String> = {
-            let docs = state.pdf_documents.lock().unwrap();
+            let docs = state.docs.pdf_documents.lock().unwrap();
             docs.keys().cloned().collect()
         };
 
@@ -96,31 +96,31 @@ impl PdfDocumentService {
         }
 
         {
-            let mut docs = state.pdf_documents.lock().unwrap();
+            let mut docs = state.docs.pdf_documents.lock().unwrap();
             docs.clear();
         }
         {
-            let mut page_cache = state.pdf_light_page_cache.lock().unwrap();
+            let mut page_cache = state.cache.pdf_light_page_cache.lock().unwrap();
             page_cache.clear();
         }
         {
-            let mut page_cache = state.pdf_page_cache.lock().unwrap();
+            let mut page_cache = state.cache.pdf_page_cache.lock().unwrap();
             page_cache.clear();
         }
         {
-            let mut page_cache = state.pdf_layout_cache.lock().unwrap();
+            let mut page_cache = state.cache.pdf_layout_cache.lock().unwrap();
             page_cache.clear();
         }
         {
-            let mut tx = state.pdf_transactions.lock().unwrap();
+            let mut tx = state.history.pdf_transactions.lock().unwrap();
             tx.clear();
         }
         {
-            let mut redo = state.pdf_redo_transactions.lock().unwrap();
+            let mut redo = state.history.pdf_redo_transactions.lock().unwrap();
             redo.clear();
         }
         {
-            let mut loading = state.loading_docs.lock().unwrap();
+            let mut loading = state.docs.loading_docs.lock().unwrap();
             loading.clear();
         }
         {
@@ -138,7 +138,7 @@ impl PdfDocumentService {
             image_cache.clear();
         }
         {
-            let mut reports = state.pdf_materialization_reports.lock().unwrap();
+            let mut reports = state.cache.pdf_materialization_reports.lock().unwrap();
             reports.clear();
         }
 
@@ -157,7 +157,7 @@ impl PdfDocumentService {
 
         // 1. Check cache
         {
-            let cache = state.pdf_documents.lock().unwrap();
+            let cache = state.docs.pdf_documents.lock().unwrap();
             if let Some(doc) = cache.get(path) {
                 log_step!("[PDF][open_pdf] Cache HIT (Arc).");
                 let lopdf_count = doc.get_pages().len();
@@ -169,7 +169,7 @@ impl PdfDocumentService {
         }
 
         {
-            let mut loading = state.loading_docs.lock().unwrap();
+            let mut loading = state.docs.loading_docs.lock().unwrap();
             loading.insert(path.to_string(), crate::state::LoadingStatus::Loading);
         }
 
@@ -184,11 +184,11 @@ impl PdfDocumentService {
         let lopdf_count = doc.get_pages().len();
 
         {
-            let mut cache = state.pdf_documents.lock().unwrap();
+            let mut cache = state.docs.pdf_documents.lock().unwrap();
             cache.insert(path.to_string(), std::sync::Arc::new(doc));
         }
         {
-            let mut loading = state.loading_docs.lock().unwrap();
+            let mut loading = state.docs.loading_docs.lock().unwrap();
             loading.remove(path);
         }
 
@@ -298,7 +298,7 @@ impl PdfDocumentService {
 
         let working_path = Self::get_working_path(path);
         let doc = {
-            let mut cache = state.pdf_documents.lock().unwrap();
+            let mut cache = state.docs.pdf_documents.lock().unwrap();
             if let Some(d) = cache.get(path) {
                 d.clone()
             } else {
@@ -340,14 +340,14 @@ impl PdfDocumentService {
             .map_err(|e| format!("Lopdf Save Error: {}", e))?;
 
         {
-            let mut cache = state.pdf_documents.lock().unwrap();
+            let mut cache = state.docs.pdf_documents.lock().unwrap();
             cache.insert(path.to_string(), std::sync::Arc::new(doc_new));
         }
         invalidate_pdf_light_page_cache(&state, path);
         invalidate_pdf_page_cache(&state, path);
         invalidate_pdf_layout_cache(&state, path);
         {
-            let mut reports = state.pdf_materialization_reports.lock().unwrap();
+            let mut reports = state.cache.pdf_materialization_reports.lock().unwrap();
             reports.insert(path.to_string(), materialization_report);
         }
         Ok(())
@@ -357,7 +357,7 @@ impl PdfDocumentService {
         state: tauri::State<'_, crate::AppState>,
         path: &str,
     ) -> Result<Option<crate::infrastructure::pdf::models::PdfMaterializationReport>, String> {
-        let reports = state.pdf_materialization_reports.lock().unwrap();
+        let reports = state.cache.pdf_materialization_reports.lock().unwrap();
         Ok(reports.get(path).cloned())
     }
 
@@ -366,9 +366,9 @@ impl PdfDocumentService {
         path: &str,
     ) -> Result<(), String> {
         log_step!("[PDF][rollback] Request for {}", path);
-        let mut tx_cache = state.pdf_transactions.lock().unwrap();
-        let mut redo_cache = state.pdf_redo_transactions.lock().unwrap();
-        let mut doc_cache = state.pdf_documents.lock().unwrap();
+        let mut tx_cache = state.history.pdf_transactions.lock().unwrap();
+        let mut redo_cache = state.history.pdf_redo_transactions.lock().unwrap();
+        let mut doc_cache = state.docs.pdf_documents.lock().unwrap();
 
         if let Some(history) = tx_cache.get_mut(path) {
             if let Some(prev_doc) = history.pop() {
@@ -399,9 +399,9 @@ impl PdfDocumentService {
 
     pub async fn redo_pdf(state: tauri::State<'_, crate::AppState>, path: &str) -> Result<(), String> {
         log_step!("[PDF][redo] Request for {}", path);
-        let mut tx_cache = state.pdf_transactions.lock().unwrap();
-        let mut redo_cache = state.pdf_redo_transactions.lock().unwrap();
-        let mut doc_cache = state.pdf_documents.lock().unwrap();
+        let mut tx_cache = state.history.pdf_transactions.lock().unwrap();
+        let mut redo_cache = state.history.pdf_redo_transactions.lock().unwrap();
+        let mut doc_cache = state.docs.pdf_documents.lock().unwrap();
 
         if let Some(redo_history) = redo_cache.get_mut(path) {
             if let Some(next_doc) = redo_history.pop() {

@@ -17,7 +17,7 @@ pub(crate) async fn ensure_document_loaded(
     path: &str,
 ) -> Result<(), String> {
     {
-        let cache = app_state.pdf_documents.lock().unwrap();
+        let cache = app_state.docs.pdf_documents.lock().unwrap();
         if cache.contains_key(path) {
             return Ok(());
         }
@@ -33,7 +33,7 @@ pub(crate) async fn ensure_document_loaded(
     .await
     .map_err(|e| e.to_string())??;
 
-    let mut cache = app_state.pdf_documents.lock().unwrap();
+    let mut cache = app_state.docs.pdf_documents.lock().unwrap();
     cache.insert(path.to_string(), loaded_doc);
     Ok(())
 }
@@ -176,8 +176,8 @@ pub(crate) async fn execute_pdf_commands_with_app_state(
 
     // 1. Manage Transaction History for Undo
     {
-        let docs = app_state.pdf_documents.lock().unwrap();
-        let mut txs = app_state.pdf_transactions.lock().unwrap();
+        let docs = app_state.docs.pdf_documents.lock().unwrap();
+        let mut txs = app_state.history.pdf_transactions.lock().unwrap();
         if let Some(current_doc) = docs.get(&save_path) {
             let history = txs.entry(save_path.clone()).or_insert_with(Vec::new);
             history.push(current_doc.clone());
@@ -191,13 +191,13 @@ pub(crate) async fn execute_pdf_commands_with_app_state(
         }
     }
     {
-        let mut redo = app_state.pdf_redo_transactions.lock().unwrap();
+        let mut redo = app_state.history.pdf_redo_transactions.lock().unwrap();
         redo.remove(&save_path);
     }
 
     // 2. Apply commands to in-memory clone
     let mut new_doc = {
-        let docs = app_state.pdf_documents.lock().unwrap();
+        let docs = app_state.docs.pdf_documents.lock().unwrap();
         let current_doc = docs
             .get(&save_path)
             .ok_or_else(|| "Document not found in cache".to_string())?;
@@ -215,21 +215,21 @@ pub(crate) async fn execute_pdf_commands_with_app_state(
 
     // 4. Update memory cache and invalidate view caches
     {
-        let mut docs = app_state.pdf_documents.lock().unwrap();
+        let mut docs = app_state.docs.pdf_documents.lock().unwrap();
         docs.insert(save_path.clone(), std::sync::Arc::new(new_doc));
     }
 
     let light_prefix = format!("light::{}::", save_path);
-    let mut light_page_cache = app_state.pdf_light_page_cache.lock().unwrap();
+    let mut light_page_cache = app_state.cache.pdf_light_page_cache.lock().unwrap();
     light_page_cache.retain(|key, _| !key.starts_with(&light_prefix));
     drop(light_page_cache);
 
     let prefix = format!("{}::", save_path);
-    let mut page_cache = app_state.pdf_page_cache.lock().unwrap();
+    let mut page_cache = app_state.cache.pdf_page_cache.lock().unwrap();
     page_cache.retain(|key, _| !key.starts_with(&prefix));
     drop(page_cache);
 
-    let mut layout_cache = app_state.pdf_layout_cache.lock().unwrap();
+    let mut layout_cache = app_state.cache.pdf_layout_cache.lock().unwrap();
     layout_cache.retain(|key: &String, _| !key.starts_with(&prefix));
     drop(layout_cache);
 

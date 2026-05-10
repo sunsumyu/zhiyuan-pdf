@@ -245,7 +245,7 @@ pub(crate) async fn list_page_highlights(
     let page_model =
         PdfPageModelService::get_vector_page_model_from_app_state(app_state, path.to_string(), page_index, 1.0).await?;
     let doc = {
-        let docs = app_state.pdf_documents.lock().unwrap();
+        let docs = app_state.docs.pdf_documents.lock().unwrap();
         docs.get(path)
             .cloned()
             .ok_or_else(|| "Document not found in cache".to_string())?
@@ -286,7 +286,7 @@ pub(crate) async fn list_page_comments(
     let page_model =
         PdfPageModelService::get_vector_page_model_from_app_state(app_state, path.to_string(), page_index, 1.0).await?;
     let doc = {
-        let docs = app_state.pdf_documents.lock().unwrap();
+        let docs = app_state.docs.pdf_documents.lock().unwrap();
         docs.get(path)
             .cloned()
             .ok_or_else(|| "Document not found in cache".to_string())?

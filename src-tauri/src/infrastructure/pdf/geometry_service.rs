@@ -16,7 +16,7 @@ impl PdfEditorGeometryService {
         let cache_key = page_cache_key(&path, page_index);
 
         if let Some(result) = {
-            let cache = state.pdf_layout_cache.lock().unwrap();
+            let cache = state.cache.pdf_layout_cache.lock().unwrap();
             cache.get(&cache_key).cloned()
         } {
             log_step!("[PDF-Cache] HIT for {}", cache_key);
@@ -24,7 +24,7 @@ impl PdfEditorGeometryService {
         }
 
         let lopdf_doc = {
-            let cache = state.pdf_documents.lock().unwrap();
+            let cache = state.docs.pdf_documents.lock().unwrap();
             cache.get(&path).cloned()
         };
 
@@ -43,7 +43,7 @@ impl PdfEditorGeometryService {
         .map_err(|e| format!("Spawn Error V3: {}", e))??;
 
         {
-            let mut cache = state.pdf_layout_cache.lock().unwrap();
+            let mut cache = state.cache.pdf_layout_cache.lock().unwrap();
             cache.insert(cache_key, std::sync::Arc::new(result.clone()));
         }
 

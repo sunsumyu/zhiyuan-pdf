@@ -28,11 +28,11 @@ pub async fn open_pdf(
 pub fn clear_cache(state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
     PdfDocumentService::release_all_pdf_resources(&state);
     {
-        let mut cache = state.read_document_meta_cache.lock().unwrap();
+        let mut cache = state.docs.read_document_meta_cache.lock().unwrap();
         cache.clear();
     }
     {
-        let mut cache = state.page_preview_cache.lock().unwrap();
+        let mut cache = state.cache.page_preview_cache.lock().unwrap();
         cache.clear();
     }
     Ok(())
@@ -45,7 +45,7 @@ pub async fn read_pdf(
 ) -> Result<ReadDocumentMeta, String> {
     let total_start = std::time::Instant::now();
     if let Some(meta) = state
-        .read_document_meta_cache
+        .docs.read_document_meta_cache
         .lock()
         .unwrap()
         .get(&path)
@@ -70,7 +70,7 @@ pub async fn read_pdf(
     .map_err(|e: tokio::task::JoinError| e.to_string())??;
 
     state
-        .read_document_meta_cache
+        .docs.read_document_meta_cache
         .lock()
         .unwrap()
         .insert(path.clone(), meta.clone());
@@ -91,7 +91,7 @@ pub async fn probe_pdf(
 ) -> Result<ReadDocumentMeta, String> {
     let total_start = std::time::Instant::now();
     if let Some(meta) = state
-        .read_document_meta_cache
+        .docs.read_document_meta_cache
         .lock()
         .unwrap()
         .get(&path)
@@ -116,7 +116,7 @@ pub async fn probe_pdf(
     .map_err(|e: tokio::task::JoinError| e.to_string())??;
 
     state
-        .read_document_meta_cache
+        .docs.read_document_meta_cache
         .lock()
         .unwrap()
         .insert(path.clone(), meta.clone());

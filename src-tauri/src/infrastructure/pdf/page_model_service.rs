@@ -18,7 +18,7 @@ impl PdfPageModelService {
         log_step!("[PDF][get_pdf_metadata][V206.45] START for {}", path);
 
         let (page_count, info_dict) = {
-            let mut cache = app_state.pdf_documents.lock().unwrap();
+            let mut cache = app_state.docs.pdf_documents.lock().unwrap();
             let doc = if let Some(d) = cache.get(path) {
                 d.clone()
             } else {
@@ -84,7 +84,7 @@ impl PdfPageModelService {
         let cache_key = page_cache_key(&path, page_index);
 
         if let Some(model) = {
-            let cache = app_state.pdf_page_cache.lock().unwrap();
+            let cache = app_state.cache.pdf_page_cache.lock().unwrap();
             cache.get(&cache_key).cloned()
         } {
             log_step!("[PDF][PageCache] HIT for {}", cache_key);
@@ -94,7 +94,7 @@ impl PdfPageModelService {
         let background_image = None;
 
         let lopdf_doc = {
-            let cache = app_state.pdf_documents.lock().unwrap();
+            let cache = app_state.docs.pdf_documents.lock().unwrap();
             cache.get(&path).cloned()
         };
 
@@ -102,7 +102,7 @@ impl PdfPageModelService {
             doc
         } else {
             let loading_error = {
-                let loading = app_state.loading_docs.lock().unwrap();
+                let loading = app_state.docs.loading_docs.lock().unwrap();
                 match loading.get(&path) {
                     Some(crate::state::LoadingStatus::Error(err)) => Some(err.clone()),
                     _ => None,
@@ -129,12 +129,12 @@ impl PdfPageModelService {
             .map_err(|e| format!("Fallback lopdf load join error: {}", e))??;
 
             {
-                let mut cache = app_state.pdf_documents.lock().unwrap();
+                let mut cache = app_state.docs.pdf_documents.lock().unwrap();
                 cache.insert(path.clone(), loaded_doc.clone());
             }
 
             {
-                let mut loading = app_state.loading_docs.lock().unwrap();
+                let mut loading = app_state.docs.loading_docs.lock().unwrap();
                 loading.remove(&path);
             }
 
@@ -150,7 +150,7 @@ impl PdfPageModelService {
         .map_err(|e| format!(" Spawn Error: {}", e))??;
         model.background_image = background_image;
         {
-            let mut cache = app_state.pdf_page_cache.lock().unwrap();
+            let mut cache = app_state.cache.pdf_page_cache.lock().unwrap();
             cache.insert(cache_key, std::sync::Arc::new(model.clone()));
         }
         Ok(model)
@@ -180,7 +180,7 @@ impl PdfPageModelService {
         let cache_key = light_page_cache_key(&path, page_index);
 
         if let Some(model) = {
-            let cache = state.pdf_light_page_cache.lock().unwrap();
+            let cache = state.cache.pdf_light_page_cache.lock().unwrap();
             cache.get(&cache_key).cloned()
         } {
             log_step!("[PDF][LightPageCache] HIT for {}", cache_key);
@@ -192,7 +192,7 @@ impl PdfPageModelService {
         }
 
         let lopdf_doc = {
-            let cache = state.pdf_documents.lock().unwrap();
+            let cache = state.docs.pdf_documents.lock().unwrap();
             cache.get(&path).cloned()
         };
 
@@ -200,7 +200,7 @@ impl PdfPageModelService {
             doc
         } else {
             let loading_error = {
-                let loading = state.loading_docs.lock().unwrap();
+                let loading = state.docs.loading_docs.lock().unwrap();
                 match loading.get(&path) {
                     Some(crate::state::LoadingStatus::Error(err)) => Some(err.clone()),
                     _ => None,
@@ -241,7 +241,7 @@ impl PdfPageModelService {
         );
 
         {
-            let mut cache = state.pdf_light_page_cache.lock().unwrap();
+            let mut cache = state.cache.pdf_light_page_cache.lock().unwrap();
             cache.insert(cache_key, std::sync::Arc::new(model.clone()));
         }
 

@@ -73,7 +73,7 @@ impl PdfReadService {
         
         // 检查是否已在缓存中
         {
-            let cache = state.pdf_documents.lock().unwrap();
+            let cache = state.docs.pdf_documents.lock().unwrap();
             if cache.contains_key(&path) {
                 log_step!("[PDF][open_pdf] Already cached: {}", path);
                 return Ok(());
@@ -82,7 +82,7 @@ impl PdfReadService {
 
         // 设置加载状态
         {
-            let mut loading = state.loading_docs.lock().unwrap();
+            let mut loading = state.docs.loading_docs.lock().unwrap();
             loading.insert(path.clone(), crate::state::LoadingStatus::Loading);
         }
 
@@ -98,13 +98,13 @@ impl PdfReadService {
 
         // 更新缓存
         {
-            let mut cache = state.pdf_documents.lock().unwrap();
+            let mut cache = state.docs.pdf_documents.lock().unwrap();
             cache.insert(path.clone(), loaded_doc);
         }
 
         // 更新加载状态
         {
-            let mut loading = state.loading_docs.lock().unwrap();
+            let mut loading = state.docs.loading_docs.lock().unwrap();
             loading.insert(path, crate::state::LoadingStatus::Ready);
         }
 
@@ -117,7 +117,7 @@ impl PdfReadService {
         app_state: &crate::AppState,
         path: &str,
     ) -> Result<PdfMetadata, String> {
-        let docs = app_state.pdf_documents.lock().unwrap();
+        let docs = app_state.docs.pdf_documents.lock().unwrap();
         let doc = docs
             .get(path)
             .ok_or_else(|| format!("Document not found in cache: {}", path))?;
@@ -140,7 +140,7 @@ impl PdfReadService {
         path: &str,
         page_index: u16,
     ) -> Result<NativeVectorPageModel, String> {
-        let docs = app_state.pdf_documents.lock().unwrap();
+        let docs = app_state.docs.pdf_documents.lock().unwrap();
         let doc = docs
             .get(path)
             .ok_or_else(|| format!("Document not found in cache: {}", path))?;
@@ -166,7 +166,7 @@ impl PdfReadService {
         path: String,
         page_index: u16,
     ) -> Result<LayoutInferenceResult, String> {
-        let docs = state.pdf_documents.lock().unwrap();
+        let docs = state.docs.pdf_documents.lock().unwrap();
         let doc = docs
             .get(&path)
             .ok_or_else(|| format!("Document not found in cache: {}", path))?;
@@ -183,7 +183,7 @@ impl PdfReadService {
         path: String,
         page_index: u16,
     ) -> Result<GlyphPaintPlan, String> {
-        let docs = state.pdf_documents.lock().unwrap();
+        let docs = state.docs.pdf_documents.lock().unwrap();
         let doc = docs
             .get(&path)
             .ok_or_else(|| format!("Document not found in cache: {}", path))?;

@@ -35,7 +35,7 @@ pub(crate) async fn review_document_comments(
     ensure_document_loaded(app_state, path).await?;
 
     let page_count = {
-        let docs = app_state.pdf_documents.lock().unwrap();
+        let docs = app_state.docs.pdf_documents.lock().unwrap();
         let doc = docs
             .get(path)
             .cloned()

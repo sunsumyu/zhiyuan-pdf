@@ -1,36 +1,13 @@
+pub mod app_state;
 pub mod infrastructure;
 pub mod interfaces;
 pub mod application;
 pub mod state;
 
+pub use app_state::{AppState, CacheStore, DocumentStore, HistoryStore, RendererState};
 
-pub struct AppState {
-pub pdf_documents: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<lopdf::Document>>>,
-pub pdf_light_page_cache: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<infrastructure::pdf::models::LightPageModel>>>,
-pub pdf_page_cache: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<infrastructure::pdf::models::NativeVectorPageModel>>>,
-pub pdf_layout_cache: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<pdf_viewer_core::models::LayoutInferenceResult>>>,
-pub read_document_meta_cache: std::sync::Mutex<std::collections::HashMap<String, infrastructure::pdf_read::types::ReadDocumentMeta>>,
-pub page_preview_cache: std::sync::Mutex<std::collections::HashMap<String, infrastructure::pdf_read::types::PagePreview>>,
-pub pdf_transactions: std::sync::Mutex<std::collections::HashMap<String, Vec<std::sync::Arc<lopdf::Document>>>>,
-pub pdf_redo_transactions: std::sync::Mutex<std::collections::HashMap<String, Vec<std::sync::Arc<lopdf::Document>>>>,
-pub loading_docs: std::sync::Mutex<std::collections::HashMap<String, state::LoadingStatus>>,
-pub vello_renderer: std::sync::Mutex<Option<std::sync::Arc<std::sync::Mutex<crate::infrastructure::pdf::vello_renderer::VelloRenderer>>>>,
-pub pdf_materialization_reports: std::sync::Mutex<std::collections::HashMap<String, infrastructure::pdf::models::PdfMaterializationReport>>,
-}
 pub fn run() {
-    let app_state = AppState {
-        pdf_documents: std::sync::Mutex::new(std::collections::HashMap::new()),
-        pdf_light_page_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
-        pdf_page_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
-        pdf_layout_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
-        read_document_meta_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
-        page_preview_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
-        pdf_transactions: std::sync::Mutex::new(std::collections::HashMap::new()),
-        pdf_redo_transactions: std::sync::Mutex::new(std::collections::HashMap::new()),
-        loading_docs: std::sync::Mutex::new(std::collections::HashMap::new()),
-vello_renderer: std::sync::Mutex::new(None),
-        pdf_materialization_reports: std::sync::Mutex::new(std::collections::HashMap::new()),
-    };
+    let app_state = AppState::new();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
