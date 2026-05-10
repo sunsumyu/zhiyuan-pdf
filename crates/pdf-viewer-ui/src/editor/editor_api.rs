@@ -1,4 +1,5 @@
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 use serde::Deserialize;
 use serde_wasm_bindgen::to_value;
 
@@ -320,6 +321,31 @@ impl EditorSession {
         let _ = set_text_edit_mode(false);
 
         ok_response(CommitResult { changed: result.changed }, true)
+    }
+
+    /// End the editing session, auto-committing any pending block edits.
+    /// Allowed from `Editing` or `EditingBlock`; both end at `Viewing`.
+    ///
+    /// Distinct from `commit()` (which requires `EditingBlock`) and
+    /// `discard()` (which throws away unsaved edits). `end()` is the
+    /// "save and exit" exit point — equivalent to Nutrient's `session.commit()`.
+    /// See architecture proposal §14.3.
+    #[wasm_bindgen(js_name = "end")]
+    pub fn end(&self) -> JsValue {
+        guard_state!(
+            SessionState::Editing | SessionState::EditingBlock,
+            "end"
+        );
+
+        if editor_store::get_state() == SessionState::EditingBlock {
+            self.do_commit_internal();
+        }
+        editor_store::transition_to_viewing();
+
+        use crate::editor::host_mode::set_text_edit_mode;
+        let _ = set_text_edit_mode(false);
+
+        ok_empty(true)
     }
 
     /// Discard all edits and exit: any state → Viewing.
@@ -733,13 +759,32 @@ impl EditorSession {
         )
     }
 
-    /// Get the list of editable text blocks on the current page.
+    /// Get the list of editable text blocks on the given page.
+    ///
+    /// Currently only the active page's blocks are kept in memory by the
+    /// page store, so callers must pass the same `page_index` as the viewer
+    /// session's `currentPage`. Mismatched indices return an empty list
+    /// (with a warning log) instead of an error — that lets cross-page
+    /// queries fail gracefully while we wait for multi-page caching.
+    /// See architecture proposal §14.6.
     #[wasm_bindgen(js_name = "getTextBlocks")]
-    pub fn get_text_blocks(&self) -> JsValue {
+    pub fn get_text_blocks(&self, page_index: u16) -> JsValue {
         guard_state!(
             SessionState::Editing | SessionState::EditingBlock,
             "get_text_blocks"
         );
+
+        let active_page = crate::viewer::viewer_store::get_viewer_session().current_page;
+        if page_index != active_page {
+            log::warn!(
+                "[EditorSession::get_text_blocks] page_index={} but only the active page (={}) is currently cached; returning empty list",
+                page_index,
+                active_page,
+            );
+            let empty: Vec<TextBlockInfo> = Vec::new();
+            return ok_response(empty, false);
+        }
+
         let blocks = collect_text_blocks();
         ok_response(blocks, false)
     }
@@ -752,6 +797,50 @@ impl EditorSession {
         use crate::editor::editor_controller::active_editor_format_state;
         let state = active_editor_format_state();
         to_value(&state).unwrap_or(JsValue::NULL)
+    }
+
+    // ── P1: Event callbacks (§14.7) ─────────────────────────────
+
+    /// Register a callback fired on every `SessionState` transition.
+    /// The callback receives the new state as a camelCase string
+    /// (matches `getSnapshot().state`). Pass `null` to unregister.
+    #[wasm_bindgen(js_name = "onStateChange")]
+    pub fn on_state_change(&self, callback: JsValue) -> JsValue {
+        if callback.is_null() || callback.is_undefined() {
+            editor_store::set_state_change_callback(None);
+            return ok_empty(false);
+        }
+        let func: js_sys::Function = match callback.dyn_into() {
+            Ok(f) => f,
+            Err(_) => {
+                return err_response(EditorError::Internal {
+                    message: "onStateChange: callback must be a function".into(),
+                });
+            }
+        };
+        editor_store::set_state_change_callback(Some(func));
+        ok_empty(false)
+    }
+
+    /// Register a callback fired on any session mutation (state or active block).
+    /// Arity-0 callback; observers should re-read state via `getSnapshot()`.
+    /// Pass `null` to unregister.
+    #[wasm_bindgen(js_name = "onChange")]
+    pub fn on_change(&self, callback: JsValue) -> JsValue {
+        if callback.is_null() || callback.is_undefined() {
+            editor_store::set_change_callback(None);
+            return ok_empty(false);
+        }
+        let func: js_sys::Function = match callback.dyn_into() {
+            Ok(f) => f,
+            Err(_) => {
+                return err_response(EditorError::Internal {
+                    message: "onChange: callback must be a function".into(),
+                });
+            }
+        };
+        editor_store::set_change_callback(Some(func));
+        ok_empty(false)
     }
 
     // ── P2 stubs (editor-level clipboard & selection) ───────────

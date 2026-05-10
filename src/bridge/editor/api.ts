@@ -129,8 +129,8 @@ export function applyFormat(action: EditorFormatAction): EditorResponse<CommitRe
     return getSession()?.applyFormat(action) ?? null;
 }
 
-export function getTextBlocks(): EditorResponse<TextBlockInfo[]> | null {
-    return getSession()?.getTextBlocks() ?? null;
+export function getTextBlocks(pageIndex: number): EditorResponse<TextBlockInfo[]> | null {
+    return getSession()?.getTextBlocks(pageIndex) ?? null;
 }
 
 export function getFormatState(): unknown {
