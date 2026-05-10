@@ -1,5 +1,3 @@
-pub mod algorithms;
-pub mod analysis;
 pub mod annotation;
 pub mod document;
 pub mod edit;

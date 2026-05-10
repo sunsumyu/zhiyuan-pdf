@@ -11,6 +11,8 @@ pub mod annotation_store;
 pub mod commands;
 pub mod font;
 pub mod layout_analyzer;
+pub mod layout_engine;
+pub mod spatial_graph;
 pub mod models;
 pub mod page_classifier;
 pub mod pdf_font;

@@ -1,5 +1,5 @@
+use crate::infrastructure::pdf::layout_engine::LayoutGraphAnalyzer as CoreAnalyzer;
 use crate::infrastructure::pdf::models::{LayoutInferenceResult, StyledRun};
-pub use pdf_viewer_core::analysis::analyzer::LayoutGraphAnalyzer as CoreAnalyzer;
 
 /// 甯冨眬鍒嗘瀽寮曟搸 - V3 (Tauri 瀹夸富浠ｇ悊)
 pub struct LayoutGraphAnalyzer {

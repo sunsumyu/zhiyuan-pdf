@@ -1,4 +1,12 @@
-use crate::models::LayoutRun;
+//! Spatial adjacency graph used by `layout_engine`.
+//!
+//! Moved from `pdf_viewer_core::algorithms::graph` (architecture-review §2.2 /
+//! Phase 2: P3 single-side module relocation). The graph is only used by the
+//! layout-inference pass, which is itself only invoked from the Tauri side
+//! (`vector_engine` -> `LayoutGraphAnalyzer`), so it does not need to live in
+//! the cross-side `pdf-viewer-core` crate.
+
+use pdf_viewer_core::models::LayoutRun;
 use std::collections::{HashMap, HashSet};
 
 /// 空间邻接图：用于建模文本块之间的 2D 拓扑关系
