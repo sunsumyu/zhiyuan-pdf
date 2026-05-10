@@ -228,13 +228,20 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
         el?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
     }
 
-    function applyUpdate(update: FindStateUpdate | null): void {
-        if (!update) return;
+    // Re-render the find UI from a post-mutation snapshot.
+    //
+    // `snapshot` is what `FindSession.{open,close,toggle,clear,setResult,...}`
+    // return after they have already mutated the wasm-side state. It is *not*
+    // a delta to be "applied" — every state-mutating call is fire-and-forget
+    // on the wasm side; this function is purely a DOM re-render driven by the
+    // returned data plus a fresh `getToolbarState()` read.
+    function renderFindUi(snapshot: FindStateUpdate | null): void {
+        if (!snapshot) return;
         renderToolbarFromWasm();
-        renderOverlayFromUpdate(update);
-        scrollActiveIntoView(update.state.activeIndex);
-        if (update.navigateToPage != null) {
-            void deps.goToPage(update.navigateToPage).then(() => refresh());
+        renderOverlayFromUpdate(snapshot);
+        scrollActiveIntoView(snapshot.state.activeIndex);
+        if (snapshot.navigateToPage != null) {
+            void deps.goToPage(snapshot.navigateToPage).then(() => refresh());
         }
     }
 
@@ -245,7 +252,7 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
         const query = nodes.input?.value?.trim() ?? '';
         const session = deps.getViewerSession();
         if (!session.path || !query) {
-            applyUpdate(callSession<FindStateUpdate>(findSession(), 'clear'));
+            renderFindUi(callSession<FindStateUpdate>(findSession(), 'clear'));
             return;
         }
 
@@ -255,12 +262,12 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
             : await findInPageAsync({ path: session.path, pageIndex: session.currentPage, query, caseSensitive: false });
 
         if (!result) {
-            applyUpdate(callSession<FindStateUpdate>(findSession(), 'clear'));
+            renderFindUi(callSession<FindStateUpdate>(findSession(), 'clear'));
             return;
         }
 
         const update = callSession<FindStateUpdate>(findSession(), 'setResult', result, scope, session.currentPage);
-        applyUpdate(update);
+        renderFindUi(update);
     }
 
     function scheduleSearch(): void {
@@ -278,18 +285,18 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
 
     function open(): void {
         const s = deps.getViewerSession();
-        applyUpdate(callSession<FindStateUpdate>(findSession(), 'open', s.currentPage, s.pageCount, s.path ?? ''));
+        renderFindUi(callSession<FindStateUpdate>(findSession(), 'open', s.currentPage, s.pageCount, s.path ?? ''));
         focusInput();
         if (getNodes().input?.value?.trim()) scheduleSearch();
     }
 
     function close(): void {
-        applyUpdate(callSession<FindStateUpdate>(findSession(), 'close'));
+        renderFindUi(callSession<FindStateUpdate>(findSession(), 'close'));
     }
 
     function toggle(): void {
         const s = deps.getViewerSession();
-        applyUpdate(callSession<FindStateUpdate>(findSession(), 'toggle', s.currentPage, s.pageCount, s.path ?? ''));
+        renderFindUi(callSession<FindStateUpdate>(findSession(), 'toggle', s.currentPage, s.pageCount, s.path ?? ''));
         const toolbar = callSession<FindToolbarState>(findSession(), 'getToolbarState');
         if (toolbar?.isOpen) {
             focusInput();
@@ -299,12 +306,12 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
 
     async function next(): Promise<void> {
         const update = callSession<FindStateUpdate>(findSession(), 'moveActive', 1);
-        applyUpdate(update);
+        renderFindUi(update);
     }
 
     async function prev(): Promise<void> {
         const update = callSession<FindStateUpdate>(findSession(), 'moveActive', -1);
-        applyUpdate(update);
+        renderFindUi(update);
     }
 
     async function replaceCurrent(): Promise<void> {
@@ -390,7 +397,7 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
         const nodes = getNodes();
         if (nodes.input) nodes.input.value = '';
         if (nodes.scope) nodes.scope.value = 'page';
-        applyUpdate(callSession<FindStateUpdate>(findSession(), 'clear'));
+        renderFindUi(callSession<FindStateUpdate>(findSession(), 'clear'));
     }
 
     function initialize(): void {
