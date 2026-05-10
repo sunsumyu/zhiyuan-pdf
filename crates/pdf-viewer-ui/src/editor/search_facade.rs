@@ -2,11 +2,11 @@ use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::to_value;
 
-use crate::viewer::find::{
-    clear_find_session as host_clear_find_session,
-    get_find_session as host_get_find_session,
-    move_find_match as host_move_find_match,
-    set_find_session as host_set_find_session,
+use crate::viewer::find_store::{
+    clear_find_session,
+    get_find_session,
+    move_find_match,
+    set_find_session,
     HostFindScope,
 };
 use crate::editor::replace_pipeline::{
@@ -194,7 +194,7 @@ pub fn facade_replace(request_js: JsValue) -> JsValue {
 
 #[wasm_bindgen(js_name = "searchFacadeBatchReplace")]
 pub fn facade_batch_replace(request_js: JsValue) -> JsValue {
-    let request: BatchReplaceRequest = match serde_wasm_bindgen::from_value(request_js) {
+    let _request: BatchReplaceRequest = match serde_wasm_bindgen::from_value(request_js) {
         Ok(r) => r,
         Err(_) => return JsValue::NULL,
     };
@@ -219,7 +219,7 @@ pub fn facade_set_session(session_js: JsValue) -> JsValue {
         "document" => HostFindScope::Document,
         _ => HostFindScope::Page,
     };
-    let nav = host_set_find_session(session.query.clone(), scope, session.page_indices.clone(), Some(session.current_page));
+    let nav = set_find_session(session.query.clone(), scope, session.page_indices.clone(), Some(session.current_page));
     let result = SearchFacadeResult {
         changed: true,
         session: Some(session),
@@ -230,14 +230,14 @@ pub fn facade_set_session(session_js: JsValue) -> JsValue {
 
 #[wasm_bindgen(js_name = "searchFacadeClearSession")]
 pub fn facade_clear_session() -> JsValue {
-    host_clear_find_session();
+    clear_find_session();
     let result = SearchFacadeResult { changed: true, session: None, navigation: None };
     to_value(&result).unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = "searchFacadeMoveMatch")]
 pub fn facade_move_match(step: i32) -> JsValue {
-    let nav = host_move_find_match(step);
+    let nav = move_find_match(step);
     let result = SearchFacadeResult {
         changed: true,
         session: None,
@@ -248,7 +248,7 @@ pub fn facade_move_match(step: i32) -> JsValue {
 
 #[wasm_bindgen(js_name = "searchFacadeGetSession")]
 pub fn facade_get_session() -> JsValue {
-    let session = host_get_find_session();
+    let session = get_find_session();
     let result = FindSession {
         query: session.query,
         scope: match session.scope { HostFindScope::Document => "document".into(), _ => "page".into() },

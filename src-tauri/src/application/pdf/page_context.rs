@@ -4,7 +4,7 @@ use crate::infrastructure::pdf::models::{
 use pdf_viewer_core::models::{
     NativePageModel, NativePageObject, NativeTextModel as CoreNativeTextModel,
 };
-use pdf_viewer_core::page_region_context::{build_page_region_context, PageRegionContextOutput};
+use pdf_viewer_core::document::page_region_context::{build_page_region_context, PageRegionContextOutput};
 pub(crate)
 fn build_page_region_context_from_vector_model(
     page_model: &VectorPageModel,

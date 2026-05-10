@@ -261,7 +261,7 @@ pub horizontal_scaling: f32,
 fn default_scale_x() -> f32 {
     100.0
 }
-pub use pdf_viewer_core::persistence_models::PersistableRegionPatch;
+pub use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]

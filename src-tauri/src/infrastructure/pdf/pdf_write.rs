@@ -7,7 +7,7 @@ use crate::infrastructure::pdf::pdf_font::{ParsedFont, resolve_glyph_geom, Resou
 use crate::infrastructure::pdf::pdf_read::{read_resources, FlatResources, operands_to_f32, multiply_matrices};
 use crate::infrastructure::pdf::pdf_write_font_resolver::resolve_text_write_font;
 use crate::infrastructure::pdf::save_text_write_plan::{truncate_for_log, PersistedTextLinePlan};
-use pdf_viewer_core::coordinate_transform::PdfCoordinateSpace;
+use pdf_viewer_core::geometry::coordinate_transform::PdfCoordinateSpace;
 
 pub trait PdfDocExt {
     fn apply_text_patch(&mut self, page_num: u32, old_text: &str, new_text: &str, target_index: Option<usize>, offset_x: Option<f32>) -> Result<(), String>;
@@ -555,8 +555,8 @@ fn break_text_into_lines(
     line_height: Option<f32>,
     char_spacing: f32,
     scale_x: f32,
-) -> pdf_viewer_core::layout_engine::ParagraphLayout {
-    use pdf_viewer_core::layout_engine::layout_paragraph;
+) -> pdf_viewer_core::geometry::layout_engine::ParagraphLayout {
+    use pdf_viewer_core::geometry::layout_engine::layout_paragraph;
     use pdf_viewer_core::models::{LayoutAlignment, LayoutParagraph, LayoutRun, ParagraphStyle, RunStyle};
 
     let runs = runs.cloned().unwrap_or_else(|| vec![LayoutRun {
@@ -620,10 +620,10 @@ fn read_page_annotation_refs(doc: &Document, page_id: lopdf::ObjectId) -> Result
     }
 }
 
-fn resolve_line_color(line: &pdf_viewer_core::layout_engine::VisualLine) -> String {
+fn resolve_line_color(line: &pdf_viewer_core::geometry::layout_engine::VisualLine) -> String {
     line.runs.iter().find(|r| !r.text.is_empty()).map(|r| r.style.color.clone()).filter(|c| !c.trim().is_empty()).unwrap_or_else(|| "#000000".to_string())
 }
-fn resolve_line_underline(line: &pdf_viewer_core::layout_engine::VisualLine) -> bool {
+fn resolve_line_underline(line: &pdf_viewer_core::geometry::layout_engine::VisualLine) -> bool {
     line.runs.iter().any(|r| r.style.is_underline)
 }
 fn parse_pdf_hex_color(color: &str) -> Option<[f32; 3]> {

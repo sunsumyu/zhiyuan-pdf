@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::models::LayoutInferenceResult;
-use crate::state_manager::GLOBAL_PATCH_STATE;
+use crate::persistence::state_manager::GLOBAL_PATCH_STATE;
 
 pub fn calculate_reflow_displacements(
     v3_model: &LayoutInferenceResult

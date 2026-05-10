@@ -1,6 +1,6 @@
 use crate::editor::mode::{close_active_editor, get_active_editor_state};
-use crate::editor::runtime::build_active_editor_patch;
-use crate::editor::runtime::EditorVisibilityAction;
+use crate::editor::editor_controller::build_active_editor_patch;
+use crate::editor::editor_controller::EditorVisibilityAction;
 use crate::editor::session::active_editor_draft_text;
 use crate::document::patch_persistence::apply_document_patch_direct;
 use crate::state_manager::remember_paragraph_replacement_target;
@@ -29,25 +29,9 @@ pub fn commit_active_editor_text(new_text: String) -> EditorVisibilityAction {
         "newLen" => new_text.chars().count(),
         "hasActive" => active_state.is_some(),
     );
-    let new_text_preview: String = new_text.chars().take(40).collect();
-    web_sys::console::log_1(&format!(
-        "[COMMIT-TEXT] enter newTextLen={} newTextPreview='{}' hasActiveState={}",
-        new_text.chars().count(), new_text_preview, active_state.is_some()
-    ).into());
     let patch_opt = build_active_editor_patch(new_text);
-    web_sys::console::log_1(&format!(
-        "[AREN_COMMIT] patch_opt.is_some={} patch_preview={}",
-        patch_opt.is_some(),
-        patch_opt.as_ref().map(|p| format!(
-            "source={} kind={:?} newMarker='{}' regionId={}",
-            p.source, p.kind,
-            p.new_marker_text.as_deref().unwrap_or("<empty>"),
-            p.region_id
-        )).unwrap_or_else(|| "None".to_string())
-    ).into());
     let Some(patch) = patch_opt else {
         crate::chain_trace!("commit.build", "ok" => false, "reason" => "noop-or-no-state");
-        web_sys::console::log_1(&"[COMMIT-TEXT] !!! build_active_editor_patch returned None (noop or no active state)".to_string().into());
         let changed = close_active_editor();
         return EditorVisibilityAction {
             changed: false,
@@ -62,11 +46,6 @@ pub fn commit_active_editor_text(new_text: String) -> EditorVisibilityAction {
         "origLen" => patch.original_text.chars().count(),
         "newLen" => patch.new_text.chars().count(),
     );
-    web_sys::console::log_1(&format!(
-        "[COMMIT-TEXT] patch built regionId={} source={} originalLen={} newLen={}",
-        patch.region_id, patch.source,
-        patch.original_text.chars().count(), patch.new_text.chars().count()
-    ).into());
     if let Some(active_state) = active_state {
         let active_paragraph_id = active_state.paragraph_id().to_string();
         let replacement_target = active_state.target;
@@ -75,11 +54,6 @@ pub fn commit_active_editor_text(new_text: String) -> EditorVisibilityAction {
             remember_paragraph_replacement_target(&active_paragraph_id, replacement_target);
         }
     }
-    web_sys::console::log_1(&format!(
-        "[AREN_COMMIT] applying patch regionId={} source={} kind={:?} newMarker='{}'",
-        patch.region_id, patch.source, patch.kind,
-        patch.new_marker_text.as_deref().unwrap_or("<empty>")
-    ).into());
     apply_document_patch_direct(patch);
     let changed = close_active_editor();
     EditorVisibilityAction {

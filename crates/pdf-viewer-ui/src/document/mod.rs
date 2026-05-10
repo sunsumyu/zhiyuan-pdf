@@ -1,5 +1,6 @@
 pub mod comment;
-pub mod facade;
+pub mod document_api;
+pub mod document_types;
 pub mod history;
 pub mod host_pipeline;
 pub mod io;

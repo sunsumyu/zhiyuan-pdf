@@ -1,7 +1,7 @@
 use crate::editor::bridge::ParagraphInteractionTarget;
 use crate::editor::mode::get_active_editor_state;
-use crate::editor::runtime::collect_paragraph_targets;
-use pdf_viewer_core::coordinate_transform::PdfToPageViewTransform;
+use crate::editor::editor_controller::collect_paragraph_targets;
+use pdf_viewer_core::geometry::coordinate_transform::PdfToPageViewTransform;
 use serde::{Deserialize, Serialize};
 
 const EDITOR_Y_BUFFER: f32 = 1.0;

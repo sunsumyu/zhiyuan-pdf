@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::present::plan_builder::compute_viewport_layout_result;
 use crate::utils::sanitize::{sanitize_non_negative, sanitize_positive};
-use crate::zoom::runtime::set_visual_layout;
+use crate::zoom::zoom_controller::set_visual_layout;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

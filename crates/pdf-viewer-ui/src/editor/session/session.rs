@@ -4,76 +4,15 @@ use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::engine_state::LiveEditorParagraphState;
-use crate::editor::paragraph_scene::ParagraphEditorScene;
 use crate::state_manager::{
     current_paragraph_patch_text, current_paragraph_patch, current_patch_revision,
 };
 use crate::style_mapper::StyleMapper;
-use crate::viewer::session::current_document_revision;
-use pdf_viewer_core::models::EditorSession;
+use crate::viewer::viewer_store::current_document_revision;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ActiveEditorTarget {
-    pub paragraph_id: String,
-    pub region_id: String,
-    pub page_index: u16,
-    pub text: String,
-    pub bbox_left: f32,
-    pub bbox_top: f32,
-    pub bbox_right: f32,
-    pub bbox_bottom: f32,
-    pub font_family: String,
-    pub font_size: f32,
-    pub font_weight: String,
-    pub font_style: String,
-    pub color: String,
-    #[serde(default)]
-    pub text_decoration: String,
-    #[serde(default)]
-    pub initial_caret_index: usize,
-    pub editor_session: EditorSession,
-    #[serde(default)]
-    pub scene: ParagraphEditorScene,
-}
-
-impl Default for ActiveEditorTarget {
-    fn default() -> Self {
-        Self {
-            paragraph_id: String::new(),
-            region_id: String::new(),
-            page_index: 0,
-            text: String::new(),
-            bbox_left: 0.0,
-            bbox_top: 0.0,
-            bbox_right: 0.0,
-            bbox_bottom: 0.0,
-            font_family: String::new(),
-            font_size: 0.0,
-            font_weight: String::new(),
-            font_style: String::new(),
-            color: String::new(),
-            text_decoration: String::new(),
-            initial_caret_index: 0,
-            editor_session: EditorSession {
-                anchor_bbox: pdf_viewer_core::models::BoundingBox::default(),
-                paragraph: pdf_viewer_core::models::LayoutParagraph::default(),
-            },
-            scene: ParagraphEditorScene::default(),
-        }
-    }
-}
-
-impl ActiveEditorTarget {
-    pub fn source_body_text(&self) -> &str {
-        self.scene.document_plan.source_body_text()
-    }
-
-    pub fn initial_body_caret_index(&self) -> usize {
-        self.scene.document_plan.body_initial_caret
-    }
-}
+// ActiveEditorTarget 数据结构已迁至 pdf_viewer_core::edit::active_target。
+pub use pdf_viewer_core::edit::active_target::ActiveEditorTarget;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,10 +67,9 @@ pub fn set_text_edit_enabled(enabled: bool) {
             // （见 host_mode.rs 的 set_text_edit_mode / toggle_text_edit_mode）。
             // 若仍有 live_state，说明有路径绕过了 commit，记录 warning 便于定位。
             if mode.live_state.is_some() {
-                web_sys::console::log_1(
-                    &"[SESSION-WARN] set_text_edit_enabled(false) called with live_state still present \
-                       — this is a bug, edit will be lost. See docs/edit-save-architecture.md §4.1"
-                        .into(),
+                crate::chain_trace!(
+                    "session.warn",
+                    "msg" => "set_text_edit_enabled(false) with live_state present — edit will be lost",
                 );
             }
             mode.active_paragraph_id = None;

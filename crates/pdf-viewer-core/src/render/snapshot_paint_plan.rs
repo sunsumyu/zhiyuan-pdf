@@ -1,6 +1,6 @@
-use crate::font_resolver::resolve_font_face;
+use crate::typography::font_resolver::resolve_font_face;
 use crate::models::{FontHints, GlyphPaintRun, PaintMode, ResolvedFontFace};
-use crate::page_region_context::{FieldGroupSnapshot, ParagraphRegionSnapshot, StyleRunSnapshot};
+use crate::document::page_region_context::{FieldGroupSnapshot, ParagraphRegionSnapshot, StyleRunSnapshot};
 
 fn to_paint_mode(render_mode: Option<i64>) -> PaintMode {
     match render_mode {
@@ -233,7 +233,7 @@ where
                 text: line.rendered_text.clone(),
                 start: 0,
                 end: line.rendered_text.chars().count(),
-                style: crate::page_region_context::StyleSource {
+                style: crate::document::page_region_context::StyleSource {
                     font_name: line.font_name.clone(),
                     font_size: line.font_size,
                     color: line.color.clone(),

@@ -1,7 +1,7 @@
 import { targetInvokeV3 } from '../shared/wasm_loader';
 import type { RenderReason } from '../render/frame_plan';
 import type { PdfEditSource } from '../document/document_edit_api';
-import type { EditorFormatAction } from '../editor/editor_wasm_api';
+import type { EditorFormatAction } from '../editor/types';
 
 export type PdfViewerApiDeps = {
     ensureWasmInitialized: () => Promise<unknown>;

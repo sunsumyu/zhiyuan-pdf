@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::document::mutation_pipeline::request_document_refresh;
-use crate::editor::runtime::build_region_text_patch;
+use crate::editor::editor_controller::build_region_text_patch;
 use crate::present::plan_builder::FramePlanRequest;
 use crate::render::workflow::RenderFrameEnvelope;
 use crate::state_manager::apply_patch_with_history;

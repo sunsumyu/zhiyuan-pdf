@@ -6,7 +6,7 @@
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
-use super::controller;
+use super::find_store as controller;
 
 #[wasm_bindgen(js_name = "findControllerOpen")]
 pub fn facade_open(current_page: u16, page_count: u16, path: String) -> JsValue {

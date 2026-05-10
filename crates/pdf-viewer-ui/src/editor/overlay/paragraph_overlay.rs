@@ -14,25 +14,13 @@ use crate::editor::mode::get_active_editor_state;
 use crate::editor::replacement_snapshot::replacement_target_from_patch_snapshot;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::source_identity::collect_target_source_object_indices;
-use crate::page::runtime::HOST_PAGE_STATE;
+use crate::page::page_store::HOST_PAGE_STATE;
 use crate::state_manager::get_patch_state;
 
-#[derive(Debug, Clone)]
-pub enum ParagraphRenderOverlayOwner {
-    ActiveEditorShell,
-    PersistedPageCanvas,
-}
-
-#[derive(Debug, Clone)]
-pub struct ParagraphRenderOverlay {
-    pub owner: ParagraphRenderOverlayOwner,
-    pub target: ActiveEditorTarget,
-    pub source_object_indices: Vec<usize>,
-    pub source_text: String,
-    pub draft_text: String,
-    pub replaces_source: bool,
-    pub marker_text_override: Option<String>,
-}
+// 数据结构已迁至 pdf_viewer_core::edit::paragraph_overlay。
+pub use pdf_viewer_core::edit::paragraph_overlay::{
+    ParagraphRenderOverlay, ParagraphRenderOverlayOwner,
+};
 
 fn target_source_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
     collect_target_source_object_indices(target)
@@ -61,22 +49,28 @@ pub fn collect_paragraph_render_overlays(
     let marker_overrides = collect_marker_overrides(Some(plan), active_state.as_ref());
 
     if let Ok(state) = get_patch_state().read() {
-        web_sys::console::log_1(&format!(
-            "[OVERLAY-COLLECT] pageIndex={} totalParagraphPatches={} activeEditor={}",
-            plan.page_index, state.paragraph_patches.len(), active_state.is_some()
-        ).into());
+        dbg_event(
+            "overlay.collect",
+            "start",
+            vec![
+                dbg_field("pageIndex", plan.page_index),
+                dbg_field("totalParagraphPatches", state.paragraph_patches.len()),
+                dbg_field("activeEditor", active_state.is_some()),
+            ],
+        );
         for (paragraph_id, patch) in &state.paragraph_patches {
             if patch.page_index != plan.page_index {
-                web_sys::console::log_1(&format!(
-                    "[OVERLAY-COLLECT] skip patch (page mismatch): paragraphId={} patchPage={} planPage={}",
-                    paragraph_id, patch.page_index, plan.page_index
-                ).into());
                 continue;
             }
-            web_sys::console::log_1(&format!(
-                "[OVERLAY-COLLECT] persisted paragraphId={} originalLen={} newLen={}",
-                paragraph_id, patch.original_text.chars().count(), patch.new_text.chars().count()
-            ).into());
+            dbg_event(
+                "overlay.collect",
+                "persisted-patch",
+                vec![
+                    dbg_field("paragraphId", paragraph_id),
+                    dbg_field("originalLen", patch.original_text.chars().count()),
+                    dbg_field("newLen", patch.new_text.chars().count()),
+                ],
+            );
             let Some(target) = state
                 .paragraph_replacement_targets
                 .get(paragraph_id)
@@ -84,16 +78,18 @@ pub fn collect_paragraph_render_overlays(
                 .or_else(|| replacement_target_from_patch_snapshot(patch))
                 .or_else(|| build_paragraph_render_target(plan, vector_model, paragraph_id))
             else {
-                web_sys::console::log_1(&format!(
-                    "[OVERLAY-COLLECT] !!! target resolution FAILED for paragraphId={}",
-                    paragraph_id
-                ).into());
+                dbg_event(
+                    "overlay.collect",
+                    "target-resolution-failed",
+                    vec![dbg_field("paragraphId", paragraph_id)],
+                );
                 continue;
             };
-            web_sys::console::log_1(&format!(
-                "[OVERLAY-COLLECT] target resolved for paragraphId={}, building PersistedPageCanvas overlay",
-                paragraph_id
-            ).into());
+            dbg_event(
+                "overlay.collect",
+                "target-resolved",
+                vec![dbg_field("paragraphId", paragraph_id)],
+            );
             let base_paragraph_id =
                 edit_target_base_paragraph_id(&target.paragraph_id).to_string();
             let source_object_indices = persisted_patch_source_indices(
@@ -140,7 +136,7 @@ pub fn collect_paragraph_render_overlays(
             .cloned()
             .flatten()
             .or_else(|| {
-                HOST_PAGE_STATE.with(|page_state: &crate::page::runtime::HostPageState| {
+                HOST_PAGE_STATE.with(|page_state: &crate::page::page_store::HostPageState| {
                     resolve_active_marker_text(&active_state, &page_state.borrow())
                 })
             });

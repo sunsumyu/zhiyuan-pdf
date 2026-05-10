@@ -1,20 +1,39 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// editor_wasm_api.ts — thin adapter over the canonical facades.
+// editor_wasm_api.ts — document & review session bridge.
 //
-// Phase 2D migration: this file no longer calls raw `wasm_api/editor.rs`
-// snake_case bindings. All operations are forwarded to the frozen facades:
-//   • document.* (`@/.../document/facade.rs`)
-//   • editor.*   (`@/.../editor/facade.rs`)
-//   • review.*   (`@/.../review/facade.rs`)
-//
-// Only the methods actually consumed by `document_edit_api.ts` are exported.
-// Type aliases (`EditorFormatAction`, `RegionTextReplace*`, `Review*`) are kept
-// here because they are also imported by `editor_host.ts` / `pdf_viewer_api.ts`.
+// Editor-specific logic has been fully migrated to EditorSession (./api.ts).
+// This file delegates document-mutation and review-feed calls to
+// `DocumentSession` / `ReviewSession` struct APIs (P1/P2 of session-API plan).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { RustRenderFrame } from '../render/frame_plan';
 
 type GetWasmApi = () => any;
+
+// ── Session singletons ─────────────────────────────────────────
+
+let _documentSession: any = null;
+let _reviewSession: any = null;
+
+function getDocumentSession(getWasmApi: GetWasmApi): any {
+    if (!_documentSession) {
+        const api = getWasmApi() as any;
+        if (typeof api?.DocumentSession === 'function') {
+            _documentSession = new api.DocumentSession();
+        }
+    }
+    return _documentSession;
+}
+
+function getReviewSession(getWasmApi: GetWasmApi): any {
+    if (!_reviewSession) {
+        const api = getWasmApi() as any;
+        if (typeof api?.ReviewSession === 'function') {
+            _reviewSession = new api.ReviewSession();
+        }
+    }
+    return _reviewSession;
+}
 
 // ─── Shared types (preserved for external callers) ───────────────────────────
 
@@ -69,36 +88,6 @@ export type ReviewBulkChangeResult = {
     affectedPatchCount: number;
 };
 
-export type ActiveEditorFormatState = {
-    bold: boolean;
-    italic: boolean;
-    underline: boolean;
-    color: string;
-    fontFamily?: string;
-    fontSize?: number;
-    charSpacing?: number;
-    lineHeight?: number;
-    paragraphMode?: string;
-    alignment?: string;
-    listKind?: string;
-    changed?: boolean;
-};
-
-export type EditorFormatAction =
-    | { type: 'toggleBold' }
-    | { type: 'toggleItalic' }
-    | { type: 'toggleUnderline' }
-    | { type: 'increaseFontSize' }
-    | { type: 'decreaseFontSize' }
-    | { type: 'setParagraphMode'; mode: string }
-    | { type: 'setColor'; color: string }
-    | { type: 'setFontFamily'; fontFamily: string }
-    | { type: 'setFontSize'; fontSize: number }
-    | { type: 'setCharSpacing'; charSpacing: number }
-    | { type: 'setLineHeight'; lineHeight: number }
-    | { type: 'setAlignment'; alignment: string }
-    | { type: 'setListKind'; listKind: string };
-
 // ─── Compact public surface ──────────────────────────────────────────────────
 
 export type EditorWasmApi = {
@@ -136,10 +125,11 @@ export type EditorWasmApi = {
     saveSession: (path: string, pageIndex: number) => Promise<unknown>;
 };
 
-function safeCall<T>(fn: ((...args: any[]) => T) | undefined, ...args: unknown[]): T | null {
+function callMethod<T>(target: any, method: string, ...args: unknown[]): T | null {
+    const fn = target?.[method];
     if (typeof fn !== 'function') return null;
     try {
-        return fn(...args);
+        return fn.apply(target, args) as T;
     } catch {
         return null;
     }
@@ -148,12 +138,13 @@ function safeCall<T>(fn: ((...args: any[]) => T) | undefined, ...args: unknown[]
 export function createEditorWasmApi(getWasmApi: GetWasmApi): EditorWasmApi {
     return {
         applyDocumentPatch(patch: unknown): void {
-            getWasmApi().documentFacadeApplyPatch?.(patch);
+            getDocumentSession(getWasmApi)?.applyPatch?.(patch);
         },
 
         buildRegionTextPatch(pageIndex, regionId, kind, originalText, newText) {
-            return safeCall<unknown>(
-                getWasmApi().documentFacadeBuildRegionPatch,
+            return callMethod<unknown>(
+                getDocumentSession(getWasmApi),
+                'buildRegionPatch',
                 pageIndex,
                 regionId,
                 kind,
@@ -163,49 +154,54 @@ export function createEditorWasmApi(getWasmApi: GetWasmApi): EditorWasmApi {
         },
 
         applyRegionTextReplacements(replacements, frameRequest) {
-            return safeCall<RegionTextReplaceResult>(
-                getWasmApi().documentFacadeApplyRegionReplacements,
+            return callMethod<RegionTextReplaceResult>(
+                getDocumentSession(getWasmApi),
+                'applyRegionReplacements',
                 replacements,
                 frameRequest,
             );
         },
 
         requestDocumentRefresh(source, frameRequest) {
-            return safeCall<DocumentRefreshResult>(
-                getWasmApi().documentFacadeRequestRefresh,
+            return callMethod<DocumentRefreshResult>(
+                getDocumentSession(getWasmApi),
+                'requestRefresh',
                 source,
                 frameRequest,
             );
         },
 
         getReviewFeed() {
-            return safeCall<ReviewFeedResult>(getWasmApi().reviewFacadeReadFeed);
+            return callMethod<ReviewFeedResult>(getReviewSession(getWasmApi), 'readFeed');
         },
 
         acceptReviewChange(patchKey) {
-            return safeCall<AcceptReviewChangeResult>(getWasmApi().reviewFacadeAccept, patchKey);
+            return callMethod<AcceptReviewChangeResult>(
+                getReviewSession(getWasmApi),
+                'accept',
+                patchKey,
+            );
         },
 
         rejectReviewChange(patchKey) {
-            return safeCall<RejectReviewChangeResult>(getWasmApi().reviewFacadeReject, patchKey);
+            return callMethod<RejectReviewChangeResult>(
+                getReviewSession(getWasmApi),
+                'reject',
+                patchKey,
+            );
         },
 
         acceptAllReviewChanges() {
-            return safeCall<ReviewBulkChangeResult>(getWasmApi().reviewFacadeAcceptAll);
+            return callMethod<ReviewBulkChangeResult>(getReviewSession(getWasmApi), 'acceptAll');
         },
 
         rejectAllReviewChanges() {
-            return safeCall<ReviewBulkChangeResult>(getWasmApi().reviewFacadeRejectAll);
+            return callMethod<ReviewBulkChangeResult>(getReviewSession(getWasmApi), 'rejectAll');
         },
 
         async saveSession(path: string, pageIndex: number): Promise<unknown> {
-            const fn = getWasmApi().editorFacadeSaveSession;
-            if (typeof fn !== 'function') return null;
-            try {
-                return await fn(path, pageIndex);
-            } catch {
-                return null;
-            }
+            const { saveSession: save } = await import('./api');
+            return save(path, pageIndex);
         },
     };
 }

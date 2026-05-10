@@ -1,4 +1,4 @@
-use crate::glyph_layout::is_decorative_glyph;
+use crate::text::glyph_layout::is_decorative_glyph;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

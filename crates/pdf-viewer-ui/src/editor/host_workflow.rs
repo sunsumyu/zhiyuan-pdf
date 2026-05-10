@@ -17,6 +17,6 @@ pub async fn save_editor_session(path: String, page_index: u16) -> SaveEditorSes
 }
 
 pub fn read_paragraph_shell_bbox(paragraph_id: &str) -> Option<JsValue> {
-    let bbox = crate::editor::runtime::find_paragraph_shell_bbox(paragraph_id)?;
+    let bbox = crate::editor::editor_controller::find_paragraph_shell_bbox(paragraph_id)?;
     serde_wasm_bindgen::to_value(&bbox).ok()
 }

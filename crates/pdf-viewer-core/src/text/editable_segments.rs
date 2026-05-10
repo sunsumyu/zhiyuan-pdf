@@ -238,7 +238,7 @@ fn build_contiguous_segments_in_range(text_model: &NativeTextModel, start: usize
     segments
 }
 
-use crate::semantic_axiom::AxiomEngine;
+use crate::text::semantic_axiom::AxiomEngine;
 
 pub fn build_editable_segments(text_model: &NativeTextModel, page_height: f32) -> Vec<EditableSegment> {
     if text_model.runs.is_empty() {

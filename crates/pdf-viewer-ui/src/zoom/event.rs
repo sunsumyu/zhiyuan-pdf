@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::present::plan_builder::{FramePlanRequest, FramePlanResult};
-use crate::present::runtime::build_frame_plan_result;
+use crate::present::present_store::build_frame_plan_result;
 use crate::zoom::host::{
     resolve_preview_tick_decision, resolve_wheel_render_decision,
     PreviewTickDecisionRequest, PreviewTickDecision, WheelRenderDecisionRequest,
@@ -10,7 +10,7 @@ use crate::zoom::host::{
 use crate::zoom::interaction::{WheelZoomRequest, WheelZoomResult};
 use crate::zoom::preview_host::{set_preview_active, set_wheel_render_pending};
 use crate::zoom::request::resolve_wheel_zoom;
-use crate::zoom::runtime::{get_zoom_state, step_zoom_frame_plan};
+use crate::zoom::zoom_controller::{get_zoom_state, step_zoom_frame_plan};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

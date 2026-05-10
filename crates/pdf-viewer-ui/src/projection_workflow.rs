@@ -1,11 +1,11 @@
-use pdf_viewer_core::coordinate_transform::{
+use pdf_viewer_core::geometry::coordinate_transform::{
     ClientPoint, HostPageTransform, HostReferenceRect, PageSize,
 };
-use pdf_viewer_core::editable_segments::build_editable_segments as core_build_editable_segments;
-use pdf_viewer_core::font_resolver::resolve_font_face as core_resolve_font_face;
-use pdf_viewer_core::layout_engine::resolve_editor_projection as core_resolve_editor_projection;
+use pdf_viewer_core::text::editable_segments::build_editable_segments as core_build_editable_segments;
+use pdf_viewer_core::typography::font_resolver::resolve_font_face as core_resolve_font_face;
+use pdf_viewer_core::geometry::layout_engine::resolve_editor_projection as core_resolve_editor_projection;
 use pdf_viewer_core::models::{BoundingBox, FontHints, NativePageModel, NativeTextModel, RectBox};
-use pdf_viewer_core::page_region_context::build_page_region_context as core_build_page_region_context;
+use pdf_viewer_core::document::page_region_context::build_page_region_context as core_build_page_region_context;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
@@ -47,7 +47,7 @@ pub fn get_pagination_commands(
     path: String,
     zoom: f32,
 ) -> JsValue {
-    to_value(&pdf_viewer_core::state_manager::get_pagination_commands(
+    to_value(&pdf_viewer_core::persistence::state_manager::get_pagination_commands(
         current_page,
         total_pages,
         &path,

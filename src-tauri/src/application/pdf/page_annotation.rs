@@ -7,7 +7,7 @@ use crate::interfaces::pdf::{
     apply_highlight_annotation, apply_text_comment, ensure_document_loaded,
 };
 use crate::log_step;
-use pdf_viewer_core::page_region_context::{BoundingBoxOutput, PageRegionContextOutput};
+use pdf_viewer_core::document::page_region_context::{BoundingBoxOutput, PageRegionContextOutput};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

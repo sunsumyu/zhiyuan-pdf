@@ -1,4 +1,4 @@
-use crate::font_resolver::resolve_font_face;
+use crate::typography::font_resolver::resolve_font_face;
 use crate::models::{
     BoundingBox, EditorControlStyle, EditorSession, FieldEditorParamsRequest, FieldEditorParams,
     FontHints, GlyphPaintParagraph, GlyphPaintPlan, GlyphPaintRegion, GlyphPaintRun, LayoutInferenceResult,

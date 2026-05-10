@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 
 use crate::bridge::target_invoke;
-use crate::viewer::runtime::get_session;
+use crate::viewer::viewer_controller::get_session;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

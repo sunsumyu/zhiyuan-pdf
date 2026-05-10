@@ -12,12 +12,12 @@ use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::mode::close_active_editor;
-use crate::editor::runtime::{
+use crate::editor::editor_controller::{
     apply_active_editor_format_action, sync_editor_input, EditorFormatAction,
 };
 use crate::editor::session::{active_editor_draft_text, active_editor_has_session_changes};
 use crate::present::plan_builder::FramePlanRequest;
-use crate::present::runtime::schedule_render_frame_request;
+use crate::present::present_store::schedule_render_frame_request;
 use crate::render::workflow::RenderFrameEnvelope;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

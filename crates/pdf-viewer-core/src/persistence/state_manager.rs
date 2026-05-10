@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 use lazy_static::lazy_static;
 use crate::models::{PaginationAction, PaginationCommand};
-use crate::persistence_models::PersistableRegionPatch;
-use crate::layout_engine::ParagraphLayout;
+use crate::persistence::models::PersistableRegionPatch;
+use crate::geometry::layout_engine::ParagraphLayout;
 
 #[derive(Debug, Default)]
 pub struct GlobalPatchState {

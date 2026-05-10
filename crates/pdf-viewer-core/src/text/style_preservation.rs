@@ -1,4 +1,4 @@
-use crate::page_region_context::{ParagraphRegionSnapshotLine, StyleRunSnapshot, StyleSource};
+use crate::document::page_region_context::{ParagraphRegionSnapshotLine, StyleRunSnapshot, StyleSource};
 
 pub fn make_style_run(id: &str, text: &str, style: &StyleSource) -> StyleRunSnapshot {
     StyleRunSnapshot {
@@ -90,7 +90,7 @@ fn is_decorative_run_text(text: &str) -> bool {
     if trimmed.is_empty() {
         return false;
     }
-    trimmed.chars().all(|ch| crate::glyph_layout::is_decorative_glyph(ch))
+    trimmed.chars().all(|ch| crate::text::glyph_layout::is_decorative_glyph(ch))
 }
 
 fn line_selection_range(text: &str, line_index: usize, selection_start: usize, selection_end: usize) -> (usize, usize) {

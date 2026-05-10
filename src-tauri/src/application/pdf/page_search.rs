@@ -1,5 +1,5 @@
 use crate::infrastructure::pdf::models::VectorPageModel;
-use pdf_viewer_core::page_region_context::{BoundingBoxOutput, PageRegionContextOutput};
+use pdf_viewer_core::document::page_region_context::{BoundingBoxOutput, PageRegionContextOutput};
 use serde::{Deserialize, Serialize};
 use super::page_context::build_page_region_context_from_vector_model;
 

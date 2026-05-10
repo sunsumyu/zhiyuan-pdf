@@ -1,7 +1,7 @@
 use std::collections::HashSet;
-use crate::persistence_models::{PersistableRegionPatch, RegionTextReflow, PersistableSavePlan};
-use crate::page_region_context::PageRegionContextOutput;
-use crate::state_manager::GLOBAL_PATCH_STATE;
+use crate::persistence::models::{PersistableRegionPatch, RegionTextReflow, PersistableSavePlan};
+use crate::document::page_region_context::PageRegionContextOutput;
+use crate::persistence::state_manager::GLOBAL_PATCH_STATE;
 
 pub fn collect_persistable_region_patches(
     context: &PageRegionContextOutput,

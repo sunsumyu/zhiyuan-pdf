@@ -1,4 +1,4 @@
-use crate::list_semantics::derive_list_text_semantics;
+use crate::text::list_semantics::derive_list_text_semantics;
 use crate::models::NativeTextModel;
 
 use super::page_region_models::{

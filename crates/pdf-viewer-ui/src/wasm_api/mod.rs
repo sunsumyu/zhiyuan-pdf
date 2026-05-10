@@ -1,9 +1,6 @@
 pub mod document;
 pub mod editor;
-pub mod facade;
+pub mod frame_api;
 pub mod search_facade;
-pub mod review_facade;
-pub mod ai_facade;
-pub mod render_facade;
-pub mod annotation_facade;
 pub mod viewer;
+pub mod zoom_api;

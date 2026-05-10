@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::present::plan_builder::FramePlanRequest;
-use crate::present::runtime::schedule_render_frame_request;
+use crate::present::present_store::schedule_render_frame_request;
 use crate::render::workflow::RenderFrameEnvelope;
-use crate::viewer::runtime::note_document_mutation;
+use crate::viewer::viewer_controller::note_document_mutation;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

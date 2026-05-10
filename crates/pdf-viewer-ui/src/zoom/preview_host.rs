@@ -1,7 +1,7 @@
-use crate::zoom::runtime::{
+use crate::zoom::zoom_controller::{
     clear_pending_anchor as core_clear_pending_anchor, get_zoom_state, mark_rendered_zoom,
 };
-use crate::zoom::state::{PendingCommittedFrame, HOST_ZOOM_STATE};
+use crate::zoom::zoom_store::{self, PendingCommittedFrame};
 
 pub fn reset_zoom_preview_host(target_zoom: f32) {
     mark_rendered_zoom(target_zoom);
@@ -9,8 +9,7 @@ pub fn reset_zoom_preview_host(target_zoom: f32) {
 }
 
 pub fn clear_zoom_preview_host_state(clear_pending_anchor: bool) {
-    HOST_ZOOM_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    zoom_store::with_zoom_state_mut(|state| {
         state.preview_transform = None;
         state.preview_host = Default::default();
     });
@@ -20,8 +19,7 @@ pub fn clear_zoom_preview_host_state(clear_pending_anchor: bool) {
 }
 
 pub fn settle_zoom_preview_at_target() {
-    HOST_ZOOM_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    zoom_store::with_zoom_state_mut(|state| {
         let target_zoom = if state.target_zoom.is_finite() && state.target_zoom > 0.0 {
             state.target_zoom
         } else {
@@ -39,28 +37,28 @@ pub fn settle_zoom_preview_at_target() {
 }
 
 pub fn set_wheel_render_pending(pending: bool) {
-    HOST_ZOOM_STATE.with(|state| {
-        state.borrow_mut().preview_host.wheel_render_pending = pending;
+    zoom_store::with_zoom_state_mut(|state| {
+        state.preview_host.wheel_render_pending = pending;
     });
 }
 
 pub fn set_preview_active(active: bool) {
-    HOST_ZOOM_STATE.with(|state| {
-        state.borrow_mut().preview_host.preview_active = active;
+    zoom_store::with_zoom_state_mut(|state| {
+        state.preview_host.preview_active = active;
     });
 }
 
 pub fn get_preview_active() -> bool {
-    HOST_ZOOM_STATE.with(|state| state.borrow().preview_host.preview_active)
+    zoom_store::with_zoom_state(|state| state.preview_host.preview_active)
 }
 
 pub fn get_wheel_render_pending() -> bool {
-    HOST_ZOOM_STATE.with(|state| state.borrow().preview_host.wheel_render_pending)
+    zoom_store::with_zoom_state(|state| state.preview_host.wheel_render_pending)
 }
 
 pub fn queue_committed_frame(frame_plan: &PendingCommittedFrame) {
-    HOST_ZOOM_STATE.with(|state| {
-        state.borrow_mut().preview_host.pending_committed_frame = Some(frame_plan.clone());
+    zoom_store::with_zoom_state_mut(|state| {
+        state.preview_host.pending_committed_frame = Some(frame_plan.clone());
     });
 }
 
@@ -69,11 +67,7 @@ pub fn take_ready_committed_frame() -> Option<PendingCommittedFrame> {
     if (zoom_state.target_zoom - zoom_state.visual_zoom).abs() >= 0.001 {
         return None;
     }
-    HOST_ZOOM_STATE.with(|state| {
-        state
-            .borrow_mut()
-            .preview_host
-            .pending_committed_frame
-            .take()
+    zoom_store::with_zoom_state_mut(|state| {
+        state.preview_host.pending_committed_frame.take()
     })
 }

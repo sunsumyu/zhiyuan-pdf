@@ -347,8 +347,8 @@ pub fn break_text_into_lines(
     line_height: Option<f32>,
     char_spacing: f32,
     scale_x: f32,
-) -> pdf_viewer_core::layout_engine::ParagraphLayout {
-    use pdf_viewer_core::layout_engine::layout_paragraph;
+) -> pdf_viewer_core::geometry::layout_engine::ParagraphLayout {
+    use pdf_viewer_core::geometry::layout_engine::layout_paragraph;
     use pdf_viewer_core::models::{LayoutAlignment, LayoutParagraph, LayoutRun, ParagraphStyle, RunStyle};
 
     let layout_runs = if let Some(r) = runs { r.clone() } else {

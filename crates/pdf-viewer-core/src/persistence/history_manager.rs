@@ -1,6 +1,6 @@
 use std::sync::RwLock;
-use crate::state_manager::{GLOBAL_PATCH_STATE};
-use crate::persistence_models::PersistableRegionPatch;
+use crate::persistence::state_manager::{GLOBAL_PATCH_STATE};
+use crate::persistence::models::PersistableRegionPatch;
 
 #[derive(Debug, Clone)]
 pub struct PatchCommand {
@@ -11,12 +11,12 @@ pub struct PatchCommand {
 
 impl PatchCommand {
     pub fn execute(&self) {
-        crate::state_manager::apply_patch(self.new_patch.clone());
+        crate::persistence::state_manager::apply_patch(self.new_patch.clone());
     }
 
     pub fn undo(&self) {
         if let Some(old) = &self.old_patch {
-            crate::state_manager::apply_patch(old.clone());
+            crate::persistence::state_manager::apply_patch(old.clone());
         } else if let Ok(mut state) = GLOBAL_PATCH_STATE.write() {
             // If there was no old patch, we revert to original text.
             // For simplicity, we remove the patch key entry.

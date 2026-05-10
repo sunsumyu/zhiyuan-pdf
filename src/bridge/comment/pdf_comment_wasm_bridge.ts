@@ -18,6 +18,31 @@ type CreatePdfCommentWasmBridgeDeps = {
     getWasmApi: () => any;
 };
 
+// ── Session singletons ─────────────────────────────────────────
+
+let _commentManager: any = null;
+let _reviewSession: any = null;
+
+function getCommentManager(getWasmApi: () => any): any {
+    if (!_commentManager) {
+        const api = getWasmApi() as any;
+        if (typeof api?.CommentManager === 'function') {
+            _commentManager = new api.CommentManager();
+        }
+    }
+    return _commentManager;
+}
+
+function getReviewSession(getWasmApi: () => any): any {
+    if (!_reviewSession) {
+        const api = getWasmApi() as any;
+        if (typeof api?.ReviewSession === 'function') {
+            _reviewSession = new api.ReviewSession();
+        }
+    }
+    return _reviewSession;
+}
+
 export type PdfCommentWasmBridge = {
     readReviewSession: () => CommentReviewSession;
     clearReviewSession: () => void;
@@ -38,7 +63,10 @@ export function createPdfCommentWasmBridge(
     deps: CreatePdfCommentWasmBridgeDeps,
 ): PdfCommentWasmBridge {
     function readReviewSession(): CommentReviewSession {
-        const raw = deps.getWasmApi().reviewFacadeReadFeed() as CommentReviewSession | null | undefined;
+        const raw = getReviewSession(deps.getWasmApi)?.readFeed() as
+            | CommentReviewSession
+            | null
+            | undefined;
         return normalizeReviewSession(raw);
     }
 
@@ -52,84 +80,67 @@ export function createPdfCommentWasmBridge(
         return await loader(session.path, session.currentPage);
     }
 
+    const cm = () => getCommentManager(deps.getWasmApi);
+
     return {
         readReviewSession,
         clearReviewSession: () => {
-            deps.getWasmApi().clear_comment_review_session();
+            cm()?.clearReviewSession();
         },
         setReviewPanelOpenAndLoad: async (panelOpen) =>
             await withCurrentDocument(async (path, currentPage) =>
                 normalizeReviewDisplay(
-                    await deps.getWasmApi().set_comment_review_panel_open_and_load(
-                        path,
-                        currentPage,
-                        panelOpen,
-                    ),
+                    await cm()?.setPanelOpenAndLoad(path, currentPage, panelOpen),
                 ),
             ),
         toggleReviewPanelAndLoad: async () =>
             await withCurrentDocument(async (path, currentPage) =>
                 normalizeReviewDisplay(
-                    await deps.getWasmApi().toggle_comment_review_panel_and_load(
-                        path,
-                        currentPage,
-                    ),
+                    await cm()?.togglePanelAndLoad(path, currentPage),
                 ),
             ),
         setReviewScopeAndLoad: async (scope) =>
             await withCurrentDocument(async (path, currentPage) =>
                 normalizeReviewDisplay(
-                    await deps.getWasmApi().set_comment_review_scope_and_load(
-                        path,
-                        currentPage,
-                        scope,
-                    ),
+                    await cm()?.setScopeAndLoad(path, currentPage, scope),
                 ),
             ),
         setReviewQueryAndLoad: async (query) =>
             await withCurrentDocument(async (path, currentPage) =>
                 normalizeReviewDisplay(
-                    await deps.getWasmApi().set_comment_review_query_and_load(
-                        path,
-                        currentPage,
-                        query,
-                    ),
+                    await cm()?.setQueryAndLoad(path, currentPage, query),
                 ),
             ),
         selectReviewCommentAndLoad: async (selectedCommentId) =>
             await withCurrentDocument(async (path, currentPage) =>
                 normalizeReviewDisplay(
-                    await deps.getWasmApi().select_comment_review_and_load(
-                        path,
-                        currentPage,
-                        selectedCommentId ?? null,
-                    ),
+                    await cm()?.selectAndLoad(path, currentPage, selectedCommentId ?? null),
                 ),
             ),
         loadCommentOverlay: async (path, currentPage) =>
             normalizeOverlayDisplay(
-                await deps.getWasmApi().load_comment_overlay(path, currentPage) as
+                (await cm()?.loadOverlay(path, currentPage)) as
                     | PdfCommentOverlayDisplay
                     | null
                     | undefined,
             ),
         loadCommentTargetOverlay: async (path, currentPage) =>
             normalizeTargetOverlayDisplay(
-                await deps.getWasmApi().load_comment_target_overlay(path, currentPage) as
+                (await cm()?.loadTargetOverlay(path, currentPage)) as
                     | PdfCommentTargetOverlayDisplay
                     | null
                     | undefined,
             ),
         loadCommentReview: async (path, currentPage) =>
-            normalizeReviewDisplay(await deps.getWasmApi().load_comment_review(path, currentPage)),
+            normalizeReviewDisplay(await cm()?.loadReview(path, currentPage)),
         addRegionCommentRequest: async (path, request) => {
-            await deps.getWasmApi().apply_comment(path, request);
+            await cm()?.addRegionComment(path, request);
         },
         deletePageAnnotationRequest: async (path, request) => {
-            await deps.getWasmApi().delete_page_annotation(path, request);
+            await cm()?.deleteAnnotation(path, request);
         },
         updatePageCommentRequest: async (path, request) => {
-            await deps.getWasmApi().apply_comment_update(path, request);
+            await cm()?.updateComment(path, request);
         },
     };
 }

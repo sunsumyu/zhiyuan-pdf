@@ -1,9 +1,9 @@
-use crate::present::runtime::schedule_render_frame_request;
+use crate::present::present_store::schedule_render_frame_request;
 use crate::present::plan_builder::FramePlanRequest;
 use crate::render::workflow::RenderFrameEnvelope;
-use crate::viewer::runtime::set_zoom;
+use crate::viewer::viewer_controller::set_zoom;
 use crate::zoom::host::{resolve_render_follow_up_decision, RenderFollowUpDecision};
-use crate::zoom::runtime::get_zoom_state;
+use crate::zoom::zoom_controller::get_zoom_state;
 
 pub fn resolve_render_follow_up_runtime(
     rendered_display_zoom: f32,

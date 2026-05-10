@@ -9,7 +9,7 @@ use crate::editor::debug_trace::{
 use crate::editor::host_runtime::get_state as get_editor_host_state;
 use crate::editor::mode::get_active_editor_state;
 use crate::editor::text_geometry::active_caret_visual;
-use crate::zoom::runtime::get_zoom_state;
+use crate::zoom::zoom_controller::get_zoom_state;
 
 const EDITOR_Y_BUFFER: f32 = 1.0;
 const CARET_WIDTH: f32 = 1.5;

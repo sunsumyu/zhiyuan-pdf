@@ -1,21 +1,19 @@
-use crate::viewer::runtime::set_zoom;
+use crate::viewer::viewer_controller::set_zoom;
 use crate::zoom::interaction::{
     compute_anchor_scroll_result, resolve_wheel_zoom_request, AnchorScrollRequest,
     AnchorScrollResult, WheelZoomRequest, WheelZoomResult,
 };
-use crate::zoom::state::HOST_ZOOM_STATE;
+use crate::zoom::zoom_store;
 
 pub fn resolve_wheel_zoom(request: &WheelZoomRequest) -> WheelZoomResult {
-    let (result, pending_anchor) = HOST_ZOOM_STATE.with(|state| {
-        let state = state.borrow();
+    let (result, pending_anchor) = zoom_store::with_zoom_state(|state| {
         resolve_wheel_zoom_request(
             request,
             state.visual_layout.as_ref(),
             state.preview_transform.as_ref(),
         )
     });
-    HOST_ZOOM_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    zoom_store::with_zoom_state_mut(|state| {
         if state.visual_zoom <= 0.0 {
             state.visual_zoom = state.last_rendered_zoom.max(1.0);
         }

@@ -1,5 +1,5 @@
 use crate::editor::mode::get_active_editor_state;
-use crate::editor::runtime::set_editor_caret;
+use crate::editor::editor_controller::set_editor_caret;
 use crate::editor::text_geometry::move_caret_by_key;
 
 pub fn handle_active_editor_navigation_key(key: &str) -> Option<usize> {

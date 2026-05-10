@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::present::runtime::settle_render_frame;
+use crate::present::present_store::settle_render_frame;
 use crate::render::workflow::RenderFrameTransition;
-use crate::viewer::runtime::set_page_size;
+use crate::viewer::viewer_controller::set_page_size;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

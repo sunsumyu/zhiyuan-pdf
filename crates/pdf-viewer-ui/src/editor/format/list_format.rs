@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use pdf_viewer_core::list_semantics::{
+use pdf_viewer_core::text::list_semantics::{
     derive_list_text_semantics, format_numbering_marker, parse_numbering_value, ListMarkerKind,
 };
 use pdf_viewer_core::models::{

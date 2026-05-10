@@ -22,7 +22,7 @@ use crate::infrastructure::pdf::models::{
 };
 use crate::log_step;
 use crate::pdf_log;
-use pdf_viewer_core::persistence_models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 // Removed unused base64 imports
 use tauri::command;
 pub(crate) async fn ensure_document_loaded(

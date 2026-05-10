@@ -1,33 +1,11 @@
-use serde::{Deserialize, Serialize};
-
 use crate::present::plan_builder::{
     compute_viewport_layout_result, compute_viewport_tile_result, resolve_render_zoom_result,
     FramePlanRequest, RenderZoomRequest,
 };
-use crate::present::runtime::build_frame_plan_result;
+use crate::present::present_store::build_frame_plan_result;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ViewportLayoutRequest {
-    pub display_width: f32,
-    pub display_height: f32,
-    pub viewport_width: f32,
-    pub viewport_height: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ViewportTileRequest {
-    pub display_width: f32,
-    pub display_height: f32,
-    pub viewport_width: f32,
-    pub viewport_height: f32,
-    pub scroll_left: f32,
-    pub scroll_top: f32,
-    pub content_left: f32,
-    pub content_top: f32,
-    pub overscan: f32,
-}
+// Re-export pure DTO types from core.
+pub use pdf_viewer_core::render::facade_types::*;
 
 pub fn resolve_render_zoom(request: &RenderZoomRequest) -> serde_json::Value {
     serde_json::to_value(resolve_render_zoom_result(request)).unwrap_or(serde_json::Value::Null)

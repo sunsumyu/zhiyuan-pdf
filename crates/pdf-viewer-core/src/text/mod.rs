@@ -1,7 +1,10 @@
+pub mod caret_geometry;
 pub mod editable_segments;
 pub mod glyph_layout;
 pub mod index_convert;
 pub mod list_semantics;
 pub mod search_replace;
 pub mod semantic_axiom;
+pub mod style_mapper;
 pub mod style_preservation;
+pub mod text_model;

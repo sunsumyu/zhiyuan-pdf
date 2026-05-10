@@ -9,8 +9,8 @@ use crate::editor::projection::{
     ProjectedEditorShell, ProjectedParagraphInteractionTarget,
 };
 use crate::document::patch_persistence::has_persistable_patches;
-use crate::zoom::runtime::get_zoom_state;
-use pdf_viewer_core::glyph_layout::EditorGlyphSlotKind;
+use crate::zoom::zoom_controller::get_zoom_state;
+use pdf_viewer_core::text::glyph_layout::EditorGlyphSlotKind;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -89,8 +89,7 @@ pub fn resolve_editor_host_snapshot(display_zoom: f32) -> EditorHostSnapshot {
     let projection_zoom = resolve_editor_projection_zoom(display_zoom);
     let enabled = is_text_edit_mode_enabled();
     let active_state = get_active_editor_state();
-    let page_height = crate::page::runtime::HOST_PAGE_STATE.with(|state: &crate::page::runtime::HostPageState| {
-        let state = state.borrow();
+    let page_height = crate::page::page_store::with_page_state(|state| {
         state
             .vector_model
             .as_ref()

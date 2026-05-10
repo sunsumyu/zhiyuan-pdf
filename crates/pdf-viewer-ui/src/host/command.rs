@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::viewer::runtime::{
+use crate::viewer::viewer_controller::{
     get_session, reset_session, set_document, set_page_size, set_page, set_zoom,
 };
-use crate::zoom::runtime::{reset_zoom_runtime, set_target_zoom};
+use crate::zoom::zoom_controller::{reset_zoom_runtime, set_target_zoom};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

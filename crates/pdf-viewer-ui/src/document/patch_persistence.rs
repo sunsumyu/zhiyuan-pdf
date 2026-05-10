@@ -3,7 +3,7 @@ use wasm_bindgen::JsValue;
 use crate::bridge::target_invoke;
 use crate::editor::list_format::reconcile_numbering_patches;
 use crate::models::PersistableRegionPatch;
-use crate::page::runtime::HOST_PAGE_STATE;
+use crate::page::page_store::with_page_state;
 use crate::state_manager::{
     apply_patch_with_history, clear_persistable_patches as core_clear_persistable_patches, collect_persistable_patches,
 };
@@ -12,29 +12,33 @@ use crate::state_manager::{
 /// Use this from internal Rust callers; only `apply_document_patch` should
 /// be used when receiving a `JsValue` from the JS bridge.
 pub fn apply_document_patch_direct(patch: PersistableRegionPatch) {
-    web_sys::console::log_1(&format!(
-        "[APPLY-DOC-PATCH] direct regionId={} source={} pageIndex={} newLen={}",
-        patch.region_id, patch.source, patch.page_index,
-        patch.new_text.chars().count()
-    ).into());
+    crate::chain_trace!(
+        "commit.persist",
+        "regionId" => &patch.region_id,
+        "source" => &patch.source,
+        "pageIndex" => patch.page_index,
+        "newLen" => patch.new_text.chars().count(),
+    );
     apply_patch_with_history(patch);
 }
 
 pub fn apply_document_patch(patch_js: JsValue) {
     match serde_wasm_bindgen::from_value::<PersistableRegionPatch>(patch_js) {
         Ok(patch) => {
-            web_sys::console::log_1(&format!(
-                "[APPLY-DOC-PATCH] from-js regionId={} source={} pageIndex={} newLen={}",
-                patch.region_id, patch.source, patch.page_index,
-                patch.new_text.chars().count()
-            ).into());
+            crate::chain_trace!(
+                "commit.persist",
+                "regionId" => &patch.region_id,
+                "source" => &patch.source,
+                "pageIndex" => patch.page_index,
+                "newLen" => patch.new_text.chars().count(),
+            );
             apply_patch_with_history(patch);
         }
         Err(err) => {
-            web_sys::console::log_1(&format!(
-                "[APPLY-DOC-PATCH] !!! DESERIALIZE FAILED: {:?}",
-                err
-            ).into());
+            crate::chain_trace!(
+                "commit.persist-error",
+                "error" => format!("{:?}", err),
+            );
         }
     }
 }
@@ -56,8 +60,7 @@ pub async fn save_persistable_patches(
     path: String,
     page_index: u16,
 ) -> Result<JsValue, JsValue> {
-    let patches = HOST_PAGE_STATE.with(|state: &crate::page::runtime::HostPageState| {
-        let state = state.borrow();
+    let patches = with_page_state(|state| {
         let base_patches = collect_persistable_patches()
             .into_iter()
             .map(|mut patch| {

@@ -1,8 +1,8 @@
 use crate::present::plan_builder::FramePlanRequest;
-use crate::present::runtime::resolve_viewport_refresh;
-use crate::viewer::runtime::get_session;
+use crate::present::present_store::resolve_viewport_refresh;
+use crate::viewer::viewer_controller::get_session;
 use crate::viewport_refresh::ViewportRefreshDecision;
-use crate::zoom::runtime::get_zoom_state;
+use crate::zoom::zoom_controller::get_zoom_state;
 
 pub fn resolve_host_scroll_refresh(request: &FramePlanRequest) -> ViewportRefreshDecision {
     let session = get_session();

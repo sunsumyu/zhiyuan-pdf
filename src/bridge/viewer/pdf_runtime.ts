@@ -6,7 +6,7 @@ import { createRenderFlow } from '../render/render_flow';
 import { createFramePlanAdapter, type RenderReason } from '../render/frame_plan';
 import { createViewerGeometryProbe } from './viewer_geometry_probe';
 import { createResumeAiController } from '../ai/resume_ai_controller';
-import { createEditorHost } from '../editor/editor_host';
+import { createEditorHost } from '../editor';
 import { createDocumentEditApi } from '../document/document_edit_api';
 import { createPdfKeyboardShortcutHandler } from './pdf_keyboard';
 import { createPdfFindController } from '../find/pdf_find_controller';

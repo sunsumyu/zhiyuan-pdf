@@ -1,4 +1,5 @@
 pub mod canvas;
+pub mod canvas_overlay;
 pub mod commit;
 pub mod effective_page_plan;
 pub mod facade;
@@ -10,7 +11,8 @@ pub mod path_suppression;
 pub mod prepared_scene;
 pub mod progressive;
 pub mod progressive_workflow;
-pub mod scheduler;
+pub mod render_api;
+pub mod render_store;
 pub mod source_suppression;
 pub mod tile_cache;
 pub mod wasm_facade;
