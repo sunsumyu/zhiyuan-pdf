@@ -19,6 +19,10 @@
 //!
 //! 一条日志格式示例：
 //!   [CHAIN] commit.persist regionId=p-1 totalPatches=1 newLen=12
+//!
+//! 注：此模块原位于 `editor/edit_chain_trace.rs`，但被 render / document /
+//! state_manager 等多个上层模块广泛使用，属于横切关注点（cross-cutting concern），
+//! 故迁移至 `utils/` 域。
 
 use std::cell::Cell;
 
@@ -66,11 +70,11 @@ pub fn trace_step(step: &str, fields: &[(&str, &dyn std::fmt::Display)]) {
     web_sys::console::log_1(&line.into());
 }
 
-/// 便捷宏：trace_step!("commit.persist", "regionId" => &id, "totalPatches" => count);
+/// 便捷宏：chain_trace!("commit.persist", "regionId" => &id, "totalPatches" => count);
 #[macro_export]
 macro_rules! chain_trace {
     ($step:expr $(, $key:literal => $val:expr )* $(,)?) => {
-        $crate::editor::edit_chain_trace::trace_step(
+        $crate::utils::chain_trace::trace_step(
             $step,
             &[ $(($key, &$val as &dyn std::fmt::Display)),* ],
         )

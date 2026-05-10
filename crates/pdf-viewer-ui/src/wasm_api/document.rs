@@ -26,9 +26,11 @@ use crate::document::{comment, host_pipeline, mutation_pipeline, review};
 use crate::host::command::OpenDocumentSessionRequest;
 use crate::host::command;
 use crate::present::plan_builder::FramePlanRequest;
-use crate::viewer::find_store::HostFindScope;
-use crate::viewer::review_store::HostCommentReviewScope;
-use crate::viewer::{find_store, review_store, viewer_controller};
+use crate::find::host_find_store::HostFindScope;
+use crate::find::host_find_store as find_store;
+use crate::review::review_store::HostCommentReviewScope;
+use crate::review::review_store;
+use crate::viewer::viewer_controller;
 
 #[wasm_bindgen]
 pub fn undo_document_pipeline() -> JsValue {

@@ -1,3 +1,12 @@
+//! Comment / Review session host snapshot store.
+//!
+//! 该文件原位于 `viewer/review_store.rs`，但被 `comment/` 与 `review/` 两个域共用，
+//! 强制它们 `use crate::viewer::review_store::*` 违反域自包含。已迁移至 review 域。
+//!
+//! 服务对象：
+//! - `comment::comment_api::CommentManager` 读写评论目标快照
+//! - `review::review_api::ReviewSession`（未来）读写审阅 panel 状态
+
 use std::cell::RefCell;
 
 // Re-export pure data structures from core.

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 
 use crate::runtime::smart_invoke;
-use crate::viewer::review_store::{
+use crate::review::review_store::{
     get_comment_review_session, select_comment_review_comment,
     set_comment_review_panel_open, set_comment_review_query, set_comment_review_scope,
     toggle_comment_review_panel, HostCommentReviewScope, HostCommentReviewSession,

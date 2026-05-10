@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 
-use crate::viewer::find_store::{
+use crate::find::host_find_store::{
     clear_find_session, get_find_session, move_find_match, set_find_session, HostFindScope,
 };
 

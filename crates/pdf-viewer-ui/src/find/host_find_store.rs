@@ -1,3 +1,14 @@
+//! Host-side find session snapshot store.
+//!
+//! 该文件原位于 `viewer/find_store.rs`（命名与 `find/find_store.rs` 冲突），
+//! 已迁移至 find 域并重命名为 `host_find_store`，以恢复域自包含。
+//!
+//! 与 `find::find_store` 的区别：
+//! - `find::find_store`：FindController 内部状态（搜索结果、替换队列等）
+//! - `find::host_find_store`：宿主侧（viewer）读取的 find session snapshot
+//!
+//! ViewerSession 通过本模块读取当前 find 会话状态以驱动 UI（match counter / 上下匹配跳转）。
+
 use std::cell::RefCell;
 
 // Re-export pure data structures from core.

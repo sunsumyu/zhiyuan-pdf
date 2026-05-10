@@ -10,8 +10,8 @@ use crate::present::present_store::reset_present_runtime;
 use crate::render::host_runtime::reset_render_loop_runtime;
 use crate::render::render_store::reset_render_state;
 use crate::state_manager::clear_persistable_patches;
-use crate::viewer::review_store::clear_comment_review_session;
-use crate::viewer::find_store::clear_find_session;
+use crate::review::review_store::clear_comment_review_session;
+use crate::find::host_find_store::clear_find_session;
 use crate::viewer::viewer_store::{
     bump_document_revision,
     reset_viewer_session,

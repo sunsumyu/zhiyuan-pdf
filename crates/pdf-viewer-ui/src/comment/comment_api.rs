@@ -1,7 +1,7 @@
 //! CommentManager — P2 struct-based WASM API for PDF comments / annotation list.
 //!
 //! Mirrors the P0/P1 pattern. All operations are infallible delegations to
-//! `crate::document::comment` and `crate::viewer::review_store`, so no
+//! `crate::document::comment` and `crate::review::review_store`, so no
 //! response wrapper is needed (unlike sessions with stubs).
 
 use serde_wasm_bindgen::{from_value, to_value};
@@ -25,7 +25,7 @@ use crate::document::comment::{
     PdfCommentReviewRequest, PdfDeleteAnnotationRequest, PdfRegionCommentRequest,
     PdfUpdateCommentRequest,
 };
-use crate::viewer::review_store::{
+use crate::review::review_store::{
     clear_comment_review_session,
     get_comment_review_session,
     HostCommentReviewScope,

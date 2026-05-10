@@ -11,5 +11,18 @@
 # an item like `tauri::Manager` resolves under x86_64 → no error.
 # Tradeoff: every save triggers two cargo checks (~2x analysis time).
 
+# [cargo.target] (singular) drives ANALYSIS — name resolution, proc-macro
+# expansion, the engine that produces inline red squiggles like the one on
+# `#[wasm_bindgen]`. Setting it to wasm32 makes pdf-viewer-ui clean.
+# Side effect: src-tauri's analysis runs against wasm32 too, so it may show
+# inline red. But [check] below still gives src-tauri its native cargo-check
+# diagnostics, so real build errors won't be hidden.
+[cargo]
+target = "wasm32-unknown-unknown"
+
+# [check.targets] (plural) drives CARGO CHECK — the diagnostics shown in the
+# Problems panel and along the file gutter. Listing both targets makes
+# rust-analyzer run two checks; an item is only flagged red if it fails on
+# every listed target.
 [check]
 targets = ["wasm32-unknown-unknown", "x86_64-pc-windows-msvc"]

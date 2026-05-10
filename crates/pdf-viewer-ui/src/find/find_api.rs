@@ -3,7 +3,7 @@
 //! Mirrors the P0 `EditorSession` / P1 `DocumentSession` pattern:
 //!   - Zero-sized struct as handle.
 //!   - `#[wasm_bindgen]` methods with camelCase `js_name`.
-//!   - Thin delegation to `find::find_store` and `viewer::find_store`.
+//!   - Thin delegation to `find::find_store` and `find::host_find_store`.
 //!   - Inline `FindError` / `FindResponse<T>` for `NotImplemented` stubs.
 //!
 //! The legacy `find::facade::findFacade*` and `find::controller_facade::findController*`
@@ -14,7 +14,7 @@ use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
 use crate::find::find_store as controller;
-use crate::viewer::find_store::{
+use crate::find::host_find_store::{
     clear_find_session, get_find_session, move_find_match, set_find_session, HostFindScope,
 };
 
