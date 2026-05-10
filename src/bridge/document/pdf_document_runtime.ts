@@ -1,5 +1,24 @@
 import type { RenderReason } from '../render/frame_plan';
 
+// ── DocumentSession bridge (P1 of session-API plan) ─────────────────────────
+//
+// Replaces the prior raw `wasm.open_document_pipeline()` /
+// `wasm.close_document_pipeline()` calls with the struct-based
+// `DocumentSession` API exported from `crates/pdf-viewer-ui/src/document/
+// document_api.rs`. Singleton handle — all state lives in wasm thread_locals.
+
+let _documentSession: any = null;
+
+function getDocumentSession(getWasmApi: () => any): any {
+    if (!_documentSession) {
+        const api = getWasmApi() as any;
+        if (typeof api?.DocumentSession === 'function') {
+            _documentSession = new api.DocumentSession();
+        }
+    }
+    return _documentSession;
+}
+
 type CreatePdfDocumentRuntimeDeps = {
     ensureWasmInitialized: () => Promise<void>;
     getWasmApi: () => any;
@@ -73,15 +92,18 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
     async function openTextPdfFlow(path: string): Promise<void> {
         await deps.ensureWasmInitialized();
         try {
-            const openResult = await deps.getWasmApi().open_document_pipeline?.({
-                path,
-                initialZoom: 1.0,
-                defaultPageWidth: 595,
-                defaultPageHeight: 842,
-            });
+            const session = getDocumentSession(deps.getWasmApi);
+            const openResult = session
+                ? await session.open({
+                    path,
+                    initialZoom: 1.0,
+                    defaultPageWidth: 595,
+                    defaultPageHeight: 842,
+                })
+                : null;
             const pageCount: number = Number(openResult?.pageCount || 0);
             if (!openResult?.opened || pageCount <= 0) {
-                console.warn('[PDF] open_document_pipeline returned no pages for:', path, openResult);
+                console.warn('[PDF] DocumentSession.open returned no pages for:', path, openResult);
                 resetPdfViewerState();
                 return;
             }
@@ -98,10 +120,8 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
 
     function resetPdfViewerState(): void {
         try {
-            deps.getWasmApi().close_document_pipeline?.(
-                deps.defaultPageWidth,
-                deps.defaultPageHeight,
-            );
+            const session = getDocumentSession(deps.getWasmApi);
+            session?.close?.(deps.defaultPageWidth, deps.defaultPageHeight);
         } catch {
         }
         deps.clearPendingAnchor();

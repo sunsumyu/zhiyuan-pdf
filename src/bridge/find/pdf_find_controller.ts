@@ -51,7 +51,12 @@ export type PdfFindController = {
     replaceAll: () => Promise<void>;
 };
 
-// ─── WASM Controller Bindings ────────────────────────────────────────────────
+// ─── FindSession bridge (P2 of session-API plan) ─────────────────────────────
+//
+// Migrated 2025: the legacy `findController*` flat WASM exports are now thin
+// wrappers around `FindSession` (see crates/pdf-viewer-ui/src/find/find_api.rs).
+// Constructing a single `FindSession` per page is fine — it is a zero-sized
+// handle, all state lives in the wasm `HOST_FIND_SESSION` thread_local.
 
 type FindStateUpdate = {
     state: {
@@ -88,10 +93,26 @@ type FindToolbarState = {
     canReplaceAll: boolean;
 };
 
-function wasmCall<T>(api: any, name: string, ...args: unknown[]): T | null {
-    const fn = api?.[name];
+let _findSession: any = null;
+
+function getFindSession(getWasmApi: () => any): any {
+    if (!_findSession) {
+        const api = getWasmApi() as any;
+        if (typeof api?.FindSession === 'function') {
+            _findSession = new api.FindSession();
+        }
+    }
+    return _findSession;
+}
+
+function callSession<T>(target: any, method: string, ...args: unknown[]): T | null {
+    const fn = target?.[method];
     if (typeof fn !== 'function') return null;
-    try { return args.length ? fn(...args) : fn(); } catch { return null; }
+    try {
+        return fn.apply(target, args) as T;
+    } catch {
+        return null;
+    }
 }
 
 // ─── DOM Nodes ───────────────────────────────────────────────────────────────
@@ -134,7 +155,7 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
     let initialized = false;
     let searchTimerId: number | null = null;
 
-    function wasm() { return deps.getWasmApi(); }
+    function findSession(): any { return getFindSession(deps.getWasmApi); }
     function readScope(): FindScope {
         return getNodes().scope?.value === 'document' ? 'document' : 'page';
     }
@@ -142,7 +163,7 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
     // ─── Render (DOM only) ───────────────────────────────────────────────────
 
     function renderToolbarFromWasm(): void {
-        const toolbar = wasmCall<FindToolbarState>(wasm(), 'findControllerGetToolbarState');
+        const toolbar = callSession<FindToolbarState>(findSession(), 'getToolbarState');
         if (!toolbar) return;
         const nodes = getNodes();
         if (nodes.bar) nodes.bar.style.display = toolbar.isOpen ? 'flex' : 'none';
@@ -224,7 +245,7 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
         const query = nodes.input?.value?.trim() ?? '';
         const session = deps.getViewerSession();
         if (!session.path || !query) {
-            applyUpdate(wasmCall<FindStateUpdate>(wasm(), 'findControllerClear'));
+            applyUpdate(callSession<FindStateUpdate>(findSession(), 'clear'));
             return;
         }
 
@@ -234,11 +255,11 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
             : await findInPageAsync({ path: session.path, pageIndex: session.currentPage, query, caseSensitive: false });
 
         if (!result) {
-            applyUpdate(wasmCall<FindStateUpdate>(wasm(), 'findControllerClear'));
+            applyUpdate(callSession<FindStateUpdate>(findSession(), 'clear'));
             return;
         }
 
-        const update = wasmCall<FindStateUpdate>(wasm(), 'findControllerSetResult', result, scope, session.currentPage);
+        const update = callSession<FindStateUpdate>(findSession(), 'setResult', result, scope, session.currentPage);
         applyUpdate(update);
     }
 
@@ -257,19 +278,19 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
 
     function open(): void {
         const s = deps.getViewerSession();
-        applyUpdate(wasmCall<FindStateUpdate>(wasm(), 'findControllerOpen', s.currentPage, s.pageCount, s.path ?? ''));
+        applyUpdate(callSession<FindStateUpdate>(findSession(), 'open', s.currentPage, s.pageCount, s.path ?? ''));
         focusInput();
         if (getNodes().input?.value?.trim()) scheduleSearch();
     }
 
     function close(): void {
-        applyUpdate(wasmCall<FindStateUpdate>(wasm(), 'findControllerClose'));
+        applyUpdate(callSession<FindStateUpdate>(findSession(), 'close'));
     }
 
     function toggle(): void {
         const s = deps.getViewerSession();
-        applyUpdate(wasmCall<FindStateUpdate>(wasm(), 'findControllerToggle', s.currentPage, s.pageCount, s.path ?? ''));
-        const toolbar = wasmCall<FindToolbarState>(wasm(), 'findControllerGetToolbarState');
+        applyUpdate(callSession<FindStateUpdate>(findSession(), 'toggle', s.currentPage, s.pageCount, s.path ?? ''));
+        const toolbar = callSession<FindToolbarState>(findSession(), 'getToolbarState');
         if (toolbar?.isOpen) {
             focusInput();
             if (getNodes().input?.value?.trim()) scheduleSearch();
@@ -277,12 +298,12 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
     }
 
     async function next(): Promise<void> {
-        const update = wasmCall<FindStateUpdate>(wasm(), 'findControllerMoveActive', 1);
+        const update = callSession<FindStateUpdate>(findSession(), 'moveActive', 1);
         applyUpdate(update);
     }
 
     async function prev(): Promise<void> {
-        const update = wasmCall<FindStateUpdate>(wasm(), 'findControllerMoveActive', -1);
+        const update = callSession<FindStateUpdate>(findSession(), 'moveActive', -1);
         applyUpdate(update);
     }
 
@@ -293,7 +314,7 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
 
         if (scope === 'document') {
             if (!session.path) return;
-            const requests = wasmCall<any[]>(wasm(), 'findControllerGetReplaceRequests', replacement, false, scope) ?? [];
+            const requests = callSession<any[]>(findSession(), 'getReplaceRequests', replacement, false, scope) ?? []
             if (requests.length === 0) return;
             const req = requests[0];
             const result = replaceOne({
@@ -312,7 +333,7 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
             return;
         }
 
-        const requests = wasmCall<PdfRegionTextReplace[]>(wasm(), 'findControllerGetReplaceRequests', replacement, false, scope) ?? [];
+        const requests = callSession<PdfRegionTextReplace[]>(findSession(), 'getReplaceRequests', replacement, false, scope) ?? [];
         if (requests.length === 0) return;
         await deps.documentEdits.replaceRegionTexts(requests, 'find-replace');
         await executeSearch();
@@ -325,7 +346,7 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
 
         if (scope === 'document') {
             if (!session.path) return;
-            const toolbar = wasmCall<FindToolbarState>(wasm(), 'findControllerGetToolbarState');
+            const toolbar = callSession<FindToolbarState>(findSession(), 'getToolbarState');
             if (!toolbar?.hasMatches) return;
             replaceAllFacade({
                 path: session.path,
@@ -339,14 +360,14 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
             return;
         }
 
-        const requests = wasmCall<PdfRegionTextReplace[]>(wasm(), 'findControllerGetReplaceRequests', replacement, true, scope) ?? [];
+        const requests = callSession<PdfRegionTextReplace[]>(findSession(), 'getReplaceRequests', replacement, true, scope) ?? []
         if (requests.length === 0) return;
         await deps.documentEdits.replaceRegionTexts(requests, 'find-replace');
         await executeSearch();
     }
 
     async function refresh(): Promise<void> {
-        const toolbar = wasmCall<FindToolbarState>(wasm(), 'findControllerGetToolbarState');
+        const toolbar = callSession<FindToolbarState>(findSession(), 'getToolbarState');
         if (!toolbar?.isOpen) {
             const nodes = getNodes();
             if (nodes.overlay) nodes.overlay.innerHTML = '';
@@ -354,11 +375,11 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
         }
         // Update current page in WASM
         const s = deps.getViewerSession();
-        wasmCall(wasm(), 'findControllerSetCurrentPage', s.currentPage);
+        callSession(findSession(), 'setCurrentPage', s.currentPage);
 
         if (readScope() === 'document' && toolbar.hasMatches && getNodes().input?.value?.trim()) {
             renderToolbarFromWasm();
-            const update = wasmCall<FindStateUpdate>(wasm(), 'findControllerSetCurrentPage', s.currentPage);
+            const update = callSession<FindStateUpdate>(findSession(), 'setCurrentPage', s.currentPage);
             if (update) renderOverlayFromUpdate(update);
             return;
         }
@@ -369,7 +390,7 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
         const nodes = getNodes();
         if (nodes.input) nodes.input.value = '';
         if (nodes.scope) nodes.scope.value = 'page';
-        applyUpdate(wasmCall<FindStateUpdate>(wasm(), 'findControllerClear'));
+        applyUpdate(callSession<FindStateUpdate>(findSession(), 'clear'));
     }
 
     function initialize(): void {
