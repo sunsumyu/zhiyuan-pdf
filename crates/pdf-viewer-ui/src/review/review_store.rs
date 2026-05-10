@@ -13,7 +13,7 @@ use std::cell::RefCell;
 pub use pdf_viewer_core::render::comment_review_state::*;
 
 thread_local! {
-    pub static HOST_COMMENT_REVIEW_SESSION: RefCell<HostCommentReviewSession> =
+    pub static COMMENT_REVIEW_SESSION: RefCell<HostCommentReviewSession> =
         RefCell::new(HostCommentReviewSession::default());
 }
 
@@ -22,13 +22,13 @@ pub fn clear_comment_review_session() {
 }
 
 pub fn get_comment_review_session() -> HostCommentReviewSession {
-    HOST_COMMENT_REVIEW_SESSION.with(|session| session.borrow().clone())
+    COMMENT_REVIEW_SESSION.with(|session| session.borrow().clone())
 }
 
 fn replace_comment_review_session(
     next: HostCommentReviewSession,
 ) -> HostCommentReviewSession {
-    HOST_COMMENT_REVIEW_SESSION.with(|session| {
+    COMMENT_REVIEW_SESSION.with(|session| {
         *session.borrow_mut() = next.clone();
     });
     next

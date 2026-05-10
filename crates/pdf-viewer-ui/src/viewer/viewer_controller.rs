@@ -19,7 +19,7 @@ use crate::viewer::viewer_store::{
     set_current_zoom,
     set_page_dimensions,
     set_viewer_document, HostViewerSession,
-    HOST_VIEWER_SESSION,
+    VIEWER_SESSION,
 };
 use crate::zoom::preview_host::{
     clear_zoom_preview_host_state,
@@ -86,7 +86,7 @@ pub fn note_document_mutation(_reason: &str) -> u64 {
 }
 
 pub fn get_session() -> HostViewerSession {
-    HOST_VIEWER_SESSION.with(|session| session.borrow().clone())
+    VIEWER_SESSION.with(|session| session.borrow().clone())
 }
 
 pub fn set_document(path: Option<String>, page_count: u16, initial_zoom: f32) {

@@ -6,31 +6,31 @@ use crate::render::prepared_scene::PreparedPageScene;
 use crate::render::progressive::ProgressiveVectorRenderTask;
 
 thread_local! {
-    pub static HOST_PAGE_STATE: RefCell<PageState> = RefCell::new(PageState::default());
-    pub static HOST_PREPARED_SCENE: RefCell<Option<PreparedPageScene>> = const { RefCell::new(None) };
-    pub static HOST_PROGRESSIVE_RENDER_TASK: RefCell<Option<ProgressiveVectorRenderTask>> = const { RefCell::new(None) };
+    pub static PAGE_STATE: RefCell<PageState> = RefCell::new(PageState::default());
+    pub static PREPARED_SCENE: RefCell<Option<PreparedPageScene>> = const { RefCell::new(None) };
+    pub static PROGRESSIVE_RENDER_TASK: RefCell<Option<ProgressiveVectorRenderTask>> = const { RefCell::new(None) };
 }
 
 pub type HostPageState = RefCell<PageState>;
 
 pub fn with_page_state<R>(f: impl FnOnce(&PageState) -> R) -> R {
-    HOST_PAGE_STATE.with(|state| f(&state.borrow()))
+    PAGE_STATE.with(|state| f(&state.borrow()))
 }
 
 pub fn with_page_and_scene<R>(
     f: impl FnOnce(&PageState, &Option<PreparedPageScene>) -> R,
 ) -> R {
-    HOST_PAGE_STATE.with(|state| {
-        HOST_PREPARED_SCENE.with(|scene| f(&state.borrow(), &scene.borrow()))
+    PAGE_STATE.with(|state| {
+        PREPARED_SCENE.with(|scene| f(&state.borrow(), &scene.borrow()))
     })
 }
 
 pub fn with_progressive_task_mut<R>(f: impl FnOnce(&mut Option<ProgressiveVectorRenderTask>) -> R) -> R {
-    HOST_PROGRESSIVE_RENDER_TASK.with(|task| f(&mut task.borrow_mut()))
+    PROGRESSIVE_RENDER_TASK.with(|task| f(&mut task.borrow_mut()))
 }
 
 pub fn set_progressive_task(task: Option<ProgressiveVectorRenderTask>) {
-    HOST_PROGRESSIVE_RENDER_TASK.with(|t| {
+    PROGRESSIVE_RENDER_TASK.with(|t| {
         *t.borrow_mut() = task;
     });
 }
@@ -48,7 +48,7 @@ pub fn init_page_context(
     let prepared_scene = PreparedPageScene::build(Some(&vector_model), Some(&paint_plan));
     let page_width = vector_model.width;
     let page_height = vector_model.height;
-    HOST_PAGE_STATE.with(|state| {
+    PAGE_STATE.with(|state| {
         let mut state = state.borrow_mut();
         state.zoom = zoom;
         state.dpr = dpr;
@@ -61,10 +61,10 @@ pub fn init_page_context(
         state.paint_plan = Some(paint_plan);
         state.vector_model = Some(vector_model);
     });
-    HOST_PREPARED_SCENE.with(|state| {
+    PREPARED_SCENE.with(|state| {
         *state.borrow_mut() = prepared_scene;
     });
-    HOST_PROGRESSIVE_RENDER_TASK.with(|task| {
+    PROGRESSIVE_RENDER_TASK.with(|task| {
         *task.borrow_mut() = None;
     });
     Some((page_width, page_height))
@@ -78,7 +78,7 @@ pub fn update_page_viewport(
     viewport_width: Option<f32>,
     viewport_height: Option<f32>,
 ) -> (f32, f32) {
-    HOST_PAGE_STATE.with(|state| {
+    PAGE_STATE.with(|state| {
         let mut state = state.borrow_mut();
         let page_width = state
             .vector_model
@@ -103,7 +103,7 @@ pub fn update_page_viewport(
 }
 
 pub fn reset_progressive_render_task() {
-    HOST_PROGRESSIVE_RENDER_TASK.with(|task| {
+    PROGRESSIVE_RENDER_TASK.with(|task| {
         *task.borrow_mut() = None;
     });
 }

@@ -15,18 +15,18 @@ use std::cell::RefCell;
 pub use pdf_viewer_core::render::find_state::*;
 
 thread_local! {
-    pub static HOST_FIND_SESSION: RefCell<HostFindSession> =
+    pub static FIND_SESSION: RefCell<HostFindSession> =
         RefCell::new(HostFindSession::default());
 }
 
 pub fn clear_find_session() {
-    HOST_FIND_SESSION.with(|session| {
+    FIND_SESSION.with(|session| {
         *session.borrow_mut() = HostFindSession::default();
     });
 }
 
 pub fn get_find_session() -> HostFindSession {
-    HOST_FIND_SESSION.with(|session| session.borrow().clone())
+    FIND_SESSION.with(|session| session.borrow().clone())
 }
 
 pub fn set_find_session(
@@ -39,7 +39,7 @@ pub fn set_find_session(
     let active_index = resolve_initial_active_index(&match_pages, preferred_active_page);
     let active_page = match_pages.get(active_index).copied();
 
-    HOST_FIND_SESSION.with(|session| {
+    FIND_SESSION.with(|session| {
         *session.borrow_mut() = HostFindSession {
             query,
             scope,
@@ -58,7 +58,7 @@ pub fn set_find_session(
 }
 
 pub fn move_find_match(step: i32) -> HostFindNavigationResult {
-    HOST_FIND_SESSION.with(|session| {
+    FIND_SESSION.with(|session| {
         let mut session = session.borrow_mut();
         if session.match_pages.is_empty() {
             return HostFindNavigationResult::default();

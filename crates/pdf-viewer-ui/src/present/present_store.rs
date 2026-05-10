@@ -27,16 +27,16 @@ use crate::viewport_refresh::{HostViewportRefreshState, ViewportRefreshDecision}
 use crate::zoom::zoom_store;
 
 thread_local! {
-    pub static HOST_PRESENT_STATE: RefCell<HostPresentState> =
+    pub static PRESENT_STATE: RefCell<HostPresentState> =
         RefCell::new(HostPresentState::default());
-    pub static HOST_FRAME_CACHE_STATE: RefCell<HostFrameCacheState> =
+    pub static FRAME_CACHE_STATE: RefCell<HostFrameCacheState> =
         RefCell::new(HostFrameCacheState::default());
-    pub static HOST_VIEWPORT_REFRESH_STATE: RefCell<HostViewportRefreshState> =
+    pub static VIEWPORT_REFRESH_STATE: RefCell<HostViewportRefreshState> =
         RefCell::new(HostViewportRefreshState::default());
 }
 
 pub fn with_present_state<R>(f: impl FnOnce(&HostPresentState) -> R) -> R {
-    HOST_PRESENT_STATE.with(|state| f(&state.borrow()))
+    PRESENT_STATE.with(|state| f(&state.borrow()))
 }
 
 pub fn build_frame_plan_result(
@@ -45,7 +45,7 @@ pub fn build_frame_plan_result(
 ) -> FramePlanResult {
     zoom_store::with_zoom_state_mut(|zoom_state| {
         let viewer_session = viewer_store::get_viewer_session();
-        HOST_PRESENT_STATE.with(|present_state| {
+        PRESENT_STATE.with(|present_state| {
             inner_build_frame_plan_result(
                 request,
                 zoom_state,
@@ -60,38 +60,38 @@ pub fn build_frame_plan_result(
 
 pub fn resolve_viewport_refresh(request: &FramePlanRequest) -> ViewportRefreshDecision {
     let frame_plan = build_frame_plan_result(request, false);
-    HOST_VIEWPORT_REFRESH_STATE.with(|state| {
+    VIEWPORT_REFRESH_STATE.with(|state| {
         inner_resolve_viewport_refresh(&state.borrow(), &frame_plan, request.timestamp_ms)
     })
 }
 
 pub fn touch_frame_cache_entry(is_detail: bool, key: &str) -> bool {
-    HOST_FRAME_CACHE_STATE
+    FRAME_CACHE_STATE
         .with(|state| inner_touch_frame_cache_entry(&mut state.borrow_mut(), is_detail, key))
 }
 
 pub fn store_frame_cache_entry(is_detail: bool, key: String) -> FrameCacheStoreResult {
-    HOST_FRAME_CACHE_STATE
+    FRAME_CACHE_STATE
         .with(|state| inner_store_frame_cache_entry(&mut state.borrow_mut(), is_detail, key))
 }
 
 pub fn reset_frame_cache() {
-    HOST_FRAME_CACHE_STATE.with(|state| {
+    FRAME_CACHE_STATE.with(|state| {
         inner_reset_frame_cache(&mut state.borrow_mut());
     });
 }
 
 pub fn reset_present_runtime(reset_cache: bool, reset_refresh: bool) {
-    HOST_PRESENT_STATE.with(|state| {
+    PRESENT_STATE.with(|state| {
         *state.borrow_mut() = HostPresentState::default();
     });
     if reset_cache {
-        HOST_FRAME_CACHE_STATE.with(|state| {
+        FRAME_CACHE_STATE.with(|state| {
             *state.borrow_mut() = HostFrameCacheState::default();
         });
     }
     if reset_refresh {
-        HOST_VIEWPORT_REFRESH_STATE.with(|state| {
+        VIEWPORT_REFRESH_STATE.with(|state| {
             *state.borrow_mut() = HostViewportRefreshState::default();
         });
     }
@@ -114,8 +114,8 @@ pub fn schedule_render_frame_request(
 
 pub fn commit_render_frame(frame_token: u32, rendered_zoom: f32) -> bool {
     zoom_store::with_zoom_state_mut(|zoom_state| {
-        HOST_PRESENT_STATE.with(|present_state| {
-            HOST_VIEWPORT_REFRESH_STATE.with(|refresh_state| {
+        PRESENT_STATE.with(|present_state| {
+            VIEWPORT_REFRESH_STATE.with(|refresh_state| {
                 settle_render_frame_inner(
                     frame_token,
                     Some(rendered_zoom),
@@ -134,8 +134,8 @@ pub fn settle_render_frame(
     maybe_rendered_zoom: Option<f32>,
 ) -> RenderFrameTransition {
     zoom_store::with_zoom_state_mut(|zoom_state| {
-        HOST_PRESENT_STATE.with(|present_state| {
-            HOST_VIEWPORT_REFRESH_STATE.with(|refresh_state| {
+        PRESENT_STATE.with(|present_state| {
+            VIEWPORT_REFRESH_STATE.with(|refresh_state| {
                 settle_render_frame_inner(
                     frame_token,
                     maybe_rendered_zoom,

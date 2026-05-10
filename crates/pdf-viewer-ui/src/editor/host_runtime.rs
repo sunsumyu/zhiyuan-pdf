@@ -19,16 +19,16 @@ impl Default for EditorHostRuntimeState {
 }
 
 thread_local! {
-    pub static HOST_EDITOR_HOST_RUNTIME_STATE: RefCell<EditorHostRuntimeState> =
+    pub static EDITOR_HOST_RUNTIME_STATE: RefCell<EditorHostRuntimeState> =
         RefCell::new(EditorHostRuntimeState::default());
 }
 
 pub fn get_state() -> EditorHostRuntimeState {
-    HOST_EDITOR_HOST_RUNTIME_STATE.with(|state| state.borrow().clone())
+    EDITOR_HOST_RUNTIME_STATE.with(|state| state.borrow().clone())
 }
 
 pub fn reset_state() {
-    HOST_EDITOR_HOST_RUNTIME_STATE.with(|state| {
+    EDITOR_HOST_RUNTIME_STATE.with(|state| {
         *state.borrow_mut() = EditorHostRuntimeState::default();
     });
 }
@@ -39,13 +39,13 @@ pub fn set_display_zoom(display_zoom: f32) {
     } else {
         1.0
     };
-    HOST_EDITOR_HOST_RUNTIME_STATE.with(|state| {
+    EDITOR_HOST_RUNTIME_STATE.with(|state| {
         state.borrow_mut().last_display_zoom = display_zoom;
     });
 }
 
 pub fn begin_commit() -> bool {
-    HOST_EDITOR_HOST_RUNTIME_STATE.with(|state| {
+    EDITOR_HOST_RUNTIME_STATE.with(|state| {
         let mut state = state.borrow_mut();
         if state.committing {
             false
@@ -57,7 +57,7 @@ pub fn begin_commit() -> bool {
 }
 
 pub fn finish_commit() {
-    HOST_EDITOR_HOST_RUNTIME_STATE.with(|state| {
+    EDITOR_HOST_RUNTIME_STATE.with(|state| {
         state.borrow_mut().committing = false;
     });
 }

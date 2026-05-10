@@ -4,12 +4,12 @@ use std::cell::RefCell;
 pub use pdf_viewer_core::render::scheduler::*;
 
 thread_local! {
-    pub static HOST_RENDER_STATE: RefCell<HostRenderState<serde_json::Value>> =
+    pub static RENDER_STATE: RefCell<HostRenderState<serde_json::Value>> =
         RefCell::new(HostRenderState::default());
 }
 
 pub fn reset_render_state() {
-    HOST_RENDER_STATE.with(|state| {
+    RENDER_STATE.with(|state| {
         *state.borrow_mut() = HostRenderState::default();
     });
 }
@@ -18,7 +18,7 @@ pub fn is_render_frame_current(frame_token: u32) -> bool {
     if frame_token == 0 {
         return false;
     }
-    HOST_RENDER_STATE.with(|state| state.borrow().active_frame_token == frame_token)
+    RENDER_STATE.with(|state| state.borrow().active_frame_token == frame_token)
 }
 
 pub fn schedule_render_frame<TPlan: Clone>(
@@ -32,7 +32,7 @@ pub fn schedule_render_frame<TPlan: Clone>(
         return None;
     }
 
-    HOST_RENDER_STATE.with(|state| {
+    RENDER_STATE.with(|state| {
         let mut state = state.borrow_mut();
 
         if let Some(in_flight_frame_plan) = state
@@ -78,7 +78,7 @@ pub fn settle_render_frame<TPlan: Clone>(
         return RenderFrameTransition::default();
     }
 
-    HOST_RENDER_STATE.with(|state| {
+    RENDER_STATE.with(|state| {
         let mut state = state.borrow_mut();
         if state.in_flight_frame_token != frame_token {
             return RenderFrameTransition::default();

@@ -4,25 +4,25 @@ use std::cell::RefCell;
 pub use pdf_viewer_core::render::zoom_state::*;
 
 thread_local! {
-    pub static HOST_ZOOM_STATE: RefCell<HostZoomState> =
+    pub static ZOOM_STATE: RefCell<HostZoomState> =
         RefCell::new(HostZoomState::default());
 }
 
 pub fn get_zoom_state() -> HostZoomState {
-    HOST_ZOOM_STATE.with(|state| state.borrow().clone())
+    ZOOM_STATE.with(|state| state.borrow().clone())
 }
 
 pub fn with_zoom_state<R>(f: impl FnOnce(&HostZoomState) -> R) -> R {
-    HOST_ZOOM_STATE.with(|state| f(&state.borrow()))
+    ZOOM_STATE.with(|state| f(&state.borrow()))
 }
 
 pub fn with_zoom_state_mut<R>(f: impl FnOnce(&mut HostZoomState) -> R) -> R {
-    HOST_ZOOM_STATE.with(|state| f(&mut state.borrow_mut()))
+    ZOOM_STATE.with(|state| f(&mut state.borrow_mut()))
 }
 
 pub fn reset_zoom_state(initial_zoom: f32) {
     let zoom = sanitize_zoom(initial_zoom);
-    HOST_ZOOM_STATE.with(|state| {
+    ZOOM_STATE.with(|state| {
         *state.borrow_mut() = HostZoomState {
             current_zoom: zoom,
             target_zoom: zoom,

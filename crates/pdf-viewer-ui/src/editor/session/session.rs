@@ -44,22 +44,22 @@ impl Default for EditorModeState {
 }
 
 thread_local! {
-    pub static HOST_EDITOR_MODE: RefCell<EditorModeState> =
+    pub static EDITOR_MODE_STATE: RefCell<EditorModeState> =
         RefCell::new(EditorModeState::default());
 }
 
 pub fn reset_editor_mode() {
-    HOST_EDITOR_MODE.with(|mode| {
+    EDITOR_MODE_STATE.with(|mode| {
         *mode.borrow_mut() = EditorModeState::default();
     });
 }
 
 pub fn is_text_edit_enabled() -> bool {
-    HOST_EDITOR_MODE.with(|mode| mode.borrow().text_edit_enabled)
+    EDITOR_MODE_STATE.with(|mode| mode.borrow().text_edit_enabled)
 }
 
 pub fn set_text_edit_enabled(enabled: bool) {
-    HOST_EDITOR_MODE.with(|mode| {
+    EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         mode.text_edit_enabled = enabled;
         if !enabled {
@@ -79,11 +79,11 @@ pub fn set_text_edit_enabled(enabled: bool) {
 }
 
 pub fn active_edit_paragraph_id() -> Option<String> {
-    HOST_EDITOR_MODE.with(|mode| mode.borrow().active_paragraph_id.clone())
+    EDITOR_MODE_STATE.with(|mode| mode.borrow().active_paragraph_id.clone())
 }
 
 pub fn set_active_edit_paragraph(paragraph_id: Option<String>) {
-    HOST_EDITOR_MODE.with(|mode| {
+    EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         mode.active_paragraph_id = paragraph_id;
         if mode.active_paragraph_id.is_none() {
@@ -93,7 +93,7 @@ pub fn set_active_edit_paragraph(paragraph_id: Option<String>) {
 }
 
 pub fn active_editor_state() -> Option<LiveEditorParagraphState> {
-    HOST_EDITOR_MODE.with(|mode| mode.borrow().live_state.clone())
+    EDITOR_MODE_STATE.with(|mode| mode.borrow().live_state.clone())
 }
 
 #[cfg(test)]
@@ -115,7 +115,7 @@ pub fn active_editor_target() -> Option<ActiveEditorTarget> {
 }
 
 pub fn open_paragraph_editor(paragraph_id: String, target: ActiveEditorTarget) -> bool {
-    HOST_EDITOR_MODE.with(|mode| {
+    EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         if !mode.text_edit_enabled {
             dbg_event(
@@ -199,7 +199,7 @@ pub fn open_paragraph_editor(paragraph_id: String, target: ActiveEditorTarget) -
 }
 
 pub fn close_active_editor() {
-    HOST_EDITOR_MODE.with(|mode| {
+    EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         mode.active_paragraph_id = None;
         mode.live_state = None;
@@ -211,7 +211,7 @@ pub fn active_editor_draft_text() -> Option<String> {
 }
 
 pub fn active_editor_has_session_changes() -> bool {
-    HOST_EDITOR_MODE.with(|mode| {
+    EDITOR_MODE_STATE.with(|mode| {
         mode.borrow()
             .live_state
             .as_ref()
@@ -227,7 +227,7 @@ pub fn active_editor_caret_index() -> usize {
 }
 
 pub fn set_active_editor_caret_index(caret_index: usize) -> bool {
-    HOST_EDITOR_MODE.with(|mode| {
+    EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             dbg_event(
@@ -259,7 +259,7 @@ pub fn sync_active_editor_input(
     new_text: String,
     caret_index: usize,
 ) -> ActiveEditorInputSyncResult {
-    HOST_EDITOR_MODE.with(|mode| {
+    EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             dbg_event(
@@ -310,7 +310,7 @@ pub fn sync_active_editor_input(
 pub fn render_scene_key() -> String {
     let document_revision = current_document_revision();
     let patch_revision = current_patch_revision();
-    HOST_EDITOR_MODE.with(|mode| {
+    EDITOR_MODE_STATE.with(|mode| {
         let mode = mode.borrow();
         match mode.live_state.as_ref() {
             Some(live_state) if !live_state.paragraph_id().is_empty() => {

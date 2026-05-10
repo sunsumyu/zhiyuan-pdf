@@ -14,7 +14,7 @@ use crate::editor::mode::get_active_editor_state;
 use crate::editor::replacement_snapshot::replacement_target_from_patch_snapshot;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::source_identity::collect_target_source_object_indices;
-use crate::page::page_store::HOST_PAGE_STATE;
+use crate::page::page_store::PAGE_STATE;
 use crate::state_manager::get_patch_state;
 
 // 数据结构已迁至 pdf_viewer_core::edit::paragraph_overlay。
@@ -136,7 +136,7 @@ pub fn collect_paragraph_render_overlays(
             .cloned()
             .flatten()
             .or_else(|| {
-                HOST_PAGE_STATE.with(|page_state: &crate::page::page_store::HostPageState| {
+                PAGE_STATE.with(|page_state: &crate::page::page_store::HostPageState| {
                     resolve_active_marker_text(&active_state, &page_state.borrow())
                 })
             });

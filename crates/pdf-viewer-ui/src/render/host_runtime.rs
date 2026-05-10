@@ -9,14 +9,14 @@ pub struct HostRenderLoopState {
 }
 
 thread_local! {
-    pub static HOST_RENDER_LOOP_STATE: RefCell<HostRenderLoopState> =
+    pub static RENDER_LOOP_STATE: RefCell<HostRenderLoopState> =
         RefCell::new(HostRenderLoopState::default());
 }
 
 pub fn queue_render_loop_frame(
     frame: Option<RenderFrameEnvelope>,
 ) -> Option<RenderFrameEnvelope> {
-    HOST_RENDER_LOOP_STATE.with(|state| {
+    RENDER_LOOP_STATE.with(|state| {
         let mut state = state.borrow_mut();
         if let Some(frame) = frame {
             state.pending_frame = Some(frame);
@@ -35,7 +35,7 @@ pub fn queue_render_loop_frame(
 pub fn advance_render_loop_frame(
     next_frame: Option<RenderFrameEnvelope>,
 ) -> Option<RenderFrameEnvelope> {
-    HOST_RENDER_LOOP_STATE.with(|state| {
+    RENDER_LOOP_STATE.with(|state| {
         let mut state = state.borrow_mut();
         if let Some(frame) = next_frame {
             return Some(frame);
@@ -49,7 +49,7 @@ pub fn advance_render_loop_frame(
 }
 
 pub fn reset_render_loop_runtime() {
-    HOST_RENDER_LOOP_STATE.with(|state| {
+    RENDER_LOOP_STATE.with(|state| {
         *state.borrow_mut() = HostRenderLoopState::default();
     });
 }

@@ -5,7 +5,7 @@
 //!   - Zero-sized struct as JS-visible handle.
 //!   - `#[wasm_bindgen]` methods with camelCase `js_name`.
 //!   - Thin delegation to `viewer_store` / `viewer_controller`.
-//!   - All state lives in the wasm `HOST_VIEWER_SESSION` thread_local.
+//!   - All state lives in the wasm `VIEWER_SESSION` thread_local.
 //!
 //! Replaces the prior flat free-function exports
 //! (`get_viewer_session`, `set_viewer_document`, `set_current_page`, …),

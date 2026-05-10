@@ -98,7 +98,7 @@ fn parse_list_kind(value: &str) -> Option<ListMarkerKind> {
 }
 
 pub fn toggle_active_editor_bold() -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -109,7 +109,7 @@ pub fn toggle_active_editor_bold() -> ActiveEditorFormatState {
 }
 
 pub fn toggle_active_editor_italic() -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -120,7 +120,7 @@ pub fn toggle_active_editor_italic() -> ActiveEditorFormatState {
 }
 
 pub fn toggle_active_editor_underline() -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -131,7 +131,7 @@ pub fn toggle_active_editor_underline() -> ActiveEditorFormatState {
 }
 
 pub fn set_active_editor_color(color: &str) -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -142,7 +142,7 @@ pub fn set_active_editor_color(color: &str) -> ActiveEditorFormatState {
 }
 
 pub fn set_active_editor_font_family(font_family: &str) -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -153,7 +153,7 @@ pub fn set_active_editor_font_family(font_family: &str) -> ActiveEditorFormatSta
 }
 
 pub fn set_active_editor_font_size(font_size: f32) -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -164,7 +164,7 @@ pub fn set_active_editor_font_size(font_size: f32) -> ActiveEditorFormatState {
 }
 
 pub fn step_active_editor_font_size(increase: bool) -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -176,7 +176,7 @@ pub fn step_active_editor_font_size(increase: bool) -> ActiveEditorFormatState {
 }
 
 pub fn set_active_editor_char_spacing(char_spacing: f32) -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -187,7 +187,7 @@ pub fn set_active_editor_char_spacing(char_spacing: f32) -> ActiveEditorFormatSt
 }
 
 pub fn set_active_editor_line_height(line_height: f32) -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -198,7 +198,7 @@ pub fn set_active_editor_line_height(line_height: f32) -> ActiveEditorFormatStat
 }
 
 pub fn set_active_editor_paragraph_mode(mode: &str) -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|editor_mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|editor_mode| {
         let mut editor_mode = editor_mode.borrow_mut();
         let Some(live_state) = editor_mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -209,7 +209,7 @@ pub fn set_active_editor_paragraph_mode(mode: &str) -> ActiveEditorFormatState {
 }
 
 pub fn set_active_editor_alignment(alignment: &str) -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -223,7 +223,7 @@ pub fn set_active_editor_alignment(alignment: &str) -> ActiveEditorFormatState {
 }
 
 pub fn set_active_editor_list_kind(list_kind: &str) -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
@@ -237,7 +237,7 @@ pub fn set_active_editor_list_kind(list_kind: &str) -> ActiveEditorFormatState {
 }
 
 pub fn active_editor_format_state() -> ActiveEditorFormatState {
-    crate::editor::session::HOST_EDITOR_MODE.with(|mode| {
+    crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mode = mode.borrow();
         let Some(live_state) = mode.live_state.as_ref() else {
             return ActiveEditorFormatState::default();
