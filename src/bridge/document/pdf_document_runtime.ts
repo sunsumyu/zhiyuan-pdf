@@ -93,6 +93,7 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
         await deps.ensureWasmInitialized();
         try {
             const session = getDocumentSession(deps.getWasmApi);
+            console.log('[PDF-DIAG] openTextPdfFlow: session=', session ? 'OK' : 'NULL');
             const openResult = session
                 ? await session.open({
                     path,
@@ -101,17 +102,20 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
                     defaultPageHeight: 842,
                 })
                 : null;
+            console.log('[PDF-DIAG] openResult=', JSON.stringify(openResult));
             const pageCount: number = Number(openResult?.pageCount || 0);
             if (!openResult?.opened || pageCount <= 0) {
                 console.warn('[PDF] DocumentSession.open returned no pages for:', path, openResult);
                 resetPdfViewerState();
                 return;
             }
+            console.log('[PDF-DIAG] open succeeded, pageCount=', pageCount, '— entering render');
             deps.clearVectorHost();
             deps.clearEditorHost();
             deps.syncZoomSelect();
             deps.syncTextEditButton();
             await renderCurrentPage();
+            console.log('[PDF-DIAG] renderCurrentPage completed');
         } catch (err) {
             console.error('[PDF] Failed to open document pipeline:', err);
             resetPdfViewerState();

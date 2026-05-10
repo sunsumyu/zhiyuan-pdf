@@ -4,6 +4,7 @@ pub mod commit;
 pub mod effective_page_plan;
 pub mod facade;
 pub mod frame_cache;
+pub mod free_api;
 pub mod host_runtime;
 pub mod layer;
 pub mod loop_workflow;

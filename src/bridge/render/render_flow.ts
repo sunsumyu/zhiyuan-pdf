@@ -77,6 +77,7 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                     session,
                 });
                 ensureVectorHost();
+                console.log('[PDF-DIAG] render-loop: calling showWrapper, page=', session.currentPage, 'pageCount=', session.pageCount, 'path=', session.path?.substring(0, 30));
                 deps.showWrapper();
 
                 const renderPlan = currentFrame.framePlan;
@@ -245,9 +246,11 @@ export function createRenderFlow(deps: RenderFlowDeps) {
 
     async function renderCurrentPage(renderReason: RenderReason = 'default'): Promise<void> {
         const session = deps.viewerSession.read();
+        console.log('[PDF-DIAG] renderFlow.renderCurrentPage: path=', session.path?.substring(0, 30) ?? 'NULL', 'pageCount=', session.pageCount, 'zoom=', session.currentZoom);
         const scheduled = session.path
             ? deps.framePlanAdapter.scheduleRender(session.currentZoom, renderReason)
             : null;
+        console.log('[PDF-DIAG] renderFlow scheduled=', scheduled ? 'FRAME' : 'NULL');
         await runRenderLoop(scheduled);
     }
 
