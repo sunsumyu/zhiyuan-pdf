@@ -13,6 +13,7 @@
 //!
 //! | Handle | Domain folder | Role |
 //! |--------|---------------|------|
+//! | [`Application`] | (top-level) | composition root / document lifecycle |
 //! | [`AnnotationManager`] | `annotation/` | annotation CRUD |
 //! | [`CommentManager`] | `comment/` | comment thread management |
 //! | [`DocumentSession`] | `document/` | document lifecycle (open/save/undo) |
@@ -21,6 +22,7 @@
 //! | [`ReviewSession`] | `review/` | review feed (accept/reject) |
 //! | [`ViewerSession`] | `viewer/` | viewport / page navigation |
 
+pub use crate::application::Application;
 pub use crate::annotation::annotation_api::AnnotationManager;
 pub use crate::comment::comment_api::CommentManager;
 pub use crate::document::document_api::DocumentSession;

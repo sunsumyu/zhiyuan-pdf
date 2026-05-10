@@ -1,4 +1,5 @@
 pub mod api;
+pub mod application;
 
 pub mod annotation;
 pub mod comment;
