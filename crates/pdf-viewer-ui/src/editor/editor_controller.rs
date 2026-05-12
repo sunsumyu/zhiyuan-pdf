@@ -84,7 +84,7 @@ pub fn open_editor_at_page_point(
             zoom,
         )
     });
-    let Some(active_target) = active_target else {
+    let Some(mut active_target) = active_target else {
         dbg_event(
             "open.runtime",
             "target-not-found",
@@ -96,6 +96,23 @@ pub fn open_editor_at_page_point(
         );
         return EditorVisibilityAction::default();
     };
+
+    // 统一首次点击 (Open) 与后续点击 (Move) 的光标解析路径：
+    // 用 Move 路径同款的 `active_caret_index_at_page_point` 重新计算 body_initial_caret，
+    // 确保 caret stop 构造算法一致（均基于 build_unified_draft_caret_lines），
+    // 修复首次点击位置偏差、后续点击位置准确的不对称问题。
+    {
+        let source_text = active_target.source_body_text().to_string();
+        let unified_caret = crate::editor::text_geometry::active_caret_index_at_page_point(
+            &active_target,
+            &source_text,
+            click_page_x,
+            click_page_y,
+        );
+        active_target.initial_caret_index = unified_caret;
+        active_target.scene.document_plan.body_initial_caret = unified_caret;
+    }
+
     let body_object_id_count = active_target
         .scene
         .body_session

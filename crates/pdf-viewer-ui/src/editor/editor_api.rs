@@ -482,6 +482,9 @@ impl EditorSession {
             "insert" => EditorInputCommand::InsertText(
                 request.inserted_text.as_deref().unwrap_or(""),
             ),
+            "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown" | "Home" | "End" => {
+                EditorInputCommand::Navigation(&request.command)
+            }
             other => {
                 return err_response(EditorError::Internal {
                     message: format!("unknown command: {other}"),
@@ -893,45 +896,14 @@ fn resolve_target_at_page_point(
         return None;
     }
 
-    // Direct hit (with 4px tolerance)
-    if let Some(target) = targets.iter().find(|t| {
+    // Direct hit only (with 4px tolerance).
+    // No nearest-neighbor fallback — clicking blank area must NOT open a distant paragraph.
+    targets.iter().find(|t| {
         page_x >= t.bbox.left - 4.0
             && page_x <= t.bbox.right + 4.0
             && page_y >= t.bbox.top - 4.0
             && page_y <= t.bbox.bottom + 4.0
-    }) {
-        return Some(target.clone());
-    }
-
-    // Nearest within threshold (30px distance)
-    let nearest = targets
-        .iter()
-        .map(|t| {
-            let dx = if page_x < t.bbox.left {
-                t.bbox.left - page_x
-            } else if page_x > t.bbox.right {
-                page_x - t.bbox.right
-            } else {
-                0.0
-            };
-            let dy = if page_y < t.bbox.top {
-                t.bbox.top - page_y
-            } else if page_y > t.bbox.bottom {
-                page_y - t.bbox.bottom
-            } else {
-                0.0
-            };
-            (dx * dx + dy * dy, t)
-        })
-        .min_by(|(a, _), (b, _)| a.total_cmp(b));
-
-    if let Some((dist_sq, target)) = nearest {
-        if dist_sq <= 900.0 {
-            return Some(target.clone());
-        }
-    }
-
-    None
+    }).cloned()
 }
 
 fn collect_text_blocks() -> Vec<TextBlockInfo> {

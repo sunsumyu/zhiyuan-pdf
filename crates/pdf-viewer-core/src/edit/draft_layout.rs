@@ -7,10 +7,6 @@ use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::edit::document_plan::EditorDocumentPlan;
-use crate::edit::edited_text_layout::{
-    resolve_edited_text_geometry_policy, strip_source_geometry_for_edited_text,
-    EditedTextGeometryPolicy,
-};
 use crate::text::style_mapper::should_preserve_editor_underline;
 use crate::utils::debug::truncate_debug_text;
 
@@ -97,18 +93,34 @@ fn body_runs_match_source_text(document_plan: &EditorDocumentPlan) -> bool {
     body_runs_text(document_plan) == document_plan.source_body_text()
 }
 
-fn build_reconstructed_text_run_with_policy(
-    document_plan: &EditorDocumentPlan,
-    text: &str,
-    preserve_underline: bool,
-) -> Vec<LayoutRun> {
-    if text.is_empty() {
-        return Vec::new();
+/// 构建从 `source_text`（带合成空格的可视文本）到 `runs_text`（raw run 拼接）的字符索引映射。
+///
+/// `session_source_text` 在 raw run 之间/内部插入合成空格（CJK 间距、缩写规则、
+/// run 间空隙），所以 `source_text` 的字符位置无法直接用于切片 raw runs。
+/// 本函数返回长度为 `source_text.chars().count() + 1` 的映射表：
+///   `mapping[i]` = `source_text` 的第 i 个字符在 `runs_text` 中对应的字符索引（左闭右开边界）。
+/// 合成空格不消耗 raw 游标，跳过即可。最后一个元素是 `runs_text` 总长度，方便用作右开边界。
+///
+/// 对齐策略：贪心顺序匹配。源串字符若与 raw 当前字符相等则同步推进；
+/// 否则视为合成字符（典型场景：合成空格），raw 游标保持。这与 `session_source_text`
+/// 仅 *插入* 字符、不 *修改/删除* 字符的语义一致。
+fn build_source_to_runs_index_map(source_text: &str, runs_text: &str) -> Vec<usize> {
+    let source_chars: Vec<char> = source_text.chars().collect();
+    let runs_chars: Vec<char> = runs_text.chars().collect();
+    let mut mapping = Vec::with_capacity(source_chars.len() + 1);
+    let mut runs_cursor = 0usize;
+    for sc in &source_chars {
+        if runs_cursor < runs_chars.len() && runs_chars[runs_cursor] == *sc {
+            mapping.push(runs_cursor);
+            runs_cursor += 1;
+        } else {
+            // 源串中存在但 raw runs 中不存在 —— 合成字符（如 normalize 出的空格）。
+            // 不推进 raw 游标，但仍记录"该位置在 runs 中等价于 runs_cursor"。
+            mapping.push(runs_cursor);
+        }
     }
-
-    let mut run = resolve_draft_template_run_with_policy(document_plan, preserve_underline);
-    run.text = text.to_string();
-    vec![normalize_style_run(&run, preserve_underline)]
+    mapping.push(runs_chars.len());
+    mapping
 }
 
 fn same_existing_layout_line(
@@ -366,34 +378,20 @@ fn build_style_runs_for_draft_text_with_policy(
 ) -> Vec<LayoutRun> {
     let source_text = document_plan.source_body_text();
     let source_runs_match_text = body_runs_match_source_text(document_plan);
-    let geometry_policy =
-        resolve_edited_text_geometry_policy(source_text, draft_text, source_runs_match_text);
-    if draft_text == source_text {
-        if source_runs_match_text {
-            return document_plan
-                .body_session
-                .paragraph
-                .runs
-                .iter()
-                .filter(|run| !run.text.is_empty())
-                .map(|run| normalize_style_run(run, preserve_underline))
-                .collect();
-        }
 
-        return build_reconstructed_text_run_with_policy(
-            document_plan,
-            source_text,
-            preserve_underline,
-        );
-    }
-
-    if !source_runs_match_text {
-        return build_reconstructed_text_run_with_policy(
-            document_plan,
-            draft_text,
-            preserve_underline,
-        );
-    }
+    // 架构原则（统一渲染链）：不论是否真的发生编辑、不论 runs 是否含合成空格，
+    // 都走同一条 diff + 切片 + 映射路径。这样可以：
+    //   * 编辑前打开编辑器时 (draft_text == source_text)：diff 得到 prefix=full、
+    //     insert=∅、suffix=∅，切片返回完整 raw runs（保留 PDF char_origins），
+    //     渲染结果与原 PDF 像素级一致。
+    //   * 编辑发生后：未改前后缀切片仍保留 PDF char_origins；只有真正"被插入"的
+    //     中间片段用 measureText 度量。
+    //
+    // 这取代了过去三条分叉：
+    //   (a) `draft==source && runs_match`：用 normalize_style_run（错误地 clear 了 origins）
+    //   (b) `draft==source && !runs_match`：用 reconstructed-fallback（单 run、无 origins）
+    //   (c) `draft!=source && !runs_match`：reconstructed-fallback
+    // 这些都会让 PDF char_origins 丢失，导致字体/字距与编辑前/原 PDF 出现可见漂移。
 
     let source_chars: Vec<char> = source_text.chars().collect();
     let draft_chars: Vec<char> = draft_text.chars().collect();
@@ -419,35 +417,71 @@ fn build_style_runs_for_draft_text_with_policy(
     let inserted_start = prefix_len;
     let inserted_end = draft_len.saturating_sub(suffix_len);
 
-    let mut runs = Vec::new();
+    // 架构关键点：切片索引必须基于 raw runs 的字符空间，而非 `source_body_text` 的可视空间。
+    // `session_source_text` 注入的合成空格在 runs 中并不存在；若直接用 source_text 的索引切片
+    // 会导致越界或错位，进而触发 reconstructed-fallback，丢失 PDF char_origins，
+    // 用户即看到"删除后字体显示有变化"。
+    //
+    // 用 `build_source_to_runs_index_map` 把 prefix/suffix 边界换算到 raw runs 索引空间。
+    // 当 `source_runs_match_text == true`（runs 与 source_text 完全一致），mapping 是恒等映射，
+    // 行为与旧实现一致；当为 false（含合成空格），mapping 跳过合成位置正确切片。
     let source_runs = &document_plan.body_session.paragraph.runs;
-    runs.extend(slice_runs_by_char_range(source_runs, 0, prefix_len));
+    let runs_text = body_runs_text(document_plan);
+    let runs_total_chars = runs_text.chars().count();
+    let mapping = if source_runs_match_text {
+        Vec::new() // 不需要 — 走恒等路径
+    } else {
+        build_source_to_runs_index_map(source_text, &runs_text)
+    };
+    let map_to_runs_index = |source_index: usize| -> usize {
+        if source_runs_match_text {
+            source_index.min(runs_total_chars)
+        } else {
+            mapping
+                .get(source_index)
+                .copied()
+                .unwrap_or(runs_total_chars)
+        }
+    };
+
+    let prefix_runs_end = map_to_runs_index(prefix_len);
+    let suffix_runs_start = map_to_runs_index(source_len.saturating_sub(suffix_len));
+
+    let mut runs = Vec::new();
+    runs.extend(slice_runs_by_char_range(source_runs, 0, prefix_runs_end));
 
     if inserted_start < inserted_end {
-        let source_runs = &document_plan.body_session.paragraph.runs;
-        let anchor_index = prefix_len
+        let anchor_source_index = prefix_len
             .saturating_sub(1)
             .min(source_len.saturating_sub(1));
+        let anchor_runs_index = map_to_runs_index(anchor_source_index);
         let mut template = select_insert_style_run_with_policy(
             document_plan,
             source_runs,
-            anchor_index,
+            anchor_runs_index,
             preserve_underline,
         );
         template.text = draft_chars[inserted_start..inserted_end].iter().collect();
         runs.push(normalize_style_run(&template, preserve_underline));
     }
 
-    let suffix_start = source_len.saturating_sub(suffix_len);
     runs.extend(slice_runs_by_char_range(
         source_runs,
-        suffix_start,
-        source_len,
+        suffix_runs_start,
+        runs_total_chars,
     ));
 
-    if geometry_policy == EditedTextGeometryPolicy::MeasureEditedText {
-        strip_source_geometry_for_edited_text(&mut runs);
-    }
+    // 架构原则（编辑前后视觉完全一致 — single rendering chain）：
+    // 编辑发生时 *不* 全局 strip 前后缀的 PDF char_origins。
+    // 未修改的前缀/后缀通过 `slice_runs_by_char_range` + `normalize_preserved_geometry_run`
+    // 已保留 run-local PDF 度量，按 PDF 原始字形位置绘制，与编辑前一致。
+    // 仅"新插入"中间片段（由 `select_insert_style_run_with_policy` + `normalize_style_run`
+    // 产生，自然 char_origins 为空）回退到 canvas measureText —— 这是唯一可行选择，
+    // 因为新文本不在原 PDF content-stream 中、无任何 glyph 度量可用。
+    //
+    // 旧版本曾通过 `strip_source_geometry_for_edited_text` 把整段 runs 的 origins 全部清空，
+    // 使"未修改字符"在编辑后切换到浏览器 measureText —— 字体/字距与编辑前出现可见漂移，
+    // 即"删除后字体显示有变化"分叉症状。该策略和 `edited_text_layout.rs` 整个模块已废弃。
 
     if runs.is_empty() {
         let mut fallback =
@@ -965,7 +999,13 @@ mod tests {
     }
 
     #[test]
-    fn draft_layout_uses_canonical_text_when_raw_runs_have_no_spaces() {
+    fn draft_layout_renders_compact_pdf_text_when_runs_have_no_spaces() {
+        // 架构原则（单一渲染链）：编辑器 overlay 渲染的是 *PDF 真实 compact 形态*，
+        // 不是 `source_body_text` 的 visual 形态（visual 形态包含 normalize 注入的
+        // 合成空格，那些字符并不存在于 PDF content-stream 中）。如此渲染才能让
+        // overlay 与 PDF 主画布像素级一致 —— 这是"编辑前后视觉完全一致"的前提。
+        // 编辑器 textarea 仍展示 visual 形态供用户输入；overlay 与 textarea 是
+        // 各自独立的视图，无需输出同一字符串。
         let runs = vec![
             test_run("r1", "编程语言:", 10.0, 60.0, false),
             test_run("r2", "Rust", 80.0, 110.0, false),
@@ -1002,11 +1042,16 @@ mod tests {
             .map(|line| line.text.as_str())
             .collect::<String>();
 
-        assert_eq!(rendered_text, "编程语言: Rust");
+        // PDF compact form — 合成空格不出现在 overlay 渲染输出里。
+        assert_eq!(rendered_text, "编程语言:Rust");
     }
 
     #[test]
-    fn changed_active_draft_layout_drops_source_geometry() {
+    fn changed_active_draft_layout_preserves_source_geometry_for_unchanged_parts() {
+        // 架构原则（编辑前后视觉完全一致）：
+        // 编辑后未修改的前后缀必须继续使用 PDF 原始 char_origins，
+        // 仅"新插入"中间片段（无 PDF 度量可用）回退 measureText。
+        // 这保证用户删除/插入文字后，未改动的字符像素级与编辑前一致。
         let document_plan = changed_text_document_plan();
         let draft_text = "智能合约: Anchor Framwork, Solana Program Library (SPL), ERC-20/721";
 
@@ -1016,13 +1061,16 @@ mod tests {
 
         assert_eq!(rendered_text(&plan), draft_text);
         assert!(
-            !plan_has_source_char_origins(&plan),
-            "edited active text must use one measured Rust layout chain, not sliced PDF char origins"
+            plan_has_source_char_origins(&plan),
+            "edited draft layout must preserve PDF char_origins for unchanged prefix/suffix runs \
+             so visual matches pre-edit (single-rendering-chain principle)"
         );
     }
 
     #[test]
-    fn changed_persisted_overlay_layout_uses_same_measured_geometry() {
+    fn changed_persisted_overlay_layout_preserves_source_geometry_for_unchanged_parts() {
+        // 同上：persisted/commit overlay 与 active editing 共享同一布局逻辑，
+        // 必须保留未修改前后缀的 PDF 度量，避免提交后字体/字距漂移。
         let document_plan = changed_text_document_plan();
         let draft_text = "智能合约: Anchor Framwork, Solana Program Library (SPL), ERC-20/721";
 
@@ -1033,8 +1081,62 @@ mod tests {
 
         assert_eq!(rendered_text(&plan), draft_text);
         assert!(
-            !plan_has_source_char_origins(&plan),
-            "committed preview must consume the same measured edited-text layout as active editing"
+            plan_has_source_char_origins(&plan),
+            "persisted overlay must preserve PDF char_origins for unchanged prefix/suffix runs \
+             so visual matches pre-edit (single-rendering-chain principle)"
+        );
+    }
+
+    #[test]
+    fn edited_draft_preserves_origins_when_runs_lack_synthetic_spaces() {
+        // 真实 PDF 场景回归：raw runs 文本 = compact "智能合约:AnchorFramework,..."（无空格），
+        // session_source_text 注入合成空格 → "智能合约: Anchor Framework, ..."。
+        // 旧实现因 body_runs_match_source_text==false 直接走 reconstructed-fallback，
+        // 整段单 run 无 char_origins，触发字体漂移。
+        // 新实现通过 source→runs 索引映射继续走 slicing，保留前后缀 PDF 度量。
+        let raw_runs_text =
+            "智能合约:AnchorFramework,SolanaProgramLibrary(SPL),ERC-20/721".to_string();
+        let runs = vec![test_run_with_origins("r1", &raw_runs_text, 10.0, false)];
+        let body_session = ParagraphEditContext {
+            anchor_bbox: BoundingBox {
+                left: 10.0,
+                top: 40.0,
+                right: 430.0,
+                bottom: 52.0,
+            },
+            paragraph: LayoutParagraph {
+                id: "p-compact-pdf".to_string(),
+                runs,
+                wrap_width: 420.0,
+                ..Default::default()
+            },
+        };
+        // 编辑器实际显示给用户的文本（带合成空格），与 raw runs 字符长度不同。
+        let visual_source_text =
+            "智能合约: Anchor Framework, Solana Program Library (SPL), ERC-20/721".to_string();
+        let document_plan = EditorDocumentPlan {
+            source_body_text: visual_source_text.clone(),
+            body_text_plan: build_editor_session_text_plan(&body_session),
+            body_session,
+            ..Default::default()
+        };
+        // 用户在 visual 文本基础上把 "Framework" 改成 "Framwork"（删一个 e）。
+        let draft_text = "智能合约: Anchor Framwork, Solana Program Library (SPL), ERC-20/721";
+
+        let plan = build_persisted_overlay_render_plan(&document_plan, draft_text, |text, run| {
+            text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
+        });
+
+        // 架构原则：渲染输出是 PDF 真实 compact 形态（synthetic 空格仅为编辑器
+        // textarea 显示用，并不在原 PDF content-stream 内）。如此渲染才能让编辑后
+        // 像素级匹配编辑前的 PDF 视觉，否则会插入 PDF 中根本不存在的空格 → 字体漂移。
+        let expected_compact =
+            "智能合约:AnchorFramwork,SolanaProgramLibrary(SPL),ERC-20/721";
+        assert_eq!(rendered_text(&plan), expected_compact);
+        assert!(
+            plan_has_source_char_origins(&plan),
+            "compact-PDF (synthetic-space) scenario must still preserve PDF char_origins \
+             for unchanged prefix/suffix via source→runs index mapping"
         );
     }
 

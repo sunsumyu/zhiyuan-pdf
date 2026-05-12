@@ -142,6 +142,34 @@ fn resolve_caret_index_for_draft_point(
     let local_click_y = (page_y - session.anchor_bbox.top).max(0.0);
     let resolved = resolve_caret_index_from_lines(&lines, local_click_x, local_click_y)
         .min(draft_text.chars().count());
+    // Stop summary (first/last few) for offline caret diagnostics.
+    let stop_summary = lines
+        .iter()
+        .enumerate()
+        .map(|(li, line)| {
+            let stops_str = line
+                .stops
+                .iter()
+                .map(|s| format!("({},{:.1})", s.index, s.left))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("L{}[by={:.1};{}]", li, line.baseline_y, stops_str)
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    crate::chain_trace!(
+        "caret.diag.hit",
+        "paragraphId" => &active_target.paragraph_id,
+        "pageX" => format!("{:.2}", page_x),
+        "pageY" => format!("{:.2}", page_y),
+        "anchorL" => format!("{:.2}", session.anchor_bbox.left),
+        "anchorT" => format!("{:.2}", session.anchor_bbox.top),
+        "localX" => format!("{:.2}", local_click_x),
+        "localY" => format!("{:.2}", local_click_y),
+        "lines" => lines.len(),
+        "stops" => &stop_summary,
+        "resolved" => resolved,
+    );
     dbg_event(
         "caret.resolve",
         "unified-draft-point",

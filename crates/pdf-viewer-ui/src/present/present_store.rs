@@ -101,6 +101,29 @@ pub fn schedule_render_frame_request(
     request: &FramePlanRequest,
 ) -> Option<RenderFrameEnvelope> {
     let frame_plan = build_frame_plan_result(request, false);
+    // Editor-driven renders carry a fresh scene_revision per keystroke, so any
+    // pending in-flight frame is stale and will never be committed by JS (the
+    // active token is overwritten before progressive completes). To avoid
+    // queueing forever and deadlocking subsequent schedules, settle the stale
+    // in-flight token here before scheduling. This is safe because the new
+    // frame supersedes the old visually.
+    if frame_plan.render_reason == "editorVisibility" {
+        let stale_token = crate::render::render_store::RENDER_STATE.with(|state| {
+            let s = state.borrow();
+            if s.in_flight_frame_token != 0 && s.active_frame_token != s.in_flight_frame_token {
+                s.in_flight_frame_token
+            } else {
+                0
+            }
+        });
+        if stale_token != 0 {
+            crate::chain_trace!(
+                "schedule.evict-stale-in-flight",
+                "token" => stale_token,
+            );
+            let _ = settle_render_frame(stale_token, None);
+        }
+    }
     let envelope: Option<HostRenderFrameEnvelope<FramePlanResult>> =
         schedule_render_frame(
             &frame_plan,

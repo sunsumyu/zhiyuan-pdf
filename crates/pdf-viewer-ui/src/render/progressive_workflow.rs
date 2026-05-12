@@ -25,6 +25,16 @@ pub fn start_progressive_render() -> ProgressiveRenderStartResult {
         };
         let overlays = collect_paragraph_render_overlays(paint_plan, Some(vector_model));
         crate::chain_trace!("progressive.start", "overlayCount" => overlays.len());
+        for (ov_idx, ov) in overlays.iter().enumerate() {
+            crate::chain_trace!(
+                "progressive.start.overlay",
+                "index" => ov_idx,
+                "paragraphId" => ov.target.paragraph_id.as_str(),
+                "owner" => format!("{:?}", ov.owner),
+                "replacesSource" => ov.replaces_source,
+                "sourceObjectIndices" => format!("{:?}", ov.source_object_indices),
+            );
+        }
         let task = ProgressiveVectorRenderTask::build(
             vector_model,
             prepared_scene.as_ref(),

@@ -38,6 +38,7 @@ type EditorHostDeps = {
     getVectorContainer: () => HTMLElement | null;
     buildRenderRequest: (reason?: 'default' | 'zoom' | 'editorVisibility' | 'documentMutation') => Record<string, number | string | boolean>;
     renderScheduledFrame: (frame: RustRenderFrame | null) => Promise<void>;
+    renderCurrentPage: (reason?: 'default' | 'zoom' | 'editorVisibility' | 'documentMutation') => Promise<void>;
     saveEditorSession: () => Promise<PdfSaveResult>;
     syncViewerState?: () => void;
 };
@@ -68,6 +69,11 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
     let lastRustCaretIndex: number | null = null;
     let suppressBlurCommitForSave = false;
     let suppressBlurCommitForOpen = false;
+    // Programmatic page-canvas re-renders during typing can transiently steal
+    // focus from the editor textarea, firing a spurious blur that would
+    // otherwise commit-and-close the editor on every keystroke. Suppress blur
+    // commits while we drive a render and refocus immediately after.
+    let suppressBlurCommitForRender = false;
     let cachedDisplayZoom = 1.0;
 
     // ── Textarea helpers (must stay in TS — DOM-only) ───────────
@@ -137,26 +143,52 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
                 });
             },
             onNavigationRequested: (command, textarea) => {
+                // Sync host caret to Rust before navigation — user may have clicked
+                // inside the textarea to reposition cursor without Rust knowing.
+                const hostCaret = readTextareaCaret(textarea);
+                api.syncInput({ text: textarea.value, caretIndex: Math.max(0, hostCaret) });
                 const result = api.applyCommand({ command, insertedText: null })?.data;
                 if (result && Number.isFinite(result.caretIndex) && result.caretIndex >= 0) {
                     rememberRustCaret(result.caretIndex);
                     withSuppressedNativeInput(() => {
-                        if (result.draftText) textarea.value = result.draftText;
+                        if (result.draftText != null) textarea.value = result.draftText;
                         writeTextareaCaret(textarea, result.caretIndex);
                     });
                 }
                 renderActiveEditor(getLastDisplayZoom());
             },
             onBeforeInputRequested: (command, text, textarea) => {
+                // Sync host caret to Rust before applying command. This is critical
+                // because the textarea allows native click-to-position which Rust
+                // doesn't observe, leaving Rust's internal caret stale.
+                const hostCaret = readTextareaCaret(textarea);
+                api.syncInput({ text: textarea.value, caretIndex: Math.max(0, hostCaret) });
                 const result = api.applyCommand({ command, insertedText: text })?.data;
                 if (result && Number.isFinite(result.caretIndex) && result.caretIndex >= 0) {
                     rememberRustCaret(result.caretIndex);
                     withSuppressedNativeInput(() => {
-                        if (result.draftText) textarea.value = result.draftText;
+                        if (result.draftText != null) textarea.value = result.draftText;
                         writeTextareaCaret(textarea, result.caretIndex);
                     });
                 }
                 renderActiveEditor(getLastDisplayZoom());
+                if (result?.changed) {
+                    // Page canvas re-render can transiently shift DOM/layout
+                    // and pull focus off the textarea. Suppress blur-commit
+                    // for the duration and refocus afterward so the user can
+                    // keep typing without the editor closing each keystroke.
+                    suppressBlurCommitForRender = true;
+                    void deps.renderCurrentPage('editorVisibility').finally(() => {
+                        try {
+                            const ta = textarea;
+                            if (ta && document.activeElement !== ta) {
+                                ta.focus({ preventScroll: true });
+                            }
+                        } finally {
+                            suppressBlurCommitForRender = false;
+                        }
+                    });
+                }
             },
             onCompositionSyncRequested: (textarea) => {
                 const caretIndex = readTextareaCaret(textarea);
@@ -167,18 +199,24 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
             shouldSuppressBlurCommit: () =>
                 suppressBlurCommitForSave
                 || suppressBlurCommitForOpen
-                || !readLegacySnapshot()?.activeTarget
-                || !api.hasSessionChanges(),
+                || suppressBlurCommitForRender,
             onBlurCommitSuppressed: () => {
-                // No-op: blur suppressed by save/open/clean-session
+                // No-op: blur suppressed by save/open flow
             },
             onBlurCommitRequested: () => {
                 if (!api.hasSessionChanges()) return;
                 void commitEditor();
             },
             onShellPointerDown: (event, shell, textarea) => {
-                // Use new API: moveCaret
-                const referenceBox = readHostReferenceBox(shell);
+                // FIX: reference box must span the full rendered page (matching
+                // pageWidth/pageHeight), NOT the shell rect. Using the shell rect
+                // here produced an incorrect scale (shellWidth / pageWidth ≪ true
+                // display scale), making client→page transforms misplace the caret.
+                // Use the interaction root, same as onRootPointerDown / openEditor.
+                const nodes = ensureNodes();
+                if (!nodes) return;
+                const referenceBox = readHostReferenceBox(nodes.root);
+                void shell; // shell no longer needed for reference math
                 const result = api.moveCaret({
                     clientX: event.clientX,
                     clientY: event.clientY,
@@ -191,7 +229,7 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
                 });
 
                 if (!result?.ok || !result.data) {
-                    // Blank click within shell → close block → Viewing
+                    // No active editor state (edge case) → close block → Viewing
                     void commitEditor().then(() => {
                         api.setEditMode(false);
                         syncTargets(getLastDisplayZoom());
@@ -502,15 +540,12 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
         event: MouseEvent,
         root: HTMLElement,
     ): HostReferenceBox {
-        const eventTarget = event.currentTarget as HTMLElement | null;
-        const eventTargetMatchesParagraph = eventTarget?.dataset?.paragraphId === target.paragraphId;
-        const targetRect = eventTargetMatchesParagraph ? eventTarget.getBoundingClientRect() : null;
         const rootRect = root.getBoundingClientRect();
         return {
-            left: targetRect?.left ?? (rootRect.left + target.left),
-            top: targetRect?.top ?? (rootRect.top + target.top),
-            width: targetRect?.width ?? target.width,
-            height: targetRect?.height ?? target.height,
+            left: rootRect.left,
+            top: rootRect.top,
+            width: rootRect.width,
+            height: rootRect.height,
         };
     }
 

@@ -209,6 +209,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         buildRenderRequest: (reason) =>
             framePlanAdapter.buildRenderRequest(readZoomState().targetZoom, reason ?? 'editorVisibility'),
         renderScheduledFrame: (frame) => renderFlow.renderScheduledFrame(frame),
+        renderCurrentPage: (reason) => documentRuntime.renderCurrentPage(reason ?? 'editorVisibility'),
         saveEditorSession: () => documentEditApi.saveEdits('manual-save'),
         syncViewerState: () => resumeAiController.syncViewerState(),
     });

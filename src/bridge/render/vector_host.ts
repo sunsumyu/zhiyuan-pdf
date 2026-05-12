@@ -351,7 +351,14 @@ export async function renderVectorPageWithPlan(
             );
         }
 
-        const cachedFrame = readViewportFrameCache(layerCacheKey);
+        // Editor overlay renders must bypass the frame cache because the
+        // cache key does not encode overlay/editor state.  A stale bitmap
+        // from the initial page load would show the un-suppressed original
+        // text instead of the edited replacement.
+        const isOverlayRender =
+            (plan as any).renderReason === 'editorVisibility' ||
+            (plan as any).renderReason === 'documentMutation';
+        const cachedFrame = isOverlayRender ? null : readViewportFrameCache(layerCacheKey);
         if (cachedFrame) {
             const cacheKnown = renderApi.touchFrameCacheEntry(
                 layerUseViewportTile,

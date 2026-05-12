@@ -415,6 +415,24 @@ function bindTextareaEvents(textarea: HTMLTextAreaElement, deps: EditorHostViewD
         if (EDITOR_NAVIGATION_KEYS.has(event.key)) {
             event.preventDefault();
             deps.onNavigationRequested(event.key, textarea);
+            return;
+        }
+        // Handle Backspace/Delete directly in keydown for reliability —
+        // beforeinput may not fire on all platforms (e.g. Tauri WebView2 + IME).
+        // preventDefault() here suppresses the subsequent beforeinput event in
+        // Chromium, so the deletion is not applied twice.
+        if ((event.key === 'Backspace' || event.key === 'Delete') && !composing) {
+            event.preventDefault();
+            const command: BeforeInputCommand = event.key === 'Backspace' ? 'backspace' : 'delete';
+            deps.logNode('ts.keydown-delete', {
+                key: event.key,
+                command,
+                textareaValue: textarea.value,
+                selectionStart: textarea.selectionStart,
+                selectionEnd: textarea.selectionEnd,
+                caretIndex: deps.readCaretIndex(textarea),
+            });
+            deps.onBeforeInputRequested(command, null, textarea);
         }
     });
 
@@ -459,7 +477,19 @@ function bindTextareaEvents(textarea: HTMLTextAreaElement, deps: EditorHostViewD
             deps.onBlurCommitSuppressed(textarea);
             return;
         }
-        deps.onBlurCommitRequested();
+        // Suppress spurious blur events fired during programmatic textarea
+        // mutation (value/selection updates inside withSuppressedNativeInput).
+        // Real blur is when focus actually leaves — verify on next tick.
+        if (deps.shouldSuppressNativeInput()) {
+            return;
+        }
+        // Defer commit decision to next microtask so we can verify focus
+        // really left the textarea. Some browsers fire transient blur during
+        // .value/.setSelectionRange updates while focus is restored synchronously.
+        queueMicrotask(() => {
+            if (document.activeElement === textarea) return;
+            deps.onBlurCommitRequested();
+        });
     });
 
     textarea.addEventListener('input', () => {

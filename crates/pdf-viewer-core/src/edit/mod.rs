@@ -8,7 +8,6 @@ pub mod document_edit_ops;
 pub mod document_plan;
 pub mod document_runtime;
 pub mod draft_layout;
-pub mod edited_text_layout;
 pub mod editor_types;
 pub mod edit_target;
 pub mod engine_state;

@@ -27,7 +27,6 @@ pub mod search_facade;
 // Direct re-exports from core (previously via draft/ and source/ shim dirs)
 pub use pdf_viewer_core::edit::draft_layout;
 pub use pdf_viewer_core::edit::edit_target;
-pub use pdf_viewer_core::edit::edited_text_layout;
 pub use pdf_viewer_core::geometry::source_geometry;
 pub use pdf_viewer_core::edit::source_identity;
 pub use pdf_viewer_core::edit::source_runs;

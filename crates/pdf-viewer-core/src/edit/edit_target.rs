@@ -70,19 +70,31 @@ pub fn resolve_edit_target_from_session(
         return whole_session_target(base_paragraph_id, session);
     }
 
-    if let Some(segment_key) = edit_target_segment_key(requested_target_id) {
+    // 调用者是否显式指定了某个 segment（带 ::edit-segment::xxx 后缀）。
+    // 若是，必须严格按 segment 解析，禁止用 click_page_point 重打分 ——
+    // 否则当点击落在两个 segment 的视觉间隙时，会被打分到错误的 segment，
+    // 导致 shell 错位、后续点击全部下沉到 root → openBlock 而不是 shell → moveCaret，
+    // 表现为"必须点击两次"。
+    let explicit_segment_key = edit_target_segment_key(requested_target_id);
+
+    if let Some(segment_key) = explicit_segment_key {
         if let Some(target) = targets
             .iter()
             .find(|target| edit_target_segment_key(&target.target_id) == Some(segment_key))
         {
             return target.clone();
         }
+        // 显式 segment_key 未命中（通常是 segment 编号在两次计算间漂移）：
+        // 退化为"按 click 选最接近的 segment"也不安全，故直接落到 whole_session
+        // 以保证 shell 至少覆盖完整段落，让用户的二次点击能进 shell 路径。
+        return whole_session_target(base_paragraph_id, session);
     }
 
     if requested_target_id == base_paragraph_id && targets.len() == 1 {
         return targets[0].clone();
     }
 
+    // 无显式 segment_key 时，才允许用 click_page_point 做最近 segment 打分。
     if let Some((click_x, click_y)) = click_page_point {
         if let Some(target) = targets.iter().min_by(|a, b| {
             let score_a = target_hit_score(&a.session.anchor_bbox, click_x, click_y);

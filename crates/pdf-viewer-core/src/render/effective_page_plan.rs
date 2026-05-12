@@ -257,6 +257,45 @@ pub fn build_effective_vector_render_plan(
         })
         .collect::<Vec<_>>();
 
+    // ── diagnostic: dump overlay identity ──────────────────────────────
+    for (ov_idx, ov) in prepared_overlays.iter().enumerate() {
+        let ov_obj_ids: Vec<&str> = ov.object_ids.iter().map(|s| s.as_str()).collect();
+        let ov_obj_indices: Vec<usize> = ov.object_indices.iter().copied().collect();
+        dbg_event(
+            "effective-plan",
+            "overlay-identity",
+            vec![
+                dbg_field("overlayIndex", ov_idx),
+                dbg_field("paragraphId", ov.overlay.target.paragraph_id.as_str()),
+                dbg_field("owner", format!("{:?}", ov.overlay.owner)),
+                dbg_field("replacesSource", ov.overlay.replaces_source),
+                dbg_field("objectIds", format!("{:?}", ov_obj_ids)),
+                dbg_field("objectIdCount", ov.object_ids.len()),
+                dbg_field("objectIndices", format!("{:?}", ov_obj_indices)),
+                dbg_field("objectIndexCount", ov.object_indices.len()),
+                dbg_field("sourceText", crate::utils::debug::truncate_debug_text(&ov.overlay.source_text, 40)),
+                dbg_field("draftText", crate::utils::debug::truncate_debug_text(&ov.overlay.draft_text, 40)),
+            ],
+        );
+    }
+    // Dump all visible text objects so we can compare
+    for &vi in &visible_indices {
+        if let Some(VectorRenderObject::Text(text)) = vector_model.objects.get(vi) {
+            let first_run_text = text.runs.first().map(|r| crate::utils::debug::truncate_debug_text(&r.text, 30)).unwrap_or_default();
+            dbg_event(
+                "effective-plan",
+                "vector-text-object",
+                vec![
+                    dbg_field("objectIndex", vi),
+                    dbg_field("objectId", text.id.as_str()),
+                    dbg_field("runCount", text.runs.len()),
+                    dbg_field("firstRunText", first_run_text),
+                ],
+            );
+        }
+    }
+    // ── end diagnostic ─────────────────────────────────────────────────
+
     if prepared_overlays.is_empty() {
         return visible_indices
             .into_iter()
@@ -279,8 +318,38 @@ pub fn build_effective_vector_render_plan(
             let suppress_text_source = overlay_suppresses_text_source(&overlay.overlay);
             let suppress_row_paths = overlay_suppresses_row_paths(&overlay.overlay);
             if suppress_text_source {
-                let text_object_index_match = overlay.object_indices.contains(&object_index)
-                    && matches!(object, VectorRenderObject::Text(_));
+                // Match by object_index OR object_id. The active editor target
+                // populates source identity primarily via object_ids; falling
+                // back through object_ids ensures original PDF text under the
+                // editor is suppressed even when numeric indices were not
+                // resolved during target build.
+                // overlay.object_indices stores z_index (PDF draw order),
+                // NOT the array position in vector_model.objects[].
+                // Compare against the text object's z_index field, with
+                // array position as a fallback for legacy data.
+                let z_index_hit = matches!(object, VectorRenderObject::Text(text) if overlay.object_indices.contains(&text.z_index));
+                let array_index_hit = overlay.object_indices.contains(&object_index);
+                let index_hit = z_index_hit || array_index_hit;
+                let id_hit = matches!(object, VectorRenderObject::Text(text) if overlay.object_ids.contains(&text.id));
+                let text_object_index_match = matches!(object, VectorRenderObject::Text(_))
+                    && (index_hit || id_hit);
+                if matches!(object, VectorRenderObject::Text(_)) {
+                    let (text_id, text_z) = if let VectorRenderObject::Text(text) = &object { (text.id.as_str(), text.z_index) } else { ("", 0) };
+                    dbg_event(
+                        "effective-plan",
+                        "suppress-check",
+                        vec![
+                            dbg_field("objectIndex", object_index),
+                            dbg_field("textZIndex", text_z),
+                            dbg_field("textId", text_id),
+                            dbg_field("overlayParagraphId", overlay.overlay.target.paragraph_id.as_str()),
+                            dbg_field("zIndexHit", z_index_hit),
+                            dbg_field("arrayIndexHit", array_index_hit),
+                            dbg_field("idHit", id_hit),
+                            dbg_field("matched", text_object_index_match),
+                        ],
+                    );
+                }
                 // 只有显式的 index 匹配才整对象 suppress。
                 // source-text 启发式（同一文本对象包含 body + marker）会把 marker
                 // 一起干掉，所以这里 fall through 给下面的 matching_text_run_refs
@@ -288,16 +357,23 @@ pub fn build_effective_vector_render_plan(
                 if text_object_index_match {
                     overlay.suppressed_text_object_count =
                         overlay.suppressed_text_object_count.saturating_add(1);
-                    // 同 object_id 命中：可能包含 marker run，按 run 级别 suppress 非 marker run
-                    if let VectorRenderObject::Text(text) = &object {
-                        for (run_index, run) in text.runs.iter().enumerate() {
-                            if !crate::render::source_suppression::run_text_is_list_marker_only(
-                                &run.text,
-                            ) {
-                                suppressed_text_runs.run_indices.insert(run_index);
-                            }
-                        }
-                    }
+                    // 一个 PDF text object 可能同时包含多个逻辑段落的 run
+                    // （例如同一项目列表下多个 bullet 项被渲染到同一个 text 对象里）。
+                    // 旧版按 "非 marker run 全部 suppress" 会把其他 segment 的 run
+                    // 也误抑制，导致编辑下方 segment 时上方 segment 的文字消失。
+                    // 改为：用 overlay 的 source object_ids + replacement_region
+                    // 做精细过滤，只 suppress 真正属于当前 overlay 的 run。
+                    let refs = matching_text_run_refs(
+                        &object,
+                        &overlay.object_ids,
+                        &overlay.replacement_region,
+                    );
+                    let matched_run_count = refs.run_indices.len();
+                    suppressed_text_runs.run_indices.extend(refs.run_indices);
+                    suppressed_text_runs.object_ids.extend(refs.object_ids);
+                    overlay.suppressed_text_run_count = overlay
+                        .suppressed_text_run_count
+                        .saturating_add(matched_run_count);
                     if !overlay.inserted && !overlay_renders_last(&overlay.overlay) {
                         entries.push(EffectiveVectorRenderEntry::ParagraphOverlay(
                             overlay.overlay.clone(),
@@ -1444,6 +1520,77 @@ mod tests {
             "not all runs should be suppressed; suppressed {}/{}",
             suppressed_count,
             total_run_count
+        );
+    }
+
+    /// 回归测试：当文本对象前有非文本对象（path/image）时，
+    /// z_index 和数组位置不同，suppression 必须仍然生效。
+    /// 这是 z_index vs array-position mismatch bug 的精确回归保护。
+    #[test]
+    fn suppression_works_when_z_index_differs_from_array_position() {
+        // objects[0] = Path (z_index=0)
+        // objects[1] = Text (z_index=5)  ← array pos 1, z_index 5
+        let model = VectorPageModel {
+            width: 595.0,
+            height: 842.0,
+            objects: vec![
+                VectorRenderObject::Path(VectorPathObject::default()),
+                VectorRenderObject::Text(VectorTextObject {
+                    id: "text-z5".to_string(),
+                    z_index: 5,
+                    runs: vec![StyledRun {
+                        text: "Hello world".to_string(),
+                        tx: 90.0,
+                        ty: 112.0,
+                        width: 200.0,
+                        font_size: 12.0,
+                        ..Default::default()
+                    }],
+                }),
+            ],
+            ..Default::default()
+        };
+        // overlay has object_indices = {5} (the z_index, NOT the array position 1)
+        let mut overlay = active_overlay_for_body(BoundingBox {
+            left: 90.0,
+            top: 100.0,
+            right: 330.0,
+            bottom: 112.0,
+        });
+        overlay.source_object_indices = vec![5];
+        overlay.target.scene.body_session.paragraph.runs = vec![LayoutRun {
+            id: "run-0".to_string(),
+            text: "Hello world".to_string(),
+            object_ids: vec!["text-z5".to_string()],
+            object_indices: vec![5],
+            bbox: BoundingBox { left: 90.0, top: 100.0, right: 290.0, bottom: 112.0 },
+            ..Default::default()
+        }];
+
+        let viewport = BoundingBox {
+            left: 0.0, top: 0.0, right: 595.0, bottom: 842.0,
+        };
+        let entries = build_effective_vector_render_plan(&model, None, &viewport, &[overlay]);
+
+        // The text object (array pos 1, z_index 5) must be suppressed
+        let has_unsuppressed_text = entries.iter().any(|e| matches!(
+            e,
+            EffectiveVectorRenderEntry::Object { object_index: 1, suppressed_text_runs }
+            if suppressed_text_runs.run_indices.is_empty()
+        ));
+        assert!(
+            !has_unsuppressed_text,
+            "text object at array position 1 / z_index 5 must be suppressed; \
+             entries: {:?}", entries.iter().map(|e| match e {
+                EffectiveVectorRenderEntry::Object { object_index, suppressed_text_runs } =>
+                    format!("Object(idx={}, suppressed_runs={:?})", object_index, suppressed_text_runs.run_indices),
+                EffectiveVectorRenderEntry::ParagraphOverlay(_) => "ParagraphOverlay".to_string(),
+            }).collect::<Vec<_>>()
+        );
+        // overlay must have been inserted
+        assert!(
+            entries.iter().any(|e| matches!(e, EffectiveVectorRenderEntry::ParagraphOverlay(_))),
+            "overlay must be inserted"
         );
     }
 }

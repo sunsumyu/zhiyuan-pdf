@@ -648,6 +648,20 @@ impl CanvasRenderer {
         ]);
         self.prepare_page_surface(state, plan.width, plan.height);
         let overlays = collect_paragraph_render_overlays(plan, state.vector_model.as_ref());
+        dbg_event("canvas.render", "overlay-summary", vec![
+            dbg_field("overlayCount", overlays.len()),
+        ]);
+        for (ov_idx, ov) in overlays.iter().enumerate() {
+            dbg_event("canvas.render", "overlay-detail", vec![
+                dbg_field("index", ov_idx),
+                dbg_field("paragraphId", ov.target.paragraph_id.as_str()),
+                dbg_field("owner", format!("{:?}", ov.owner)),
+                dbg_field("replacesSource", ov.replaces_source),
+                dbg_field("sourceObjectIndices", format!("{:?}", ov.source_object_indices)),
+                dbg_field("sourceTextLen", ov.source_text.chars().count()),
+                dbg_field("draftTextLen", ov.draft_text.chars().count()),
+            ]);
+        }
 
         if let Some(vector_model) = &state.vector_model {
             let effective_plan = build_effective_vector_render_plan(

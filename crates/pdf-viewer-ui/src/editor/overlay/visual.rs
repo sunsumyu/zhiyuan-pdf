@@ -173,25 +173,12 @@ pub fn render_active_editor_canvas(
         );
     };
 
-    if !replaces_source {
-        draw_caret(&renderer);
-        return true;
-    }
-
-    dbg_event(
-        "visual.paint",
-        "shell-caret-only",
-        vec![
-            dbg_field("paragraphId", active_target.paragraph_id.as_str()),
-            dbg_field("drawUnderline", false),
-            dbg_field("paintOwner", "page-canvas"),
-            dbg_field("draftText", normalized_text.as_str()),
-            dbg_field("caretBaselineY", caret.baseline_y),
-            dbg_field("caretHeight", caret_height),
-            dbg_field("caretTop", caret_top),
-        ],
-    );
-
+    // Editor canvas is caret-only. The page canvas (via the effective render
+    // plan + canvas_overlay) paints both the live ActiveEditorShell overlay
+    // and the persisted overlay using the SAME glyph routine and the SAME
+    // page coordinate space, so they stay perfectly aligned and never
+    // produce two-canvas sub-pixel ghosting.
+    let _ = (replaces_source, &normalized_text);
     draw_caret(&renderer);
     true
 }

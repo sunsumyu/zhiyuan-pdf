@@ -29,11 +29,18 @@ pub fn schedule_render_frame<TPlan: Clone>(
     from_value_plan: impl Fn(&serde_json::Value) -> Option<TPlan>,
 ) -> Option<RenderFrameEnvelope<TPlan>> {
     if !requires_render(frame_plan) {
+        crate::chain_trace!("schedule.skip", "reason" => "requires_render=false");
         return None;
     }
 
     RENDER_STATE.with(|state| {
         let mut state = state.borrow_mut();
+        crate::chain_trace!(
+            "schedule.enter",
+            "inFlightToken" => state.in_flight_frame_token,
+            "queuedToken" => state.queued_frame_token,
+            "activeToken" => state.active_frame_token,
+        );
 
         if let Some(in_flight_frame_plan) = state
             .in_flight_frame_plan
@@ -41,12 +48,14 @@ pub fn schedule_render_frame<TPlan: Clone>(
             .and_then(&from_value_plan)
         {
             if share_render_work(&in_flight_frame_plan, frame_plan) {
+                crate::chain_trace!("schedule.skip", "reason" => "share-with-in-flight");
                 return None;
             }
         }
         if let Some(queued_frame_plan) = state.queued_frame_plan.as_ref().and_then(&from_value_plan)
         {
             if share_render_work(&queued_frame_plan, frame_plan) {
+                crate::chain_trace!("schedule.skip", "reason" => "share-with-queued");
                 return None;
             }
         }

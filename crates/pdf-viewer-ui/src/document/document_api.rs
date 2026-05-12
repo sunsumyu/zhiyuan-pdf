@@ -22,6 +22,8 @@ use crate::document::host_pipeline::{
     undo_document_pipeline,
     OpenDocumentPipelineRequest,
 };
+use crate::document::mutation_pipeline::request_document_refresh;
+use crate::present::plan_builder::FramePlanRequest;
 
 // ── DocumentSession ─────────────────────────────────────────────
 
@@ -106,6 +108,19 @@ impl DocumentSession {
     #[wasm_bindgen(js_name = "canRedo")]
     pub fn can_redo(&self) -> bool {
         crate::state_manager::can_redo()
+    }
+
+    // ── Document refresh ───────────────────────────────────────
+
+    /// Refresh the document after a mutation (commit, undo, redo, etc.).
+    ///
+    /// Called by the JS bridge's `refreshDocument` flow to note the mutation
+    /// in the viewer store and schedule a render frame for the updated content.
+    #[wasm_bindgen(js_name = "requestRefresh")]
+    pub fn request_refresh(&self, source: &str, frame_request_js: JsValue) -> JsValue {
+        let frame_request: FramePlanRequest = from_value(frame_request_js).unwrap_or_default();
+        let result = request_document_refresh(source, frame_request);
+        to_value(&result).unwrap_or(JsValue::NULL)
     }
 
 }

@@ -20,7 +20,6 @@ use crate::models::{
     BoundingBox, ParagraphEditContext, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, LayoutRun,
     VectorPageModel,
 };
-use crate::text::caret_geometry::caret_index_at_page_point_with_plan;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -618,16 +617,11 @@ fn build_plan_for_target_session(
 
     let body_lines = build_body_line_plans(&split.body_session, &body_text_plan);
     let draft_template_run = select_draft_template_run(&split.body_session, &body_lines);
-    let body_initial_caret = click_page_point
-        .map(|(page_x, page_y)| {
-            caret_index_at_page_point_with_plan(
-                &split.body_session,
-                &body_text_plan,
-                page_x,
-                page_y,
-            )
-        })
-        .unwrap_or(0usize);
+    // Caret 解析的唯一权威路径在 UI 层 `editor_controller::open_editor_at_page_point`
+    // 通过 `active_caret_index_at_page_point`（与 Move 路径共用 `build_unified_draft_caret_lines`）
+    // 计算并覆盖此处的初始值。这里保留为 0，避免出现"core 用旧算法算一遍 + UI 再覆盖"
+    // 的双轨制，根除首次点击 caret 偏差。click_page_point 仍用于 segment 选择。
+    let body_initial_caret = 0usize;
     let full_caret = body_initial_caret;
 
     if click_page_point.is_some() {

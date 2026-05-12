@@ -140,15 +140,62 @@ pub fn collect_paragraph_render_overlays(
                     resolve_active_marker_text(&active_state, &page_state.borrow())
                 })
             });
+        let source_object_indices = target_source_object_indices(&active_state.target);
+        let replaces_source = active_state.requires_source_replacement();
+        let source_text = active_state.target.source_body_text().to_string();
+        let draft_text = active_state.current_text().to_string();
+
+        // ── diagnostic: active overlay identity ──
+        {
+            use pdf_viewer_core::edit::source_identity::{
+                collect_target_source_object_ids, collect_target_source_object_indices_set,
+            };
+            let obj_ids = collect_target_source_object_ids(&active_state.target);
+            let obj_indices = collect_target_source_object_indices_set(&active_state.target);
+            let orig_run_count = active_state.target.scene.original_runs.len();
+            let body_run_count = active_state.target.scene.body_session.paragraph.runs.len();
+            let orig_obj_ids: Vec<String> = active_state.target.scene.original_runs
+                .iter().flat_map(|r| r.object_ids.iter().cloned()).collect();
+            let orig_obj_indices: Vec<usize> = active_state.target.scene.original_runs
+                .iter().flat_map(|r| r.object_indices.iter().copied()).collect();
+            let body_obj_ids: Vec<String> = active_state.target.scene.body_session.paragraph.runs
+                .iter().flat_map(|r| r.object_ids.iter().cloned()).collect();
+            let body_obj_indices: Vec<usize> = active_state.target.scene.body_session.paragraph.runs
+                .iter().flat_map(|r| r.object_indices.iter().copied()).collect();
+            dbg_event(
+                "overlay.collect",
+                "active-identity-detail",
+                vec![
+                    dbg_field("paragraphId", active_state.paragraph_id()),
+                    dbg_field("replacesSource", replaces_source),
+                    dbg_field("currentText", &draft_text),
+                    dbg_field("sourceText", &source_text),
+                    dbg_field("textsEqual", source_text == draft_text),
+                    dbg_field("mergedObjectIds", format!("{:?}", obj_ids)),
+                    dbg_field("mergedObjectIdCount", obj_ids.len()),
+                    dbg_field("mergedObjectIndices", format!("{:?}", obj_indices)),
+                    dbg_field("mergedObjectIndexCount", obj_indices.len()),
+                    dbg_field("sourceObjectIndices", format!("{:?}", source_object_indices)),
+                    dbg_field("origRunCount", orig_run_count),
+                    dbg_field("origRunObjectIds", format!("{:?}", orig_obj_ids)),
+                    dbg_field("origRunObjectIndices", format!("{:?}", orig_obj_indices)),
+                    dbg_field("bodyRunCount", body_run_count),
+                    dbg_field("bodyRunObjectIds", format!("{:?}", body_obj_ids)),
+                    dbg_field("bodyRunObjectIndices", format!("{:?}", body_obj_indices)),
+                ],
+            );
+        }
+        // ── end diagnostic ──
+
         overlays.insert(
             active_state.paragraph_id().to_string(),
             ParagraphRenderOverlay {
                 owner: ParagraphRenderOverlayOwner::ActiveEditorShell,
                 target: active_state.target.clone(),
-                source_object_indices: target_source_object_indices(&active_state.target),
-                source_text: active_state.target.source_body_text().to_string(),
-                draft_text: active_state.current_text().to_string(),
-                replaces_source: active_state.requires_source_replacement(),
+                source_object_indices,
+                source_text,
+                draft_text,
+                replaces_source,
                 marker_text_override,
             },
         );

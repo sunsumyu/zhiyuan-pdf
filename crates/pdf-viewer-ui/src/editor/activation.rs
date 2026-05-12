@@ -8,7 +8,6 @@ use pdf_viewer_core::models::BoundingBox;
 use crate::editor::bridge::{
     collect_paragraph_interaction_targets, ParagraphInteractionTarget,
 };
-use crate::editor::edit_target::edit_target_base_paragraph_id;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
@@ -79,18 +78,17 @@ pub struct SaveEditorSessionResult {
     pub error_message: Option<String>,
 }
 
-fn resolve_page_point_from_projected_shell(
+fn resolve_page_point_from_client(
     client_x: f32,
     client_y: f32,
     reference_left: f32,
     reference_top: f32,
     reference_width: f32,
     reference_height: f32,
-    shell_bbox_left: f32,
-    shell_bbox_top: f32,
-    shell_bbox_right: f32,
-    shell_bbox_bottom: f32,
-) -> Option<(f32, f32)> {
+    page_width: f32,
+    page_height: f32,
+    shell_bbox: BoundingBox,
+) -> (f32, f32) {
     let transform = HostPageTransform::new(
         HostReferenceRect {
             left: reference_left,
@@ -99,23 +97,18 @@ fn resolve_page_point_from_projected_shell(
             height: reference_height,
         },
         PageSize {
-            width: shell_bbox_right - shell_bbox_left,
-            height: shell_bbox_bottom - shell_bbox_top,
+            width: page_width,
+            height: page_height,
         },
     );
-    let page_point = transform.client_to_page_in_box(
-        ClientPoint {
-            x: client_x,
-            y: client_y,
-        },
-        BoundingBox {
-            left: shell_bbox_left,
-            top: shell_bbox_top,
-            right: shell_bbox_right,
-            bottom: shell_bbox_bottom,
-        },
-    );
-    Some((page_point.x, page_point.y))
+    let page_point = transform.client_to_page(ClientPoint {
+        x: client_x,
+        y: client_y,
+    });
+    // Clamp to the paragraph shell bbox so the caret stays within the target.
+    let x = page_point.x.clamp(shell_bbox.left, shell_bbox.right);
+    let y = page_point.y.clamp(shell_bbox.top, shell_bbox.bottom);
+    (x, y)
 }
 
 fn resolve_shell_center_page_point(shell_bbox: BoundingBox) -> (f32, f32) {
@@ -130,24 +123,6 @@ fn point_in_bbox(x: f32, y: f32, bbox: BoundingBox, tolerance: f32) -> bool {
         && x <= bbox.right + tolerance
         && y >= bbox.top - tolerance
         && y <= bbox.bottom + tolerance
-}
-
-fn bbox_distance_sq(x: f32, y: f32, bbox: BoundingBox) -> f32 {
-    let dx = if x < bbox.left {
-        bbox.left - x
-    } else if x > bbox.right {
-        x - bbox.right
-    } else {
-        0.0
-    };
-    let dy = if y < bbox.top {
-        bbox.top - y
-    } else if y > bbox.bottom {
-        y - bbox.bottom
-    } else {
-        0.0
-    };
-    (dx * dx) + (dy * dy)
 }
 
 fn resolve_target_at_page_point(
@@ -186,78 +161,10 @@ fn resolve_target_at_page_point(
         return Some(target.clone());
     }
 
-    let nearest = targets
-        .iter()
-        .map(|target| (bbox_distance_sq(page_x, page_y, target.bbox), target))
-        .min_by(|(left, _): &(f32, _), (right, _)| left.total_cmp(right));
-    if let Some((distance_sq, target)) = nearest {
-        dbg_event(
-            "activation.client",
-            "target-hit-nearest",
-            vec![
-                dbg_field("paragraphId", &target.paragraph_id),
-                dbg_field("pageX", page_x),
-                dbg_field("pageY", page_y),
-                dbg_field("distanceSq", distance_sq),
-            ],
-        );
-        if distance_sq <= 900.0 {
-            return Some(target.clone());
-        }
-    }
-
+    // No nearest-neighbor fallback — clicking blank area must NOT match a distant paragraph.
     None
 }
 
-/// Check if a page point falls on any text run within the paragraph.
-/// Returns true if the click is on actual text, false if it's on blank space
-/// within the paragraph's overall bounding box (e.g. end of a short line in
-/// a multi-line paragraph).
-fn is_click_on_paragraph_runs(paragraph_id: &str, page_x: f32, page_y: f32) -> bool {
-    const RUN_TOLERANCE: f32 = 4.0;
-    with_page_state(|state| {
-        let Some(plan) = state.paint_plan.as_ref() else {
-            return true; // no plan → don't block
-        };
-        let base_id = edit_target_base_paragraph_id(paragraph_id);
-        for region in &plan.regions {
-            for paragraph in &region.paragraphs {
-                if paragraph.id != base_id {
-                    continue;
-                }
-                // Check paint-plan runs (source geometry from PDF)
-                for run in &paragraph.runs {
-                    if point_in_bbox(page_x, page_y, run.bbox, RUN_TOLERANCE) {
-                        return true;
-                    }
-                }
-                // Also check editor session runs (may include patched geometry)
-                for run in &paragraph.editor_session.paragraph.runs {
-                    if point_in_bbox(page_x, page_y, run.bbox, RUN_TOLERANCE) {
-                        return true;
-                    }
-                }
-                // Paragraph found but click doesn't hit any run
-                dbg_event(
-                    "activation.client",
-                    "blank-click-run-miss",
-                    vec![
-                        dbg_field("paragraphId", paragraph_id),
-                        dbg_field("pageX", page_x),
-                        dbg_field("pageY", page_y),
-                        dbg_field("paintRunCount", paragraph.runs.len() as u32),
-                        dbg_field(
-                            "sessionRunCount",
-                            paragraph.editor_session.paragraph.runs.len() as u32,
-                        ),
-                    ],
-                );
-                return false;
-            }
-        }
-        true // paragraph not found in plan → don't block
-    })
-}
 
 pub fn activate_editor_from_client_point(
     request: OpenEditorAtClientPointRequest,
@@ -326,19 +233,17 @@ pub fn activate_editor_from_client_point(
     } else {
         resolve_shell_center_page_point(shell_bbox)
     };
-    let (click_page_x, click_page_y) = resolve_page_point_from_projected_shell(
+    let (click_page_x, click_page_y) = resolve_page_point_from_client(
         request.client_x,
         request.client_y,
         request.reference_left,
         request.reference_top,
         request.reference_width,
         request.reference_height,
-        shell_bbox.left,
-        shell_bbox.top,
-        shell_bbox.right,
-        shell_bbox.bottom,
-    )
-    .unwrap_or(fallback_page_point);
+        request.page_width,
+        request.page_height,
+        shell_bbox,
+    );
 
     dbg_event(
         "activation.client",
@@ -360,6 +265,24 @@ pub fn activate_editor_from_client_point(
             dbg_field("fallbackPageX", fallback_page_point.0),
             dbg_field("fallbackPageY", fallback_page_point.1),
         ],
+    );
+    crate::chain_trace!(
+        "caret.diag.open",
+        "targetId" => &resolved_paragraph_id,
+        "clientX" => format!("{:.2}", request.client_x),
+        "clientY" => format!("{:.2}", request.client_y),
+        "refLeft" => format!("{:.2}", request.reference_left),
+        "refTop" => format!("{:.2}", request.reference_top),
+        "refW" => format!("{:.2}", request.reference_width),
+        "refH" => format!("{:.2}", request.reference_height),
+        "pageW" => format!("{:.2}", request.page_width),
+        "pageH" => format!("{:.2}", request.page_height),
+        "pageX" => format!("{:.2}", click_page_x),
+        "pageY" => format!("{:.2}", click_page_y),
+        "shellL" => format!("{:.2}", shell_bbox.left),
+        "shellT" => format!("{:.2}", shell_bbox.top),
+        "shellR" => format!("{:.2}", shell_bbox.right),
+        "shellB" => format!("{:.2}", shell_bbox.bottom),
     );
 
     let primary = open_editor_at_page_point(&resolved_paragraph_id, click_page_x, click_page_y);
@@ -406,38 +329,46 @@ pub fn move_caret_to_client_point(request: MoveCaretToClientPointRequest) -> Opt
             height: request.page_height,
         },
     );
-    let local_point = transform.client_to_local_in_box(
-        ClientPoint {
-            x: request.client_x,
-            y: request.client_y,
-        },
-        shell_bbox,
-    );
-    let shell_x = local_point.x;
-    let shell_y = local_point.y;
+    // Convert client → page coordinates using full-page transform, then to local.
+    let page_point = transform.client_to_page(ClientPoint {
+        x: request.client_x,
+        y: request.client_y,
+    });
+    let shell_x = (page_point.x - shell_bbox.left).clamp(0.0, (shell_bbox.right - shell_bbox.left).max(0.0));
+    let shell_y = (page_point.y - shell_bbox.top).clamp(0.0, (shell_bbox.bottom - shell_bbox.top).max(0.0));
 
-    // Blank-click guard: convert shell-local to page coordinates and check
-    // if the click actually falls on a text run. If not, return None so the
-    // caller can close the editor instead of moving the caret.
-    let page_x = shell_bbox.left + shell_x;
-    let page_y = shell_bbox.top + shell_y;
-    if !is_click_on_paragraph_runs(&active_target.paragraph_id, page_x, page_y) {
-        dbg_event(
-            "activation.caret",
-            "blank-click-shell",
-            vec![
-                dbg_field("paragraphId", &active_target.paragraph_id),
-                dbg_field("shellX", shell_x),
-                dbg_field("shellY", shell_y),
-                dbg_field("pageX", page_x),
-                dbg_field("pageY", page_y),
-            ],
-        );
-        return None;
-    }
+    // The click is already confirmed to be within the editor shell bounds
+    // (only the shell pointerdown handler calls this function). Closing the
+    // editor is handled by clicks *outside* the shell (root handler → discard).
+    // Previously a blank-click guard (`is_click_on_paragraph_runs`) was here,
+    // but it was too strict for multi-line paragraphs with varying line widths:
+    // clicking at the end of a short line fell outside all source run bboxes
+    // and mistakenly closed the editor, forcing a second click to reposition
+    // the caret. The caret resolution function already handles out-of-bounds
+    // positions by snapping to the nearest caret stop.
 
     let caret_index =
         active_caret_index_at_shell_point(&active_target, &draft_text, shell_x, shell_y);
+    crate::chain_trace!(
+        "caret.diag.move",
+        "clientX" => format!("{:.2}", request.client_x),
+        "clientY" => format!("{:.2}", request.client_y),
+        "refLeft" => format!("{:.2}", request.reference_left),
+        "refTop" => format!("{:.2}", request.reference_top),
+        "refW" => format!("{:.2}", request.reference_width),
+        "refH" => format!("{:.2}", request.reference_height),
+        "pageW" => format!("{:.2}", request.page_width),
+        "pageH" => format!("{:.2}", request.page_height),
+        "pageX" => format!("{:.2}", page_point.x),
+        "pageY" => format!("{:.2}", page_point.y),
+        "shellL" => format!("{:.2}", shell_bbox.left),
+        "shellT" => format!("{:.2}", shell_bbox.top),
+        "shellR" => format!("{:.2}", shell_bbox.right),
+        "shellB" => format!("{:.2}", shell_bbox.bottom),
+        "shellX" => format!("{:.2}", shell_x),
+        "shellY" => format!("{:.2}", shell_y),
+        "caretIndex" => caret_index,
+    );
     let _ = set_editor_caret(caret_index);
     dbg_event(
         "activation.caret",
