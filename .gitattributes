@@ -1,11 +1,2 @@
-# 精准屏蔽占用 20MB 的巨型 HTML 文件
+# 仅屏蔽这一个导致统计偏离的巨型文件
 tools/msedgedriver/Driver_Notes/credits.html linguist-vendored
-tools/msedgedriver/Driver_Notes/credits.html linguist-documentation
-
-# 屏蔽整个工具目录
-tools/** linguist-vendored
-tools/** linguist-documentation
-
-# 屏蔽资源目录
-assets/** linguist-vendored
-assets/** linguist-documentation
