@@ -1,13 +1,19 @@
-# 默认排除所有文件的统计（包括极其庞大的各种工具、资产、日志）
-* linguist-vendored
+# 强制排除大文件夹和工具，不计入语言统计
+tools/** linguist-vendored
+assets/** linguist-vendored
+tests/** linguist-vendored
+node_modules/** linguist-vendored
+dist/** linguist-vendored
+scripts/** linguist-vendored
 
-# 仅精确统计核心代码逻辑
+# 对元凶文件点名标记为文档
+tools/msedgedriver/Driver_Notes/credits.html linguist-documentation
+
+# 确保所有 Rust 代码被计入统计
 *.rs linguist-detectable=true
-*.ts linguist-detectable=true
-src/**/*.rs linguist-detectable=true
-src/**/*.ts linguist-detectable=true
 crates/**/*.rs linguist-detectable=true
+src-tauri/**/*.rs linguist-detectable=true
 
-# index.html 这种入口文件允许统计，但那些 20MB 的工具文件必须死掉
-index.html linguist-detectable=true
-tools/msedgedriver/Driver_Notes/credits.html linguist-vendored=true
+# 把 HTML 入口也降级为文档（牺牲它以保 Rust 纯度）
+*.html linguist-documentation
+index.html linguist-documentation
