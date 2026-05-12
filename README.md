@@ -24,17 +24,22 @@
 
 ## 🎨 核心技术：数据智能管线 (Intelligence Pipeline)
 
-![Zhiyuan UI Mockup](./docs/images/ui_mockup.png)
+![Zhiyuan UI Mockup](./assets/ui_mockup.png)
 
 ### 1. 数据流中心架构 (Data Center Architecture)
 后端负责数据的分类、管理与深度分析；前端（PDF）作为 Agent 与人交互的最高效、最高保真的窗口。
 
-![Technical Architecture](./docs/images/architecture.png)
+![Technical Architecture](./assets/architecture.png)
 
 ### 2. 核心渲染与提取管线
 确保在提取和显示过程中，数据的物理位置、语义联系与视觉特征 100% 对齐。
 
-![Rendering Pipeline](./docs/images/rendering_pipeline.png)
+![Rendering Pipeline](./assets/rendering_pipeline.png)
+
+### 3. 编辑生命周期 (Editing Lifecycle)
+原子化编辑操作，状态机管理撤销/重做，精准物理写回。
+
+![Editing Lifecycle](./assets/editing_lifecycle.png)
 
 ---
 
