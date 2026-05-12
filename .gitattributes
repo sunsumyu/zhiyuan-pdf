@@ -1,12 +1,13 @@
-# 强制排除非代码目录的语言统计
-tools/** linguist-vendored
-assets/** linguist-vendored
-tests/** linguist-vendored
-node_modules/** linguist-vendored
-dist/** linguist-vendored
+# 默认排除所有文件的统计（包括极其庞大的各种工具、资产、日志）
+* linguist-vendored
 
-# 将巨大的 HTML 信用文件标记为文档，不计入语言统计
-tools/msedgedriver/Driver_Notes/credits.html linguist-documentation
+# 仅精确统计核心代码逻辑
+*.rs linguist-detectable=true
+*.ts linguist-detectable=true
+src/**/*.rs linguist-detectable=true
+src/**/*.ts linguist-detectable=true
+crates/**/*.rs linguist-detectable=true
 
-# 显式声明项目核心语言（虽然 Linguist 会自动检测，但我们可以通过排除上面的内容来纠偏）
-*.rs linguist-detectable
+# index.html 这种入口文件允许统计，但那些 20MB 的工具文件必须死掉
+index.html linguist-detectable=true
+tools/msedgedriver/Driver_Notes/credits.html linguist-vendored=true
