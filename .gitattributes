@@ -1,19 +1,14 @@
-# 强制排除大文件夹和工具，不计入语言统计
+# 1. 屏蔽巨大的工具和资源文件夹（不计入比例）
 tools/** linguist-vendored
 assets/** linguist-vendored
 tests/** linguist-vendored
 node_modules/** linguist-vendored
 dist/** linguist-vendored
-scripts/** linguist-vendored
 
-# 对元凶文件点名标记为文档
-tools/msedgedriver/Driver_Notes/credits.html linguist-documentation
+# 2. 确保所有深层目录的 Rust 代码被正确识别
+**/*.rs linguist-language=Rust
+**/*.rs linguist-detectable=true
 
-# 确保所有 Rust 代码被计入统计
-*.rs linguist-detectable=true
-crates/**/*.rs linguist-detectable=true
-src-tauri/**/*.rs linguist-detectable=true
-
-# 把 HTML 入口也降级为文档（牺牲它以保 Rust 纯度）
-*.html linguist-documentation
+# 3. 将所有 HTML 视为文档，不再参与语言百分比统计
+**/*.html linguist-documentation
 index.html linguist-documentation
