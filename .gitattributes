@@ -1,0 +1,12 @@
+# 强制排除非代码目录的语言统计
+tools/** linguist-vendored
+assets/** linguist-vendored
+tests/** linguist-vendored
+node_modules/** linguist-vendored
+dist/** linguist-vendored
+
+# 将巨大的 HTML 信用文件标记为文档，不计入语言统计
+tools/msedgedriver/Driver_Notes/credits.html linguist-documentation
+
+# 显式声明项目核心语言（虽然 Linguist 会自动检测，但我们可以通过排除上面的内容来纠偏）
+*.rs linguist-detectable
