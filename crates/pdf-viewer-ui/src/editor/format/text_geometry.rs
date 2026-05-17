@@ -39,7 +39,7 @@ pub fn measure_editor_layout_text_width(
         .map(|metrics| metrics.width() as f32)
         .unwrap_or(0.0);
 
-    if !run.char_origins.is_empty() {
+    if run.char_origins.len() > 1 {
         let last_index = run.char_origins.len().saturating_sub(1);
         let last_origin = run.char_origins.get(last_index).copied().unwrap_or(0.0);
         let last_width = if run.char_widths.len() > last_index {

@@ -11,6 +11,10 @@
 //! - 禁则排版边界保证 (Kinsoku Shori)：强约束支持中日韩 (CJK) 标点的避头尾策略，例如逗号绝对不能出现在行首。
 
 use crate::models::{BoundingBox, GlyphPaintPlan, LayoutAlignment, LayoutParagraph, LayoutRun};
+use crate::edit::debug_trace::{
+    editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
+};
+use crate::utils::debug::truncate_debug_text;
 
 /// 表示在特定的容器宽度约束下，经历过物理换行算法生成的一行“视觉行”。
 ///
@@ -181,6 +185,40 @@ where
         line.baseline_y = current_y + max_font_size;
         current_y += line.height;
     }
+
+    // ── layout result diagnostic ──
+    for (line_idx, line) in visual_lines.iter().enumerate() {
+        let run_summary: String = line.runs.iter().enumerate().take(6).map(|(ri, r)| {
+            format!("r{}(ox={:.1} co={} text='{}')",
+                ri, r.origin_x, r.char_origins.len(),
+                truncate_debug_text(&r.text, 12))
+        }).collect::<Vec<_>>().join(", ");
+        dbg_event(
+            "layout.result",
+            "line",
+            vec![
+                dbg_field("lineIndex", line_idx),
+                dbg_field("baselineY", format!("{:.2}", line.baseline_y)),
+                dbg_field("offsetX", format!("{:.2}", line.offset_x)),
+                dbg_field("width", format!("{:.2}", line.width)),
+                dbg_field("height", format!("{:.2}", line.height)),
+                dbg_field("runCount", line.runs.len()),
+                dbg_field("text", truncate_debug_text(&line.text, 40)),
+                dbg_field("runs", run_summary),
+            ],
+        );
+    }
+    dbg_event(
+        "layout.result",
+        "summary",
+        vec![
+            dbg_field("wrapWidth", format!("{:.2}", wrap_width)),
+            dbg_field("lineCount", visual_lines.len()),
+            dbg_field("totalHeight", format!("{:.2}", current_y)),
+            dbg_field("paragraphId", &paragraph.id),
+        ],
+    );
+    // ── end diagnostic ──
 
     ParagraphLayout {
         lines: visual_lines,

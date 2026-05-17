@@ -570,6 +570,16 @@ fn build_draft_paragraph_with_policy(
             document_plan.body_session.paragraph.id, index
         );
     }
+    // ── draft paragraph diagnostic ──
+    let run_summary: String = runs.iter().enumerate().take(8).map(|(i, r)| {
+        format!("r{}(co={} cw={} ox={:.1} text='{}')",
+            i, r.char_origins.len(), r.char_widths.len(),
+            r.origin_x, truncate_debug_text(&r.text, 15))
+    }).collect::<Vec<_>>().join(", ");
+    let anchor = &document_plan.body_session.anchor_bbox;
+    let src_wrap = paragraph.wrap_width;
+    let shell_w = shell_width(&document_plan.body_session);
+    // ── end diagnostic ──
     paragraph.runs = runs;
     paragraph.wrap_width = paragraph
         .wrap_width
@@ -577,6 +587,21 @@ fn build_draft_paragraph_with_policy(
     paragraph.bbox = document_plan.body_session.anchor_bbox;
     paragraph.origin_x = document_plan.body_session.anchor_bbox.left;
     paragraph.origin_y = document_plan.body_session.anchor_bbox.top;
+    dbg_event(
+        "draft-paragraph",
+        "built",
+        vec![
+            dbg_field("paragraphId", &paragraph.id),
+            dbg_field("draftText", &truncate_debug_text(draft_text, 50)),
+            dbg_field("runCount", paragraph.runs.len()),
+            dbg_field("srcWrapWidth", format!("{:.2}", src_wrap)),
+            dbg_field("shellWidth", format!("{:.2}", shell_w)),
+            dbg_field("finalWrapWidth", format!("{:.2}", paragraph.wrap_width)),
+            dbg_field("anchorBBox", format!("[{:.2},{:.2},{:.2},{:.2}]",
+                anchor.left, anchor.top, anchor.right, anchor.bottom)),
+            dbg_field("runs", run_summary),
+        ],
+    );
     paragraph
 }
 
