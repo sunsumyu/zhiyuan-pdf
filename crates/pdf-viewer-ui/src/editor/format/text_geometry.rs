@@ -49,11 +49,55 @@ pub fn measure_editor_layout_text_width(
         } else {
             measured_width / (run.char_origins.len().max(1) as f32)
         };
-        return (last_origin + last_width).max(measured_width).max(1.0);
+        let result_multi = (last_origin + last_width).max(measured_width).max(1.0);
+        // ── multi-origin diagnostic (first 5 cases) ──
+        {
+            use std::cell::Cell;
+            thread_local! { static MULTI_COUNT: Cell<u32> = Cell::new(0); }
+            MULTI_COUNT.with(|c| {
+                let n = c.get();
+                if n < 5 {
+                    c.set(n + 1);
+                    crate::chain_trace!(
+                        "measure.width.multi",
+                        "idx" => n,
+                        "text" => &text[..text.len().min(20)],
+                        "coLen" => run.char_origins.len(),
+                        "lastOrigin" => format!("{:.3}", last_origin),
+                        "lastWidth" => format!("{:.3}", last_width),
+                        "measuredW" => format!("{:.3}", measured_width),
+                        "result" => format!("{:.3}", result_multi),
+                    );
+                }
+            });
+        }
+        return result_multi;
     }
 
     let spacing = run.style.char_spacing.max(0.0) * text.chars().count().saturating_sub(1) as f32;
-    (measured_width * run.style.scale_x.max(0.01)) + spacing
+    let result = (measured_width * run.style.scale_x.max(0.01)) + spacing;
+    // ── width diagnostic (first 10 runs only) ──
+    use std::cell::Cell;
+    thread_local! { static MW_COUNT: Cell<u32> = Cell::new(0); }
+    MW_COUNT.with(|c| {
+        let n = c.get();
+        if n < 10 {
+            c.set(n + 1);
+            crate::chain_trace!(
+                "measure.width.diag",
+                "idx" => n,
+                "text" => text,
+                "measuredW" => format!("{:.3}", measured_width),
+                "scaleX" => format!("{:.4}", run.style.scale_x),
+                "coLen" => run.char_origins.len(),
+                "cwLen" => run.char_widths.len(),
+                "result" => format!("{:.3}", result),
+                "font" => &run.style.font_name,
+                "fontSize" => format!("{:.1}", run.style.font_size),
+            );
+        }
+    });
+    result
 }
 
 fn create_measure_context() -> Option<CanvasRenderingContext2d> {

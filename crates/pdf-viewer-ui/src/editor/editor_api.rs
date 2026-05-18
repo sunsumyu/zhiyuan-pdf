@@ -34,6 +34,10 @@ struct OpenBlockRequest {
     reference_height: f32,
     page_width: f32,
     page_height: f32,
+    #[serde(default)]
+    fallback_page_x: f32,
+    #[serde(default)]
+    fallback_page_y: f32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -182,8 +186,8 @@ impl EditorSession {
             reference_height: request.reference_height,
             page_width: request.page_width,
             page_height: request.page_height,
-            fallback_page_x: 0.0,
-            fallback_page_y: 0.0,
+            fallback_page_x: request.fallback_page_x,
+            fallback_page_y: request.fallback_page_y,
         };
 
         let frame_request = build_frame_request();

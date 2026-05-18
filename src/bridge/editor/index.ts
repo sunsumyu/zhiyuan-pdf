@@ -162,6 +162,13 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
                 // because the textarea allows native click-to-position which Rust
                 // doesn't observe, leaving Rust's internal caret stale.
                 const hostCaret = readTextareaCaret(textarea);
+                console.log('[CARET-DIAG]', command, {
+                    hostCaret,
+                    selStart: textarea.selectionStart,
+                    selEnd: textarea.selectionEnd,
+                    valLen: textarea.value.length,
+                    lastRust: lastRustCaretIndex,
+                });
                 api.syncInput({ text: textarea.value, caretIndex: Math.max(0, hostCaret) });
                 const result = api.applyCommand({ command, insertedText: text })?.data;
                 if (result && Number.isFinite(result.caretIndex) && result.caretIndex >= 0) {
@@ -293,6 +300,8 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
                     referenceHeight: referenceBox.height,
                     pageWidth: deps.getPageWidth(),
                     pageHeight: deps.getPageHeight(),
+                    fallbackPageX: hitResult.data.pageX,
+                    fallbackPageY: hitResult.data.pageY,
                 });
 
                 if (!openResult?.ok || !openResult.data) {
@@ -326,6 +335,11 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
         draftText: string,
         caretIndex: number,
     ): void {
+        console.log('[CARET-DIAG] setupActiveEditor', {
+            caretIndex,
+            draftLen: draftText.length,
+            draftCharCount: [...draftText].length,
+        });
         positionEditorShell(nodes, target);
         withSuppressedNativeInput(() => {
             nodes.textarea.value = draftText;
@@ -518,6 +532,8 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
             referenceHeight: referenceBox.height,
             pageWidth: deps.getPageWidth(),
             pageHeight: deps.getPageHeight(),
+            fallbackPageX: hitResult?.data?.pageX,
+            fallbackPageY: hitResult?.data?.pageY,
         });
 
         if (!openResult?.ok || !openResult.data) {

@@ -348,26 +348,10 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
             ),
         ],
     );
-
-    for (line_idx, line) in render_plan.layout.lines.iter().enumerate() {
+    for (_line_idx, line) in render_plan.layout.lines.iter().enumerate() {
         let baseline_y = session.anchor_bbox.top + line.baseline_y;
-        for (run_idx, run) in line.runs.iter().enumerate() {
+        for (_run_idx, run) in line.runs.iter().enumerate() {
             let run_x = session.anchor_bbox.left + line.offset_x + run.origin_x;
-            let first_co = run.char_origins.first().copied().unwrap_or(f32::NAN);
-            let last_co = run.char_origins.last().copied().unwrap_or(f32::NAN);
-            crate::chain_trace!(
-                "render.overlay-run",
-                "line" => line_idx,
-                "run" => run_idx,
-                "runX" => format!("{:.2}", run_x),
-                "baselineY" => format!("{:.2}", baseline_y),
-                "originX" => format!("{:.2}", run.origin_x),
-                "charOrigins" => run.char_origins.len(),
-                "firstCO" => format!("{:.2}", first_co),
-                "lastCO" => format!("{:.2}", last_co),
-                "fontSize" => format!("{:.1}", run.style.font_size),
-                "text" => truncate_debug_text(&run.text, 20),
-            );
             renderer.draw_text_run(
                 &run.text,
                 run_x,

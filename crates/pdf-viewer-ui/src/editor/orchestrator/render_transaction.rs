@@ -94,7 +94,15 @@ pub fn sync_input_tx(
     caret_index: usize,
     _frame_request: FramePlanRequest,
 ) -> EditorInputRenderTransactionResult {
+    let text_len = new_text.chars().count();
     let result = sync_editor_input(new_text, caret_index);
+    crate::chain_trace!("sync_input_tx",
+        "inCaret" => caret_index,
+        "inTextLen" => text_len,
+        "outCaret" => result.caret_index,
+        "textChanged" => result.text_changed,
+        "caretChanged" => result.caret_changed
+    );
     EditorInputRenderTransactionResult {
         text_changed: result.text_changed,
         caret_changed: result.caret_changed,

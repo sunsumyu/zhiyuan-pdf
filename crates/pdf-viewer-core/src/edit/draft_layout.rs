@@ -123,6 +123,88 @@ fn build_source_to_runs_index_map(source_text: &str, runs_text: &str) -> Vec<usi
     mapping
 }
 
+/// 构建从 `runs_text` 字符索引到 `source_text`（draft）字符索引的逆映射。
+/// 当 `source_text` 含合成空格时，runs_text 索引 < source_text 索引。
+/// 返回长度 `runs_text.chars().count() + 1` 的向量。
+fn build_runs_to_source_index_map(source_text: &str, runs_text: &str) -> Vec<usize> {
+    let source_chars: Vec<char> = source_text.chars().collect();
+    let runs_chars: Vec<char> = runs_text.chars().collect();
+    let mut inverse = Vec::with_capacity(runs_chars.len() + 1);
+    let mut source_cursor = 0usize;
+    for rc in &runs_chars {
+        // Skip synthetic chars in source until we find matching real char.
+        while source_cursor < source_chars.len() && source_chars[source_cursor] != *rc {
+            source_cursor += 1;
+        }
+        inverse.push(source_cursor);
+        source_cursor += 1;
+    }
+    inverse.push(source_chars.len());
+    inverse
+}
+
+/// 将 caret stop 索引从 runs-text 空间重映射到 draft-text (source_body_text) 空间。
+fn remap_caret_indices_to_draft_space(
+    caret_lines: &mut [DraftCaretLine],
+    document_plan: &EditorDocumentPlan,
+    draft_text: &str,
+) {
+    if body_runs_match_source_text(document_plan) {
+        dbg_event(
+            "caret.remap",
+            "skipped-runs-match",
+            vec![
+                dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
+                dbg_field("draftLen", draft_text.chars().count()),
+            ],
+        );
+        return; // 无合成空格，索引空间一致
+    }
+    let runs_text = body_runs_text(document_plan);
+    let runs_len = runs_text.chars().count();
+    let draft_len = draft_text.chars().count();
+    let inverse = build_runs_to_source_index_map(draft_text, &runs_text);
+    let first_stop_before = caret_lines
+        .first()
+        .and_then(|l| l.stops.first())
+        .map(|s| s.index);
+    for line in caret_lines.iter_mut() {
+        for stop in line.stops.iter_mut() {
+            stop.index = inverse.get(stop.index).copied().unwrap_or(stop.index);
+        }
+    }
+    let first_stop_after = caret_lines
+        .first()
+        .and_then(|l| l.stops.first())
+        .map(|s| s.index);
+    let last_stop_after = caret_lines
+        .last()
+        .and_then(|l| l.stops.last())
+        .map(|s| s.index);
+    dbg_event(
+        "caret.remap",
+        "applied",
+        vec![
+            dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
+            dbg_field("runsLen", runs_len),
+            dbg_field("draftLen", draft_len),
+            dbg_field("inverseLen", inverse.len()),
+            dbg_field(
+                "firstStopBefore",
+                first_stop_before.map(|v| v.to_string()).unwrap_or_default(),
+            ),
+            dbg_field(
+                "firstStopAfter",
+                first_stop_after.map(|v| v.to_string()).unwrap_or_default(),
+            ),
+            dbg_field(
+                "lastStopAfter",
+                last_stop_after.map(|v| v.to_string()).unwrap_or_default(),
+            ),
+        ],
+    );
+}
+
 fn same_existing_layout_line(
     reference_baseline_y: f32,
     run: &LayoutRun,
@@ -805,7 +887,8 @@ where
     let paragraph = build_draft_paragraph(document_plan, draft_text, &measure_width);
     let mut layout = layout_paragraph(&paragraph, paragraph.wrap_width, &measure_width);
     align_layout_baseline(&mut layout, source_baseline_y(document_plan));
-    let caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
+    let mut caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
+    remap_caret_indices_to_draft_space(&mut caret_lines, document_plan, draft_text);
     let plan = EditorDraftRenderPlan {
         layout,
         caret_lines,
@@ -861,7 +944,8 @@ where
         build_draft_paragraph_with_policy(document_plan, draft_text, &measure_width, false);
     let mut layout = layout_paragraph(&paragraph, paragraph.wrap_width, &measure_width);
     align_layout_baseline(&mut layout, source_baseline_y(document_plan));
-    let caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
+    let mut caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
+    remap_caret_indices_to_draft_space(&mut caret_lines, document_plan, draft_text);
     let plan = EditorDraftRenderPlan {
         layout,
         caret_lines,
@@ -1206,5 +1290,17 @@ mod tests {
         assert_eq!(line.runs.len(), 2);
         assert_eq!(line.runs[0].origin_x, 0.0);
         assert_eq!(line.runs[1].origin_x, 8.0);
+    }
+
+    #[test]
+    fn runs_to_source_index_map_accounts_for_synthetic_spaces() {
+        // source_text has synthesized spaces; runs_text is compact PDF text.
+        let source = "编程语言: Rust";  // 10 chars (space after colon)
+        let runs   = "编程语言:Rust";   // 9 chars (no space)
+        let inv = super::build_runs_to_source_index_map(source, runs);
+        // inv[0]=0(编), inv[1]=1(程), inv[2]=2(语), inv[3]=3(言),
+        // inv[4]=4(:), inv[5]=6(R, skips space@5), inv[6]=7(u), inv[7]=8(s), inv[8]=9(t)
+        // inv[9]=10 (end sentinel = source.chars().count())
+        assert_eq!(inv, vec![0, 1, 2, 3, 4, 6, 7, 8, 9, 10]);
     }
 }

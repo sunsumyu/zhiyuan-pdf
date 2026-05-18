@@ -115,7 +115,18 @@ pub fn apply_input_with_host(
             let Some(active_state) = effective_editor_state(host_text, host_caret_index) else {
                 return ActiveEditorInputSyncResult::default();
             };
+            let before_caret = active_state.normalized_caret_index();
+            let before_text = active_state.current_text().to_string();
+            let before_len = before_text.chars().count();
             let mutation = delete_backward(&active_state);
+            let removed_char: String = before_text.chars().nth(before_caret.saturating_sub(1)).map(|c| c.to_string()).unwrap_or_default();
+            crate::chain_trace!("cmd.backspace",
+                "beforeCaret" => before_caret,
+                "beforeLen" => before_len,
+                "removedChar" => removed_char,
+                "afterCaret" => mutation.caret_index,
+                "afterLen" => mutation.text.chars().count()
+            );
             sync_active_editor_input(mutation.text, mutation.caret_index)
         }
         EditorInputCommand::DeleteForward => {

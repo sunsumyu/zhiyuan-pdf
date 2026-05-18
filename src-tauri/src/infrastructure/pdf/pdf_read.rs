@@ -310,15 +310,28 @@ pub fn parse_content_stream(
                     };
 
                     let trm = multiply_matrices(state.ctm, state.tm);
+                    // char_origins and char_widths from resolve_glyph_geom are in TEXT
+                    // SPACE (pre-matrix).  The rest of the pipeline (LayoutRun, caret
+                    // stops, overlay rendering) expects PAGE SPACE values.  Scale by the
+                    // horizontal component of the text rendering matrix to bridge the gap.
+                    let h_page_scale = trm[0].abs().max(f32::EPSILON);
+                    let page_origins: Vec<f32> = origins.iter().map(|o| o * h_page_scale).collect();
+                    let page_widths: Vec<f32> = widths.iter().map(|w| w * h_page_scale).collect();
+                    let page_advance = advance * h_page_scale;
                     text_runs.push(StyledRun {
-                        text, tx: trm[4], ty: trm[5], width: advance,
+                        text, tx: trm[4], ty: trm[5], width: page_advance,
                         font_size: (state.font_size * trm[3]).abs(),
                         font_name: font.name.clone(),
-                        char_origins: origins, char_widths: widths, pdf_char_codes: codes,
+                        char_origins: page_origins, char_widths: page_widths, pdf_char_codes: codes,
                         z_index: *obj_counter,
                         color: state.fill_color.clone().unwrap_or("#000000".into()),
+                        a: trm[0], b: trm[1], c: trm[2], d: trm[3],
+                        horizontal_scaling: state.horizontal_scaling,
+                        char_spacing: state.char_spacing,
+                        word_spacing: state.word_spacing,
                         ..Default::default()
                     });
+                    // Tm update uses the original text-space advance (not page-scaled)
                     state.tm = multiply_matrices(state.tm, [1.0, 0.0, 0.0, 1.0, advance, 0.0]);
                 }
             }

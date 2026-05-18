@@ -80,6 +80,8 @@ export type OpenBlockRequest = {
     referenceHeight: number;
     pageWidth: number;
     pageHeight: number;
+    fallbackPageX?: number;
+    fallbackPageY?: number;
 };
 
 export type MoveCaretRequest = {
