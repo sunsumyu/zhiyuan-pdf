@@ -1,5 +1,6 @@
 import { targetInvokeV3 } from '../shared/wasm_loader';
 import type { RenderReason } from '../render/frame_plan';
+import type { RenderScheduler } from '../render/render_scheduler';
 import type { PdfEditSource } from '../document/document_edit_api';
 import type { EditorFormatAction } from '../editor/types';
 
@@ -7,8 +8,12 @@ export type PdfViewerApiDeps = {
     ensureWasmInitialized: () => Promise<unknown>;
     getWasmApi: () => any;
     readPath: () => string | null;
+    readCurrentPage: () => number;
+    readPageCount: () => number;
+    setCurrentPage: (pageIndex: number) => void;
     refreshDocument: (reason: PdfEditSource) => Promise<unknown>;
     resetPdfViewerState: () => void;
+    renderScheduler: RenderScheduler;
     renderCurrentPage: (reason?: RenderReason) => Promise<void>;
     clampZoom: (zoom: number) => number;
     syncZoomSelect: () => void;
@@ -85,15 +90,18 @@ export class PdfViewerAPI {
     // === Page Navigation ===
 
     async prevPage(): Promise<void> {
-        const result = this.deps.getWasmApi().navigate_prev_page?.();
-        if (!result?.changed) return;
-        await this.deps.renderCurrentPage();
+        const current = this.deps.readCurrentPage();
+        if (current <= 0) return;
+        this.deps.setCurrentPage(current - 1);
+        await this.deps.renderScheduler.requestRender('navigation');
     }
 
     async nextPage(): Promise<void> {
-        const result = this.deps.getWasmApi().navigate_next_page?.();
-        if (!result?.changed) return;
-        await this.deps.renderCurrentPage();
+        const current = this.deps.readCurrentPage();
+        const total = this.deps.readPageCount();
+        if (total <= 0 || current + 1 >= total) return;
+        this.deps.setCurrentPage(current + 1);
+        await this.deps.renderScheduler.requestRender('navigation');
     }
 
     // === Zoom ===

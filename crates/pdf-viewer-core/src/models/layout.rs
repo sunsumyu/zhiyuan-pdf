@@ -162,7 +162,7 @@ impl LayoutRun {
                 is_italic: run.is_italic,
                 is_underline: run.is_underline,
                 char_spacing: run.char_spacing,
-                scale_x: run.horizontal_scaling,
+                scale_x: run.horizontal_scaling / 100.0,
             },
             bbox: BoundingBox {
                 left: run.tx,

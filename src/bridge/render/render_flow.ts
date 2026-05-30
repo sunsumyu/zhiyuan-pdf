@@ -21,6 +21,7 @@ type RenderFlowDeps = {
     prepareRenderFrame: (frame: RustRenderFrame) => void;
     scheduleRenderFollowUp: (renderedDisplayZoom: number) => RustRenderFrame | null;
     commitRenderResult: (frameToken: number, renderedZoom: number, pageWidth: number, pageHeight: number) => RustRenderCommitResult | null;
+    onRenderCommitted: () => void;
 };
 
 export function createRenderFlow(deps: RenderFlowDeps) {
@@ -175,6 +176,7 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                         });
                     }
                     deps.syncEditorOverlay(renderPlan.displayZoom);
+                    deps.onRenderCommitted();
                 }
 
                 nextFrame =
@@ -207,7 +209,7 @@ export function createRenderFlow(deps: RenderFlowDeps) {
 
                     if (transition?.accepted) {
                         deps.onPageDimensionsResolved(width, height);
-                        await updateRasterFallback(preview.imageUrl);
+                        await updateRasterFallback(preview.imageUrl, width, height, renderPlan.displayZoom);
                         deps.clearPendingAnchor();
                         deps.clearEditorOverlay();
                     }
@@ -230,7 +232,7 @@ export function createRenderFlow(deps: RenderFlowDeps) {
         }
     }
 
-    async function updateRasterFallback(src: string): Promise<void> {
+    async function updateRasterFallback(src: string, pageWidth?: number, pageHeight?: number, displayZoom?: number): Promise<void> {
         const img = deps.getRasterTarget();
         const wrapper = deps.getWrapper();
         const emptyState = deps.getEmptyState();
@@ -240,6 +242,17 @@ export function createRenderFlow(deps: RenderFlowDeps) {
         deps.clearEditorOverlay();
         img.style.display = 'block';
         img.src = src;
+
+        if (pageWidth && pageWidth > 0 && pageHeight && pageHeight > 0) {
+            const zoom = displayZoom && displayZoom > 0 ? displayZoom : 1;
+            const cssW = Math.round(pageWidth * zoom);
+            const cssH = Math.round(pageHeight * zoom);
+            img.style.width = cssW + 'px';
+            img.style.height = cssH + 'px';
+            wrapper.style.width = cssW + 'px';
+            wrapper.style.height = cssH + 'px';
+        }
+
         wrapper.style.display = 'block';
         if (emptyState) emptyState.style.display = 'none';
     }

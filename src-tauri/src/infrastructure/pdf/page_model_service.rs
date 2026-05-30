@@ -23,7 +23,8 @@ impl PdfPageModelService {
                 d.clone()
             } else {
                 let wp = PdfDocumentService::get_working_path(path);
-                let d = Document::load(&wp).map_err(|e| format!("Lopdf Load Error: {}", e))?;
+                let d = crate::infrastructure::pdf::document_service::load_pdf_public(&wp)
+                    .map_err(|e| format!("Lopdf Load Error: {}", e))?;
                 let d_arc = std::sync::Arc::new(d);
                 cache.insert(path.to_string(), d_arc.clone());
                 d_arc
@@ -121,7 +122,7 @@ impl PdfPageModelService {
             let path_for_load = path.clone();
             let working_path_for_load = working_path.clone();
             let loaded_doc = tokio::task::spawn_blocking(move || {
-                Document::load(&working_path_for_load)
+                crate::infrastructure::pdf::document_service::load_pdf_public(&working_path_for_load)
                     .map(std::sync::Arc::new)
                     .map_err(|e| format!("Lopdf Load Error (fallback) for {}: {}", path_for_load, e))
             })

@@ -1,3 +1,4 @@
+import '@fortawesome/fontawesome-free/css/all.min.css';
 import { plugin } from './bridge';
 import { getPdfViewerAPI } from './bridge/viewer/pdf_viewer_api';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -9,15 +10,26 @@ function api() {
 }
 
 async function init() {
+    performance.mark('viewer-init-start');
     console.log('Initializing Sovereignty PDF Viewer...');
 
-    // Initialize the plugin and its controllers
-    await plugin.initialize();
+    const openBtn = document.getElementById('open-btn');
+    // 不阻塞 UI：plugin.initialize() (含 WASM 加载) 在后台并行进行。
+    // 用户点击"打开"时，openPdfFile 内部会自己 await ensureWasmInitialized()。
+    performance.mark('plugin-init-start');
+    const initPromise = plugin.initialize()
+        .then(() => {
+            performance.mark('plugin-init-end');
+            performance.measure('plugin-initialize', 'plugin-init-start', 'plugin-init-end');
+        })
+        .catch((err) => {
+            console.error('[PDF] Plugin initialization failed (buttons will still work):', err);
+        });
+    void initPromise;
 
     // --- Navbar Actions ---
 
     // 1. Open Button
-    const openBtn = document.getElementById('open-btn');
     const pathSpan = document.getElementById('file-path');
     const hiddenInput = document.getElementById('pdf-hidden-file-input') as HTMLInputElement;
 
@@ -31,15 +43,14 @@ async function init() {
         }
     };
 
-    openBtn?.addEventListener('click', async () => {
-        // Check if running in Tauri
+    // 注册高级处理器，替换 index.html 里的 inline fallback
+    (window as any).__pdfOpenHandler = async () => {
         if ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__) {
             try {
                 const selected = await open({
                     multiple: false,
                     filters: [{ name: 'PDF', extensions: ['pdf'] }]
                 });
-
                 if (selected && !Array.isArray(selected)) {
                     handleFileOpen(selected);
                 }
@@ -47,10 +58,17 @@ async function init() {
                 console.error('Tauri open failed:', err);
             }
         } else {
-            // Browser fallback
             hiddenInput?.click();
         }
-    });
+        (document.activeElement as HTMLElement | null)?.blur?.();
+    };
+
+    // 消费 inline script 已经选好的文件（用户在模块加载完之前就点了 Open）
+    const pendingPath = (window as any).__pendingPdfPath;
+    if (pendingPath) {
+        delete (window as any).__pendingPdfPath;
+        handleFileOpen(pendingPath);
+    }
 
     hiddenInput?.addEventListener('change', (e) => {
         const file = (e.target as HTMLInputElement).files?.[0];
@@ -183,6 +201,9 @@ async function init() {
         }
     });
 
+    void openBtn; // kept for future use; no longer disabled during init
+    performance.mark('viewer-init-end');
+    performance.measure('viewer-init-total', 'viewer-init-start', 'viewer-init-end');
     console.log('PDF Viewer Logic Wired Up.');
 }
 

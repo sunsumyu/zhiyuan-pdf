@@ -176,7 +176,7 @@ impl PdfDocumentService {
         let path_for_load = path.to_string();
         let load_start = std::time::Instant::now();
         let doc = tokio::task::spawn_blocking(move || {
-            Document::load(&path_for_load).map_err(|e| format!("Lopdf Load Error: {}", e))
+            load_pdf_lenient(&path_for_load)
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -435,4 +435,146 @@ impl PdfDocumentService {
         fs::write(path, pdf).map_err(|_| "IO".to_string())?;
         Ok(path.to_string())
     }
+}
+
+/// Public wrapper for lenient PDF loading (used from other modules).
+pub fn load_pdf_public(path: &str) -> Result<Document, String> {
+    load_pdf_lenient(path)
+}
+
+/// Attempt to load a PDF with multiple fallback strategies:
+/// 1. Direct lopdf::Document::load (strict)
+/// 2. Load from memory bytes (handles some path encoding issues)
+/// 3. Repair the PDF trailer and retry from memory
+fn load_pdf_lenient(path: &str) -> Result<Document, String> {
+    // Strategy 1: Direct file load
+    match Document::load(path) {
+        Ok(doc) => {
+            log_step!("[PDF][load_lenient] Strategy 1 (direct load) SUCCESS for {}", path);
+            return Ok(doc);
+        }
+        Err(e) => {
+            log_step!("[PDF][load_lenient] Strategy 1 (direct load) FAILED: {} - trying fallbacks", e);
+        }
+    }
+
+    // Read raw bytes for subsequent strategies
+    let raw_bytes = fs::read(path)
+        .map_err(|e| format!("Cannot read PDF file {}: {}", path, e))?;
+
+    if raw_bytes.len() < 8 {
+        return Err(format!("PDF file too small ({} bytes): {}", raw_bytes.len(), path));
+    }
+
+    // Strategy 2: Load from memory (bypasses file I/O quirks)
+    match Document::load_mem(&raw_bytes) {
+        Ok(doc) => {
+            log_step!("[PDF][load_lenient] Strategy 2 (load_mem) SUCCESS for {}", path);
+            return Ok(doc);
+        }
+        Err(e) => {
+            log_step!("[PDF][load_lenient] Strategy 2 (load_mem) FAILED: {} - trying repair", e);
+        }
+    }
+
+    // Strategy 3: Repair trailer and retry
+    match repair_and_load(&raw_bytes) {
+        Ok(doc) => {
+            log_step!("[PDF][load_lenient] Strategy 3 (repair) SUCCESS for {}", path);
+            return Ok(doc);
+        }
+        Err(e) => {
+            log_step!("[PDF][load_lenient] Strategy 3 (repair) FAILED: {}", e);
+        }
+    }
+
+    Err(format!("All PDF loading strategies failed for {}", path))
+}
+
+/// Try to repair a PDF with invalid trailer by finding and fixing the startxref value,
+/// or by synthesizing a minimal trailer if missing.
+fn repair_and_load(raw: &[u8]) -> Result<Document, String> {
+    // Find the last occurrence of "startxref" in the file
+    let content = String::from_utf8_lossy(raw);
+
+    // Strategy 3a: Trim trailing garbage after %%EOF
+    if let Some(eof_pos) = content.rfind("%%EOF") {
+        let trimmed_end = eof_pos + 5; // "%%EOF".len()
+        // Skip any trailing newlines
+        let trimmed_end = raw.len().min(trimmed_end + 2);
+        if trimmed_end < raw.len() {
+            let trimmed = &raw[..trimmed_end];
+            log_step!("[PDF][repair] Trimming {} trailing bytes after %%EOF", raw.len() - trimmed_end);
+            if let Ok(doc) = Document::load_mem(trimmed) {
+                return Ok(doc);
+            }
+        }
+    }
+
+    // Strategy 3b: Find startxref and verify the offset points to valid xref/obj
+    if let Some(startxref_pos) = content.rfind("startxref") {
+        let after_startxref = &content[startxref_pos + 9..];
+        let offset_str = after_startxref.trim_start().lines().next().unwrap_or("").trim();
+        if let Ok(xref_offset) = offset_str.parse::<usize>() {
+            // Verify the offset is within file bounds
+            if xref_offset < raw.len() {
+                let at_offset = &content[xref_offset..];
+                // If it points to "xref" or a valid obj, the startxref is correct
+                // Try scanning backwards for an earlier valid xref
+                if !at_offset.starts_with("xref") && !at_offset.contains("obj") {
+                    // The startxref offset is wrong - try to find actual xref location
+                    if let Some(real_xref) = content.rfind("\nxref\n").or_else(|| content.rfind("\nxref\r")) {
+                        let real_offset = real_xref + 1; // skip the leading newline
+                        log_step!("[PDF][repair] Fixing startxref from {} to {}", xref_offset, real_offset);
+                        let mut repaired = raw.to_vec();
+                        let new_startxref = format!("startxref\n{}\n%%EOF\n", real_offset);
+                        // Replace from startxref_pos to end
+                        repaired.truncate(startxref_pos);
+                        repaired.extend_from_slice(new_startxref.as_bytes());
+                        if let Ok(doc) = Document::load_mem(&repaired) {
+                            return Ok(doc);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Strategy 3c: If the file has cross-reference streams (PDF 1.5+),
+    // look for the last "obj" that contains /Type /XRef
+    // This handles PDFs that use xref streams instead of traditional xref tables
+    if content.contains("/Type /XRef") || content.contains("/Type/XRef") {
+        // Find the byte offset of the last xref stream object
+        let search_patterns = ["/Type /XRef", "/Type/XRef"];
+        let mut last_xref_stream_pos = None;
+        for pattern in &search_patterns {
+            if let Some(pos) = content.rfind(pattern) {
+                // Walk backwards to find the "N N obj" header
+                let before = &content[..pos];
+                if let Some(obj_line_start) = before.rfind('\n') {
+                    let candidate_start = before[..obj_line_start].rfind('\n').map(|p| p + 1).unwrap_or(0);
+                    let obj_header = &before[candidate_start..obj_line_start];
+                    if obj_header.trim().ends_with("obj") {
+                        last_xref_stream_pos = Some(candidate_start);
+                    }
+                }
+            }
+        }
+        if let Some(xref_pos) = last_xref_stream_pos {
+            // Build a repaired file with correct startxref pointing to this object
+            let mut repaired = raw.to_vec();
+            let new_tail = format!("\nstartxref\n{}\n%%EOF\n", xref_pos);
+            // Find where to append - after the last endobj or at end
+            if let Some(last_endobj) = content.rfind("endobj") {
+                let append_pos = last_endobj + 6;
+                repaired.truncate(append_pos);
+                repaired.extend_from_slice(new_tail.as_bytes());
+                if let Ok(doc) = Document::load_mem(&repaired) {
+                    return Ok(doc);
+                }
+            }
+        }
+    }
+
+    Err("PDF repair strategies exhausted".to_string())
 }

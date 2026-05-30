@@ -9,6 +9,8 @@ export type PdfKeyboardShortcutDeps = {
     toggleBold: () => void;
     toggleItalic: () => void;
     toggleUnderline: () => void;
+    prevPage: () => void;
+    nextPage: () => void;
 };
 
 function isPdfViewerKeyboardScope(getScrollContainer: () => HTMLElement | null): boolean {
@@ -20,6 +22,8 @@ function isPdfViewerKeyboardScope(getScrollContainer: () => HTMLElement | null):
     if (active.closest('#pdf-content-wrapper')) return true;
     if (active.closest('#pdf-scroll-container')) return true;
     if (active.closest('[data-plugin-id="pdf-viewer"]')) return true;
+    // Toolbar buttons / selects等非编辑控件不应拦截方向键翻页。
+    if (!isPlainEditableTarget(active)) return true;
     return false;
 }
 
@@ -34,6 +38,33 @@ export function createPdfKeyboardShortcutHandler(
     deps: PdfKeyboardShortcutDeps,
 ): (event: KeyboardEvent) => void {
     return (event: KeyboardEvent) => {
+        // --- Page navigation with arrow keys / PageUp / PageDown ---
+        if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+            const navKey = event.key;
+            const isPrev = navKey === 'ArrowLeft' || navKey === 'ArrowUp' || navKey === 'PageUp';
+            const isNext = navKey === 'ArrowRight' || navKey === 'ArrowDown' || navKey === 'PageDown';
+            if (isPrev || isNext) {
+                const scope = isPdfViewerKeyboardScope(deps.getScrollContainer);
+                const editing = deps.isTextEditEnabled();
+                const editable = isPlainEditableTarget(event.target);
+                console.log('[PDF-KEY]', {
+                    key: navKey,
+                    scope,
+                    editing,
+                    editable,
+                    activeTag: (document.activeElement as HTMLElement | null)?.tagName,
+                    activeId: (document.activeElement as HTMLElement | null)?.id,
+                });
+                if (editing) return;
+                if (editable) return;
+                if (!scope) return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (isPrev) deps.prevPage(); else deps.nextPage();
+                return;
+            }
+        }
+
         if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
         const key = event.key.toLowerCase();
         if (key === 'f' && !event.shiftKey) {

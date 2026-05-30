@@ -41,3 +41,9 @@ pub fn mark_rendered_zoom(rendered_zoom: f32) {
 pub fn clear_pending_anchor() {
     zoom_controller::clear_pending_anchor();
 }
+
+#[wasm_bindgen]
+pub fn apply_zoom_selection(zoom: f32) -> JsValue {
+    let result = crate::host::command::apply_zoom_selection(zoom);
+    to_value(&result).unwrap_or(JsValue::NULL)
+}

@@ -1,4 +1,5 @@
 import type { RenderReason } from '../render/frame_plan';
+import type { RenderScheduler } from '../render/render_scheduler';
 
 // ── DocumentSession bridge (P1 of session-API plan) ─────────────────────────
 //
@@ -25,6 +26,7 @@ type CreatePdfDocumentRuntimeDeps = {
     getTargetZoom: () => number;
     resolveHostScrollRefresh: (displayZoom: number, timestampMs?: number) => { shouldRefresh?: boolean; delayMs?: number } | null;
     getScrollContainer: () => HTMLElement | null;
+    renderScheduler: RenderScheduler;
     renderCurrentFrame: (reason?: RenderReason) => Promise<void>;
     refreshMutatedDocument: () => Promise<void>;
     clearVectorHost: () => void;
@@ -48,8 +50,6 @@ export type PdfDocumentRuntime = {
 
 export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): PdfDocumentRuntime {
     let viewportTileScrollBound = false;
-    let viewportTileScrollRafId: number | null = null;
-    let viewportTileScrollTimerId: number | null = null;
 
     async function renderCurrentPage(reason: RenderReason = 'default'): Promise<void> {
         if (reason === 'documentMutation') {
@@ -73,17 +73,7 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
         scrollContainer.addEventListener('scroll', () => {
             const decision = deps.resolveHostScrollRefresh(deps.getTargetZoom(), performance.now());
             if (!decision?.shouldRefresh) return;
-            if (viewportTileScrollTimerId !== null) {
-                window.clearTimeout(viewportTileScrollTimerId);
-            }
-            viewportTileScrollTimerId = window.setTimeout(() => {
-                viewportTileScrollTimerId = null;
-                if (viewportTileScrollRafId !== null) return;
-                viewportTileScrollRafId = window.requestAnimationFrame(() => {
-                    viewportTileScrollRafId = null;
-                    void renderCurrentPage();
-                });
-            }, decision.delayMs);
+            void deps.renderScheduler.requestRender('scroll');
         }, { passive: true });
 
         viewportTileScrollBound = true;

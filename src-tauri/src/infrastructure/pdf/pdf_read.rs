@@ -120,27 +120,73 @@ pub fn resolve_paths(
     let page_id = *doc.get_pages().get(&(page_index + 1)).ok_or("Page not found")?;
     let page_dict = doc.get_dictionary(page_id).map_err(|e| e.to_string())?;
 
-    let (width, height) = if let Ok(box_obj) = page_dict.get(b"MediaBox") {
+    let (mut width, mut height) = if let Ok(box_obj) = page_dict.get(b"MediaBox") {
         let arr = box_obj.as_array().map_err(|e| e.to_string())?;
         if arr.len() >= 4 {
             let w = arr[2].as_float().or_else(|_| arr[2].as_i64().map(|v| v as f32)).unwrap_or(595.0);
             let h = arr[3].as_float().or_else(|_| arr[3].as_i64().map(|v| v as f32)).unwrap_or(842.0);
             let y0 = arr[1].as_float().or_else(|_| arr[1].as_i64().map(|v| v as f32)).unwrap_or(0.0);
-            (w, h - y0)
+            ((w).abs(), (h - y0).abs())
         } else { (595.0, 842.0) }
     } else { (595.0, 842.0) };
+
+    // Support inherited /Rotate attribute in page dictionary tree
+    let mut rotation = 0i64;
+    let mut current_id = page_id;
+    while let Ok(dict) = doc.get_dictionary(current_id) {
+        if let Ok(rotate_obj) = dict.get(b"Rotate") {
+            if let Ok(r) = rotate_obj.as_i64() {
+                rotation = r;
+                break;
+            }
+        }
+        if let Ok(parent_id) = dict.get(b"Parent").and_then(|o| o.as_reference()) {
+            current_id = parent_id;
+        } else {
+            break;
+        }
+    }
+
+    // Normalize rotation to 0, 90, 180, 270
+    let normalized_rotation = ((rotation % 360) + 360) % 360;
+    if normalized_rotation == 90 || normalized_rotation == 270 {
+        std::mem::swap(&mut width, &mut height);
+        log_step!(
+            "[PDF-Vector] swapped page size due to {} deg rotation. final={}x{}",
+            normalized_rotation, width, height
+        );
+    }
 
     let flat_resources = read_resources(doc, page_id);
     let mut res_cache = ResourceCache::new();
 
     let content_data = doc.get_page_content(page_id).map_err(|e| e.to_string())?;
+    log_step!("[PDF-DIAG] resolve_paths page={} content_bytes={}", page_index, content_data.len());
+
     let content = Content::decode(&content_data).map_err(|e| e.to_string())?;
+    log_step!("[PDF-DIAG] resolve_paths page={} ops_count={}", page_index, content.operations.len());
+
+    // Log first 20 operators for diagnostics
+    let ops_preview: Vec<String> = content.operations.iter().take(20).map(|op| {
+        format!("{}({})", op.operator, op.operands.len())
+    }).collect();
+    log_step!("[PDF-DIAG] resolve_paths page={} first_ops={:?}", page_index, ops_preview);
+
+    // Log XObject resource keys
+    if let Some(xobjects) = flat_resources.get(b"XObject" as &[u8]) {
+        let xobj_keys: Vec<String> = xobjects.keys().map(|k| String::from_utf8_lossy(k).to_string()).collect();
+        log_step!("[PDF-DIAG] resolve_paths page={} xobject_keys={:?}", page_index, xobj_keys);
+    } else {
+        log_step!("[PDF-DIAG] resolve_paths page={} NO XObject resources", page_index);
+    }
 
     let mut objects = Vec::new();
     let mut text_runs = Vec::new();
     let mut obj_counter = 0;
 
     parse_content_stream(doc, &content, &flat_resources, &mut res_cache, GraphicsState::new(), &mut objects, &mut text_runs, &mut obj_counter)?;
+
+    log_step!("[PDF-DIAG] resolve_paths page={} RESULT objects={} text_runs={} w={} h={}", page_index, objects.len(), text_runs.len(), width, height);
 
     Ok((objects, text_runs, width, height))
 }
@@ -389,11 +435,16 @@ pub fn parse_content_stream(
             }
             "Do" => {
                 if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
+                    log_step!("[PDF-DIAG][Do] operator name={:?}", String::from_utf8_lossy(name));
                     if let Some(xobjects) = flat_resources.get(b"XObject" as &[u8]) {
                         if let Some(id) = xobjects.get(name) {
+                            log_step!("[PDF-DIAG][Do] found XObject id={:?}", id);
                             if let Ok(stream) = doc.get_object(*id).and_then(|o| o.as_stream()) {
-                                if stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) == Some(b"Form") {
+                                let subtype = stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok());
+                                log_step!("[PDF-DIAG][Do] subtype={:?} keys={:?}", subtype.map(|s| String::from_utf8_lossy(s).into_owned()), stream.dict.iter().map(|(k, _)| String::from_utf8_lossy(k).to_string()).collect::<Vec<_>>());
+                                if subtype == Some(b"Form") {
                                     if let Ok(data) = stream.decompressed_content() {
+                                        log_step!("[PDF-DIAG][Do] Form content bytes={} name={:?}", data.len(), String::from_utf8_lossy(name));
                                         if let Ok(sub) = Content::decode(&data) {
                                             let sub_res = read_resources(doc, *id);
                                             let mut sub_state = state.clone();
@@ -409,9 +460,67 @@ pub fn parse_content_stream(
                                             parse_content_stream(doc, &sub, &sub_res, res_cache, sub_state, objects, text_runs, obj_counter)?;
                                         }
                                     }
+                                } else if subtype == Some(b"Image") {
+                                    *obj_counter += 1;
+                                    let img_w = stream.dict.get(b"Width").and_then(|o| o.as_i64()).unwrap_or(0);
+                                    let img_h = stream.dict.get(b"Height").and_then(|o| o.as_i64()).unwrap_or(0);
+                                    log_step!("[PDF-DIAG][Do-Image] name={:?} width={} height={} filters={:?}", String::from_utf8_lossy(name), img_w, img_h, stream.dict.get(b"Filter").ok());
+                                    if img_w > 0 && img_h > 0 {
+                                        let filter_name = stream.dict.get(b"Filter").ok().and_then(|o| {
+                                            o.as_name().ok().map(|n| n.to_vec()).or_else(|| {
+                                                o.as_array().ok()?.first()?.as_name().ok().map(|n| n.to_vec())
+                                            })
+                                        });
+                                        let is_jpeg = filter_name.as_deref() == Some(b"DCTDecode");
+                                        let img_data: Option<Arc<[u8]>> = if is_jpeg {
+                                            log_step!("[PDF-DIAG][Do-Image] JPEG content_len={}", stream.content.len());
+                                            Some(Arc::from(stream.content.as_slice()))
+                                        } else {
+                                            log_step!("[PDF-DIAG][Do-Image] Non-JPEG, attempting PNG encode filter={:?}", filter_name.as_deref().map(|s| String::from_utf8_lossy(s).into_owned()));
+                                            // Non-JPEG: decompress raw samples and encode as PNG
+                                            extract_image_as_png(doc, stream, img_w as u32, img_h as u32)
+                                        };
+                                        if let Some(data) = img_data {
+                                            if !data.is_empty() {
+                                                let asset_id = ::uuid::Uuid::new_v4().to_string();
+                                                {
+                                                    let mut cache = crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE.lock().unwrap();
+                                                    cache.insert(asset_id.clone(), data);
+                                                }
+                                                let ctm = state.ctm;
+                                                log_step!(
+                                                    "[PDF-IMG] Do image id={} {}x{} ctm=[{:.1},{:.1},{:.1},{:.1},{:.1},{:.1}] jpeg={}",
+                                                    asset_id, img_w, img_h, ctm[0], ctm[1], ctm[2], ctm[3], ctm[4], ctm[5], is_jpeg
+                                                );
+                                                objects.push(RenderObject::Image(NativeImageModel {
+                                                    id: asset_id,
+                                                    data_url: String::new(),
+                                                    x: ctm[4],
+                                                    y: ctm[5],
+                                                    width: ctm[0].abs(),
+                                                    height: ctm[3].abs(),
+                                                    a: ctm[0], b: ctm[1], c: ctm[2], d: ctm[3], e: ctm[4], f: ctm[5],
+                                                    z_index: *obj_counter,
+                                                    extraction_method: if is_jpeg { "JPEG".into() } else { "PNG".into() },
+                                                }));
+                                            } else {
+                                                log_step!("[PDF-DIAG][Do-Image] image data empty name={:?}", String::from_utf8_lossy(name));
+                                            }
+                                        } else {
+                                            log_step!("[PDF-DIAG][Do-Image] failed to extract image data name={:?}", String::from_utf8_lossy(name));
+                                        }
+                                    } else {
+                                        log_step!("[PDF-DIAG][Do-Image] invalid dimensions name={:?} w={} h={}", String::from_utf8_lossy(name), img_w, img_h);
+                                    }
+                                } else {
+                                    log_step!("[PDF-DIAG][Do] Unsupported subtype={:?}", subtype.map(|s| String::from_utf8_lossy(s).into_owned()));
                                 }
                             }
+                        } else {
+                            log_step!("[PDF-DIAG][Do] name={:?} not found in XObject resources", String::from_utf8_lossy(name));
                         }
+                    } else {
+                        log_step!("[PDF-DIAG][Do] No XObject resources available");
                     }
                 }
             }
@@ -514,4 +623,254 @@ pub fn extract_glyph_paint_plan(doc: &Document, page_index: u16) -> Result<crate
 
     log_step!("[PDF][extract_glyph_paint_plan] Successfully extracted glyph paint plan for page {}", page_index);
     Ok(glyph_paint_plan)
+}
+
+/// Apply PNG-style predictor (PDF Predictor values 10-15) to unfilter the data.
+/// Each row begins with a filter type byte (0=None, 1=Sub, 2=Up, 3=Average, 4=Paeth).
+fn apply_png_predictor(raw: &[u8], bytes_per_row: usize, bpp: usize) -> Option<Vec<u8>> {
+    let row_with_filter = bytes_per_row + 1;
+    if raw.is_empty() || raw.len() % row_with_filter != 0 {
+        // Try to be lenient - PDFs sometimes have extra/missing bytes
+        if raw.len() < row_with_filter { return None; }
+    }
+    let bpp = bpp.max(1);
+    let rows = raw.len() / row_with_filter;
+    let mut out = vec![0u8; rows * bytes_per_row];
+    let mut prev_row = vec![0u8; bytes_per_row];
+    for r in 0..rows {
+        let row_start = r * row_with_filter;
+        if row_start + row_with_filter > raw.len() { break; }
+        let filter = raw[row_start];
+        let row_data = &raw[row_start + 1 .. row_start + row_with_filter];
+        let out_row_start = r * bytes_per_row;
+        let cur_row = &mut out[out_row_start .. out_row_start + bytes_per_row];
+        for c in 0..bytes_per_row {
+            let left = if c < bpp { 0 } else { cur_row[c - bpp] };
+            let up = prev_row[c];
+            let up_left = if c < bpp { 0 } else { prev_row[c - bpp] };
+            let val = match filter {
+                0 => row_data[c],                                          // None
+                1 => row_data[c].wrapping_add(left),                       // Sub
+                2 => row_data[c].wrapping_add(up),                         // Up
+                3 => row_data[c].wrapping_add(((left as u16 + up as u16) / 2) as u8), // Average
+                4 => {                                                      // Paeth
+                    let a = left as i32;
+                    let b = up as i32;
+                    let c2 = up_left as i32;
+                    let p = a + b - c2;
+                    let pa = (p - a).abs();
+                    let pb = (p - b).abs();
+                    let pc = (p - c2).abs();
+                    let predictor = if pa <= pb && pa <= pc { a } else if pb <= pc { b } else { c2 };
+                    row_data[c].wrapping_add(predictor as u8)
+                }
+                _ => row_data[c],
+            };
+            cur_row[c] = val;
+        }
+        prev_row.copy_from_slice(cur_row);
+    }
+    Some(out)
+}
+
+/// Read DecodeParms dictionary and extract Predictor / Columns / Colors / BitsPerComponent.
+/// Accepts `doc` to resolve indirect references in the DecodeParms entry.
+fn read_decode_params(doc: &lopdf::Document, stream: &lopdf::Stream) -> (i64, i64, i64, i64) {
+    let mut predictor = 1i64;
+    let mut columns = 1i64;
+    let mut colors = 1i64;
+    let mut bpc = 8i64;
+    if let Ok(obj) = stream.dict.get(b"DecodeParms") {
+        // Resolve if it's an indirect reference
+        let resolved = match obj {
+            lopdf::Object::Reference(r) => doc.get_object(*r).ok(),
+            other => Some(other),
+        };
+        let dict_opt = resolved.and_then(|o| {
+            o.as_dict().ok().cloned()
+                .or_else(|| o.as_array().ok()?.first().and_then(|item| {
+                    match item {
+                        lopdf::Object::Reference(r) => doc.get_object(*r).ok()?.as_dict().ok().cloned(),
+                        other => other.as_dict().ok().cloned(),
+                    }
+                }))
+        });
+        if let Some(dict) = dict_opt {
+            if let Ok(v) = dict.get(b"Predictor").and_then(|o| o.as_i64()) { predictor = v; }
+            if let Ok(v) = dict.get(b"Columns").and_then(|o| o.as_i64()) { columns = v; }
+            if let Ok(v) = dict.get(b"Colors").and_then(|o| o.as_i64()) { colors = v; }
+            if let Ok(v) = dict.get(b"BitsPerComponent").and_then(|o| o.as_i64()) { bpc = v; }
+        }
+    }
+    (predictor, columns, colors, bpc)
+}
+
+/// Manually decompress FlateDecode data using flate2 as fallback when lopdf fails.
+fn manual_flate_decompress(compressed: &[u8]) -> Option<Vec<u8>> {
+    use std::io::Read;
+    // Try zlib (with header) first, then raw deflate
+    if let Ok(mut decoder) = flate2::read::ZlibDecoder::new(compressed).bytes().collect::<Result<Vec<u8>, _>>() {
+        if !decoder.is_empty() { return Some(decoder); }
+    }
+    // Fallback: raw deflate
+    let mut decoder = flate2::read::DeflateDecoder::new(compressed);
+    let mut out = Vec::new();
+    if decoder.read_to_end(&mut out).is_ok() && !out.is_empty() {
+        return Some(out);
+    }
+    None
+}
+
+/// Extract a non-JPEG image XObject's raw samples, convert to PNG bytes.
+/// Handles DeviceRGB, DeviceGray, CMYK, and FlateDecode with PNG/TIFF predictors.
+fn extract_image_as_png(doc: &lopdf::Document, stream: &lopdf::Stream, w: u32, h: u32) -> Option<Arc<[u8]>> {
+    // Try lopdf's built-in decompression first; fall back to manual flate2
+    let raw_decompressed = match stream.decompressed_content() {
+        Ok(d) => {
+            log_step!("[PDF-IMG] lopdf decompress OK len={}", d.len());
+            d
+        }
+        Err(e) => {
+            log_step!("[PDF-IMG] lopdf decompress failed: {} — trying manual flate2 on {} raw bytes", e, stream.content.len());
+            match manual_flate_decompress(&stream.content) {
+                Some(d) => {
+                    log_step!("[PDF-IMG] manual flate2 OK len={}", d.len());
+                    d
+                }
+                None => {
+                    log_step!("[PDF-IMG] manual flate2 also failed");
+                    return None;
+                }
+            }
+        }
+    };
+    if raw_decompressed.is_empty() {
+        log_step!("[PDF-IMG] decompressed empty");
+        return None;
+    }
+
+    let cs_name = stream.dict.get(b"ColorSpace").ok().and_then(|o| {
+        o.as_name().ok().map(|n| n.to_vec()).or_else(|| {
+            o.as_array().ok()?.first()?.as_name().ok().map(|n| n.to_vec())
+        })
+    });
+    let bpc = stream.dict.get(b"BitsPerComponent")
+        .and_then(|o| o.as_i64())
+        .unwrap_or(8) as u32;
+    let cs = cs_name.as_deref().unwrap_or(b"DeviceRGB");
+
+    let (predictor, dp_columns, dp_colors, dp_bpc) = read_decode_params(doc, stream);
+    log_step!(
+        "[PDF-IMG] decoding {}x{} cs={} bpc={} decompressed={} predictor={} dp_cols={} dp_colors={} dp_bpc={}",
+        w, h, String::from_utf8_lossy(cs), bpc, raw_decompressed.len(),
+        predictor, dp_columns, dp_colors, dp_bpc
+    );
+
+    // Apply predictor if needed
+    let raw: Vec<u8> = if predictor >= 10 {
+        let columns = if dp_columns > 0 { dp_columns as usize } else { w as usize };
+        let colors = if dp_colors > 0 { dp_colors as usize } else {
+            match cs { b"DeviceRGB" => 3, b"DeviceCMYK" => 4, _ => 1 }
+        };
+        let pbpc = if dp_bpc > 0 { dp_bpc as usize } else { bpc as usize };
+        let bytes_per_row = (columns * colors * pbpc + 7) / 8;
+        let bpp = ((colors * pbpc) + 7) / 8;
+        match apply_png_predictor(&raw_decompressed, bytes_per_row, bpp) {
+            Some(unfiltered) => {
+                log_step!("[PDF-IMG] PNG predictor applied: bytes_per_row={} bpp={} unfiltered_len={}", bytes_per_row, bpp, unfiltered.len());
+                unfiltered
+            }
+            None => {
+                log_step!("[PDF-IMG] PNG predictor failed, using raw");
+                raw_decompressed
+            }
+        }
+    } else {
+        raw_decompressed
+    };
+
+    let expected_len = match cs {
+        b"DeviceRGB" => (w * h * 3 * bpc / 8) as usize,
+        b"DeviceGray" => (w * h * bpc / 8) as usize,
+        b"DeviceCMYK" => (w * h * 4 * bpc / 8) as usize,
+        _ => (w * h * 3 * bpc / 8) as usize,
+    };
+
+    if raw.len() < expected_len {
+        log_step!(
+            "[PDF-IMG] raw data too short after predictor: have={} expected={} cs={} bpc={} {}x{}",
+            raw.len(), expected_len, String::from_utf8_lossy(cs), bpc, w, h
+        );
+        return None;
+    }
+
+    // Build RGBA buffer
+    let pixel_count = (w * h) as usize;
+    let mut rgba = vec![255u8; pixel_count * 4];
+    match cs {
+        b"DeviceRGB" if bpc == 8 => {
+            for i in 0..pixel_count {
+                rgba[i * 4]     = raw[i * 3];
+                rgba[i * 4 + 1] = raw[i * 3 + 1];
+                rgba[i * 4 + 2] = raw[i * 3 + 2];
+            }
+        }
+        b"DeviceGray" if bpc == 8 => {
+            for i in 0..pixel_count {
+                let g = raw[i];
+                rgba[i * 4]     = g;
+                rgba[i * 4 + 1] = g;
+                rgba[i * 4 + 2] = g;
+            }
+        }
+        b"DeviceCMYK" if bpc == 8 => {
+            for i in 0..pixel_count {
+                let c = raw[i * 4] as f32 / 255.0;
+                let m = raw[i * 4 + 1] as f32 / 255.0;
+                let y = raw[i * 4 + 2] as f32 / 255.0;
+                let k = raw[i * 4 + 3] as f32 / 255.0;
+                rgba[i * 4]     = (255.0 * (1.0 - c) * (1.0 - k)) as u8;
+                rgba[i * 4 + 1] = (255.0 * (1.0 - m) * (1.0 - k)) as u8;
+                rgba[i * 4 + 2] = (255.0 * (1.0 - y) * (1.0 - k)) as u8;
+            }
+        }
+        b"DeviceGray" if bpc == 1 => {
+            // 1-bit monochrome (common in B&W scans)
+            for i in 0..pixel_count {
+                let byte_idx = i / 8;
+                let bit_idx = 7 - (i % 8);
+                let g = if byte_idx < raw.len() && (raw[byte_idx] >> bit_idx) & 1 == 1 { 255u8 } else { 0u8 };
+                rgba[i * 4]     = g;
+                rgba[i * 4 + 1] = g;
+                rgba[i * 4 + 2] = g;
+            }
+        }
+        _ => {
+            // Best-effort: treat as RGB if enough data, else grayscale
+            if raw.len() >= pixel_count * 3 {
+                for i in 0..pixel_count {
+                    rgba[i * 4]     = raw[i * 3];
+                    rgba[i * 4 + 1] = raw[i * 3 + 1];
+                    rgba[i * 4 + 2] = raw[i * 3 + 2];
+                }
+            } else {
+                for i in 0..pixel_count.min(raw.len()) {
+                    rgba[i * 4]     = raw[i];
+                    rgba[i * 4 + 1] = raw[i];
+                    rgba[i * 4 + 2] = raw[i];
+                }
+            }
+        }
+    }
+
+    // Encode to PNG
+    let mut png_buf = Vec::new();
+    {
+        let mut encoder = image::codecs::png::PngEncoder::new(&mut png_buf);
+        use image::ImageEncoder;
+        if encoder.write_image(&rgba, w, h, image::ColorType::Rgba8).is_err() {
+            return None;
+        }
+    }
+    Some(Arc::from(png_buf.as_slice()))
 }

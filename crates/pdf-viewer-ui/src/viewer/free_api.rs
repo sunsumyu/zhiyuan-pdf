@@ -54,3 +54,29 @@ pub fn init_page_context(
 pub fn set_current_page(page_index: u16) {
     viewer_controller::set_page(page_index);
 }
+
+/// 把 in-memory editor debug trace 全部 console.log 出来。
+/// 在 DevTools console 里调用 `await window.__TAURI_INVOKE__... ` 太麻烦，
+/// 这个函数是 wasm 直接暴露的，TS 侧 wrapper 直接调即可。
+#[wasm_bindgen]
+pub fn dump_editor_debug_trace(filter_substr: Option<String>) -> u32 {
+    let events = crate::editor::debug_trace::resolve_editor_debug_trace();
+    let needle = filter_substr.unwrap_or_default();
+    let mut printed = 0u32;
+    for ev in &events {
+        if !needle.is_empty()
+            && !ev.node.contains(&needle)
+            && !ev.action.contains(&needle)
+        {
+            continue;
+        }
+        let mut details = String::new();
+        for f in &ev.details {
+            details.push_str(&format!(" {}={}", f.key, f.value));
+        }
+        let line = format!("[{}] {}::{}{}", ev.seq, ev.node, ev.action, details);
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&line));
+        printed += 1;
+    }
+    printed
+}

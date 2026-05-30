@@ -281,8 +281,15 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
             dbg_field("owner", owner_label),
         ],
     );
-    // 背景保持透明 — 原始 body run 已在 effective_page_plan 中按 run 级 suppress，
-    // 不需要任何 fill_rect 遮盖
+    // 用白色遮盖 replacement 区域，隐藏 PDF 中位于文字下方的背景路径对象
+    // （如蓝色/彩色填充矩形），这些路径不会被 run 级 suppress 机制覆盖。
+    renderer.ctx.set_fill_style_str("#ffffff");
+    renderer.ctx.fill_rect(
+        source_replacement_bbox.left as f64,
+        source_replacement_bbox.top as f64,
+        replacement_width as f64,
+        replacement_height as f64,
+    );
     dbg_event(
         "paint.overlay",
         "method.draw-editor-paragraph.shell-occlusion",

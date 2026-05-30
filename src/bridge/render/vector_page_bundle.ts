@@ -15,17 +15,33 @@ type VectorPageBundleResolution = {
     bundleChanged: boolean;
 };
 
-let cachedPageBundle: VectorPageBundle | null = null;
+const PAGE_CACHE_MAX = 5;
+const pageBundleCache: VectorPageBundle[] = [];
+
+function findCachedBundle(path: string, pageIndex: number): VectorPageBundle | null {
+    const idx = pageBundleCache.findIndex(b => b.path === path && b.pageIndex === pageIndex);
+    if (idx < 0) return null;
+    // Move to front (most recently used)
+    const [hit] = pageBundleCache.splice(idx, 1);
+    pageBundleCache.unshift(hit);
+    return hit;
+}
+
+function insertCachedBundle(bundle: VectorPageBundle): void {
+    // Remove existing entry for same page if present
+    const idx = pageBundleCache.findIndex(b => b.path === bundle.path && b.pageIndex === bundle.pageIndex);
+    if (idx >= 0) pageBundleCache.splice(idx, 1);
+    pageBundleCache.unshift(bundle);
+    while (pageBundleCache.length > PAGE_CACHE_MAX) {
+        pageBundleCache.pop();
+    }
+}
 
 export function invalidateVectorPageCache(): void {
     logPdfLayoutTrace('page-bundle.invalidate', {
-        hadCache: !!cachedPageBundle,
-        cachedPath: cachedPageBundle?.path,
-        cachedPageIndex: cachedPageBundle?.pageIndex,
-        cachedWidth: cachedPageBundle?.model?.width,
-        cachedHeight: cachedPageBundle?.model?.height,
+        cacheSize: pageBundleCache.length,
     });
-    cachedPageBundle = null;
+    pageBundleCache.length = 0;
 }
 
 function summarizeText(value: unknown, limit = 48): string {
@@ -91,20 +107,26 @@ function summarizePaintPlan(plan: any): Record<string, unknown> {
     };
 }
 
-async function loadImageCacheMap(path: string): Promise<Map<string, HTMLImageElement>> {
-    const imageCacheRaw: Record<string, string> = await targetInvokeV3('read_images', { path });
+async function loadImageCacheMapForPage(modelObjects: any[]): Promise<Map<string, HTMLImageElement>> {
     const imageCacheMap = new Map<string, HTMLImageElement>();
+    const imageObjects = modelObjects.filter((o: any) => {
+        const typeLower = String(o?.type).toLowerCase();
+        return typeLower === 'image' && o?.id;
+    });
+    
     await Promise.all(
-        Object.entries(imageCacheRaw).map(
-            ([id, dataUrl]) =>
+        imageObjects.map(
+            (obj: any) =>
                 new Promise<void>((resolve) => {
+                    const id = obj.id;
                     const img = new Image();
                     img.onload = () => {
                         imageCacheMap.set(id, img);
                         resolve();
                     };
                     img.onerror = () => resolve();
-                    img.src = dataUrl;
+                    // Load directly from the fast, zero-overhead custom protocol
+                    img.src = `http://pdfasset.localhost/${id}`;
                 }),
         ),
     );
@@ -115,18 +137,22 @@ export async function resolveVectorPageBundle(
     path: string,
     pageIndex: number,
 ): Promise<VectorPageBundleResolution> {
-    const bundleChanged =
-        !cachedPageBundle ||
-        cachedPageBundle.path !== path ||
-        cachedPageBundle.pageIndex !== pageIndex;
+    const cached = findCachedBundle(path, pageIndex);
+    if (cached) {
+        logPdfLayoutTrace('page-bundle.reuse', {
+            path,
+            pageIndex,
+            modelWidth: cached.model?.width,
+            modelHeight: cached.model?.height,
+        });
+        return { bundle: cached, bundleChanged: false };
+    }
 
-    if (bundleChanged) {
+    {
         logPdfLayoutTrace('page-bundle.load.before', {
             path,
             pageIndex,
-            hadCache: !!cachedPageBundle,
-            cachedPath: cachedPageBundle?.path,
-            cachedPageIndex: cachedPageBundle?.pageIndex,
+            cacheSize: pageBundleCache.length,
         });
         const [model, paintPlan] = await Promise.all([
             targetInvokeV3('read_vector', {
@@ -136,15 +162,41 @@ export async function resolveVectorPageBundle(
             }),
             targetInvokeV3('read_glyph_plan', { path, pageIndex }),
         ]);
-        const imageCacheMap = await loadImageCacheMap(path);
 
-        cachedPageBundle = {
+        // Skip read_images IPC if model already has inline image data
+        const modelObjects = Array.isArray(model?.objects) ? model.objects : [];
+        const hasInlineImages = modelObjects.some((o: any) => {
+            const typeLower = String(o?.type).toLowerCase();
+            return typeLower === 'image' && o?.dataUrl;
+        });
+        const imageCacheMap = hasInlineImages
+            ? new Map<string, HTMLImageElement>()
+            : await loadImageCacheMapForPage(modelObjects);
+
+        const objTypes = modelObjects.reduce((acc: Record<string, number>, o: any) => {
+            const typeLower = String(o?.type).toLowerCase();
+            const t = typeLower === 'image' ? 'Image' : typeLower === 'text' ? 'Text' : typeLower === 'path' ? 'Path' : 'Unknown';
+            acc[t] = (acc[t] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+        console.log('[PDF-DIAG] read_vector result:', {
+            pageIndex,
+            objectCount: modelObjects.length,
+            types: objTypes,
+            width: model?.width,
+            height: model?.height,
+            imageMapSize: imageCacheMap.size,
+            hasInlineImages,
+        });
+
+        const newBundle: VectorPageBundle = {
             path,
             pageIndex,
             model,
             paintPlan,
             imageCacheMap,
         };
+        insertCachedBundle(newBundle);
 
         // Phase 3.1: eagerly hydrate WASM HOST_PAGE_STATE so click-to-edit
         // (which reads paint_plan) works even before the first render frame.
@@ -198,23 +250,30 @@ export async function resolveVectorPageBundle(
             paintPlanHeight: paintPlan?.height,
             imageCount: imageCacheMap.size,
         });
-    } else {
-        logPdfLayoutTrace('page-bundle.reuse', {
-            path,
-            pageIndex,
-            modelWidth: cachedPageBundle?.model?.width,
-            modelHeight: cachedPageBundle?.model?.height,
-        });
     }
 
-    if (!cachedPageBundle) {
+    const resolvedBundle = findCachedBundle(path, pageIndex);
+    if (!resolvedBundle) {
         throw new Error('vector page bundle unavailable after initialization');
     }
 
     return {
-        bundle: cachedPageBundle,
-        bundleChanged,
+        bundle: resolvedBundle,
+        bundleChanged: true,
     };
+}
+
+/** Prefetch adjacent page bundles in background (non-blocking). */
+export function prefetchAdjacentPages(path: string, currentPage: number, pageCount: number): void {
+    const targets: number[] = [];
+    if (currentPage + 1 < pageCount) targets.push(currentPage + 1);
+    if (currentPage - 1 >= 0) targets.push(currentPage - 1);
+
+    for (const target of targets) {
+        if (findCachedBundle(path, target)) continue;
+        // Fire and forget — don't block current render
+        resolveVectorPageBundle(path, target).catch(() => {});
+    }
 }
 
 

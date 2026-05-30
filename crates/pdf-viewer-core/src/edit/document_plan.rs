@@ -260,7 +260,29 @@ fn split_editor_session(
     body_char_start: usize,
     marker_kind: ListMarkerKind,
 ) -> Option<SessionSplit> {
+    let para_text_len: usize = session
+        .paragraph
+        .runs
+        .iter()
+        .map(|r| r.text.chars().count())
+        .sum();
+    dbg_event(
+        "split-marker",
+        "entry",
+        vec![
+            dbg_field("paragraphId", session.paragraph.id.as_str()),
+            dbg_field("bodyCharStart", body_char_start),
+            dbg_field("paragraphTextLen", para_text_len),
+            dbg_field("runCount", session.paragraph.runs.len()),
+            dbg_field("markerKind", format!("{:?}", marker_kind)),
+        ],
+    );
     if body_char_start == 0 {
+        dbg_event(
+            "split-marker",
+            "no-marker-zero-start",
+            vec![dbg_field("paragraphId", session.paragraph.id.as_str())],
+        );
         return Some(SessionSplit {
             body_session: session.clone(),
             marker: None,

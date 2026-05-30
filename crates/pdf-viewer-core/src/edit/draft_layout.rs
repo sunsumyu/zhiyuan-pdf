@@ -129,17 +129,26 @@ fn build_source_to_runs_index_map(source_text: &str, runs_text: &str) -> Vec<usi
 fn build_runs_to_source_index_map(source_text: &str, runs_text: &str) -> Vec<usize> {
     let source_chars: Vec<char> = source_text.chars().collect();
     let runs_chars: Vec<char> = runs_text.chars().collect();
+    let source_len = source_chars.len();
     let mut inverse = Vec::with_capacity(runs_chars.len() + 1);
     let mut source_cursor = 0usize;
     for rc in &runs_chars {
         // Skip synthetic chars in source until we find matching real char.
-        while source_cursor < source_chars.len() && source_chars[source_cursor] != *rc {
+        while source_cursor < source_len && source_chars[source_cursor] != *rc {
             source_cursor += 1;
         }
-        inverse.push(source_cursor);
-        source_cursor += 1;
+        // 编辑后 runs 可能含有 draft 已删除的字符，找不到匹配时
+        // source_cursor 会停在 source_len。此时仍把映射 clamp 到 source_len（句末），
+        // 并且 *不* 越界递增，避免后续映射值漂移到 draft_len 之外。
+        if source_cursor >= source_len {
+            inverse.push(source_len);
+            // 不再递增 source_cursor —— 后续 runs 字符也都映射到 source_len。
+        } else {
+            inverse.push(source_cursor);
+            source_cursor += 1;
+        }
     }
-    inverse.push(source_chars.len());
+    inverse.push(source_len);
     inverse
 }
 
@@ -168,11 +177,40 @@ fn remap_caret_indices_to_draft_space(
         .first()
         .and_then(|l| l.stops.first())
         .map(|s| s.index);
+    let last_stop_before = caret_lines
+        .last()
+        .and_then(|l| l.stops.last())
+        .map(|s| s.index);
+    let mut total_stops = 0usize;
+    let mut out_of_range_stops = 0usize;
+    let mut max_stop_index_seen = 0usize;
     for line in caret_lines.iter_mut() {
         for stop in line.stops.iter_mut() {
+            total_stops += 1;
+            if stop.index > max_stop_index_seen {
+                max_stop_index_seen = stop.index;
+            }
+            if stop.index >= inverse.len() {
+                out_of_range_stops += 1;
+            }
             stop.index = inverse.get(stop.index).copied().unwrap_or(stop.index);
         }
     }
+    dbg_event(
+        "caret.remap",
+        "stop-stats",
+        vec![
+            dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
+            dbg_field("totalStops", total_stops),
+            dbg_field("outOfRangeStops", out_of_range_stops),
+            dbg_field("maxStopIndexSeen", max_stop_index_seen),
+            dbg_field("inverseLen", inverse.len()),
+            dbg_field(
+                "lastStopBefore",
+                last_stop_before.map(|v| v.to_string()).unwrap_or_default(),
+            ),
+        ],
+    );
     let first_stop_after = caret_lines
         .first()
         .and_then(|l| l.stops.first())
@@ -580,6 +618,7 @@ fn build_style_runs_for_draft_text_with_policy(
         .iter()
         .filter(|run| !run.text.is_empty() && run.char_origins.is_empty())
         .count();
+    let final_runs_text: String = runs.iter().map(|r| r.text.as_str()).collect();
     dbg_event(
         "draft-runs",
         "resolved",
@@ -592,6 +631,15 @@ fn build_style_runs_for_draft_text_with_policy(
             dbg_field("preservedRunCount", preserved_run_count),
             dbg_field("measuredRunCount", lost_origin_run_count),
             dbg_field("lostOriginRunCount", lost_origin_run_count),
+            // ── 编辑前后文字不一致诊断: 把三份关键文本都 dump 出来 ──
+            dbg_field("sourceText", source_text),
+            dbg_field("draftText", draft_text),
+            dbg_field("rawRunsText", runs_text.as_str()),
+            dbg_field("finalRunsText", final_runs_text.as_str()),
+            dbg_field("sourceRunsMatchText", source_runs_match_text),
+            dbg_field("prefixRunsEnd", prefix_runs_end),
+            dbg_field("suffixRunsStart", suffix_runs_start),
+            dbg_field("runsTotalChars", runs_total_chars),
         ],
     );
 
@@ -1302,5 +1350,33 @@ mod tests {
         // inv[4]=4(:), inv[5]=6(R, skips space@5), inv[6]=7(u), inv[7]=8(s), inv[8]=9(t)
         // inv[9]=10 (end sentinel = source.chars().count())
         assert_eq!(inv, vec![0, 1, 2, 3, 4, 6, 7, 8, 9, 10]);
+    }
+
+    /// Regression: 删除 draft 中的字符后，runs 仍包含被删字符。
+    /// 此前实现会让 source_cursor 越过 source_len 后无界递增，
+    /// 导致 inverse 表里出现 > source_len 的非法值（caret 跳到末尾之外）。
+    #[test]
+    fn runs_to_source_index_map_clamps_when_runs_has_chars_missing_in_source() {
+        // 模拟：draft 已被删除最后两个字符 ('s', 't')，但 runs 仍是完整 "Rust"。
+        let source = "Ru";   // 2 chars
+        let runs   = "Rust"; // 4 chars
+        let inv = super::build_runs_to_source_index_map(source, runs);
+        // inv 长度 = runs.chars().count() + 1 = 5
+        // inv[0]=0(R), inv[1]=1(u),
+        // inv[2]=2(s 找不到，clamp 到 source_len=2),
+        // inv[3]=2(t 找不到，仍 clamp 到 2 —— 不再 += 1 越界),
+        // inv[4]=2 (end sentinel)
+        assert_eq!(inv.len(), 5);
+        assert_eq!(inv, vec![0, 1, 2, 2, 2]);
+        // 关键不变量: 所有映射值都 <= source.chars().count()
+        let source_len = source.chars().count();
+        for v in &inv {
+            assert!(
+                *v <= source_len,
+                "inverse value {} exceeds source_len {}",
+                v,
+                source_len
+            );
+        }
     }
 }

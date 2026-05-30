@@ -1,5 +1,6 @@
 import { ensureWasmInitialized, getWasmApi, targetInvokeV3 } from '../shared/wasm_loader';
 import { clearVectorHost, invalidateVectorRenderCache } from '../render/vector_host';
+import { prefetchAdjacentPages } from '../render/vector_page_bundle';
 import { createZoomController } from '../zoom/zoom_controller';
 import { createViewerSessionAdapter } from './viewer_session';
 import { createRenderFlow } from '../render/render_flow';
@@ -14,6 +15,7 @@ import { createPdfAnnotationController } from '../annotation/pdf_annotation_cont
 import { createPdfCommentController } from '../comment/pdf_comment_controller';
 import { createPdfReviewController } from '../review/pdf_review_controller';
 import { createPdfDocumentRuntime, type PdfDocumentRuntime } from '../document/pdf_document_runtime';
+import { createRenderScheduler, type RenderScheduler } from '../render/render_scheduler';
 import { logPdfLayoutTrace } from '../render/layout_trace';
 import { getPdfViewerAPI } from './pdf_viewer_api';
 import { createLayoutSync } from './pdf_layout_sync';
@@ -54,6 +56,7 @@ export type PdfViewerRuntime = {
     commentController: ReturnType<typeof createPdfCommentController>;
     reviewController: ReturnType<typeof createPdfReviewController>;
     geometryProbe: ReturnType<typeof createViewerGeometryProbe>;
+    renderScheduler: RenderScheduler;
     renderCurrentPage: (reason?: RenderReason) => Promise<void>;
     openTextPdfFlow: (path: string) => Promise<void>;
     resetPdfViewerState: () => void;
@@ -69,6 +72,8 @@ export type PdfViewerRuntime = {
 };
 
 export function createPdfViewerRuntime(): PdfViewerRuntime {
+    let isNewDocument = false;
+
     const viewerSession = createViewerSessionAdapter({
         getWasmApi: () => getWasmApi() as any,
         getFallbackPageWidth: () => DEFAULT_PAGE_WIDTH,
@@ -275,7 +280,30 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         showWrapper: showDocumentWrapper,
         onPageDimensionsResolved: (width, height) => {
             if (!(width > 0) || !(height > 0)) return;
+            const prevWidth = viewerSession.read().pageWidth;
+            console.log('[PDF-ZOOM-DIAG] onPageDimensionsResolved START: width=', width, 'height=', height, 'prevWidth=', prevWidth, 'isNewDocument=', isNewDocument);
             viewerSession.setPageDimensions(width, height);
+
+            // Auto fit-to-width on first dimension resolve (new document)
+            if (isNewDocument) {
+                isNewDocument = false; // reset the flag so it only triggers once per document
+                const scrollContainer = getScrollContainer();
+                const vpWidth = scrollContainer?.clientWidth || 0;
+                console.log('[PDF-ZOOM-DIAG] Auto fit-to-width condition matched! vpWidth=', vpWidth, 'width=', width);
+                if (vpWidth > 0 && width > vpWidth) {
+                    const fitZoom = clampZoom(vpWidth / width);
+                    console.log('[PDF-ZOOM-DIAG] Applying auto-fit zoom:', fitZoom);
+                    const wasm = getWasmApi() as any;
+                    const res = wasm.apply_zoom_selection?.(fitZoom);
+                    console.log('[PDF-ZOOM-DIAG] wasm.apply_zoom_selection returned:', JSON.stringify(res));
+                    syncZoomSelectState(readZoomState());
+                    void renderScheduler.requestRender('default');
+                } else {
+                    console.log('[PDF-ZOOM-DIAG] Auto fit-to-width skipped: vpWidth <= 0 or width <= vpWidth');
+                }
+            } else {
+                console.log('[PDF-ZOOM-DIAG] Auto fit-to-width skipped: isNewDocument is false');
+            }
         },
         syncEditorOverlay: (displayZoom) => {
             editorHost.syncTargets(displayZoom);
@@ -307,6 +335,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
             });
             return result;
         },
+        onRenderCommitted: () => { renderScheduler.notifyCommit(); },
     });
 
     resumeAiController = createResumeAiController({
@@ -344,6 +373,8 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         toggleBold: () => void editorHost.applyFormatAction({ type: 'toggleBold' }),
         toggleItalic: () => void editorHost.applyFormatAction({ type: 'toggleItalic' }),
         toggleUnderline: () => void editorHost.applyFormatAction({ type: 'toggleUnderline' }),
+        prevPage: () => { const api = getPdfViewerAPI(); if (api) void api.prevPage(); },
+        nextPage: () => { const api = getPdfViewerAPI(); if (api) void api.nextPage(); },
     });
 
     documentRuntime = createPdfDocumentRuntime({
@@ -353,6 +384,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         resolveHostScrollRefresh: (displayZoom, timestampMs) =>
             framePlanAdapter.resolveHostScrollRefresh(displayZoom, timestampMs),
         getScrollContainer,
+        get renderScheduler() { return renderScheduler; },
         renderCurrentFrame: (reason) => renderFlow.renderCurrentPage(reason),
         refreshMutatedDocument: () => documentEditApi.refreshDocument('document-mutation'),
         clearVectorHost,
@@ -367,15 +399,28 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         defaultPageHeight: DEFAULT_PAGE_HEIGHT,
     });
 
+    const renderScheduler = createRenderScheduler({
+        executeRender: async (reason) => {
+            await documentRuntime.renderCurrentPage(reason);
+            await annotationController?.refresh();
+            await commentController?.refresh();
+            await reviewController?.refresh();
+            await findController.refresh();
+
+            // Prefetch adjacent pages in background after render
+            const session = viewerSession.read();
+            if (session.path && session.pageCount > 0) {
+                prefetchAdjacentPages(session.path, session.currentPage, session.pageCount);
+            }
+        },
+    });
+
     async function renderCurrentPage(reason?: RenderReason): Promise<void> {
-        await documentRuntime.renderCurrentPage(reason);
-        await annotationController?.refresh();
-        await commentController?.refresh();
-        await reviewController?.refresh();
-        await findController.refresh();
+        await renderScheduler.requestRender('default', reason);
     }
 
     async function openTextPdfFlow(path: string): Promise<void> {
+        isNewDocument = true; // Mark as a new document so we run auto fit-to-width on first render
         await documentRuntime.openTextPdfFlow(path);
         await annotationController?.refresh();
         await commentController?.refresh();
@@ -384,6 +429,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
     }
 
     function resetPdfViewerState(): void {
+        isNewDocument = false;
         documentRuntime.resetPdfViewerState();
         annotationController?.clear();
         commentController?.clear();
@@ -403,6 +449,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         commentController: commentController!,
         reviewController: reviewController!,
         geometryProbe,
+        renderScheduler,
         renderCurrentPage,
         openTextPdfFlow,
         resetPdfViewerState,

@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sovereignty PDF Viewer</title>
     <link rel="stylesheet" href="./src/index.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div id="pdf-viewer-root">
@@ -238,6 +237,27 @@
         </div>
     </div>
 
+    <!-- 快速响应：Open 按钮不等任何模块加载，直接调用 Tauri 全局 API (withGlobalTauri=true) -->
+    <script>
+    (function() {
+        var openBtn = document.getElementById('open-btn');
+        if (!openBtn) return;
+        openBtn.addEventListener('click', function() {
+            // 如果主模块已加载且挂了高级处理器，用它
+            if (window.__pdfOpenHandler) { window.__pdfOpenHandler(); return; }
+            // 否则用 Tauri 全局 API 直接弹文件选择器
+            var tauri = window.__TAURI__;
+            if (!tauri) return;
+            tauri.dialog.open({ multiple: false, filters: [{ name: 'PDF', extensions: ['pdf'] }] })
+                .then(function(selected) {
+                    if (!selected || Array.isArray(selected)) return;
+                    // 存起来等主模块就绪后消费
+                    window.__pendingPdfPath = selected;
+                    document.getElementById('file-path').textContent = selected;
+                });
+        });
+    })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
     <input type="file" id="pdf-hidden-file-input" accept=".pdf" style="display: none;">
 </body>
