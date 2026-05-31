@@ -1,0 +1,268 @@
+# 项目整改进度与计划 (2026-05-06)
+
+## 目标
+将 pdf-viewer-standalone 从"持续重构态"推进到"上线稳定态"。
+核心是固定对外 API 契约，使前端调用永不再因后端重命名而崩溃。
+
+## 阶段（按风险从低到高）
+
+### Phase 1 — 根目录清理（已批准）
+- [ ] 删除 errors_*.txt / check*.txt / error_count.txt
+- [ ] 删除 *.bak（lopdf_utils.rs.bak 137KB）
+- [ ] 删除 fix_encoding.ps1 / fix_encoding.py（一次性脚本）
+- [ ] 把根目录历史 md 移到 docs/archive/
+  ARCHITECTURE_REFACTOR_PLAN, architecture_*.md, comprehensive_refactoring_plan,
+  refactoring_execution_plan, function_method_mapping, methods_comparison_full,
+  naming_convention_rules
+- [ ] scratch/ 入 .gitignore
+- [ ] target_alt/ 删除（target/ 已是 build 输出）
+
+### Phase 2 — API 契约（核心）
+#### 2A 起草文档
+- [ ] docs/api-contract.md：命名规范、版本策略、稳定 API 全清单
+- [ ] docs/api-naming-convention.md：详细命名约定
+#### 2B 命名规范（决定）
+- 所有 wasm_bindgen js_name 统一 camelCase
+- 所有 facade 入口前缀 = 域名：`editor.*`、`document.*`、`page.*`、`render.*`、`viewer.*`、`zoom.*`、`comment.*`、`annotation.*`、`find.*`、`review.*`
+- Tauri command 用 snake_case（Tauri 惯例）
+- 私有函数（pub(crate)）也统一 snake_case
+#### 2C 整合实施
+- [ ] 把 wasm_api/editor.rs（28 个 legacy）的功能合并到 editor/facade.rs
+- [ ] 删除 wasm_api/editor.rs 中重复 API
+- [ ] 同样处理 viewer.rs / document.rs：拆为 viewer-facade / document-facade
+- [ ] 前端 editor_host.ts 不再混用 facade* 与 raw wasm name
+#### 2D 预留 API（stub，返回未实现错误）
+- [ ] editor.selectRange / editor.cut / copy / paste
+- [ ] editor.undo / editor.redo（编辑层级）
+- [ ] document.insertPage / removePage / movePage / rotatePage
+- [ ] document.setMetadata / getMetadata
+- [ ] document.exportPages
+- [ ] page.addLink / removeLink
+- [ ] form.* 系列
+- [ ] outline.* 系列
+
+### Phase 3 — editor 模块重组
+- [ ] 删除 lib.rs 里的 30+ pub use ... as ..._workflow
+- [ ] 全代码替换 _workflow 路径为规范模块路径
+- [ ] editor/ 50 文件按子域重组（已有 draft/format/overlay/session/source 子目录，待清理顶层）
+
+### Phase 4 — 前端 bridge 重组
+- src/bridge/ → 拆为 editor/、render/、comment/、annotation/、viewer/、infra/
+
+## 当前会话进度
+
+### ✅ 已完成
+1. **Phase 0 — 项目全面审视报告** （此次会话给出，结论详见聊天）
+2. **Phase 1 — 根目录清理**
+   - 移除 30+ 临时文件（errors_*.txt、check*.txt、fix_encoding.{ps1,py}、*.bak）
+   - 删除 target_alt/（2359 项冗余）
+   - 历史 md 归档至 docs/archive/
+   - 创建 .gitignore（覆盖 build 输出、scratch、IDE、log、tmp）
+3. **Phase 2A — API 契约文档**
+   - docs/api-contract.md：命名规范、稳定性等级、域 API 全清单、弃用流程
+4. **Phase 2B/C — Editor 域 facade 完整冻结**（核心成果）
+   - 修复编辑器删除文字 bug（facadeApplyCommand 链路）
+   - 在 crates/pdf-viewer-ui/src/editor/facade.rs 补齐缺失 API：
+     - editorFacadePaintCanvas
+     - editorFacadeReadDiagnostics / ReadRuntime / ResetRuntime
+     - editorFacadeSetDisplayZoom
+     - editorFacadeBeginCommit / FinishCommit
+     - editorFacadeToggleMode
+     - editorFacadeReadFormatState
+     - editorFacadeSaveSession (async)
+   - 添加 8 个 STUB API（命名已冻结）：
+     - editorFacadeSelectRange / Cut / Copy / Paste
+     - editorFacadeUndo / Redo
+     - editorFacadeFindInActive / ReplaceInActive
+   - 标准化 StubResult { implemented: false, error: "..." }
+   - 在 src/bridge/editor_facade.ts 同步导出全部 22 个 facade 方法 + 类型
+   - editor_host.ts 中删字 canvas 重绘改用 facadePaintCanvas（不再混 raw wasm）
+5. **Phase 2D 部分** — wasm_api/editor.rs 顶部加 LEGACY 标记 + 删除路线注释
+
+### ✅ 第五会话补充（2026-05-06 18:30）
+10. **Phase 2E 完成 — 删除 wasm_api/editor.rs 中 26 个 raw API**
+    - `crates/pdf-viewer-ui/src/wasm_api/editor.rs` 整个文件清空（仅留 LEGACY 注释）
+    - 26 个 raw snake_case wasm_bindgen 入口全部删除：
+      apply_document_patch / save_editor_session / sync_active_editor_input /
+      apply_editor_input_command / sync_and_commit_active_editor_text /
+      render_active_editor_canvas / open_paragraph_editor_at_client_point /
+      open_region_editor / close_active_editor / move_active_editor_caret_at_client_point /
+      apply_active_editor_format_action / get_active_editor_format_state /
+      set_text_edit_mode / toggle_text_edit_mode / 等共 26 个
+    - 这些功能 100% 通过 `editor.*` / `document.*` / `review.*` facade 提供
+
+11. **Phase 3 完成 — lib.rs 全部 70+ 别名清零**
+    - 5 个零调用别名直接删除：
+      wasm_document_api / wasm_editor_api / wasm_viewer_api /
+      editor_edited_text_layout / editor_document_runtime
+    - 其余 65+ 个别名通过批量脚本替换（PowerShell 正则 `crate::<alias>\b` → `crate::<canonical>`）
+      影响 ~90 个 .rs 文件
+    - lib.rs 中 `pub use ... as ..._workflow` 块全部删除（从 80+ 行缩到 0）
+    - 现在 `crates/pdf-viewer-ui/src/lib.rs` 仅保留 9 域顶级模块声明 + 5 个基础设施模块
+    - WASM size 1671KB → 1683KB（+12KB，因为别名展开后符号布局微调）
+    - TS bundle 216KB → 213KB（轻微缩小）
+
+### ✅ 第四会话补充（2026-05-06 13:00）
+9. **Phase 2D 完成 — editor_wasm_api.ts 重写**
+   - `src/bridge/editor_wasm_api.ts` 完全重写：从 358 行 22 字段缩到 ~200 行 10 字段
+   - 删除 12 个未被使用的方法（readSnapshot/syncDraftInput/applyTextCommand 等）
+   - 保留的 10 个全部转发到 facade：
+     - applyDocumentPatch → documentFacadeApplyPatch
+     - buildRegionTextPatch → documentFacadeBuildRegionPatch
+     - applyRegionTextReplacements → documentFacadeApplyRegionReplacements
+     - requestDocumentRefresh → documentFacadeRequestRefresh
+     - getReviewFeed → reviewFacadeReadFeed
+     - acceptReviewChange / rejectReviewChange → reviewFacadeAccept / reviewFacadeReject
+     - acceptAllReviewChanges / rejectAllReviewChanges → reviewFacadeAcceptAll / reviewFacadeRejectAll
+     - saveSession → editorFacadeSaveSession
+   - 类型 `EditorFormatAction` / `RegionTextReplaceRequest` / `Review*` 等保留（外部 import）
+   - 同时迁移其他散落的 raw 调用：
+     - `src/bridge/find_facade.ts` 中 5 个 review API 改用 `reviewFacade*`
+     - `src/bridge/pdf_comment_wasm_bridge.ts` 中 `get_review_feed` 改用 `reviewFacadeReadFeed`
+   - 至此前端代码不再调用任何 editor / document / review 域 raw snake_case API
+
+### ✅ 第三会话补充（2026-05-06 中午）
+7. **Phase 5 收尾 — render / zoom / annotation 三域 facade**
+   - **render.\*** — `crates/pdf-viewer-ui/src/render/wasm_facade.rs`
+     - 11 stable: startProgressive/stepProgressive/cancelProgressive/renderPage/
+       commitResult/abortFrame/isFrameCurrent/touchCache/storeCache/resetCache
+     - 4 stub: snapshotPng/prewarmCache/setQuality/setDebugOverlay
+     - TS: `src/bridge/render_facade_v2.ts`
+   - **zoom.\*** — `crates/pdf-viewer-ui/src/zoom/facade.rs`
+     - 4 stable + 5 stub；TS: `src/bridge/zoom_facade.ts`
+   - **annotation.\*** — `crates/pdf-viewer-ui/src/annotation/facade.rs`（新建顶级）
+     - 0 stable + 14 stub（高亮/墨水/free-text/stamp/link/general）
+     - TS: `src/bridge/annotation_facade.ts`
+   - 清空 `editor/render_facade.rs` + `editor/annotation_facade.rs`（占位与新冲突）
+   - lib.rs 注册 `annotation` 顶级模块
+
+8. **Phase 7 — 核心架构文档**
+   - `docs/architecture-overview.md`：三层架构图、数据流、9 域全景表
+   - `docs/development-guide.md`：环境、加新 API 流程、命名规范、checklist
+
+### ✅ 第二会话补充（2026-05-06）
+6. **Phase 5 部分 — 五个域 facade 冻结完成**
+   - **document.\*** — `crates/pdf-viewer-ui/src/document/facade.rs`
+     - 13 stable: open/pick/close/undo/redo/rotate/requestRefresh/bumpRevision/openSession/resetSession/applyPatch/buildRegionPatch/applyRegionReplacements
+     - 14 stub: insertPage/removePage/movePage/rotatePage/readMetadata/setMetadata/exportPages/setPassword/removePassword/readOutline/setOutline/flatten/readFormFields/fillFormField/readSignatures/readAttachments
+     - TS：`src/bridge/document_facade.ts`
+   - **viewer.\*** — `crates/pdf-viewer-ui/src/viewer/facade.rs`
+     - 9 stable + 4 stub；TS：`src/bridge/viewer_facade.ts`
+   - **find.\*** — `crates/pdf-viewer-ui/src/find/facade.rs`（新建顶级模块）
+     - 4 stable + 4 stub；TS：`src/bridge/find_facade_v2.ts`
+   - **review.\*** — `crates/pdf-viewer-ui/src/review/facade.rs`（新建顶级模块）
+     - 5 stable + 2 stub；TS：`src/bridge/review_facade_v2.ts`
+   - **comment.\*** — `crates/pdf-viewer-ui/src/comment/facade.rs`（新建顶级模块）
+     - 17 stable + 4 stub；TS：`src/bridge/comment_facade.ts`
+   - lib.rs 注册新顶级模块：`comment / find / review`
+   - wasm_api/document.rs 加 LEGACY 头注释
+   - 旧 `editor/review_facade.rs` 清空（与新 review 域命名冲突）
+   - docs/api-contract.md 补充 3.6-3.9 域文档
+   - WASM 大小 1672 → 1709 KB（+37 KB 新 facade 表面）
+
+### ⏳ 待办（按优先级）
+
+#### Phase 2D — 完成 editor 域迁移并删除 legacy
+- [ ] src/bridge/editor_wasm_api.ts 重写为内部转发到 facade
+  - 保留对外 EditorWasmApi 类型签名（adapter 模式）
+  - 注意字段名映射：legacy snake_case payload → facade camelCase struct
+  - 注意 frameRequest 参数：facade 内部从 HOST_VIEWER_SESSION + HOST_ZOOM_STATE 派生，可丢弃显式 frameRequest 参数
+- [ ] 删除 wasm_api/editor.rs 中重复的 18 个 API
+  - 保留：apply_document_patch / build_region_text_patch / apply_region_text_replacements / save_editor_session
+    （这 4 个是 document/page 域，不属 editor，将随 phase 5 迁移）
+
+#### Phase 3 — editor 模块结构清理
+- [ ] 删除 lib.rs 里 30+ pub use ... as ..._workflow 兼容别名
+- [ ] 全工程替换 editor_activation_workflow → editor::activation 等规范路径
+- [ ] 高风险：~200+ 处调用需要更新；建议用 ast-grep 或 sed 批量
+- [ ] 触及 crates/pdf-viewer-ui/src/ 下几乎所有文件
+
+#### Phase 4 — 前端 bridge 重组
+- [ ] src/bridge/ 38 文件按职责拆子目录：
+  - editor/ : editor_facade.ts, editor_host.ts, editor_host_view.ts, editor_host_diagnostics.ts, editor_wasm_api.ts
+  - render/ : render_facade.ts, render_flow.ts, render_wasm_api.ts, frame_plan.ts, vector_*.ts
+  - comment/ : pdf_comment_*.ts (5 files)
+  - annotation/ : pdf_annotation_controller.ts
+  - viewer/ : pdf_viewer_*.ts, viewer_session.ts, viewer_geometry_probe.ts
+  - find/ : pdf_find_controller.ts, find_facade.ts
+  - review/ : pdf_review_controller.ts
+  - infra/ : wasm_loader.ts, diagnostics.ts, layout_trace.ts
+  - zoom/ : zoom_controller.ts
+- [ ] 更新 src/main.ts 与所有 import 路径
+
+#### Phase 5 — 后续域 facade 冻结
+按 phase 2 套路逐个域处理：
+
+- [ ] **document.* facade**（src-tauri 与 wasm 双层）
+  - 整合 wasm_api/document.rs 25+ 个 API
+  - 添加 stub: insertPage, removePage, movePage, rotatePage,
+    setMetadata, getMetadata, exportPages, setPassword, removePassword,
+    getOutline, setOutline
+- [ ] **viewer.* facade**
+  - 整合 wasm_api/viewer.rs 44 个 API
+- [ ] **render.* facade**（已部分存在，扩展并加 stub）
+- [ ] **comment.* / annotation.* / review.* facade**
+- [ ] **find.* facade**（已有 find_facade.ts，对齐 Rust 端）
+- [ ] **zoom.* facade**
+
+#### Phase 6 — 后端 Tauri command 命名整改 ✅
+- [x] init_demo → create_demo_pdf
+- [x] commit_edits → apply_text_patches
+- [x] apply_patches → apply_region_patches
+  （同步更新 src-tauri/src/lib.rs 注册 + interfaces/multimedia/pdf.rs 定义
+    + crates/pdf-viewer-ui/src/document/patch_persistence.rs target_invoke 调用方
+    + docs/architecture-overview.md）
+- [ ] 增加 stub Tauri command 对应缺失能力（暂缓，由 wasm stub facade 已覆盖）
+
+#### Phase 7 — 文档
+- [ ] docs/architecture-overview.md（分层图 + 数据流）
+- [ ] docs/development-guide.md（如何加 API、模块、测试）
+- [ ] docs/release-notes.md
+- [ ] docs/origin/ 旧文档审核（删除过时，保留有价值的）
+
+## 验证命令
+```pwsh
+# 完整重建
+npm run wasm:pdf-viewer-ui ; npm run build
+
+# 仅类型检查
+npx tsc --noEmit
+
+# 运行
+npm run dev
+```
+
+## 实施进度（2026-05-06）
+
+- ✅ Phase 1 根目录清理
+- ✅ Phase 2A/B/D/E API 契约 + Editor facade 完整冻结（删除 26 个 raw API）
+- ✅ Phase 3 lib.rs 70+ 别名清零（脚本批量替换 ~90 个 .rs 文件）
+- ✅ Phase 5 9 域 facade 全部冻结（85 stable + 59 stub API）
+- ✅ Phase 7 architecture-overview + development-guide 核心文档
+- ✅ Phase 4 前端 bridge 按域重组（38 个文件 → 9 域子目录 + shared/，scripts/migrate_bridge_phase4.ps1）
+- ✅ **Phase 6 Tauri command 重命名**（init_demo→create_demo_pdf / commit_edits→apply_text_patches / apply_patches→apply_region_patches，cargo check + wasm-pack + npm run build 全部通过）
+
+bridge 子目录结构：
+```
+src/bridge/
+├── annotation/   (annotation_facade, pdf_annotation_controller)
+├── ai/           (resume_ai_*, ai_facade)
+├── comment/      (comment_facade, pdf_comment_*)
+├── document/     (document_facade, document_edit_api, pdf_document_runtime)
+├── editor/       (editor_facade, editor_wasm_api, editor_host*)
+├── find/         (find_facade, find_facade_v2, pdf_find_controller)
+├── render/       (render_facade*, render_wasm_api, render_flow, frame_plan, vector_*, layout_trace)
+├── review/       (review_facade_v2, pdf_review_controller)
+├── shared/       (wasm_loader, diagnostics)
+├── viewer/       (viewer_facade, viewer_session, viewer_geometry_probe, pdf_viewer_*, pdf_runtime, pdf_keyboard)
+├── zoom/         (zoom_facade, zoom_controller)
+└── index.ts      (entry)
+```
+
+## 决策记录
+- **不强制删除 legacy wasm_api/editor.rs**：让 facade 与 legacy 并存一段时间，
+  通过 #[allow(deprecated)] + 顶部注释标识，给前端迁移时间窗口。
+- **Stub API 命名是冻结的**：实施时只能改实现，不能改名/改签名。
+- **WASM js_name 用 camelCase**：与 TS facade 风格一致；Rust 函数名仍 snake_case。
+- **Tauri command 保留 snake_case**：Tauri 框架惯例。
+
