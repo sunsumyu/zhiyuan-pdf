@@ -190,7 +190,20 @@ export async function renderVectorPageWithPlan(
         throw new Error('pdf-content-wrapper not found');
     }
 
-    const { bundle, bundleChanged } = await resolveVectorPageBundle(path, pageIndex);
+    let bundleResolution;
+    try {
+        bundleResolution = await resolveVectorPageBundle(path, pageIndex, frameToken);
+    } catch (e: any) {
+        if (e?.message === 'stale frame' || (frameToken !== undefined && !isFrameCurrent(frameToken))) {
+            return {
+                width: 0,
+                height: 0,
+                aborted: true,
+            };
+        }
+        throw e;
+    }
+    const { bundle, bundleChanged } = bundleResolution;
     const { model, paintPlan, imageCacheMap } = bundle;
     logPdfLayoutTrace('vector-render.bundle-resolved', {
         path,

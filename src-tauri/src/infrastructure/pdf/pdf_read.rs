@@ -116,6 +116,17 @@ pub fn resolve_paths(
     doc: &Document,
     page_index: u32,
 ) -> Result<(Vec<RenderObject>, Vec<StyledRun>, f32, f32), String> {
+    let doc_id = doc as *const Document as usize;
+    let cache_key = format!("{}_{}", doc_id, page_index);
+
+    if let Some(cached) = {
+        let cache = crate::infrastructure::pdf::cache::PDF_RESOLVE_PATHS_CACHE.lock().unwrap();
+        cache.get(&cache_key).cloned()
+    } {
+        log_step!("[PDF-Vector][Cache] HIT for resolve_paths: key={}", cache_key);
+        return Ok((*cached).clone());
+    }
+
     log_audit!("[PDF-AUDIT] resolve_paths START page={}", page_index);
     let page_id = *doc.get_pages().get(&(page_index + 1)).ok_or("Page not found")?;
     let page_dict = doc.get_dictionary(page_id).map_err(|e| e.to_string())?;
@@ -188,7 +199,12 @@ pub fn resolve_paths(
 
     log_step!("[PDF-DIAG] resolve_paths page={} RESULT objects={} text_runs={} w={} h={}", page_index, objects.len(), text_runs.len(), width, height);
 
-    Ok((objects, text_runs, width, height))
+    let res = (objects, text_runs, width, height);
+    {
+        let mut cache = crate::infrastructure::pdf::cache::PDF_RESOLVE_PATHS_CACHE.lock().unwrap();
+        cache.insert(cache_key, Arc::new(res.clone()));
+    }
+    Ok(res)
 }
 
 pub fn parse_content_stream(
@@ -313,6 +329,11 @@ pub fn parse_content_stream(
                     }
                 }
             }
+            "Tr" => {
+                if let Some(v) = op.operands.get(0).and_then(|o| o.as_i64().ok()) {
+                    state.render_mode = v;
+                }
+            }
             "Td" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 2 {
@@ -375,6 +396,7 @@ pub fn parse_content_stream(
                         horizontal_scaling: state.horizontal_scaling,
                         char_spacing: state.char_spacing,
                         word_spacing: state.word_spacing,
+                        render_mode: state.render_mode,
                         ..Default::default()
                     });
                     // Tm update uses the original text-space advance (not page-scaled)
@@ -416,7 +438,8 @@ pub fn parse_content_stream(
                             if pt[1] > max_y { max_y = pt[1]; }
                         }
                     }
-                    log_step!(
+                    crate::pdf_log!(
+                        3,
                         "[PATH-DBG] op={} id=path_{} bbox=({:.1},{:.1})-({:.1},{:.1}) size={:.1}x{:.1} fill={:?} stroke={:?} fill_alpha={:.3} stroke_alpha={:.3} z={}",
                         op_str, *obj_counter, min_x, min_y, max_x, max_y,
                         max_x - min_x, max_y - min_y,
@@ -435,16 +458,16 @@ pub fn parse_content_stream(
             }
             "Do" => {
                 if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
-                    log_step!("[PDF-DIAG][Do] operator name={:?}", String::from_utf8_lossy(name));
+                    crate::pdf_log!(3, "[PDF-DIAG][Do] operator name={:?}", String::from_utf8_lossy(name));
                     if let Some(xobjects) = flat_resources.get(b"XObject" as &[u8]) {
                         if let Some(id) = xobjects.get(name) {
-                            log_step!("[PDF-DIAG][Do] found XObject id={:?}", id);
+                            crate::pdf_log!(3, "[PDF-DIAG][Do] found XObject id={:?}", id);
                             if let Ok(stream) = doc.get_object(*id).and_then(|o| o.as_stream()) {
                                 let subtype = stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok());
-                                log_step!("[PDF-DIAG][Do] subtype={:?} keys={:?}", subtype.map(|s| String::from_utf8_lossy(s).into_owned()), stream.dict.iter().map(|(k, _)| String::from_utf8_lossy(k).to_string()).collect::<Vec<_>>());
+                                crate::pdf_log!(3, "[PDF-DIAG][Do] subtype={:?} keys={:?}", subtype.map(|s| String::from_utf8_lossy(s).into_owned()), stream.dict.iter().map(|(k, _)| String::from_utf8_lossy(k).to_string()).collect::<Vec<_>>());
                                 if subtype == Some(b"Form") {
                                     if let Ok(data) = stream.decompressed_content() {
-                                        log_step!("[PDF-DIAG][Do] Form content bytes={} name={:?}", data.len(), String::from_utf8_lossy(name));
+                                        crate::pdf_log!(3, "[PDF-DIAG][Do] Form content bytes={} name={:?}", data.len(), String::from_utf8_lossy(name));
                                         if let Ok(sub) = Content::decode(&data) {
                                             let sub_res = read_resources(doc, *id);
                                             let mut sub_state = state.clone();
@@ -464,7 +487,7 @@ pub fn parse_content_stream(
                                     *obj_counter += 1;
                                     let img_w = stream.dict.get(b"Width").and_then(|o| o.as_i64()).unwrap_or(0);
                                     let img_h = stream.dict.get(b"Height").and_then(|o| o.as_i64()).unwrap_or(0);
-                                    log_step!("[PDF-DIAG][Do-Image] name={:?} width={} height={} filters={:?}", String::from_utf8_lossy(name), img_w, img_h, stream.dict.get(b"Filter").ok());
+                                    crate::pdf_log!(3, "[PDF-DIAG][Do-Image] name={:?} width={} height={} filters={:?}", String::from_utf8_lossy(name), img_w, img_h, stream.dict.get(b"Filter").ok());
                                     if img_w > 0 && img_h > 0 {
                                         let filter_name = stream.dict.get(b"Filter").ok().and_then(|o| {
                                             o.as_name().ok().map(|n| n.to_vec()).or_else(|| {
@@ -473,10 +496,10 @@ pub fn parse_content_stream(
                                         });
                                         let is_jpeg = filter_name.as_deref() == Some(b"DCTDecode");
                                         let img_data: Option<Arc<[u8]>> = if is_jpeg {
-                                            log_step!("[PDF-DIAG][Do-Image] JPEG content_len={}", stream.content.len());
+                                            crate::pdf_log!(3, "[PDF-DIAG][Do-Image] JPEG content_len={}", stream.content.len());
                                             Some(Arc::from(stream.content.as_slice()))
                                         } else {
-                                            log_step!("[PDF-DIAG][Do-Image] Non-JPEG, attempting PNG encode filter={:?}", filter_name.as_deref().map(|s| String::from_utf8_lossy(s).into_owned()));
+                                            crate::pdf_log!(3, "[PDF-DIAG][Do-Image] Non-JPEG, attempting PNG encode filter={:?}", filter_name.as_deref().map(|s| String::from_utf8_lossy(s).into_owned()));
                                             // Non-JPEG: decompress raw samples and encode as PNG
                                             extract_image_as_png(doc, stream, img_w as u32, img_h as u32)
                                         };
@@ -488,7 +511,8 @@ pub fn parse_content_stream(
                                                     cache.insert(asset_id.clone(), data);
                                                 }
                                                 let ctm = state.ctm;
-                                                log_step!(
+                                                crate::pdf_log!(
+                                                    3,
                                                     "[PDF-IMG] Do image id={} {}x{} ctm=[{:.1},{:.1},{:.1},{:.1},{:.1},{:.1}] jpeg={}",
                                                     asset_id, img_w, img_h, ctm[0], ctm[1], ctm[2], ctm[3], ctm[4], ctm[5], is_jpeg
                                                 );
@@ -504,23 +528,23 @@ pub fn parse_content_stream(
                                                     extraction_method: if is_jpeg { "JPEG".into() } else { "PNG".into() },
                                                 }));
                                             } else {
-                                                log_step!("[PDF-DIAG][Do-Image] image data empty name={:?}", String::from_utf8_lossy(name));
+                                                crate::pdf_log!(3, "[PDF-DIAG][Do-Image] image data empty name={:?}", String::from_utf8_lossy(name));
                                             }
                                         } else {
-                                            log_step!("[PDF-DIAG][Do-Image] failed to extract image data name={:?}", String::from_utf8_lossy(name));
+                                            crate::pdf_log!(3, "[PDF-DIAG][Do-Image] failed to extract image data name={:?}", String::from_utf8_lossy(name));
                                         }
                                     } else {
-                                        log_step!("[PDF-DIAG][Do-Image] invalid dimensions name={:?} w={} h={}", String::from_utf8_lossy(name), img_w, img_h);
+                                        crate::pdf_log!(3, "[PDF-DIAG][Do-Image] invalid dimensions name={:?} w={} h={}", String::from_utf8_lossy(name), img_w, img_h);
                                     }
                                 } else {
-                                    log_step!("[PDF-DIAG][Do] Unsupported subtype={:?}", subtype.map(|s| String::from_utf8_lossy(s).into_owned()));
+                                    crate::pdf_log!(3, "[PDF-DIAG][Do] Unsupported subtype={:?}", subtype.map(|s| String::from_utf8_lossy(s).into_owned()));
                                 }
                             }
                         } else {
-                            log_step!("[PDF-DIAG][Do] name={:?} not found in XObject resources", String::from_utf8_lossy(name));
+                            crate::pdf_log!(3, "[PDF-DIAG][Do] name={:?} not found in XObject resources", String::from_utf8_lossy(name));
                         }
                     } else {
-                        log_step!("[PDF-DIAG][Do] No XObject resources available");
+                        crate::pdf_log!(3, "[PDF-DIAG][Do] No XObject resources available");
                     }
                 }
             }

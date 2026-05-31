@@ -337,6 +337,7 @@ export function registerPdfViewerAPI(deps: PdfViewerApiDeps): PdfViewerAPI {
         deps.syncTextEditButton();
     };
     w.__pdfViewerGeometryProbe = deps.geometryProbe;
+    w.__getCurrentPage = () => deps.readCurrentPage();
 
     // Bind legacy window.* functions for backward compatibility
     w.openPdfFile = (path?: string) => globalApi!.openPdfFile(path);

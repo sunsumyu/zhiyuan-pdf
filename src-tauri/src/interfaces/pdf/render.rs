@@ -11,6 +11,23 @@ pub async fn read_vector(
     page_index: u16,
     target_zoom: Option<f32>,
 ) -> Result<NativeVectorPageModel, String> {
+    // 1. 登记当前文档最新被请求的活动页面
+    {
+        let mut active = state.active_pages.lock().unwrap();
+        active.insert(path.clone(), page_index);
+    }
+
+    // 2. 接口层前置拦截：若已被后续的最新页面请求所抢占，直接抛弃执行，提前返回
+    {
+        let active = state.active_pages.lock().unwrap();
+        if let Some(&latest) = active.get(&path) {
+            if latest != page_index && (latest as i32 - page_index as i32).abs() > 1 {
+                crate::log_step!("[PDF][Interfaces-Abort] Skip heavy read_vector for stale page={}", page_index);
+                return Err("stale page request (interfaces layer aborted)".to_string());
+            }
+        }
+    }
+
     PdfPageModelService::get_vector_page_model(state, path, page_index, target_zoom.unwrap_or(1.0)).await
 }
 
@@ -20,6 +37,23 @@ pub async fn read_glyph_plan(
     path: String,
     page_index: u16,
 ) -> Result<GlyphPaintPlan, String> {
+    // 1. 登记当前文档最新被请求的活动页面
+    {
+        let mut active = state.active_pages.lock().unwrap();
+        active.insert(path.clone(), page_index);
+    }
+
+    // 2. 接口层前置拦截：若已被后续的最新页面请求所抢占，直接抛弃执行，提前返回
+    {
+        let active = state.active_pages.lock().unwrap();
+        if let Some(&latest) = active.get(&path) {
+            if latest != page_index && (latest as i32 - page_index as i32).abs() > 1 {
+                crate::log_step!("[PDF][Interfaces-Abort] Skip heavy read_glyph_plan for stale page={}", page_index);
+                return Err("stale page request (interfaces layer aborted)".to_string());
+            }
+        }
+    }
+
     PdfEditorGeometryService::get_glyph_paint_plan(state, path, page_index).await
 }
 

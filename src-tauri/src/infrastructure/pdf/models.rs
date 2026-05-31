@@ -1,4 +1,13 @@
-pub use pdf_viewer_core::models::*;
+pub use pdf_viewer_core::models::{
+    geometry::*,
+    font::*,
+    styled_run::{StyledRun, NativePageObject, NativePageModel},
+    layout::*,
+    glyph::*,
+    vector::*,
+    document_runtime::*,
+    interaction::*,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

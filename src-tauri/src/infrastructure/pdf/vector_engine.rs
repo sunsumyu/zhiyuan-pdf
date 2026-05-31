@@ -107,6 +107,7 @@ pub fn get_vector_page_model_with_doc(
                 char_origins: first.char_origins.iter().map(|&x| [x, 0.0]).collect(),
                 char_widths: first.char_widths.clone(),
                 pdf_char_codes: first.pdf_char_codes.clone(),
+                rendering_mode: first.render_mode as i32,
                 ..Default::default()
             }));
         }

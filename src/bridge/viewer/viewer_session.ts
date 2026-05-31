@@ -83,6 +83,17 @@ export function createViewerSessionAdapter(deps: ViewerSessionDeps): ViewerSessi
 
     function setCurrentPage(pageIndex: number): void {
         session()?.setCurrentPage(pageIndex);
+        try {
+            const snap = read();
+            const indicator = document.getElementById('pdf-page-indicator');
+            if (indicator) {
+                indicator.textContent = `Page ${pageIndex + 1} / ${snap.pageCount}`;
+            }
+            const currentPageInput = document.getElementById('pdf-current-page-input') as HTMLInputElement | null;
+            if (currentPageInput) {
+                currentPageInput.value = String(pageIndex + 1);
+            }
+        } catch {}
     }
 
     function setCurrentZoom(zoom: number): void {

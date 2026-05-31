@@ -233,7 +233,8 @@ pub fn resolve_glyph_geom(
             .take(32)
             .map(|c| format!("U+{:04X}({})", c as u32, c))
             .collect();
-        eprintln!(
+        crate::pdf_log!(
+            3,
             "[GLYPH-DECODE-RESULT] font='{}' subtype={:?} multibyte={} is_symbol={} data=[{}] => text={:?} chars=[{}]",
             font.name, font.font_subtype, multibyte, is_symbol,
             decoded_codes.join(","),

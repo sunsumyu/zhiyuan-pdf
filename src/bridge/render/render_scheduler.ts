@@ -14,10 +14,12 @@ export type RenderScheduler = {
 
 const COMMIT_SUPPRESS_MS = 120;
 const SCROLL_DEBOUNCE_MS = 56;
+const NAVIGATION_DEBOUNCE_MS = 60;
 
 export function createRenderScheduler(deps: RenderSchedulerDeps): RenderScheduler {
     // --- Debounce state ---
     let navRafId: number | null = null;
+    let navTimerId: number | null = null;
     let navResolvers: Array<() => void> = [];
 
     let scrollTimerId: number | null = null;
@@ -62,14 +64,20 @@ export function createRenderScheduler(deps: RenderSchedulerDeps): RenderSchedule
     function requestNavigation(reason: RenderReason): Promise<void> {
         return new Promise<void>((resolve) => {
             navResolvers.push(resolve);
-            if (navRafId !== null) return;
-            navRafId = requestAnimationFrame(() => {
-                navRafId = null;
-                const resolvers = navResolvers.splice(0);
-                dispatch(reason).then(() => {
-                    resolvers.forEach((r) => r());
+            if (navTimerId !== null) {
+                clearTimeout(navTimerId);
+            }
+            navTimerId = window.setTimeout(() => {
+                navTimerId = null;
+                if (navRafId !== null) return;
+                navRafId = requestAnimationFrame(() => {
+                    navRafId = null;
+                    const resolvers = navResolvers.splice(0);
+                    dispatch(reason).then(() => {
+                        resolvers.forEach((r) => r());
+                    });
                 });
-            });
+            }, NAVIGATION_DEBOUNCE_MS);
         });
     }
 
@@ -117,6 +125,10 @@ export function createRenderScheduler(deps: RenderSchedulerDeps): RenderSchedule
     }
 
     function reset(): void {
+        if (navTimerId !== null) {
+            clearTimeout(navTimerId);
+            navTimerId = null;
+        }
         if (navRafId !== null) {
             cancelAnimationFrame(navRafId);
             navRafId = null;

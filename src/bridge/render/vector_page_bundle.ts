@@ -18,6 +18,26 @@ type VectorPageBundleResolution = {
 const PAGE_CACHE_MAX = 5;
 const pageBundleCache: VectorPageBundle[] = [];
 
+function isFrameCurrent(frameToken?: number): boolean {
+    if (frameToken === undefined || !Number.isFinite(frameToken)) return true;
+    try {
+        const wasm: any = getWasmApi();
+        return wasm?.is_render_frame_current?.(frameToken) !== false;
+    } catch {
+        return true;
+    }
+}
+
+function getCurrentPageIndex(): number | null {
+    try {
+        const w = window as any;
+        if (typeof w.__getCurrentPage === 'function') {
+            return w.__getCurrentPage();
+        }
+    } catch {}
+    return null;
+}
+
 function findCachedBundle(path: string, pageIndex: number): VectorPageBundle | null {
     const idx = pageBundleCache.findIndex(b => b.path === path && b.pageIndex === pageIndex);
     if (idx < 0) return null;
@@ -107,7 +127,11 @@ function summarizePaintPlan(plan: any): Record<string, unknown> {
     };
 }
 
-async function loadImageCacheMapForPage(modelObjects: any[]): Promise<Map<string, HTMLImageElement>> {
+async function loadImageCacheMapForPage(
+    modelObjects: any[],
+    frameToken?: number,
+    pageIndex?: number,
+): Promise<Map<string, HTMLImageElement>> {
     const imageCacheMap = new Map<string, HTMLImageElement>();
     const imageObjects = modelObjects.filter((o: any) => {
         const typeLower = String(o?.type).toLowerCase();
@@ -118,6 +142,18 @@ async function loadImageCacheMapForPage(modelObjects: any[]): Promise<Map<string
         imageObjects.map(
             (obj: any) =>
                 new Promise<void>((resolve) => {
+                    // Check before launching each image fetch request
+                    if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
+                        resolve();
+                        return;
+                    }
+                    if (pageIndex !== undefined) {
+                        const currentPage = getCurrentPageIndex();
+                        if (currentPage !== null && Math.abs(currentPage - pageIndex) > 1) {
+                            resolve();
+                            return;
+                        }
+                    }
                     const id = obj.id;
                     const img = new Image();
                     img.onload = () => {
@@ -136,6 +172,7 @@ async function loadImageCacheMapForPage(modelObjects: any[]): Promise<Map<string
 export async function resolveVectorPageBundle(
     path: string,
     pageIndex: number,
+    frameToken?: number,
 ): Promise<VectorPageBundleResolution> {
     const cached = findCachedBundle(path, pageIndex);
     if (cached) {
@@ -163,6 +200,17 @@ export async function resolveVectorPageBundle(
             targetInvokeV3('read_glyph_plan', { path, pageIndex }),
         ]);
 
+        // Early-Abort check after IPC returns
+        if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
+            console.log(`[PDF-DIAG] Aborting bundle load for page ${pageIndex} due to stale frame`);
+            throw new Error('stale frame');
+        }
+        const currentPage = getCurrentPageIndex();
+        if (currentPage !== null && Math.abs(currentPage - pageIndex) > 1) {
+            console.log(`[PDF-DIAG] Aborting prefetch/load for page ${pageIndex} because currentPage is ${currentPage}`);
+            throw new Error('stale frame');
+        }
+
         // Skip read_images IPC if model already has inline image data
         const modelObjects = Array.isArray(model?.objects) ? model.objects : [];
         const hasInlineImages = modelObjects.some((o: any) => {
@@ -171,7 +219,11 @@ export async function resolveVectorPageBundle(
         });
         const imageCacheMap = hasInlineImages
             ? new Map<string, HTMLImageElement>()
-            : await loadImageCacheMapForPage(modelObjects);
+            : await loadImageCacheMapForPage(modelObjects, frameToken, pageIndex);
+
+        if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
+            throw new Error('stale frame');
+        }
 
         const objTypes = modelObjects.reduce((acc: Record<string, number>, o: any) => {
             const typeLower = String(o?.type).toLowerCase();

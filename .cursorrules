@@ -1,0 +1,42 @@
+# Zhiyuan (纸鸢) Project Development Skills & Rules (Hierarchical Specification)
+
+Whenever you generate code, modify files, or verify implementations in this repository, you MUST strictly adhere to the following strictly layered architecture, naming, and build constraints.
+
+---
+
+## ─── [ Presentation Layer Skills (显示与交互控制层) ] ───
+* **定位**：位于 `src/bridge/`、HTML 与 UI 渲染层。
+* **开发约束**：
+  1. **必要显示交互功能控制**：该层仅负责处理前端输入、滚动、缩放等用户交互的**防抖（Debounce）**、节流与 UI 响应更新。
+  2. **DOM 极速同步刷新**：为了提供零延迟 of 绝佳交互感，当点击翻页动作被前端捕获时，必须**立即同步更新 HTML 上的页码 DOM 文本**（如页码输入框及指示器），决不能等待后台重型渲染完毕后才反应。
+  3. **aborted 渲染中止适配**：在 Vello 渲染流程（如 `renderVectorPageWithPlan`）中，必须使用 `try...catch` 优雅捕获下层（如 Rust 接口层）抛出的 `stale frame` 中止信号，并优雅转换为 `{ aborted: true }`，供渲染 Loop 静默中止并推进，绝对禁止触发无意义的预览 fallback。
+
+---
+
+## ─── [ Interface / Controller Layer Skills (接口与分发看门人层) ] ───
+* **定位**：位于 `src-tauri/src/interfaces/`（对接 Tauri Commands）。
+* **开发约束**：
+  1. **Tauri Command 命名后缀**：所有 WASM 桥接层或与 JS 直接交互的边缘入口文件，必须遵循 **`*_api.rs`** 的命名契约（仅限 UI crate 侧）；而在 standalone 侧必须属于 **`interfaces`** 包名。
+  2. **WASM 边界职责**：边界文件仅负责入参的反序列化与向内委派派发，**绝对禁止包含任何具体计算或复杂业务逻辑**。
+  3. **核心请求拦截与 Early-Abort**：本层是整个后端的“守门人”。在 `read_vector` 和 `read_glyph_plan` 入口，同步记录每个文档最新的活动页面索引。**一旦发现当前接收的请求已被后续的最新页面抢占，本层必须执行 Early-Abort 拦截，立即提前返回 `Err`**，绝对不允许无效的过期请求继续渗透进下面的基础设施计算层。
+
+---
+
+## ─── [ Infrastructure / Computation Layer Skills (基础设施纯净计算层) ] ───
+* **定位**：位于 `src-tauri/src/infrastructure/`、`crates/`（PDF 解析、Vello 渲染核心、lopdf 读取等）。
+* **开发约束**：
+  1. **解析服务命名后缀**：负责有状态或底层数据处理的业务逻辑层，必须遵循 **`*_service.rs`** 后缀及职责（例如 `page_model_service.rs`, `geometry_service.rs`）。而持有 thread_local 全局状态 of 模块必须遵循 **`*_store.rs`** 后缀。
+  2. **业务计算绝对纯洁性**：本层只关注纯粹的无状态 PDF 物理内容读取（lopdf）、字形布局计算与几何推断。**本层绝对禁止接触或读取任何关于“前端目前哪一页在展示、哪一页已过期”的高层交互状态**。保持职责纯净是低耦合架构的核心！
+
+---
+
+## ─── [ System Verification Layer Skills (系统编译构建验证层) ] ───
+* **定位**：位于项目整体构建、测试与自动化。
+* **开发约束**：
+  1. **六大硬性构建检查点**：每次代码修改完成后，**必须自动在后台按顺序执行以下验证**并确保 100% 成功编译无警告/无报错：
+     - `cargo check -p pdf-viewer-core`（核心算法层）
+     - `cargo check -p pdf-viewer-ui --target wasm32-unknown-unknown`（WASM 代理层）
+     - `cargo check -p pdf-viewer-standalone`（Tauri 后端主程序）
+     - `cargo test -p pdf-viewer-core`（核心单元测试全部通过）
+     - 前端修改必须通过 `tsc && vite build` 等构建校验。
+     - 修改后自动执行完整的 `cargo build`，确保最新的二进制安装包随时可用。

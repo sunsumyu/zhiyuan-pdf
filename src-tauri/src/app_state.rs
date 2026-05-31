@@ -97,6 +97,7 @@ pub struct AppState {
     pub cache: CacheStore,
     pub history: HistoryStore,
     pub renderer: RendererState,
+    pub active_pages: Mutex<HashMap<String, u16>>,
 }
 
 impl AppState {
@@ -106,6 +107,7 @@ impl AppState {
             cache: CacheStore::new(),
             history: HistoryStore::new(),
             renderer: RendererState::new(),
+            active_pages: Mutex::new(HashMap::new()),
         }
     }
 }
