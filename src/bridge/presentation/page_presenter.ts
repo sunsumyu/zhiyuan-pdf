@@ -23,7 +23,7 @@ type PreparedRasterSurface = {
 
 type PagePresenterDeps = {
     getWrapper: () => HTMLElement | null;
-    getRasterTarget: () => HTMLImageElement | null;
+    getRasterTarget: () => HTMLCanvasElement | null;
     getEmptyState: () => HTMLElement | null;
     clearEditorOverlay: () => void;
 };
@@ -48,6 +48,11 @@ export function createPagePresenter(deps: PagePresenterDeps) {
                 role,
                 pageIndex: options.pageIndex,
             });
+        } else if (role === 'current') {
+            emitPdfDiagnostic('PROF', 'current-raster-miss-critical-path', {
+                role,
+                pageIndex: options.pageIndex,
+            }, { level: 'WARN', layer: 'PERF' });
         }
 
         const image = cached ?? await warmRasterImage(src, {
@@ -69,8 +74,8 @@ export function createPagePresenter(deps: PagePresenterDeps) {
             role,
             pageIndex: options.pageIndex,
             elapsedMs: preparedElapsedMs,
-            naturalWidth: image.naturalWidth,
-            naturalHeight: image.naturalHeight,
+            naturalWidth: image.width,
+            naturalHeight: image.height,
         });
 
         return {
@@ -88,10 +93,13 @@ export function createPagePresenter(deps: PagePresenterDeps) {
         surface: PreparedRasterSurface,
         options: RasterSurfaceOptions = {},
     ): boolean {
-        const img = deps.getRasterTarget();
+        const canvas = deps.getRasterTarget();
         const wrapper = deps.getWrapper();
         const emptyState = deps.getEmptyState();
-        if (!img || !wrapper) return false;
+        if (!canvas || !wrapper) return false;
+
+        const bitmap = readDecodedRasterImage(surface.src);
+        if (!bitmap) return false;
 
         const commitStartedAt = performance.now();
         if (options.hideVectorOnly) {
@@ -101,10 +109,17 @@ export function createPagePresenter(deps: PagePresenterDeps) {
         }
         deps.clearEditorOverlay();
 
-        img.style.display = 'block';
-        if (img.src !== surface.src) {
-            img.decoding = 'async';
-            img.src = surface.src;
+        canvas.style.display = 'block';
+        
+        // Match internal resolution to bitmap
+        if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+        }
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(bitmap, 0, 0);
         }
 
         if (
@@ -118,8 +133,8 @@ export function createPagePresenter(deps: PagePresenterDeps) {
                 : 1;
             const cssW = Math.round(surface.pageWidth * zoom);
             const cssH = Math.round(surface.pageHeight * zoom);
-            img.style.width = cssW + 'px';
-            img.style.height = cssH + 'px';
+            canvas.style.width = cssW + 'px';
+            canvas.style.height = cssH + 'px';
             wrapper.style.width = cssW + 'px';
             wrapper.style.height = cssH + 'px';
         }
@@ -149,9 +164,49 @@ export function createPagePresenter(deps: PagePresenterDeps) {
         return commitRasterSurface(surface, options);
     }
 
+    /**
+     * ready-only commit: 仅在 raster image 已解码命中 cache 时提交，否则打性能违规日志并返回 false。
+     * 用于 preview-first 路径：current miss 不等待 decode，vector render 在后台继续进行。
+     * 这样可以消除 40-50ms decode 阻塞当前可见路径。
+     */
+    function commitReadySurfaceOrFallback(
+        src: string,
+        pageWidth?: number,
+        pageHeight?: number,
+        displayZoom?: number,
+        options: RasterSurfaceOptions = {},
+    ): boolean {
+        const role = options.role ?? 'current';
+        const cached = readDecodedRasterImage(src);
+        if (cached) {
+            logPresent('raster.ready-only.cache-hit', {
+                role,
+                pageIndex: options.pageIndex,
+            });
+            const surface: PreparedRasterSurface = {
+                src,
+                pageWidth,
+                pageHeight,
+                displayZoom,
+                role,
+                pageIndex: options.pageIndex,
+                preparedElapsedMs: 0,
+            };
+            return commitRasterSurface(surface, options);
+        }
+
+        // cache miss: 不等待，打性能违规日志
+        emitPdfDiagnostic('PROF', 'current-raster-miss-ready-only-fallback', {
+            role,
+            pageIndex: options.pageIndex,
+        }, { level: 'WARN', layer: 'PERF' });
+        return false;
+    }
+
     return {
         prepareRasterSurface,
         commitRasterSurface,
+        commitReadySurfaceOrFallback,
         presentRaster,
     };
 }

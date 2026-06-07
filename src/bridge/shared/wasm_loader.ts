@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import init, * as wasmExports from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
 /**
@@ -85,5 +84,9 @@ export function getWasmApi(): any {
 
 // 代理 Tauri 侧的指令隧道
 export async function targetInvokeV3(cmd: string, args: any) : Promise<any> {
-    return invoke(cmd, args);
+    if (typeof window !== 'undefined') {
+        const { invoke } = await import('@tauri-apps/api/core');
+        return invoke(cmd, args);
+    }
+    throw new Error('targetInvokeV3 cannot be used in a Web Worker');
 }

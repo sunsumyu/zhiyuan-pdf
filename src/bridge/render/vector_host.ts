@@ -22,6 +22,35 @@ import {
 import { logPdfLayoutTrace } from './layout_trace';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 import { createRenderWasmApi, type RenderExecutionPlan, type RenderLayerRuntimePlan } from './render_wasm_api';
+import type { VectorWorkerRequest, VectorWorkerResponse } from './vector_worker';
+
+let vectorWorker: Worker | null = null;
+let msgIdCounter = 0;
+const pendingVectorTasks = new Map<number, { resolve: (bitmap: ImageBitmap) => void; reject: (err: any) => void }>();
+
+function ensureVectorWorker(): Worker {
+    if (!vectorWorker) {
+        vectorWorker = new Worker(new URL('./vector_worker.ts', import.meta.url), { type: 'module' });
+        vectorWorker.onmessage = (e: MessageEvent<VectorWorkerResponse>) => {
+            const msg = e.data;
+            if (msg.type === 'RENDER_DONE') {
+                const task = pendingVectorTasks.get(msg.msgId);
+                if (task) {
+                    pendingVectorTasks.delete(msg.msgId);
+                    task.resolve(msg.bitmap);
+                }
+            } else if (msg.type === 'ERROR') {
+                const task = pendingVectorTasks.get(msg.msgId as number);
+                if (task) {
+                    pendingVectorTasks.delete(msg.msgId as number);
+                    task.reject(new Error(msg.error));
+                }
+            }
+        };
+        vectorWorker.postMessage({ type: 'INIT_WASM' } as VectorWorkerRequest);
+    }
+    return vectorWorker;
+}
 
 export { invalidateVectorPageCache };
 export { VECTOR_CANVAS_ID, VECTOR_CONTAINER_ID };
@@ -478,12 +507,19 @@ export async function renderVectorPageWithPlan(
 
         const progressiveResult = await renderViewportProgressiveIfNeeded(
             refs,
-            imageCacheMap,
+            imageCacheMap as any,
             layerUseViewportTile,
             frameToken,
             !!layerPlan.preferProgressive,
             path,
             pageIndex,
+            model,
+            paintPlan,
+            layerPlan.renderZoom,
+            layerViewportLeft,
+            layerViewportTop,
+            layerViewportWidth,
+            layerViewportHeight,
         );
 
         if (progressiveResult?.aborted) {
@@ -659,12 +695,19 @@ export async function renderVectorPageWithPlan(
 
 async function renderViewportProgressiveIfNeeded(
     refs: VectorHostRefs,
-    imageCacheMap: Map<string, HTMLImageElement>,
+    imageCacheMap: Map<string, ImageBitmap>,
     useViewportTile: boolean,
     frameToken?: number,
     preferProgressiveLayer?: boolean,
     path?: string,
     pageIndex?: number,
+    model?: any,
+    paintPlan?: any,
+    zoom?: number,
+    viewportLeft?: number,
+    viewportTop?: number,
+    viewportWidth?: number,
+    viewportHeight?: number,
 ): Promise<{ aborted?: boolean } | null> {
     const isProgressivePipelineStale = (): boolean => {
         if (path === undefined || pageIndex === undefined) return false;
@@ -690,7 +733,6 @@ async function renderViewportProgressiveIfNeeded(
         | null
         | undefined;
     const renderTarget = getRenderBufferCanvas(refs, useViewportTile);
-    const renderTargetId = renderTarget.id;
 
     if (
         isProgressivePipelineStale() || (
@@ -702,79 +744,82 @@ async function renderViewportProgressiveIfNeeded(
         return { aborted: true };
     }
 
-    if (!start?.started) {
-        renderApi.renderPage(renderTargetId, imageCacheMap);
-        if (
-            isProgressivePipelineStale() || (
-                Number.isFinite(frameToken as number) &&
-                !renderApi.isRenderFrameCurrent(frameToken as number)
-            )
-        ) {
-            renderApi.cancelProgressiveRender();
-            return { aborted: true };
-        }
-        return null;
-    }
-
-    const totalItems = Number.isFinite(start.totalItems) ? Number(start.totalItems) : 0;
+    const totalItems = Number.isFinite(start?.totalItems) ? Number(start?.totalItems) : 0;
     const policy = renderApi.resolveProgressiveRenderPolicy({
         useViewportTile: useViewportTile,
         preferProgressiveLayer: !!preferProgressiveLayer,
         totalItems,
-    }) as
-        | { useProgressive?: boolean; budgetMs?: number; maxItems?: number }
-        | null
-        | undefined;
+    }) as { useProgressive?: boolean; budgetMs?: number; maxItems?: number } | null | undefined;
 
-    if (!policy?.useProgressive) {
-        renderApi.cancelProgressiveRender();
-        renderApi.renderPage(renderTargetId, imageCacheMap);
-        if (
-            isProgressivePipelineStale() || (
-                Number.isFinite(frameToken as number) &&
-                !renderApi.isRenderFrameCurrent(frameToken as number)
-            )
-        ) {
-            renderApi.cancelProgressiveRender();
-            return { aborted: true };
-        }
-        return null;
+    const useProgressive = !!start?.started && !!policy?.useProgressive;
+
+    renderApi.cancelProgressiveRender(); // Cancel main thread render, worker will do it.
+
+    const worker = ensureVectorWorker();
+    const msgId = ++msgIdCounter;
+    
+    const clonedImageCacheMap = new Map<string, ImageBitmap>();
+    const transferList: Transferable[] = [];
+    if (imageCacheMap && imageCacheMap.size > 0) {
+        await Promise.all(
+            Array.from(imageCacheMap.entries()).map(async ([key, bmp]) => {
+                const clone = await createImageBitmap(bmp);
+                clonedImageCacheMap.set(key, clone);
+                transferList.push(clone);
+            })
+        );
     }
 
-    let guard = 0;
-    while (guard < 4000) {
-        if (
-            isProgressivePipelineStale() || (
-                Number.isFinite(frameToken as number) &&
-                !renderApi.isRenderFrameCurrent(frameToken as number)
-            )
-        ) {
-            renderApi.cancelProgressiveRender();
-            return { aborted: true };
-        }
+    const promise = new Promise<ImageBitmap>((resolve, reject) => {
+        pendingVectorTasks.set(msgId, { resolve, reject });
+    });
+    
+    const dpr = window.devicePixelRatio || 1;
 
-        const budgetMs = Number.isFinite(policy.budgetMs) ? Number(policy.budgetMs) : 1.6;
-        const maxItems = Number.isFinite(policy.maxItems) ? Number(policy.maxItems) : 8;
+    worker.postMessage({
+        type: 'RENDER_PAGE',
+        msgId,
+        modelJson: JSON.stringify(model ?? {}),
+        paintPlanJson: JSON.stringify(paintPlan ?? {}),
+        zoom: zoom ?? 1.0,
+        dpr: dpr,
+        viewportLeft: viewportLeft ?? 0,
+        viewportTop: viewportTop ?? 0,
+        viewportWidth: viewportWidth ?? model?.width ?? 0,
+        viewportHeight: viewportHeight ?? model?.height ?? 0,
+        imageCacheMap: clonedImageCacheMap,
+        width: renderTarget.width,
+        height: renderTarget.height,
+        budgetMs: Number.isFinite(policy?.budgetMs) ? Number(policy?.budgetMs) : 1.6,
+        maxItems: Number.isFinite(policy?.maxItems) ? Number(policy?.maxItems) : 8,
+        useProgressive
+    }, transferList);
 
-        const step = renderApi.stepProgressiveRender(
-            renderTargetId,
-            imageCacheMap,
-            budgetMs,
-            maxItems,
-        ) as
-            | { active?: boolean; completed?: boolean }
-            | null
-            | undefined;
-
-        if (!step?.active || step.completed) {
-            return null;
-        }
-
-        guard += 1;
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    let bitmap: ImageBitmap;
+    try {
+        bitmap = await promise;
+    } catch (err) {
+        console.error('Worker render failed', err);
+        return { aborted: true };
     }
 
-    renderApi.cancelProgressiveRender();
-    throw new Error('progressive render guard exceeded');
+    if (
+        isProgressivePipelineStale() || (
+            Number.isFinite(frameToken as number) &&
+            !renderApi.isRenderFrameCurrent(frameToken as number)
+        )
+    ) {
+        return { aborted: true };
+    }
+
+    const ctx = renderTarget.getContext('2d');
+    if (ctx) {
+        // clear just in case
+        ctx.clearRect(0, 0, renderTarget.width, renderTarget.height);
+        ctx.drawImage(bitmap, 0, 0);
+    }
+    bitmap.close();
+    
+    return null;
 }
 

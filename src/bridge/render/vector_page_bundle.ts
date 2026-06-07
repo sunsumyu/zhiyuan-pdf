@@ -9,9 +9,10 @@ import type { ViewerSessionAdapter } from '../viewer/viewer_session';
 export type VectorPageBundle = {
     path: string;
     pageIndex: number;
+    documentRevision: number;
     model: any;
     paintPlan: any;
-    imageCacheMap: Map<string, HTMLImageElement>;
+    imageCacheMap: Map<string, ImageBitmap>;
 };
 
 type VectorPageBundleResolution = {
@@ -78,11 +79,25 @@ function admitPageAsset(pageIndex: number, role: 'current' | 'prefetch', assetKi
     return decision.accepted;
 }
 
-function findCachedBundle(path: string, pageIndex: number): VectorPageBundle | null {
+function findCachedBundle(path: string, pageIndex: number, currentRevision: number): VectorPageBundle | null {
     const idx = pageBundleCache.findIndex(b => b.path === path && b.pageIndex === pageIndex);
     if (idx < 0) return null;
+    
+    const hit = pageBundleCache[idx];
+    if (hit.documentRevision !== currentRevision) {
+        // Revision mismatch! Document has been mutated. Evict stale cache.
+        pageBundleCache.splice(idx, 1);
+        logPdfLayoutTrace('page-bundle.evict-stale-revision', {
+            path,
+            pageIndex,
+            staleRevision: hit.documentRevision,
+            currentRevision,
+        });
+        return null;
+    }
+    
     // Move to front (most recently used)
-    const [hit] = pageBundleCache.splice(idx, 1);
+    pageBundleCache.splice(idx, 1);
     pageBundleCache.unshift(hit);
     return hit;
 }
@@ -172,8 +187,8 @@ async function loadImageCacheMapForPage(
     frameToken?: number,
     pageIndex?: number,
     assetRole: 'current' | 'prefetch' = 'current',
-): Promise<Map<string, HTMLImageElement>> {
-    const imageCacheMap = new Map<string, HTMLImageElement>();
+): Promise<Map<string, ImageBitmap>> {
+    const imageCacheMap = new Map<string, ImageBitmap>();
     const imageObjects = modelObjects.filter((o: any) => {
         const typeLower = String(o?.type).toLowerCase();
         return typeLower === 'image' && o?.id;
@@ -182,7 +197,7 @@ async function loadImageCacheMapForPage(
     await Promise.all(
         imageObjects.map(
             (obj: any) =>
-                new Promise<void>((resolve) => {
+                new Promise<void>(async (resolve) => {
                     // Check before launching each image fetch request
                     if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
                         resolve();
@@ -194,15 +209,18 @@ async function loadImageCacheMapForPage(
                             return;
                         }
                     }
-                    const id = obj.id;
-                    const img = new Image();
-                    img.onload = () => {
-                        imageCacheMap.set(id, img);
-                        resolve();
-                    };
-                    img.onerror = () => resolve();
-                    // Load directly from the fast, zero-overhead custom protocol
-                    img.src = `http://pdfasset.localhost/${id}`;
+                    try {
+                        const id = obj.id;
+                        const res = await fetch(`http://pdfasset.localhost/${id}`);
+                        if (res.ok) {
+                            const blob = await res.blob();
+                            const bitmap = await createImageBitmap(blob);
+                            imageCacheMap.set(id, bitmap);
+                        }
+                    } catch (e) {
+                        console.error('Failed to load image cache', e);
+                    }
+                    resolve();
                 }),
         ),
     );
@@ -215,7 +233,8 @@ export async function resolveVectorPageBundle(
     frameToken?: number,
     explicitRole?: 'current' | 'prefetch',
 ): Promise<VectorPageBundleResolution> {
-    const cached = findCachedBundle(path, pageIndex);
+    const currentRevision = viewerSession.read().documentRevision;
+    const cached = findCachedBundle(path, pageIndex, currentRevision);
     if (cached) {
         logPdfLayoutTrace('page-bundle.reuse', {
             path,
@@ -261,18 +280,19 @@ export async function resolveVectorPageBundle(
 
         // Skip read_images IPC if model already has inline image data
         const modelObjects = Array.isArray(model?.objects) ? model.objects : [];
-        const hasInlineImages = modelObjects.some((o: any) => {
-            const typeLower = String(o?.type).toLowerCase();
-            return typeLower === 'image' && o?.dataUrl;
-        });
+
 
         // Preemption guard before image cache loading.
         if (!admitPageAsset(pageIndex, assetRole, 'imageCache', 'page-bundle.load.rejected.before-images')) {
             throw new Error('stale frame');
         }
 
+        const hasInlineImages = modelObjects.some((o: any) => {
+            const typeLower = String(o?.type).toLowerCase();
+            return typeLower === 'image' && o?.dataUrl;
+        });
         const imageCacheMap = hasInlineImages
-            ? new Map<string, HTMLImageElement>()
+            ? new Map<string, ImageBitmap>()
             : await loadImageCacheMapForPage(modelObjects, frameToken, pageIndex, assetRole);
 
         if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
@@ -298,6 +318,7 @@ export async function resolveVectorPageBundle(
         const newBundle: VectorPageBundle = {
             path,
             pageIndex,
+            documentRevision: currentRevision,
             model,
             paintPlan,
             imageCacheMap,
@@ -358,7 +379,7 @@ export async function resolveVectorPageBundle(
         });
     }
 
-    const resolvedBundle = findCachedBundle(path, pageIndex);
+    const resolvedBundle = findCachedBundle(path, pageIndex, currentRevision);
     if (!resolvedBundle) {
         throw new Error('vector page bundle unavailable after initialization');
     }
@@ -384,14 +405,28 @@ export function prefetchAdjacentPages(path: string, currentPage: number, pageCou
     }
 
     for (const target of decision.targets) {
-        if (findCachedBundle(path, target.pageIndex)) continue;
-        // Fire and forget — don't block current render
-        resolveVectorPageBundle(path, target.pageIndex, undefined, 'prefetch').catch(() => {});
+        if (target.assetKind === 'preview') continue;
+        prefetchVectorPage(path, target.pageIndex);
     }
 }
 
+/**
+ * 单页 vector bundle 预热，不重新调用 decideAdjacentPrefetch。
+ * 由调用方负责确保页码已通过 Rust 准入决策。
+ */
+export function hasVectorPageBundle(path: string, pageIndex: number): boolean {
+    const resolvedBundle = findCachedBundle(path, pageIndex, viewerSession.read().documentRevision);
+    return !!resolvedBundle;
+}
+
+export function prefetchVectorPage(path: string, pageIndex: number): void {
+    if (findCachedBundle(path, pageIndex, viewerSession.read().documentRevision)) return;
+    // Fire and forget — 不阻塞当前渲染
+    resolveVectorPageBundle(path, pageIndex, undefined, 'prefetch').catch(() => {});
+}
+
 export function isPageBundleCached(path: string, pageIndex: number): boolean {
-    return pageBundleCache.some(b => b.path === path && b.pageIndex === pageIndex);
+    return pageBundleCache.some(b => b.path === path && b.pageIndex === pageIndex && b.documentRevision === viewerSession.read().documentRevision);
 }
 
 

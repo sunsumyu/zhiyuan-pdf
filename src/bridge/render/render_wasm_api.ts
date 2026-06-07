@@ -104,12 +104,20 @@ export type RenderWasmApi = {
     storeFrameCacheEntry: (useViewportTile: boolean, cacheKey: string) => FrameCacheStoreResult | null;
     startProgressiveRender: () => ProgressiveRenderStart | null;
     renderPage: (renderTargetId: string, imageCacheMap: Map<string, HTMLImageElement>) => void;
+    renderPageOffscreen: (canvasJs: OffscreenCanvas, imageCacheMap: Map<string, ImageBitmap>, dpr: number) => void;
     resolveProgressiveRenderPolicy: (request: Record<string, unknown>) => ProgressiveRenderPolicy | null;
     stepProgressiveRender: (
         renderTargetId: string,
         imageCacheMap: Map<string, HTMLImageElement>,
         budgetMs: number,
         maxItems: number,
+    ) => ProgressiveRenderStep | null;
+    stepProgressiveRenderOffscreen: (
+        canvasJs: OffscreenCanvas,
+        imageCacheMap: Map<string, ImageBitmap>,
+        budgetMs: number,
+        maxItems: number,
+        dpr: number,
     ) => ProgressiveRenderStep | null;
 };
 
@@ -238,6 +246,9 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
         renderPage(renderTargetId, imageCacheMap) {
             getWasmApi().render_page?.(renderTargetId, imageCacheMap);
         },
+        renderPageOffscreen(canvasJs, imageCacheMap, dpr) {
+            getWasmApi().render_page_offscreen?.(canvasJs, imageCacheMap, dpr);
+        },
         resolveProgressiveRenderPolicy(request) {
             return getWasmApi().resolve_progressive_render_policy?.(request) ?? null;
         },
@@ -247,6 +258,15 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
                 imageCacheMap,
                 budgetMs,
                 maxItems,
+            ) ?? null;
+        },
+        stepProgressiveRenderOffscreen(canvasJs, imageCacheMap, budgetMs, maxItems, dpr) {
+            return getWasmApi().step_progressive_render_offscreen?.(
+                canvasJs,
+                imageCacheMap,
+                budgetMs,
+                maxItems,
+                dpr,
             ) ?? null;
         },
     };

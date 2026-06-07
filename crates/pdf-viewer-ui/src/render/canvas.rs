@@ -25,7 +25,7 @@ use pdf_viewer_core::render::renderer::{DrawCommand, PdfRenderer};
 use pdf_viewer_core::typography::font_resolver::resolve_font_face;
 use std::cell::Cell;
 use wasm_bindgen::{prelude::*, JsCast};
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement, ImageBitmap};
 
 #[derive(Clone, Copy)]
 pub(crate) enum CoordinateMode {
@@ -185,6 +185,21 @@ impl CanvasRenderer {
             dpr,
             canvas_height: Cell::new(0.0),
             is_hijacked: true,
+            transparent_surface: false,
+        })
+    }
+
+    pub fn new_offscreen(canvas_js: JsValue, dpr: f32) -> Option<Self> {
+        let canvas: HtmlCanvasElement = canvas_js.unchecked_into();
+        let ctx_val = canvas.get_context("2d").ok()??;
+        let ctx: CanvasRenderingContext2d = ctx_val.unchecked_into();
+
+        Some(Self {
+            ctx,
+            canvas,
+            dpr,
+            canvas_height: Cell::new(0.0),
+            is_hijacked: true, // don't resize DOM
             transparent_surface: false,
         })
     }
@@ -452,13 +467,20 @@ impl CanvasRenderer {
                         dbg_field("height", image.height),
                     ],
                 );
-                if let Some(img_js) = image_provider
-                    .get(&JsValue::from_str(&image.id))
-                    .dyn_into::<HtmlImageElement>()
-                    .ok()
-                {
+                let img_val = image_provider.get(&JsValue::from_str(&image.id));
+                if let Some(img_js) = img_val.clone().dyn_into::<HtmlImageElement>().ok() {
                     self.ctx.save();
                     let _ = self.ctx.draw_image_with_html_image_element_and_dw_and_dh(
+                        &img_js,
+                        image.x as f64,
+                        image.y as f64,
+                        image.width as f64,
+                        image.height as f64,
+                    );
+                    self.ctx.restore();
+                } else if let Some(img_js) = img_val.dyn_into::<ImageBitmap>().ok() {
+                    self.ctx.save();
+                    let _ = self.ctx.draw_image_with_image_bitmap_and_dw_and_dh(
                         &img_js,
                         image.x as f64,
                         image.y as f64,

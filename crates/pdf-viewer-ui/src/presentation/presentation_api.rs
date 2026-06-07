@@ -18,8 +18,8 @@ impl PagePresentationRuntime {
     }
 
     #[wasm_bindgen(js_name = "requestPageTurn")]
-    pub fn request_page_turn(&self, target_page: u16, reason: String) -> JsValue {
-        to_value(&request_page_turn(target_page, reason)).unwrap_or(JsValue::NULL)
+    pub fn request_page_turn(&self, target_page: u16, reason: String, now_ms: f64) -> JsValue {
+        to_value(&request_page_turn(target_page, reason, now_ms)).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(js_name = "readPageTurn")]

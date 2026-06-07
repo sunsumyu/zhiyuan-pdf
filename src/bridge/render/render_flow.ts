@@ -14,7 +14,7 @@ type RenderFlowDeps = {
     clearPendingAnchor: () => void;
     commitRenderedFrame: (frame: { displayZoom: number; renderZoom: number; hostWidth: number; hostHeight: number; contentLeft: number; contentTop: number; scrollLeft: number; scrollTop: number; }) => void;
     getWrapper: () => HTMLElement | null;
-    getRasterTarget: () => HTMLImageElement | null;
+    getRasterTarget: () => HTMLCanvasElement | null;
     getEmptyState: () => HTMLElement | null;
     getPageIndicator: () => HTMLElement | null;
     showWrapper: () => void;
@@ -128,6 +128,7 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                         lastRenderedPageIndex = session.currentPage;
                         deps.clearPendingAnchor();
                         deps.clearEditorOverlay();
+                        deps.showWrapper();
                         deps.onRenderCommitted();
 
                         const totalTime = performance.now() - frameStartTs;
@@ -167,12 +168,20 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                     const width = preview.width || session.pageWidth;
                     const height = preview.height || session.pageHeight;
                     deps.onPageDimensionsResolved(width, height);
-                    const presented = await updateRasterFallback(preview.imageUrl, width, height, renderPlan.displayZoom, {
-                        hideVectorOnly: true,
-                        role: 'preview',
-                        pageIndex: session.currentPage,
-                    });
-                    if (presented) {
+                    // ready-only commit: 仅当 preview 已解码时立即提交，不等待 decode 阻塞当前可见路径。
+                    // miss 时打性能违规日志，vector 渲染继续在后台执行。
+                    const readyPresented = pagePresenter.commitReadySurfaceOrFallback(
+                        preview.imageUrl,
+                        width,
+                        height,
+                        renderPlan.displayZoom,
+                        {
+                            hideVectorOnly: true,
+                            role: 'preview',
+                            pageIndex: session.currentPage,
+                        },
+                    );
+                    if (readyPresented) {
                         lastVisibleSurface = 'preview';
                         lastRenderedPageIndex = session.currentPage;
                         deps.clearPendingAnchor();
@@ -184,6 +193,7 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                             height,
                             frameToken: currentFrame.frameToken,
                             renderReason: renderPlan.renderReason,
+                            readyOnly: true,
                         });
                     }
                 }

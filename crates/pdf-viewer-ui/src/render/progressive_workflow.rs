@@ -138,3 +138,76 @@ pub fn render_page(canvas_id: String, image_cache: JsValue) {
         }
     });
 }
+
+pub fn render_page_offscreen(canvas_js: JsValue, image_cache: JsValue, dpr: f32) {
+    let image_provider: js_sys::Map = image_cache.unchecked_into();
+    cancel_progressive_render();
+    with_page_and_scene(|state, prepared_scene| {
+        if let Some(renderer) = CanvasRenderer::new_offscreen(canvas_js, dpr) {
+            renderer.render_page(state, &image_provider, prepared_scene.as_ref());
+            on_debug(
+                "RENDER_PAGE_OFFSCREEN".into(),
+                format!("Executing Offscreen Render"),
+            );
+        } else {
+            on_debug(
+                "RENDER_PAGE_OFFSCREEN".into(),
+                format!("Offscreen Canvas initialization failed"),
+            );
+        }
+    });
+}
+
+pub fn step_progressive_render_offscreen(
+    canvas_js: JsValue,
+    image_cache: JsValue,
+    budget_ms: f64,
+    max_items: u32,
+    dpr: f32,
+) -> ProgressiveRenderStepResult {
+    let image_provider: js_sys::Map = image_cache.unchecked_into();
+    let step = with_progressive_task_mut(|task_state| {
+        let Some(task) = task_state.as_mut() else {
+            return ProgressiveRenderStep {
+                active: false,
+                completed: true,
+                processed_items: 0,
+                remaining_items: 0,
+            };
+        };
+
+        let clear_first = task.next_index == 0;
+        let processed_before = task.next_index;
+        let processed_items = with_page_state(|state| {
+            let Some(vector_model) = state.vector_model.as_ref() else {
+                return 0;
+            };
+            let Some(renderer) = CanvasRenderer::new_offscreen(canvas_js.clone(), dpr) else {
+                return 0;
+            };
+            renderer.render_vector_slice(
+                state,
+                vector_model,
+                task,
+                &image_provider,
+                max_items.max(1) as usize,
+                Some(budget_ms),
+                clear_first,
+            )
+        });
+        let processed_items = processed_items.max(task.next_index.saturating_sub(processed_before));
+        let remaining_items = task.total_items().saturating_sub(task.next_index);
+        let completed = task.is_complete();
+        let step = ProgressiveRenderStep {
+            active: true,
+            completed,
+            processed_items,
+            remaining_items,
+        };
+        if completed {
+            *task_state = None;
+        }
+        step
+    });
+    progressive_step_result(step)
+}

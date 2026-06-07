@@ -1,4 +1,5 @@
 import { targetInvokeV3 } from '../shared/wasm_loader';
+import { emitPdfDiagnostic } from '../shared/diagnostics';
 import type { RenderReason } from '../render/frame_plan';
 import type { RenderScheduler } from '../render/render_scheduler';
 import type { PdfEditSource } from '../document/document_edit_api';
@@ -12,7 +13,7 @@ export type PdfViewerApiDeps = {
     readPath: () => string | null;
     readCurrentPage: () => number;
     readPageCount: () => number;
-    requestPageTurn: (targetPage: number, reason: 'next' | 'prev' | 'jump') => PageTurnDecision;
+    requestPageTurn: (targetPage: number, reason: 'next' | 'prev' | 'jump', nowMs?: number) => PageTurnDecision;
     setCurrentPage: (pageIndex: number) => void;
     refreshDocument: (reason: PdfEditSource) => Promise<unknown>;
     resetPdfViewerState: () => void;
@@ -94,7 +95,8 @@ export class PdfViewerAPI {
 
     async prevPage(): Promise<void> {
         const current = this.deps.readCurrentPage();
-        const decision = this.deps.requestPageTurn(Math.max(0, current - 1), 'prev');
+        const nowMs = performance.now();
+        const decision = this.deps.requestPageTurn(Math.max(0, current - 1), 'prev', nowMs);
         if (!decision.accepted) return;
         this.deps.setCurrentPage(decision.targetPage);
         await this.deps.renderScheduler.requestRender('navigation', 'navigation', {
@@ -105,7 +107,8 @@ export class PdfViewerAPI {
 
     async nextPage(): Promise<void> {
         const current = this.deps.readCurrentPage();
-        const decision = this.deps.requestPageTurn(current + 1, 'next');
+        const nowMs = performance.now();
+        const decision = this.deps.requestPageTurn(current + 1, 'next', nowMs);
         if (!decision.accepted) return;
         this.deps.setCurrentPage(decision.targetPage);
         await this.deps.renderScheduler.requestRender('navigation', 'navigation', {
@@ -322,6 +325,98 @@ export class PdfViewerAPI {
 // Global instance (legacy compatibility during migration)
 let globalApi: PdfViewerAPI | null = null;
 
+type PageTurnBenchOptions = {
+    count?: number;
+    intervalMs?: number;
+    settleMs?: number;
+    direction?: 'next' | 'prev';
+    awaitEach?: boolean;
+};
+
+function wait(ms: number): Promise<void> {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function runPageTurnBench(options: PageTurnBenchOptions = {}): Promise<{
+    count: number;
+    intervalMs: number;
+    settleMs: number;
+    direction: 'next' | 'prev';
+    awaitEach: boolean;
+    startPage: number;
+    endPage: number;
+    dispatchElapsedMs: number;
+    totalElapsedMs: number;
+}> {
+    const api = globalApi;
+    if (!api) throw new Error('PDF viewer API is not registered');
+    const count = Math.max(1, Math.min(500, Math.floor(Number(options.count ?? 20))));
+    const intervalMs = Math.max(0, Math.min(5_000, Number(options.intervalMs ?? 16)));
+    const settleMs = Math.max(0, Math.min(10_000, Number(options.settleMs ?? 500)));
+    const direction = options.direction === 'prev' ? 'prev' : 'next';
+    const awaitEach = options.awaitEach === true;
+    const startedAt = performance.now();
+    const startPage = (window as any).__getCurrentPage?.() ?? null;
+
+    emitPdfDiagnostic('PROF', 'page-turn.bench-start', {
+        count,
+        intervalMs,
+        settleMs,
+        direction,
+        awaitEach,
+        startPage,
+    });
+
+    for (let index = 0; index < count; index += 1) {
+        const pressAt = performance.now();
+        const pageBefore = (window as any).__getCurrentPage?.() ?? null;
+        emitPdfDiagnostic('PROF', 'page-turn.bench-press', {
+            index,
+            direction,
+            pageBefore,
+            sinceStartMs: pressAt - startedAt,
+        });
+        const turn = direction === 'prev' ? api.prevPage() : api.nextPage();
+        if (awaitEach) {
+            await turn;
+        } else {
+            void turn;
+        }
+        if (index < count - 1) {
+            await wait(intervalMs);
+        }
+    }
+
+    const dispatchedAt = performance.now();
+    if (settleMs > 0) {
+        await wait(settleMs);
+    }
+    const endedAt = performance.now();
+    const endPage = (window as any).__getCurrentPage?.() ?? null;
+    emitPdfDiagnostic('PROF', 'page-turn.bench-end', {
+        count,
+        intervalMs,
+        settleMs,
+        direction,
+        awaitEach,
+        startPage,
+        endPage,
+        dispatchElapsedMs: dispatchedAt - startedAt,
+        totalElapsedMs: endedAt - startedAt,
+    });
+    return {
+        count,
+        intervalMs,
+        settleMs,
+        direction,
+        awaitEach,
+        startPage,
+        endPage,
+        dispatchElapsedMs: dispatchedAt - startedAt,
+        totalElapsedMs: endedAt - startedAt,
+    };
+}
+
 export function registerPdfViewerAPI(deps: PdfViewerApiDeps): PdfViewerAPI {
     globalApi = new PdfViewerAPI(deps);
 
@@ -353,6 +448,7 @@ export function registerPdfViewerAPI(deps: PdfViewerApiDeps): PdfViewerAPI {
     w.openPdfFile = (path?: string) => globalApi!.openPdfFile(path);
     w.pdfPrevPage = () => globalApi!.prevPage();
     w.pdfNextPage = () => globalApi!.nextPage();
+    w.pdfRunPageTurnBench = (options?: PageTurnBenchOptions) => runPageTurnBench(options);
     w.pdfZoomChange = (val: string) => globalApi!.setZoom(val);
     w.closePdf = () => globalApi!.closePdf();
     w.pdfUndo = () => globalApi!.undo();

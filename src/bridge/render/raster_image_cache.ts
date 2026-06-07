@@ -1,9 +1,11 @@
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 
-const RASTER_IMAGE_CACHE_MAX = 15;
+const RASTER_MEMORY_BUDGET_BYTES = 128 * 1024 * 1024; // 128MB
 
-const decodedRasterImages = new Map<string, HTMLImageElement>();
-const inflightRasterImages = new Map<string, Promise<HTMLImageElement | null>>();
+let currentRasterMemoryBytes = 0;
+
+const decodedRasterImages = new Map<string, ImageBitmap>();
+const inflightRasterImages = new Map<string, Promise<ImageBitmap | null>>();
 
 type RasterWarmOptions = {
     role?: 'current' | 'preview' | 'prefetch' | 'unknown';
@@ -27,22 +29,42 @@ function logRasterCache(event: string, src: string, fields: Record<string, unkno
         ...fields,
         src: summarizeRasterSrc(src),
         cacheSize: decodedRasterImages.size,
-        maxSize: RASTER_IMAGE_CACHE_MAX,
+        currentMemoryMB: Math.round(currentRasterMemoryBytes / 1024 / 1024),
+        budgetMB: Math.round(RASTER_MEMORY_BUDGET_BYTES / 1024 / 1024),
     });
+}
+
+function getBitmapByteSize(bitmap: ImageBitmap): number {
+    // 4 bytes per pixel for RGBA
+    return bitmap.width * bitmap.height * 4;
 }
 
 function rememberRasterImage(
     src: string,
-    image: HTMLImageElement,
+    bitmap: ImageBitmap,
     options: RasterWarmOptions = {},
-): HTMLImageElement {
+): ImageBitmap {
+    const existing = decodedRasterImages.get(src);
+    if (existing) {
+        currentRasterMemoryBytes -= getBitmapByteSize(existing);
+    }
+    
     decodedRasterImages.delete(src);
-    decodedRasterImages.set(src, image);
-    while (decodedRasterImages.size > RASTER_IMAGE_CACHE_MAX) {
-        const oldest = decodedRasterImages.keys().next().value;
-        if (!oldest) break;
-        decodedRasterImages.delete(oldest);
-        logRasterCache('evict', oldest, {
+    decodedRasterImages.set(src, bitmap);
+    currentRasterMemoryBytes += getBitmapByteSize(bitmap);
+    
+    // Evict oldest until we fit in budget (always keep at least 1 item to prevent thrashing)
+    while (currentRasterMemoryBytes > RASTER_MEMORY_BUDGET_BYTES && decodedRasterImages.size > 1) {
+        const oldestEntry = decodedRasterImages.entries().next().value;
+        if (!oldestEntry) break;
+        const [oldestKey, oldestBitmap] = oldestEntry;
+        
+        currentRasterMemoryBytes -= getBitmapByteSize(oldestBitmap);
+        decodedRasterImages.delete(oldestKey);
+        
+        // Explicitly release GPU memory
+        oldestBitmap.close();
+        logRasterCache('evict', oldestKey, {
             role: options.role ?? 'unknown',
             pageIndex: options.pageIndex,
         });
@@ -50,23 +72,13 @@ function rememberRasterImage(
     logRasterCache('store', src, {
         role: options.role ?? 'unknown',
         pageIndex: options.pageIndex,
-        naturalWidth: image.naturalWidth,
-        naturalHeight: image.naturalHeight,
+        naturalWidth: bitmap.width,
+        naturalHeight: bitmap.height,
     });
-    return image;
+    return bitmap;
 }
 
-function waitForImageLoad(image: HTMLImageElement): Promise<void> {
-    if (image.complete && image.naturalWidth > 0) {
-        return Promise.resolve();
-    }
-    return new Promise((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error('raster image load failed'));
-    });
-}
-
-export function readDecodedRasterImage(src: string): HTMLImageElement | null {
+export function readDecodedRasterImage(src: string): ImageBitmap | null {
     const cached = decodedRasterImages.get(src);
     if (!cached) return null;
     decodedRasterImages.delete(src);
@@ -77,7 +89,7 @@ export function readDecodedRasterImage(src: string): HTMLImageElement | null {
 export function warmRasterImage(
     src: string,
     options: RasterWarmOptions = {},
-): Promise<HTMLImageElement | null> {
+): Promise<ImageBitmap | null> {
     const cached = readDecodedRasterImage(src);
     if (cached) {
         logRasterCache('hit', src, {
@@ -98,20 +110,21 @@ export function warmRasterImage(
 
     const task = (async () => {
         const startedAt = performance.now();
-        const image = new Image();
-        image.decoding = 'async';
-        image.src = src;
         try {
             logRasterCache('miss', src, {
                 role: options.role ?? 'unknown',
                 pageIndex: options.pageIndex,
             });
-            if (typeof image.decode === 'function') {
-                await image.decode();
-            } else {
-                await waitForImageLoad(image);
+            
+            // fetch blob and decode into ImageBitmap off main thread
+            const response = await fetch(src);
+            if (!response.ok) {
+                throw new Error(`fetch failed: ${response.status}`);
             }
-            return rememberRasterImage(src, image, options);
+            const blob = await response.blob();
+            const bitmap = await createImageBitmap(blob);
+            
+            return rememberRasterImage(src, bitmap, options);
         } catch (error) {
             logRasterCache('decode-failed', src, {
                 role: options.role ?? 'unknown',
@@ -138,6 +151,10 @@ export function clearRasterImageCache(): void {
         cacheSize: decodedRasterImages.size,
         inflightSize: inflightRasterImages.size,
     });
+    for (const bitmap of decodedRasterImages.values()) {
+        bitmap.close();
+    }
     decodedRasterImages.clear();
     inflightRasterImages.clear();
+    currentRasterMemoryBytes = 0;
 }

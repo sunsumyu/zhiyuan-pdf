@@ -668,7 +668,171 @@ pageTurn.intent (翻页意图)
 - `npm run e2e:build` 通过；普通 sandbox 下 Vite/esbuild 可能因 `spawn EPERM` 失败，需要在本机允许执行。
 - `npm run e2e -- --spec tests/e2e/specs/page_presentation_runtime.spec.ts` 通过。
 
-## 15. 有意推迟的事项 (What remains intentionally deferred)
+### §15 P0/P1 快速翻页性能收敛落地快照（2026-06-07）
+
+- **fast-flip 状态追踪**已实现：`page_turn.rs` 的 `PageTurnSnapshot` 新增 `last_turn_at_ms: f64` 和 `fast_flip_mode: bool`；`request_page_turn` 接受 `now_ms: f64`（由 TS 传入 `performance.now()`），检测两次翻页间隔 < 100ms 时自动进入 fast-flip 模式。
+- **fast-flip 下预取策略动态调整**：`decide_adjacent_prefetch` 在 fast-flip 模式时将 vector prefetch window 降为 0（暂停），逆方向 preview runway 降为 1 页；normal 模式维持 vector=2、reverse preview=2 不变；顺方向 preview runway 在两种模式下均保持 8 页。
+- **WASM → TS 全链路已接线**：`presentation_api.rs` 增加 `now_ms` 参数 → `page_presentation_runtime.ts` 增加 `nowMs?` 透传 → `pdf_viewer_api.ts` `prevPage`/`nextPage` 传入 `performance.now()` → `bridge/index.ts` 同步更新。
+- **`PagePresenter` ready-only commit** 已实现：新增 `commitReadySurfaceOrFallback`，preview-first 路径改用该函数；cache hit 时 <1ms 内直接提交，cache miss 时打 `current-raster-miss-ready-only-fallback` 性能违规日志并返回 false，不再等待 40-50ms decode 阻塞当前可见路径。
+- **Rust 单测已覆盖**：`fast_flip_mode_activates_when_turns_are_rapid`、`fast_flip_pauses_vector_prefetch_and_reduces_reverse_preview`、`normal_mode_includes_vector_prefetch` 三个新测试；既有 4 个测试均已更新 `now_ms` 参数。
+- **验收命令**：
+  - `cargo check -p pdf-viewer-ui --target wasm32-unknown-unknown` 通过（仅预存 deprecated warning）。
+  - `npx tsc --noEmit -p tests\e2e\tsconfig.json` 通过。
+  - `npm run wasm:pdf-viewer-ui` 通过。
+  - `npm run build` 通过。
+  - `npm run e2e -- --spec tests/e2e/specs/page_presentation_runtime.spec.ts` 通过（3 passed）。
+
+## 15. 高速翻页性能收敛方案 (Fast page-turn performance plan)
+
+本节是对前文 `PagePresentationRuntime` / `PageRenderQueue` / `PageAssetPipeline` / `PagePresenter` 架构的继续收敛，不引入新的并行架构。目标是把“当前页可见路径”从解析、解码和重计算中隔离出来，让当前页只提交已经准备好的 `ready surface`。
+
+### 15.1 性能目标与口径
+
+| 指标 | 可接受 | 优秀 | 工程目标 |
+|---|---:|---:|---:|
+| 自动连续翻页 press -> visible-ready | <= 40ms | <= 20ms | <= 10ms |
+| ready surface commit | <= 10ms | <= 5ms | <= 3ms |
+| current cache miss 后首帧 | <= 40ms | <= 20ms | <= 10ms 低清首帧 |
+| 高清 raster/vector 补帧 | 不阻塞首帧 | 后台完成 | 后台完成 |
+
+诊断必须拆开以下时间：
+
+```text
+page-turn.bench-press
+  -> pageAsset.admit current
+  -> surface.cache-hit / surface.cache-miss
+  -> raster.decode-start/end 或 vector.render-start/end
+  -> present.commit
+  -> page-turn.visible-ready
+```
+
+其中 `page-turn.visible-ready.elapsedMs` 代表单次翻页内部耗时；连续两个 `visible-ready` 的差值代表自动连续翻页体感间隔；`bench-press -> visible-ready` 才是压测下最接近用户按键到可见的指标。
+
+### 15.2 Ready surface 定义
+
+`ready surface` 指已经满足“可直接提交到可见层”的页面画面。它可以是低清预览、已解码 raster、已完成的 vector frame 或已绘制 canvas，但不能是仍需 PDF 解析、图片 decode、IPC 等待或高成本计算的原始资产。
+
+| 资产 | 是否 ready surface | 允许在 current visible path 中等待 |
+|---|---|---|
+| PDF content stream | 否 | 否 |
+| JPEG/XObject bytes | 否 | 否 |
+| `PageDisplayList` | 否，属于 IR | 否 |
+| 未 decode 的 image URL | 否 | 否 |
+| decoded `HTMLImageElement` / `ImageBitmap` | 是 | 是，仅提交 |
+| 已绘制 preview canvas / raster img | 是 | 是，仅提交 |
+| 已完成 vector frame | 是 | 是，仅提交 |
+
+硬约束：
+
+```text
+PagePresenter 只能提交 ready surface。
+PagePresenter 不允许触发 current raster decode、PDF parse 或 IPC。
+```
+
+过渡期允许 current miss 继续 fallback，但必须打印性能违规事件，直到所有 current miss 都被低清首帧或预热命中消除。
+
+### 15.3 Current miss 处理规则
+
+高速翻页时，如果高清 raster 未命中，不应阻塞等待高清 decode：
+
+```text
+pageTurn.intent
+  -> current high-res raster miss
+  -> try ready preview / low-res surface
+      -> hit: commit low-res surface, visible-ready
+      -> miss: retain old surface or show page frame, log missing-ready-surface
+  -> background decode high-res raster
+  -> latest-wins admission
+  -> if still current, swap high-res surface
+```
+
+首帧策略：
+
+| 场景 | 当前页显示策略 | 后台任务 |
+|---|---|---|
+| ready preview hit | 立即显示 preview | decode high-res / render vector |
+| decoded raster hit | 立即显示 raster | render vector/detail |
+| vector frame hit | 立即显示 vector | render detail |
+| 所有 ready surface miss | 保留旧 surface 或显示轻量 page frame | 优先生成 preview，再高清 |
+
+### 15.4 Fast-flip 模式
+
+当连续翻页 press 间隔进入 100ms 内，进入 fast-flip mode。该模式仍由 `PageRenderQueue` / `PagePrefetchController` 统一决策，不允许 TS 私自决定预取策略。
+
+| 模式 | 触发 | 策略 |
+|---|---|---|
+| normal | 普通翻页 | 预取当前页前后 1-2 页 |
+| fast-flip | 连续 press 间隔 < 100ms | 顺方向 preview runway 预取 8 页，逆方向最多 1-2 页 |
+| jump | 页码跳转、搜索跳转 | 只准备目标页 + 近邻 preview |
+| settle | 停止翻页 100-200ms | 补 vector、detail、editor overlay |
+
+fast-flip 下任务优先级：
+
+| 优先级 | 任务 | 规则 |
+|---:|---|---|
+| 100 | 最新 current ready preview/raster commit | 只能提交 ready surface |
+| 90 | 最新 current preview 生成 | 如果没有 ready surface，优先生成低清首帧 |
+| 80 | 顺方向 preview runway | 最多 8 页，低优先级后台 |
+| 60 | 最新 current vector/baseBitmap | preview 可见后运行 |
+| 30 | 近邻 vector/displayList | 空闲时运行，最多 1-2 页 |
+| 10 | detail/editor overlay | settle 后运行 |
+
+### 15.5 资源池化边界
+
+| 资源 | 是否池化 | 池化方式 | 注意事项 |
+|---|---|---|---|
+| Stage canvas / offscreen canvas | 是 | `CanvasPool` 按尺寸复用 | 回收时清 transform 和像素；避免无限持有 GPU buffer |
+| Decoded raster image | 是 | LRU，按文档版本 + 页码 + zoom bucket | 当前实现按 src LRU；后续应加入内存预算和 page key |
+| `ImageBitmap` | 是 | LRU + 显式 `close()` | 比 `HTMLImageElement` 更适合 ready surface，但要控制 GPU 内存 |
+| `PageDisplayList` | 是 | revision-aware cache | 文档版本变化必须失效 |
+| Vector bundle / paint plan | 是 | page bundle cache + revision key | 编辑版本变化必须失效 |
+| Preview metadata | 是 | page preview cache | 低清首帧的 runway 应优先复用它 |
+| In-flight page asset lock | 是 | document + revision + page + kind | 防止重复 decode/parse |
+| DOM 可见节点 | 少量固定复用 | main/back/stage canvas 固定节点 | 不要频繁 create/remove |
+
+不应池化：
+
+| 资源 | 原因 |
+|---|---|
+| 带旧文档引用的编辑 overlay 状态 | 易跨文档污染 |
+| 活跃 textarea / selection 状态 | 浏览器 selection 与 IME 状态不可安全复用 |
+| 已失效 document revision 的任何 surface | 会显示旧版本页面 |
+| 大量隐藏高清 canvas | GPU/内存占用高，容易拖慢主线程和合成 |
+
+### 15.6 线程与任务隔离
+
+原则：会占用 10ms 以上、可能阻塞输入或定时器的任务，不得与 UI 提交路径共用主线程。
+
+| 任务 | 推荐执行位置 | 是否可共享线程 | 原因 |
+|---|---|---|---|
+| UI 输入、键盘、PagePresenter commit | 浏览器主线程 | 不共享高成本任务 | 必须低延迟 |
+| `HTMLImageElement.decode()` / `createImageBitmap` | 浏览器解码线程/worker 能力 | 与 UI 分离 | 日志显示 current decode 可达 40-50ms |
+| Preview runway 预热 | 独立低优先级队列 | 可共享 preview worker 限流 | 不应抢 current commit |
+| Vector render / Vello / canvas draw | stage canvas 或 dedicated worker（可行时） | 不与 preview decode 无限并发 | GPU/CPU 资源竞争会拖慢可见提交 |
+| PDF content stream -> `PageDisplayList` | Tauri `spawn_blocking` 专用池 | 不与轻量 IPC/状态锁共享 | 解析可能长时间占 CPU |
+| Search / annotation target | 后台 CPU 池 | 可共享 DisplayList 派生池 | 依赖 IR，但不应阻塞翻页 |
+| Save/write-back | 独立串行队列 | 不与渲染/preview 共用 | IO + PDF 写回不应影响阅读 |
+| OCR / AI / 大文本分析 | 独立 worker/进程 | 不共享渲染池 | 高 CPU/内存，必须隔离 |
+
+需要隔离的冲突：
+
+- preview decode 与 current commit 冲突：decode 可能拖慢 JS timer 和 visible-ready，应后台限流。
+- vector render 与 preview decode 冲突：二者都可能占 CPU/GPU，fast-flip 下 preview runway 优先，vector 延后。
+- PDF parse 与 search/annotation 冲突：都依赖页面 IR，应先共享 `DisplayListCache`，避免重复解析。
+- save/write-back 与 page asset read 冲突：写回期间应冻结或提升 document revision，旧 surface 不得继续标记 current。
+
+### 15.7 分阶段落地
+
+| 阶段 | 内容 | 验收 |
+|---|---|---|
+| P0 | current raster miss 打性能违规日志；bench 日志统计 press -> visible-ready；backend preview 预取窗口和 WASM preview runway 分离 | 能定位所有 current miss |
+| P1 | fast-flip 下顺方向 preview runway 预取 8 页；vector 仍只预取近邻 1-2 页 | 16ms 自动翻页时 current miss 明显下降 |
+| P1 | `PagePresenter` 支持 ready-only commit：current miss 不等待 decode，先 fallback ready preview | current visible path 不再出现 40-50ms decode |
+| P2 | `ImageBitmapSurfaceCache` 替代部分 `HTMLImageElement` ready surface | commit 降到 1-3ms 区间 |
+| P2 | worker/offscreen canvas 隔离 preview decode 与 vector draw | 自动 press 间隔接近设定 interval |
+| P3 | 内存预算驱动的 SurfaceCache：按文档版本、页、zoom bucket、surface kind 逐出 | 大 PDF 连续翻页无内存抖动 |
+
+## 16. 有意推迟的事项 (What remains intentionally deferred)
 
 - **真正的多文档多实例支持**：当前文档设计选择单文档 thread_local 模式。在修复翻页问题时，不要承担此项重构。
 - **PDF 算子级别的硬性取消（Hard cancellation）**：阶段 1 仅需要协同阶段取消和过期呈现拒绝。
@@ -676,7 +840,7 @@ pageTurn.intent (翻页意图)
 - **替换 TS DOM 外壳**：TS 应当保持仅作为 DOM/Canvas 粘合层；Rust/WASM 拥有渲染决策。
 - **更改编辑器文本渲染**：nushell 的单一渲染链规则保持完好。
 
-## 16. 设计模式所有权 (Design-pattern ownership)
+## 17. 设计模式所有权 (Design-pattern ownership)
 
 | 关注点 | 使用设计模式 | 所有权归属 |
 |---|---|---|
@@ -688,7 +852,7 @@ pageTurn.intent (翻页意图)
 | 事件分发 | EventBus | `PresentationEventBus` |
 | 编辑渲染视觉正确性 | 单一渲染链 (Single rendering chain) | Rust canvas painter |
 
-## 17. 架构红线/准则 (Architectural guardrails)
+## 18. 架构红线/准则 (Architectural guardrails)
 
 - 绝不能在不提取 `PagePresentationRuntime` 的情况下，直接向 `pdf_runtime.ts` 或 `render_flow.ts` 添加更多导航规则。
 - 绝不能在 `PagePresenter` 之外清除或隐藏可见的 canvas 图层。
@@ -699,7 +863,7 @@ pageTurn.intent (翻页意图)
 - 绝不能在 TS 中保留非必要的页面/渲染/编辑器决策。如果逻辑可以用不直接依赖 DOM/浏览器 API 的方式表达，就必须归 Rust/WASM 所有。
 - 在修改编辑器叠加层时，绝不能将列表标记语义（list marker semantics）混合到可编辑的主体文本中。
 
-## 18. 阅读地图 (Reading map)
+## 19. 阅读地图 (Reading map)
 
 - `docs/nutrient-comparison.md`：了解 ViewState, EventBus, 脏检查（dirty tracking）, 单文档限制。
 - `docs/nushell-divergence-report-2026-05-06.md`：单一渲染链与迁移回归问题。

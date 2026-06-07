@@ -6,7 +6,10 @@ export type PageTurnDecision = {
     direction: -1 | 0 | 1;
     reason: string;
     rejectReason?: string | null;
-    snapshot?: unknown;
+    snapshot?: {
+        fastFlipMode?: boolean;
+        [key: string]: unknown;
+    } | null;
 };
 
 export type PageVisibleDecision = {
@@ -60,7 +63,7 @@ export type RenderQueueAction = {
 };
 
 export type PagePresentationRuntimeAdapter = {
-    requestPageTurn: (targetPage: number, reason: string) => PageTurnDecision;
+    requestPageTurn: (targetPage: number, reason: string, nowMs?: number) => PageTurnDecision;
     readPageTurn: () => unknown;
     isLatestPageTurn: (pageTurnId: number, pageIndex: number) => boolean;
     markPageVisible: (pageIndex: number, surface: string) => PageVisibleDecision;
@@ -250,9 +253,10 @@ export function createPagePresentationRuntimeAdapter(
         return getRuntimeHandle(deps.getWasmApi);
     }
 
-    function requestPageTurn(targetPage: number, reason: string): PageTurnDecision {
+    function requestPageTurn(targetPage: number, reason: string, nowMs?: number): PageTurnDecision {
         try {
-            const decision = runtime()?.requestPageTurn(targetPage, reason);
+            const now = nowMs ?? performance.now();
+            const decision = runtime()?.requestPageTurn(targetPage, reason, now);
             return normalizeDecision(decision, targetPage, reason);
         } catch {
             return {

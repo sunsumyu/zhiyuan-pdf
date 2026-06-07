@@ -11,6 +11,7 @@ export type PdfKeyboardShortcutDeps = {
     toggleUnderline: () => void;
     prevPage: () => void;
     nextPage: () => void;
+    runPageTurnBench?: (direction: 'next' | 'prev') => void;
 };
 
 function isPdfViewerKeyboardScope(getScrollContainer: () => HTMLElement | null): boolean {
@@ -61,6 +62,19 @@ export function createPdfKeyboardShortcutHandler(
                 event.preventDefault();
                 event.stopPropagation();
                 if (isPrev) deps.prevPage(); else deps.nextPage();
+                return;
+            }
+        }
+
+        if (event.ctrlKey && event.shiftKey && event.altKey && !event.metaKey) {
+            const navKey = event.key;
+            const isPrevBench = navKey === 'ArrowLeft' || navKey === 'ArrowUp' || navKey === 'PageUp';
+            const isNextBench = navKey === 'ArrowRight' || navKey === 'ArrowDown' || navKey === 'PageDown';
+            if ((isPrevBench || isNextBench) && deps.runPageTurnBench) {
+                if (!isPdfViewerKeyboardScope(deps.getScrollContainer)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                deps.runPageTurnBench(isPrevBench ? 'prev' : 'next');
                 return;
             }
         }

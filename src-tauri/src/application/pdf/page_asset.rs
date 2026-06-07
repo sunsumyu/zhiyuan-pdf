@@ -194,6 +194,45 @@ mod tests {
             "unrelated document intermediate cache entries should be retained",
         );
     }
+
+    #[test]
+    fn preview_prefetch_uses_wider_runway_than_vector_assets() {
+        let state = crate::AppState::new();
+        PageAssetAdmissionService::mark_current_page(
+            &state,
+            "doc-a.pdf",
+            10,
+            PageAssetKind::Preview,
+            "test",
+        );
+
+        let preview_in_runway = PageAssetAdmissionService::admit_before_work(
+            &state,
+            "doc-a.pdf",
+            18,
+            PageAssetRole::Prefetch,
+            PageAssetKind::Preview,
+        );
+        assert!(preview_in_runway.is_ok());
+
+        let preview_outside_runway = PageAssetAdmissionService::admit_before_work(
+            &state,
+            "doc-a.pdf",
+            19,
+            PageAssetRole::Prefetch,
+            PageAssetKind::Preview,
+        );
+        assert!(preview_outside_runway.is_err());
+
+        let vector_outside_near_window = PageAssetAdmissionService::admit_before_work(
+            &state,
+            "doc-a.pdf",
+            13,
+            PageAssetRole::Prefetch,
+            PageAssetKind::VectorModel,
+        );
+        assert!(vector_outside_near_window.is_err());
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -399,7 +438,12 @@ impl PageAssetAdmissionService {
             );
         };
 
-        if latest_page.abs_diff(page_index) <= 2 {
+        let prefetch_window = match kind {
+            PageAssetKind::Preview => 8,
+            _ => 2,
+        };
+
+        if latest_page.abs_diff(page_index) <= prefetch_window {
             Self::emit_event(
                 2,
                 "pageAsset.admit",

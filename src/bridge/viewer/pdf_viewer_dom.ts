@@ -22,8 +22,8 @@ export function getVectorContainer(): HTMLElement | null {
     return document.getElementById(VECTOR_CONTAINER_ID) as HTMLElement | null;
 }
 
-export function getRasterTarget(): HTMLImageElement | null {
-    return document.getElementById('pdf-render-target') as HTMLImageElement | null;
+export function getRasterTarget(): HTMLCanvasElement | null {
+    return document.getElementById('pdf-render-target') as HTMLCanvasElement | null;
 }
 
 export function getEmptyState(): HTMLElement | null {

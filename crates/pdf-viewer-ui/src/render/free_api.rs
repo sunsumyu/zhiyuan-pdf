@@ -33,8 +33,10 @@ use crate::render::layer::{
 use crate::render::loop_workflow::schedule_render_follow_up_runtime;
 use crate::render::progressive_workflow::{
     cancel_progressive_render as inner_cancel_progressive_render, render_page as inner_render_page,
+    render_page_offscreen as inner_render_page_offscreen,
     start_progressive_render as inner_start_progressive_render,
     step_progressive_render as inner_step_progressive_render,
+    step_progressive_render_offscreen as inner_step_progressive_render_offscreen,
 };
 use crate::render::workflow::RenderFrameEnvelope;
 use crate::zoom::event::{
@@ -251,6 +253,11 @@ pub fn render_page(canvas_id: String, image_cache: JsValue) {
 }
 
 #[wasm_bindgen]
+pub fn render_page_offscreen(canvas_js: JsValue, image_cache: JsValue, dpr: f32) {
+    inner_render_page_offscreen(canvas_js, image_cache, dpr);
+}
+
+#[wasm_bindgen]
 pub fn start_progressive_render() -> JsValue {
     to_value(&inner_start_progressive_render()).unwrap_or(JsValue::NULL)
 }
@@ -267,6 +274,24 @@ pub fn step_progressive_render(
         image_cache,
         budget_ms,
         max_items,
+    ))
+    .unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen]
+pub fn step_progressive_render_offscreen(
+    canvas_js: JsValue,
+    image_cache: JsValue,
+    budget_ms: f64,
+    max_items: u32,
+    dpr: f32,
+) -> JsValue {
+    to_value(&inner_step_progressive_render_offscreen(
+        canvas_js,
+        image_cache,
+        budget_ms,
+        max_items,
+        dpr,
     ))
     .unwrap_or(JsValue::NULL)
 }
