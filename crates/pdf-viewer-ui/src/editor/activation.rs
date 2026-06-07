@@ -5,21 +5,19 @@ use pdf_viewer_core::geometry::coordinate_transform::{
 };
 use pdf_viewer_core::models::BoundingBox;
 
-use crate::editor::bridge::{
-    collect_paragraph_interaction_targets, ParagraphInteractionTarget,
-};
+use crate::document::patch_persistence::{has_persistable_patches, save_persistable_patches};
+use crate::editor::bridge::{collect_paragraph_interaction_targets, ParagraphInteractionTarget};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
-use crate::editor::mode::{close_active_editor, get_active_editor_state};
 use crate::editor::editor_controller::{
-    find_paragraph_shell_bbox, open_editor_at_page_point, open_region_editor,
-    set_editor_caret, EditorVisibilityAction,
+    find_paragraph_shell_bbox, open_editor_at_page_point, open_region_editor, set_editor_caret,
+    EditorVisibilityAction,
 };
+use crate::editor::mode::{close_active_editor, read_active_editor_state};
+use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
 use crate::editor::text_geometry::active_caret_index_at_shell_point;
 use crate::page::page_store::with_page_state;
-use crate::document::patch_persistence::{has_persistable_patches, save_persistable_patches};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -125,10 +123,7 @@ fn point_in_bbox(x: f32, y: f32, bbox: BoundingBox, tolerance: f32) -> bool {
         && y <= bbox.bottom + tolerance
 }
 
-fn resolve_target_at_page_point(
-    page_x: f32,
-    page_y: f32,
-) -> Option<ParagraphInteractionTarget> {
+fn resolve_target_at_page_point(page_x: f32, page_y: f32) -> Option<ParagraphInteractionTarget> {
     let targets = with_page_state(|state| {
         state
             .paint_plan
@@ -165,7 +160,6 @@ fn resolve_target_at_page_point(
     None
 }
 
-
 pub fn activate_editor_from_client_point(
     request: OpenEditorAtClientPointRequest,
 ) -> EditorVisibilityAction {
@@ -190,7 +184,7 @@ pub fn activate_editor_from_client_point(
             // 点空白 = 退出编辑：先 commit pending edit 持久化当前编辑，
             // 再 close 当前 active editor，让 UI 回到 idle。
             let committed = commit_pending_edit_if_any();
-            let had_active = get_active_editor_state().is_some();
+            let had_active = read_active_editor_state().is_some();
             close_active_editor();
             crate::chain_trace!(
                 "activate.hit-miss-exit",
@@ -308,7 +302,7 @@ pub fn activate_region_editor(
 }
 
 pub fn move_caret_to_client_point(request: MoveCaretToClientPointRequest) -> Option<usize> {
-    let active_state = get_active_editor_state()?;
+    let active_state = read_active_editor_state()?;
     let draft_text = active_state.current_text().to_string();
     let active_target = active_state.target;
     let shell_bbox = BoundingBox {
@@ -334,8 +328,10 @@ pub fn move_caret_to_client_point(request: MoveCaretToClientPointRequest) -> Opt
         x: request.client_x,
         y: request.client_y,
     });
-    let shell_x = (page_point.x - shell_bbox.left).clamp(0.0, (shell_bbox.right - shell_bbox.left).max(0.0));
-    let shell_y = (page_point.y - shell_bbox.top).clamp(0.0, (shell_bbox.bottom - shell_bbox.top).max(0.0));
+    let shell_x =
+        (page_point.x - shell_bbox.left).clamp(0.0, (shell_bbox.right - shell_bbox.left).max(0.0));
+    let shell_y =
+        (page_point.y - shell_bbox.top).clamp(0.0, (shell_bbox.bottom - shell_bbox.top).max(0.0));
 
     // The click is already confirmed to be within the editor shell bounds
     // (only the shell pointerdown handler calls this function). Closing the

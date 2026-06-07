@@ -1,17 +1,15 @@
 use std::collections::BTreeMap;
 
+use pdf_viewer_core::models::{GlyphPaintParagraph, GlyphPaintPlan, PageState, VectorPageModel};
 use pdf_viewer_core::text::list_semantics::{
     derive_list_text_semantics, format_numbering_marker, parse_numbering_value, ListMarkerKind,
-};
-use pdf_viewer_core::models::{
-    GlyphPaintParagraph, GlyphPaintPlan, PageState, VectorPageModel,
 };
 
 use crate::editor::bridge::build_paragraph_patch_with_runs;
 use crate::editor::edit_target::edit_target_base_paragraph_id;
 use crate::editor::engine_state::LiveEditorParagraphState;
 use crate::models::PersistableRegionPatch;
-use crate::state_manager::{get_patch_state, GlobalPatchState};
+use crate::ui_state_store::{read_patch_state, GlobalPatchState};
 
 #[derive(Debug, Clone, Default)]
 struct EffectiveListState {
@@ -33,9 +31,7 @@ pub fn resolve_active_marker_text(
 ) -> Option<String> {
     let overrides = collect_marker_overrides(page_state.paint_plan.as_ref(), Some(active_state));
     overrides
-        .get(edit_target_base_paragraph_id(
-            active_state.paragraph_id(),
-        ))
+        .get(edit_target_base_paragraph_id(active_state.paragraph_id()))
         .cloned()
         .flatten()
 }
@@ -48,7 +44,7 @@ pub fn collect_marker_overrides(
         return BTreeMap::new();
     };
     let ordered_paragraphs = collect_ordered_page_paragraphs(plan);
-    let Ok(state) = get_patch_state().read() else {
+    let Ok(state) = read_patch_state().read() else {
         return BTreeMap::new();
     };
     let contexts = ordered_paragraphs
@@ -187,9 +183,8 @@ fn build_paragraph_list_context<'a>(
     active_state: Option<&LiveEditorParagraphState>,
 ) -> ParagraphListContext<'a> {
     let base_paragraph_id = edit_target_base_paragraph_id(&paragraph.id).to_string();
-    let active_marker = active_state.filter(|active| {
-        edit_target_base_paragraph_id(active.paragraph_id()) == base_paragraph_id
-    });
+    let active_marker = active_state
+        .filter(|active| edit_target_base_paragraph_id(active.paragraph_id()) == base_paragraph_id);
 
     let source_semantics = derive_list_text_semantics(
         &paragraph

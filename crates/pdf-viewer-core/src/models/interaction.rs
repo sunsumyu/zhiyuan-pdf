@@ -1,4 +1,4 @@
-use super::{BoundingBox, EditorControlStyle, ParagraphEditContext, GlyphPaintRun};
+use super::{BoundingBox, EditorControlStyle, GlyphPaintRun, ParagraphEditContext};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Default, PartialEq)]

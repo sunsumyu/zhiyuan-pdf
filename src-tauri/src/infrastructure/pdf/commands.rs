@@ -1,8 +1,10 @@
+use crate::infrastructure::pdf::models::{PersistableRegionPatch, TextPatch, TextReflowPatch};
 use crate::infrastructure::pdf::pdf_write::PdfDocExt;
-use crate::infrastructure::pdf::models::{
-    PersistableRegionPatch, TextPatch, TextReflowPatch,
-};
 use lopdf::Document;
+pub use pdf_viewer_core::models::{
+    AddHighlightCommand, DeletePageCommand, InsertPageCommand, RotatePageCommand,
+    UpdateMetadataCommand,
+};
 
 /// PDF 编辑命令接口
 pub trait PdfEditCommand: Send + Sync {
@@ -133,10 +135,6 @@ impl PdfEditCommand for ReplaceImageCommand {
     }
 }
 
-/// 页面删除命令 (V3 Sovereign)
-pub struct DeletePageCommand {
-    pub page_num: u32,
-}
 impl PdfEditCommand for DeletePageCommand {
     fn execute(&self, doc: &mut Document, _page_num: u32) -> Result<(), String> {
         doc.delete_page(self.page_num)
@@ -144,11 +142,6 @@ impl PdfEditCommand for DeletePageCommand {
     }
 }
 
-/// 页面物理旋转命令 (V3 Sovereign)
-pub struct RotatePageCommand {
-    pub page_num: u32,
-    pub delta: i32,
-}
 impl PdfEditCommand for RotatePageCommand {
     fn execute(&self, doc: &mut Document, _page_num: u32) -> Result<(), String> {
         doc.rotate_page(self.page_num, self.delta)
@@ -156,10 +149,6 @@ impl PdfEditCommand for RotatePageCommand {
     }
 }
 
-/// 页面插入命令 (V3 Sovereign)
-pub struct InsertPageCommand {
-    pub at_index: u32,
-}
 impl PdfEditCommand for InsertPageCommand {
     fn execute(&self, doc: &mut Document, _page_num: u32) -> Result<(), String> {
         doc.insert_blank_page(self.at_index)
@@ -167,12 +156,6 @@ impl PdfEditCommand for InsertPageCommand {
     }
 }
 
-/// 文本高亮命令 (V3 Sovereign)
-pub struct AddHighlightCommand {
-    pub page_num: u32,
-    pub rect: [f32; 4],
-    pub color: [f32; 3],
-}
 impl PdfEditCommand for AddHighlightCommand {
     fn execute(&self, doc: &mut Document, _page_num: u32) -> Result<(), String> {
         doc.add_highlight(self.page_num, self.rect, self.color)
@@ -219,13 +202,6 @@ impl PdfEditCommand for DeleteAnnotationCommand {
     }
 }
 
-/// 文档元数据更新命令 (V3 Sovereign)
-pub struct UpdateMetadataCommand {
-    pub title: String,
-    pub author: String,
-    pub subject: String,
-    pub keywords: String,
-}
 impl PdfEditCommand for UpdateMetadataCommand {
     fn execute(&self, doc: &mut Document, _page_num: u32) -> Result<(), String> {
         doc.update_metadata(&self.title, &self.author, &self.subject, &self.keywords)

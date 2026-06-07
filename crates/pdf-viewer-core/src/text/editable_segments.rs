@@ -1,4 +1,6 @@
-use crate::models::{EditableFieldGroup, EditableSegment, FieldKind, NativeTextModel, StyledRun, SemanticRole};
+use crate::models::{
+    EditableFieldGroup, EditableSegment, FieldKind, NativeTextModel, SemanticRole, StyledRun,
+};
 
 #[derive(Clone, Debug)]
 struct FieldLabelAnchor {
@@ -16,13 +18,13 @@ struct FieldGroup {
     field_kind: FieldKind,
 }
 
-fn get_segment_patch_key(object_id: &str, start: usize, end: usize) -> String {
+fn resolve_segment_patch_key(object_id: &str, start: usize, end: usize) -> String {
     format!("{object_id}::{start}-{end}")
 }
 
 fn is_colon_token(run: Option<&StyledRun>) -> bool {
     match run {
-        Some(run) => matches!(run.text.trim(), ":" | "：" ),
+        Some(run) => matches!(run.text.trim(), ":" | "："),
         None => false,
     }
 }
@@ -32,7 +34,7 @@ fn looks_like_short_field_token(run: &StyledRun) -> bool {
     !text.is_empty() && text.chars().count() <= 6
 }
 
-fn get_run_visible_glyph_width(run: &StyledRun, parent: &NativeTextModel) -> f32 {
+fn resolve_run_visible_glyph_width(run: &StyledRun, parent: &NativeTextModel) -> f32 {
     if run.width > 0.0 {
         run.width
     } else if parent.width > 0.0 && !parent.text.is_empty() {
@@ -43,7 +45,7 @@ fn get_run_visible_glyph_width(run: &StyledRun, parent: &NativeTextModel) -> f32
     }
 }
 
-fn get_run_style_signature(run: &StyledRun, parent: &NativeTextModel) -> String {
+fn resolve_run_style_signature(run: &StyledRun, parent: &NativeTextModel) -> String {
     let hints = run.font_hints.as_ref().or(parent.font_hints.as_ref());
     format!(
         "{}|{:.3}|{}|{}|{}|{:.3}|{:.3}|{:.3}|{:.3}|{}|{}|{}|{}",
@@ -58,8 +60,12 @@ fn get_run_style_signature(run: &StyledRun, parent: &NativeTextModel) -> String 
         run.d,
         hints.map(|h| h.weight).unwrap_or_default(),
         hints.map(|h| h.italic_angle).unwrap_or_default(),
-        hints.map(|h| if h.is_bold { 1 } else { 0 }).unwrap_or_default(),
-        hints.map(|h| if h.is_italic { 1 } else { 0 }).unwrap_or_default(),
+        hints
+            .map(|h| if h.is_bold { 1 } else { 0 })
+            .unwrap_or_default(),
+        hints
+            .map(|h| if h.is_italic { 1 } else { 0 })
+            .unwrap_or_default(),
     )
 }
 
@@ -74,7 +80,7 @@ fn detect_field_label_anchors(runs: &[StyledRun]) -> Vec<FieldLabelAnchor> {
     while i < runs.len() {
         let mut best_end = None;
         let mut combined = String::new();
-        
+
         // 探测 [文本] + [:] 的模式
         for j in i..usize::min(runs.len(), i + 5) {
             let text = runs[j].text.trim();
@@ -130,7 +136,10 @@ fn build_field_groups(runs: &[StyledRun]) -> Vec<FieldGroup> {
         .map(|(idx, anchor)| {
             let next_anchor = anchors.get(idx + 1);
             let value_start = anchor.end + 1;
-            let value_end = next_anchor.map(|a| a.start).unwrap_or(runs.len()).saturating_sub(1);
+            let value_end = next_anchor
+                .map(|a| a.start)
+                .unwrap_or(runs.len())
+                .saturating_sub(1);
             let field_name = anchor.field_name.clone().unwrap_or_else(|| {
                 normalize_field_label(
                     &runs[anchor.start..=anchor.end]
@@ -158,14 +167,21 @@ fn create_editable_segment(
 ) -> EditableSegment {
     let first_run = &text_model.runs[start];
     let run_indices: Vec<usize> = (start..=end).collect();
-    let text = run_indices.iter().map(|idx| text_model.runs[*idx].text.as_str()).collect::<String>();
-    let mut segment_right = first_run.tx + get_run_visible_glyph_width(first_run, text_model);
+    let text = run_indices
+        .iter()
+        .map(|idx| text_model.runs[*idx].text.as_str())
+        .collect::<String>();
+    let mut segment_right = first_run.tx + resolve_run_visible_glyph_width(first_run, text_model);
     for idx in (start + 1)..=end {
         let run = &text_model.runs[idx];
-        segment_right = segment_right.max(run.tx + get_run_visible_glyph_width(run, text_model));
+        segment_right =
+            segment_right.max(run.tx + resolve_run_visible_glyph_width(run, text_model));
     }
     let tx = first_run.tx;
-    let runs: Vec<&StyledRun> = run_indices.iter().map(|idx| &text_model.runs[*idx]).collect();
+    let runs: Vec<&StyledRun> = run_indices
+        .iter()
+        .map(|idx| &text_model.runs[*idx])
+        .collect();
     let has_all_origins = runs.iter().all(|run| !run.char_origins.is_empty());
     let char_origins = if has_all_origins {
         runs.iter()
@@ -175,14 +191,19 @@ fn create_editable_segment(
         Vec::new()
     };
     let char_widths = if runs.iter().all(|run| !run.char_widths.is_empty()) {
-        runs.iter().flat_map(|run| run.char_widths.iter().copied()).collect()
+        runs.iter()
+            .flat_map(|run| run.char_widths.iter().copied())
+            .collect()
     } else {
         Vec::new()
     };
-    let object_indices = run_indices.iter().map(|idx| text_model.runs[*idx].z_index).collect();
+    let object_indices = run_indices
+        .iter()
+        .map(|idx| text_model.runs[*idx].z_index)
+        .collect();
 
     EditableSegment {
-        key: get_segment_patch_key(&text_model.id, start, end),
+        key: resolve_segment_patch_key(&text_model.id, start, end),
         object_id: text_model.id.clone(),
         start_run_index: start,
         end_run_index: end,
@@ -199,7 +220,10 @@ fn create_editable_segment(
         char_spacing: first_run.char_spacing,
         scale_x: first_run.horizontal_scaling,
         color: first_run.color.clone(),
-        font_hints: first_run.font_hints.clone().or_else(|| text_model.font_hints.clone()),
+        font_hints: first_run
+            .font_hints
+            .clone()
+            .or_else(|| text_model.font_hints.clone()),
         object_indices,
         char_origins,
         char_widths,
@@ -208,20 +232,24 @@ fn create_editable_segment(
     }
 }
 
-fn build_contiguous_segments_in_range(text_model: &NativeTextModel, start: usize, end: usize) -> Vec<EditableSegment> {
+fn build_contiguous_segments_in_range(
+    text_model: &NativeTextModel,
+    start: usize,
+    end: usize,
+) -> Vec<EditableSegment> {
     let mut segments = Vec::new();
     let mut cursor = start;
     while cursor <= end {
         let first_run = &text_model.runs[cursor];
-        let style_signature = get_run_style_signature(first_run, text_model);
+        let style_signature = resolve_run_style_signature(first_run, text_model);
         let mut seg_end = cursor;
         while seg_end + 1 <= end {
             let next = &text_model.runs[seg_end + 1];
-            if get_run_style_signature(next, text_model) != style_signature {
+            if resolve_run_style_signature(next, text_model) != style_signature {
                 break;
             }
             let prev = &text_model.runs[seg_end];
-            let prev_visible_width = get_run_visible_glyph_width(prev, text_model);
+            let prev_visible_width = resolve_run_visible_glyph_width(prev, text_model);
             let expected_next_tx = prev.tx + prev_visible_width;
             let geometric_gap = next.tx - expected_next_tx;
             let visible_char_count = prev.text.chars().count().max(1) as f32;
@@ -240,13 +268,17 @@ fn build_contiguous_segments_in_range(text_model: &NativeTextModel, start: usize
 
 use crate::text::semantic_axiom::AxiomEngine;
 
-pub fn build_editable_segments(text_model: &NativeTextModel, page_height: f32) -> Vec<EditableSegment> {
+pub fn build_editable_segments(
+    text_model: &NativeTextModel,
+    page_height: f32,
+) -> Vec<EditableSegment> {
     if text_model.runs.is_empty() {
         return Vec::new();
     }
     let field_groups = build_field_groups(&text_model.runs);
     if field_groups.is_empty() {
-        let mut segments = build_contiguous_segments_in_range(text_model, 0, text_model.runs.len() - 1);
+        let mut segments =
+            build_contiguous_segments_in_range(text_model, 0, text_model.runs.len() - 1);
         for seg in &mut segments {
             seg.semantic_role = AxiomEngine::infer_role(seg, text_model, page_height);
         }
@@ -257,7 +289,11 @@ pub fn build_editable_segments(text_model: &NativeTextModel, page_height: f32) -
     let mut cursor = 0usize;
     for group in field_groups {
         if cursor < group.label.start {
-            segments.extend(build_contiguous_segments_in_range(text_model, cursor, group.label.start - 1));
+            segments.extend(build_contiguous_segments_in_range(
+                text_model,
+                cursor,
+                group.label.start - 1,
+            ));
         }
         let group_start = group.label.start;
         let group_end = group.label.end.max(group.value_end);
@@ -303,7 +339,8 @@ pub fn build_editable_segments(text_model: &NativeTextModel, page_height: f32) -
     }
 
     if cursor < text_model.runs.len() {
-        let mut tail_segments = build_contiguous_segments_in_range(text_model, cursor, text_model.runs.len() - 1);
+        let mut tail_segments =
+            build_contiguous_segments_in_range(text_model, cursor, text_model.runs.len() - 1);
         for seg in &mut tail_segments {
             seg.semantic_role = AxiomEngine::infer_role(seg, text_model, page_height);
         }

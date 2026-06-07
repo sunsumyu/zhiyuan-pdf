@@ -23,7 +23,7 @@ pub(crate) async fn ensure_document_loaded(
         }
     }
 
-    let working_path = PdfDocumentService::get_working_path(path);
+    let working_path = PdfDocumentService::resolve_working_path(path);
     let path_for_load = path.to_string();
     let loaded_doc = tokio::task::spawn_blocking(move || {
         crate::infrastructure::pdf::document_service::load_pdf_public(&working_path)
@@ -225,6 +225,10 @@ pub(crate) async fn execute_pdf_commands_with_app_state(
     drop(light_page_cache);
 
     let prefix = format!("{}::", save_path);
+    let mut intermediate_cache = app_state.cache.pdf_page_intermediate_cache.lock().unwrap();
+    intermediate_cache.retain(|key, _| !key.starts_with(&prefix));
+    drop(intermediate_cache);
+
     let mut page_cache = app_state.cache.pdf_page_cache.lock().unwrap();
     page_cache.retain(|key, _| !key.starts_with(&prefix));
     drop(page_cache);

@@ -1,4 +1,4 @@
-use crate::geometry::bbox_utils::bbox_intersects;
+use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRegion, GlyphPaintRun, PageState, StyledRun,
     VectorImageObject, VectorPathObject, VectorRenderObject, VectorTextObject,
@@ -126,8 +126,8 @@ pub fn path_object_bbox(path: &VectorPathObject) -> Option<BoundingBox> {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_page_viewport_bbox};
-    use crate::geometry::bbox_utils::bbox_intersects;
+    use super::resolve_page_viewport_bbox;
+    use crate::geometry::bbox_ops::bbox_intersects;
     use crate::models::{BoundingBox, PageState};
 
     #[test]

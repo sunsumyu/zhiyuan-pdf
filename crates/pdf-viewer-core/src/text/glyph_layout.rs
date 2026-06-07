@@ -13,8 +13,8 @@
 //! 本域的所有逻辑都假定输入的数据已经完全遵守了 `Y-Down` 的底线防线，这里不再干涉任何垂直 Y 维度的极性问题。
 
 use crate::models::{
-    ParagraphEditContext, FieldHitBatchRequest, FieldHitMatch, FieldHitRequest,
-    FieldHitResolution, FieldPartKind, LayoutRun,
+    FieldHitBatchRequest, FieldHitMatch, FieldHitRequest, FieldHitResolution, FieldPartKind,
+    LayoutRun, ParagraphEditContext,
 };
 use serde::{Deserialize, Serialize};
 
@@ -111,7 +111,28 @@ fn is_open_punctuation(ch: char) -> bool {
 }
 
 fn is_close_punctuation(ch: char) -> bool {
-    matches!(ch, ')' | ']' | '}' | '）' | '】' | '》' | '」' | '』' | ',' | '，' | '.' | '。' | ';' | '；' | ':' | '：' | '!' | '！' | '?' | '？')
+    matches!(
+        ch,
+        ')' | ']'
+            | '}'
+            | '）'
+            | '】'
+            | '》'
+            | '」'
+            | '』'
+            | ','
+            | '，'
+            | '.'
+            | '。'
+            | ';'
+            | '；'
+            | ':'
+            | '：'
+            | '!'
+            | '！'
+            | '?'
+            | '？'
+    )
 }
 
 fn should_allow_synthetic_gap(prev_last: char, next_first: char) -> bool {
@@ -187,11 +208,11 @@ pub fn infer_run_advance(run: &LayoutRun) -> f32 {
 }
 
 /// 提供在特定文本块落定某个 `caret_index` 逻辑光标位标时，预测其相对于包围盒左锚点的绝对 X 轴物理漂移。
-/// 
+///
 /// # Overview (架构机制)
 /// 传统的 HTML `<input>` 会自动管理光标渲染，但在基于 Canvas 和自绘引擎的混合编辑态架构中，
 /// 必须手动完成从 `String Index` 到 `Absolute Pixel` 的转化。
-/// 
+///
 /// 该方法内部使用前缀和 (Prefix Sum) 技巧逐游程消耗掉字符数，当命中目标游程内部时，
 /// 提取对应的原生物理 `char_origins` 做到 `O(N)` 像素级高精定位。
 pub fn compute_run_aware_caret_left(session: &ParagraphEditContext, caret_index: usize) -> f32 {
@@ -240,7 +261,10 @@ pub fn compute_run_aware_caret_left(session: &ParagraphEditContext, caret_index:
 /// # 算法策略
 /// 使用 `O(N)` 穷举所有游程及其包含的字元槽，维护最近距离 (Nearest Neighbor Euclidean Distance)。
 /// 由于 PDF 单段通常字符不超过 100~200，此处不引入基于二分查找或者 Quad-Tree 的过早优化。
-pub fn resolve_caret_index_for_click(session: &ParagraphEditContext, click_x_from_anchor_left: f32) -> usize {
+pub fn resolve_caret_index_for_click(
+    session: &ParagraphEditContext,
+    click_x_from_anchor_left: f32,
+) -> usize {
     let mut best_index = 0usize;
     let mut best_distance = f32::INFINITY;
     let mut consumed = 0usize;
@@ -265,10 +289,19 @@ pub fn resolve_caret_index_for_click(session: &ParagraphEditContext, click_x_fro
         for glyph_index in 1..=glyph_count {
             let glyph_x = if glyph_index >= glyph_count {
                 local_run_x
-                    + run.char_origins.last().copied().unwrap_or(((glyph_count - 1) as f32) * inferred_advance)
+                    + run
+                        .char_origins
+                        .last()
+                        .copied()
+                        .unwrap_or(((glyph_count - 1) as f32) * inferred_advance)
                     + inferred_advance
             } else {
-                local_run_x + run.char_origins.get(glyph_index).copied().unwrap_or((glyph_index as f32) * inferred_advance)
+                local_run_x
+                    + run
+                        .char_origins
+                        .get(glyph_index)
+                        .copied()
+                        .unwrap_or((glyph_index as f32) * inferred_advance)
             };
             update_best(glyph_x, consumed + glyph_index);
         }
@@ -347,33 +380,37 @@ fn rect_contains_point(
 pub fn resolve_field_hit_target_for_click(request: &FieldHitBatchRequest) -> Option<FieldHitMatch> {
     const HIT_TOLERANCE: f32 = 5.0;
 
-    request.targets.iter().enumerate().find_map(|(target_index, target)| {
-        if !rect_contains_point(
-            target.projection.text_box.left,
-            target.projection.text_box.top,
-            target.projection.text_box.width,
-            target.projection.text_box.height,
-            request.click_page_x,
-            request.click_page_y,
-            HIT_TOLERANCE,
-        ) {
-            return None;
-        }
+    request
+        .targets
+        .iter()
+        .enumerate()
+        .find_map(|(target_index, target)| {
+            if !rect_contains_point(
+                target.projection.text_box.left,
+                target.projection.text_box.top,
+                target.projection.text_box.width,
+                target.projection.text_box.height,
+                request.click_page_x,
+                request.click_page_y,
+                HIT_TOLERANCE,
+            ) {
+                return None;
+            }
 
-        let resolution = resolve_field_hit_for_click(&FieldHitRequest {
-            projection: target.projection.clone(),
-            editable_key_text: target.editable_key_text.clone(),
-            editable_value_text: target.editable_value_text.clone(),
-            click_page_x: request.click_page_x,
-            key_session: target.key_session.clone(),
-            value_session: target.value_session.clone(),
-        });
+            let resolution = resolve_field_hit_for_click(&FieldHitRequest {
+                projection: target.projection.clone(),
+                editable_key_text: target.editable_key_text.clone(),
+                editable_value_text: target.editable_value_text.clone(),
+                click_page_x: request.click_page_x,
+                key_session: target.key_session.clone(),
+                value_session: target.value_session.clone(),
+            });
 
-        Some(FieldHitMatch {
-            target_index,
-            resolution,
+            Some(FieldHitMatch {
+                target_index,
+                resolution,
+            })
         })
-    })
 }
 
 pub fn extract_decorative_prefix<F>(
@@ -387,7 +424,9 @@ where
         .paragraph
         .runs
         .iter()
-        .take_while(|run| is_decorative_text(&run.text) || looks_like_symbol_font(&run.style.font_name))
+        .take_while(|run| {
+            is_decorative_text(&run.text) || looks_like_symbol_font(&run.style.font_name)
+        })
         .count();
     if decorative_run_count == 0 {
         return None;
@@ -401,13 +440,21 @@ where
         .get(decorative_run_count)
         .map(|run| (run.origin_x - session.anchor_bbox.left).max(0.0))
         .unwrap_or_else(|| compute_run_aware_caret_left(session, char_len));
-    Some(DecorativePrefixLayout { text, char_len, width, runs })
+    Some(DecorativePrefixLayout {
+        text,
+        char_len,
+        width,
+        runs,
+    })
 }
 
 fn glyph_left(run: &LayoutRun, glyph_index: usize) -> f32 {
-    run.origin_x + run.char_origins.get(glyph_index).copied().unwrap_or_else(|| {
-        infer_run_advance(run) * glyph_index as f32
-    })
+    run.origin_x
+        + run
+            .char_origins
+            .get(glyph_index)
+            .copied()
+            .unwrap_or_else(|| infer_run_advance(run) * glyph_index as f32)
 }
 
 fn glyph_right(run: &LayoutRun, glyph_index: usize, glyph_count: usize) -> f32 {
@@ -540,7 +587,9 @@ fn line_contextual_run_delta(runs: &[&LayoutRun], run_index: usize) -> Option<f3
             .get(run_index + 1)
             .filter(|next| same_visual_line(target, next))
             .map(|next| next.origin_x - target.origin_x);
-        return prev_delta.or(next_delta).filter(|delta| delta.is_finite() && *delta > 0.0);
+        return prev_delta
+            .or(next_delta)
+            .filter(|delta| delta.is_finite() && *delta > 0.0);
     }
 
     deltas.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -601,7 +650,10 @@ pub fn build_editor_session_text_plan(session: &ParagraphEditContext) -> EditorS
         .collect();
     let mut text = String::new();
     let mut slots = Vec::new();
-    let raw_char_capacity = ordered_runs.iter().map(|run| run.text.chars().count()).sum::<usize>();
+    let raw_char_capacity = ordered_runs
+        .iter()
+        .map(|run| run.text.chars().count())
+        .sum::<usize>();
     let mut raw_to_reconstructed = Vec::with_capacity(raw_char_capacity + 1);
     raw_to_reconstructed.push(0);
     let mut reconstructed_to_raw = Vec::new();
@@ -639,8 +691,16 @@ pub fn build_editor_session_text_plan(session: &ParagraphEditContext) -> EditorS
         if run.char_origins.len() < 2 {
             let glyph_count = chars.len();
             for (glyph_index, ch) in chars.into_iter().enumerate() {
-                let left = if glyph_count == 1 { run.bbox.left } else { glyph_left(run, glyph_index) };
-                let right = if glyph_count == 1 { run.bbox.right } else { glyph_right(run, glyph_index, glyph_count) };
+                let left = if glyph_count == 1 {
+                    run.bbox.left
+                } else {
+                    glyph_left(run, glyph_index)
+                };
+                let right = if glyph_count == 1 {
+                    run.bbox.right
+                } else {
+                    glyph_right(run, glyph_index, glyph_count)
+                };
                 slots.push(EditorGlyphSlot {
                     kind: EditorGlyphSlotKind::Glyph,
                     ch,

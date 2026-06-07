@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use crate::infrastructure::pdf::models::NativeTextModel;
 use pdf_viewer_core::models::FontHints;
 use pdf_viewer_core::typography::engine::TypographyEngine;
 use pdf_viewer_core::typography::matcher::{
@@ -8,7 +8,7 @@ use pdf_viewer_core::typography::models::{
     PdfEmbeddedFontKind, PdfFontDescriptor, PdfFontMatchRequest, PdfFontSourceKind,
     ResolvedPdfFont, SystemFontCandidate,
 };
-use crate::infrastructure::pdf::models::NativeTextModel;
+use std::collections::{HashMap, HashSet};
 pub struct PdfSystemFontMatcher {
     candidates: Vec<SystemFontCandidate>,
     cache: HashMap<String, ResolvedPdfFont>,
@@ -16,8 +16,7 @@ pub struct PdfSystemFontMatcher {
     fallback_family: String,
 }
 impl PdfSystemFontMatcher {
-pub fn new(candidates: Vec<SystemFontCandidate>, fallback_family:
-impl Into<String>) -> Self {
+    pub fn new(candidates: Vec<SystemFontCandidate>, fallback_family: impl Into<String>) -> Self {
         Self {
             candidates,
             cache: HashMap::new(),
@@ -25,7 +24,7 @@ impl Into<String>) -> Self {
             fallback_family: fallback_family.into(),
         }
     }
-pub fn resolve(&mut self, pdf_font_name: &str, hints: Option<&FontHints>) -> ResolvedPdfFont {
+    pub fn resolve(&mut self, pdf_font_name: &str, hints: Option<&FontHints>) -> ResolvedPdfFont {
         let cache_key = build_cache_key(pdf_font_name, hints);
         if let Some(existing) = self.cache.get(&cache_key) {
             return existing.clone();
@@ -37,10 +36,10 @@ pub fn resolve(&mut self, pdf_font_name: &str, hints: Option<&FontHints>) -> Res
         self.cache.insert(cache_key, resolved.clone());
         resolved
     }
-pub fn candidate_count(&self) -> usize {
+    pub fn candidate_count(&self) -> usize {
         self.candidates.len()
     }
-pub fn resolve_native_text(&mut self, text: &NativeTextModel) -> ResolvedPdfFont {
+    pub fn resolve_native_text(&mut self, text: &NativeTextModel) -> ResolvedPdfFont {
         let cache_key = build_native_text_cache_key(text);
         if let Some(existing) = self.cache.get(&cache_key) {
             return existing.clone();
@@ -95,7 +94,7 @@ pub fn resolve_native_text(&mut self, text: &NativeTextModel) -> ResolvedPdfFont
         self.cache.insert(cache_key, resolved.clone());
         resolved
     }
-fn maybe_log_resolution(
+    fn maybe_log_resolution(
         &mut self,
         cache_key: &str,
         pdf_font_name: &str,
@@ -199,11 +198,11 @@ fn map_embedded_font_kind(subtype: Option<&str>) -> Option<PdfEmbeddedFontKind> 
 
 #[cfg(test)]
 mod tests {
-use super::*;
-use crate::infrastructure::pdf::models::NativeTextModel;
+    use super::*;
+    use crate::infrastructure::pdf::models::NativeTextModel;
 
     #[test]
-fn matcher_caches_resolved_font() {
+    fn matcher_caches_resolved_font() {
         let candidate = SystemFontCandidate {
             family_name: "SimSun".to_string(),
             coverage_score: 40,
@@ -220,7 +219,7 @@ fn matcher_caches_resolved_font() {
     }
 
     #[test]
-fn matcher_resolves_native_text_with_descriptor_cache() {
+    fn matcher_resolves_native_text_with_descriptor_cache() {
         let candidate = SystemFontCandidate {
             family_name: "Microsoft YaHei".to_string(),
             full_name: Some("Microsoft YaHei".to_string()),

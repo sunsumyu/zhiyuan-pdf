@@ -2,17 +2,17 @@ use lopdf::{Document, Object};
 
 #[derive(Debug, Clone)]
 pub struct StoredPdfHighlight {
-pub id: String,
-pub rect: [f32; 4],
-pub color: [f32; 3],
+    pub id: String,
+    pub rect: [f32; 4],
+    pub color: [f32; 3],
 }
 
 #[derive(Debug, Clone)]
 pub struct StoredPdfComment {
-pub id: String,
-pub rect: [f32; 4],
-pub color: [f32; 3],
-pub contents: String,
+    pub id: String,
+    pub rect: [f32; 4],
+    pub color: [f32; 3],
+    pub contents: String,
 }
 pub fn read_page_highlights(
     doc: &Document,

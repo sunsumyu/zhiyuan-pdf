@@ -13,9 +13,7 @@ thread_local! {
         RefCell::new(HostRenderLoopState::default());
 }
 
-pub fn queue_render_loop_frame(
-    frame: Option<RenderFrameEnvelope>,
-) -> Option<RenderFrameEnvelope> {
+pub fn queue_render_loop_frame(frame: Option<RenderFrameEnvelope>) -> Option<RenderFrameEnvelope> {
     RENDER_LOOP_STATE.with(|state| {
         let mut state = state.borrow_mut();
         if let Some(frame) = frame {

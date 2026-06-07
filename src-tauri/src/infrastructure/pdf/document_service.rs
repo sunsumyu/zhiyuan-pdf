@@ -1,15 +1,14 @@
 use crate::infrastructure::pdf::models::PdfModifications;
 use crate::infrastructure::pdf::pdf_read_service::PdfReadService;
+use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan;
 use crate::infrastructure::pdf_read::backend::PdfReadBackend;
 use crate::infrastructure::pdf_read::scanned_backend::ScannedReadBackend;
-use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan;
-use crate::log_step;
+use lazy_static::lazy_static;
 use lopdf::Document;
 use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
-use lazy_static::lazy_static;
 
 use super::cache::{
     invalidate_pdf_layout_cache, invalidate_pdf_light_page_cache, invalidate_pdf_page_cache,
@@ -35,15 +34,15 @@ fn release_working_copy(path: &str) {
 
     if let Some(working_path) = working_path {
         let _ = fs::remove_file(&working_path);
-        log_step!("[PDF][Release] Removed working copy for {}", path);
+        crate::log_step!("[PDF][Release] Removed working copy for {}", path);
     }
 }
 
 pub struct PdfDocumentService;
 
 impl PdfDocumentService {
-    pub(crate) fn get_working_path(original_path: &str) -> String {
-        PdfReadService::get_working_path(original_path)
+    pub(crate) fn resolve_working_path(original_path: &str) -> String {
+        PdfReadService::resolve_working_path(original_path)
     }
 
     pub fn release_pdf_resources(state: &crate::AppState, path: &str) {
@@ -82,7 +81,7 @@ impl PdfDocumentService {
         }
 
         release_working_copy(path);
-        log_step!("[PDF][Release] Released PDF resources for {}", path);
+        crate::log_step!("[PDF][Release] Released PDF resources for {}", path);
     }
 
     pub fn release_all_pdf_resources(state: &crate::AppState) {
@@ -101,6 +100,10 @@ impl PdfDocumentService {
         }
         {
             let mut page_cache = state.cache.pdf_light_page_cache.lock().unwrap();
+            page_cache.clear();
+        }
+        {
+            let mut page_cache = state.cache.pdf_page_intermediate_cache.lock().unwrap();
             page_cache.clear();
         }
         {
@@ -142,7 +145,7 @@ impl PdfDocumentService {
             reports.clear();
         }
 
-        log_step!("[PDF][Release] Released all PDF resources");
+        crate::log_step!("[PDF][Release] Released all PDF resources");
     }
 
     pub async fn open_pdf(
@@ -150,21 +153,19 @@ impl PdfDocumentService {
         state: tauri::State<'_, crate::AppState>,
         path: &str,
     ) -> Result<usize, String> {
-        crate::prof_span!("open_pdf_fast");
-        log_step!("[PDF][open_pdf][de-pdfium-trace] START for {}", path);
-        log_step!("[PDF][open_pdf][de-pdfium-step1] OPEN for {}", path);
-        let total_start = std::time::Instant::now();
-
         // 1. Check cache
         {
             let cache = state.docs.pdf_documents.lock().unwrap();
             if let Some(doc) = cache.get(path) {
-                log_step!("[PDF][open_pdf] Cache HIT (Arc).");
+                crate::pdf_log!(2, "[PDF][open_pdf] Cache HIT (Arc).");
                 let lopdf_count = doc.get_pages().len();
                 if lopdf_count > 0 {
                     return Ok(lopdf_count);
                 }
-                log_step!("[PDF][open_pdf] Cache HIT but lopdf returned 0 pages, querying pdf-rs.");
+                crate::pdf_log!(
+                    2,
+                    "[PDF][open_pdf] Cache HIT but lopdf returned 0 pages, querying pdf-rs."
+                );
             }
         }
 
@@ -175,11 +176,9 @@ impl PdfDocumentService {
 
         let path_for_load = path.to_string();
         let load_start = std::time::Instant::now();
-        let doc = tokio::task::spawn_blocking(move || {
-            load_pdf_lenient(&path_for_load)
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let doc = tokio::task::spawn_blocking(move || load_pdf_lenient(&path_for_load))
+            .await
+            .map_err(|e| e.to_string())??;
         let load_elapsed = load_start.elapsed();
         let lopdf_count = doc.get_pages().len();
 
@@ -192,12 +191,17 @@ impl PdfDocumentService {
             loading.remove(path);
         }
 
-        log_step!("[PDF][open_pdf] lopdf load+count took {:?} pages={}", load_elapsed, lopdf_count);
+        crate::pdf_log!(
+            2,
+            "[PDF][open_pdf] lopdf load+count took {:?} pages={}",
+            load_elapsed,
+            lopdf_count
+        );
 
         let count = if lopdf_count > 0 {
             lopdf_count
         } else {
-            log_step!("[PDF][open_pdf][FALLBACK] lopdf returned 0 pages, trying pdf-rs (ScannedReadBackend) for path={}", path);
+            crate::log_step!("[PDF][open_pdf][FALLBACK] lopdf returned 0 pages, trying pdf-rs (ScannedReadBackend) for path={}", path);
             let path_for_pdfrs = path.to_string();
             let pdfrs_result = tokio::task::spawn_blocking(move || {
                 ScannedReadBackend::new().open(&path_for_pdfrs)
@@ -207,11 +211,14 @@ impl PdfDocumentService {
 
             match pdfrs_result {
                 Ok(meta) => {
-                    log_step!("[PDF][open_pdf][FALLBACK] pdf-rs SUCCESS: page_count={}", meta.page_count);
+                    crate::log_step!(
+                        "[PDF][open_pdf][FALLBACK] pdf-rs SUCCESS: page_count={}",
+                        meta.page_count
+                    );
                     meta.page_count
                 }
                 Err(err) => {
-                    log_step!("[PDF][open_pdf][FALLBACK] pdf-rs FAILED: {}", err);
+                    crate::log_step!("[PDF][open_pdf][FALLBACK] pdf-rs FAILED: {}", err);
                     return Err(format!(
                         "Both lopdf and pdf-rs failed to read pages. lopdf returned 0 pages; pdf-rs error: {}",
                         err
@@ -220,8 +227,6 @@ impl PdfDocumentService {
             }
         };
 
-        log_step!("[PDF][open_pdf] Returning Page Count: {}", count);
-        log_step!("[PDF][open_pdf] TOTAL {:?}", total_start.elapsed());
         Ok(count)
     }
 
@@ -230,8 +235,9 @@ impl PdfDocumentService {
         path: &str,
         modifications: PdfModifications,
     ) -> Result<(), String> {
-        log_step!("[PDF][save_pdf][V206.77] START for {}", path);
-        log_step!(
+        crate::pdf_log!(2, "[PDF][save_pdf][V206.77] START for {}", path);
+        crate::pdf_log!(
+            2,
             "[PDF][save_pdf][REGION_PATCHES] region_patches={} text_reflows={}",
             modifications.region_patches.len(),
             modifications.text_reflows.len()
@@ -246,7 +252,8 @@ impl PdfDocumentService {
             modifications.text_reflows.len(),
         );
         let effective_text_reflows = materialization_plan.effective_text_reflows;
-        log_step!(
+        crate::pdf_log!(
+            2,
             "[PDF][save_pdf][MATERIALIZED] effective_text_reflows={}",
             effective_text_reflows.len()
         );
@@ -260,7 +267,8 @@ impl PdfDocumentService {
             .iter()
             .filter(|d| d.status == "skipped")
             .count();
-        log_step!(
+        crate::pdf_log!(
+            2,
             "[PDF][save_pdf][MATERIALIZE_REPORT] decisions={} materialized={} skipped={}",
             materialization_plan.decisions.len(),
             materialized_count,
@@ -276,7 +284,8 @@ impl PdfDocumentService {
             }
         }
         for (source, (ok_count, skip_count)) in by_source {
-            log_step!(
+            crate::pdf_log!(
+                2,
                 "[PDF][save_pdf][MATERIALIZE_REPORT][SOURCE] source={} materialized={} skipped={}",
                 source,
                 ok_count,
@@ -288,7 +297,8 @@ impl PdfDocumentService {
             .iter()
             .filter(|d| d.status == "skipped")
         {
-            log_step!(
+            crate::pdf_log!(
+                2,
                 "[PDF][save_pdf][MATERIALIZE_REPORT][SKIP] region_id={} source={} reason={}",
                 decision.region_id,
                 decision.source,
@@ -296,14 +306,14 @@ impl PdfDocumentService {
             );
         }
 
-        let working_path = Self::get_working_path(path);
+        let working_path = Self::resolve_working_path(path);
         let doc = {
             let mut cache = state.docs.pdf_documents.lock().unwrap();
             if let Some(d) = cache.get(path) {
                 d.clone()
             } else {
-                let d =
-                    Document::load(&working_path).map_err(|e| format!("Lopdf Load Error: {}", e))?;
+                let d = Document::load(&working_path)
+                    .map_err(|e| format!("Lopdf Load Error: {}", e))?;
                 let d_arc = std::sync::Arc::new(d);
                 cache.insert(path.to_string(), d_arc.clone());
                 d_arc
@@ -365,7 +375,7 @@ impl PdfDocumentService {
         state: tauri::State<'_, crate::AppState>,
         path: &str,
     ) -> Result<(), String> {
-        log_step!("[PDF][rollback] Request for {}", path);
+        crate::log_step!("[PDF][rollback] Request for {}", path);
         let mut tx_cache = state.history.pdf_transactions.lock().unwrap();
         let mut redo_cache = state.history.pdf_redo_transactions.lock().unwrap();
         let mut doc_cache = state.docs.pdf_documents.lock().unwrap();
@@ -387,7 +397,7 @@ impl PdfDocumentService {
                 invalidate_pdf_light_page_cache(&state, path);
                 invalidate_pdf_page_cache(&state, path);
                 invalidate_pdf_layout_cache(&state, path);
-                log_step!(
+                crate::log_step!(
                     "[PDF][rollback] Restored from transaction snapshot and saved to disk. Remaining history: {}",
                     history.len()
                 );
@@ -397,8 +407,11 @@ impl PdfDocumentService {
         Err("No transaction history to rollback".to_string())
     }
 
-    pub async fn redo_pdf(state: tauri::State<'_, crate::AppState>, path: &str) -> Result<(), String> {
-        log_step!("[PDF][redo] Request for {}", path);
+    pub async fn redo_pdf(
+        state: tauri::State<'_, crate::AppState>,
+        path: &str,
+    ) -> Result<(), String> {
+        crate::log_step!("[PDF][redo] Request for {}", path);
         let mut tx_cache = state.history.pdf_transactions.lock().unwrap();
         let mut redo_cache = state.history.pdf_redo_transactions.lock().unwrap();
         let mut doc_cache = state.docs.pdf_documents.lock().unwrap();
@@ -420,7 +433,7 @@ impl PdfDocumentService {
                 invalidate_pdf_light_page_cache(&state, path);
                 invalidate_pdf_page_cache(&state, path);
                 invalidate_pdf_layout_cache(&state, path);
-                log_step!(
+                crate::log_step!(
                     "[PDF][redo] Restored redo snapshot and saved to disk. Remaining redo: {}",
                     redo_history.len()
                 );
@@ -450,41 +463,59 @@ fn load_pdf_lenient(path: &str) -> Result<Document, String> {
     // Strategy 1: Direct file load
     match Document::load(path) {
         Ok(doc) => {
-            log_step!("[PDF][load_lenient] Strategy 1 (direct load) SUCCESS for {}", path);
+            crate::log_step!(
+                "[PDF][load_lenient] Strategy 1 (direct load) SUCCESS for {}",
+                path
+            );
             return Ok(doc);
         }
         Err(e) => {
-            log_step!("[PDF][load_lenient] Strategy 1 (direct load) FAILED: {} - trying fallbacks", e);
+            crate::log_step!(
+                "[PDF][load_lenient] Strategy 1 (direct load) FAILED: {} - trying fallbacks",
+                e
+            );
         }
     }
 
     // Read raw bytes for subsequent strategies
-    let raw_bytes = fs::read(path)
-        .map_err(|e| format!("Cannot read PDF file {}: {}", path, e))?;
+    let raw_bytes = fs::read(path).map_err(|e| format!("Cannot read PDF file {}: {}", path, e))?;
 
     if raw_bytes.len() < 8 {
-        return Err(format!("PDF file too small ({} bytes): {}", raw_bytes.len(), path));
+        return Err(format!(
+            "PDF file too small ({} bytes): {}",
+            raw_bytes.len(),
+            path
+        ));
     }
 
     // Strategy 2: Load from memory (bypasses file I/O quirks)
     match Document::load_mem(&raw_bytes) {
         Ok(doc) => {
-            log_step!("[PDF][load_lenient] Strategy 2 (load_mem) SUCCESS for {}", path);
+            crate::log_step!(
+                "[PDF][load_lenient] Strategy 2 (load_mem) SUCCESS for {}",
+                path
+            );
             return Ok(doc);
         }
         Err(e) => {
-            log_step!("[PDF][load_lenient] Strategy 2 (load_mem) FAILED: {} - trying repair", e);
+            crate::log_step!(
+                "[PDF][load_lenient] Strategy 2 (load_mem) FAILED: {} - trying repair",
+                e
+            );
         }
     }
 
     // Strategy 3: Repair trailer and retry
     match repair_and_load(&raw_bytes) {
         Ok(doc) => {
-            log_step!("[PDF][load_lenient] Strategy 3 (repair) SUCCESS for {}", path);
+            crate::log_step!(
+                "[PDF][load_lenient] Strategy 3 (repair) SUCCESS for {}",
+                path
+            );
             return Ok(doc);
         }
         Err(e) => {
-            log_step!("[PDF][load_lenient] Strategy 3 (repair) FAILED: {}", e);
+            crate::log_step!("[PDF][load_lenient] Strategy 3 (repair) FAILED: {}", e);
         }
     }
 
@@ -500,11 +531,14 @@ fn repair_and_load(raw: &[u8]) -> Result<Document, String> {
     // Strategy 3a: Trim trailing garbage after %%EOF
     if let Some(eof_pos) = content.rfind("%%EOF") {
         let trimmed_end = eof_pos + 5; // "%%EOF".len()
-        // Skip any trailing newlines
+                                       // Skip any trailing newlines
         let trimmed_end = raw.len().min(trimmed_end + 2);
         if trimmed_end < raw.len() {
             let trimmed = &raw[..trimmed_end];
-            log_step!("[PDF][repair] Trimming {} trailing bytes after %%EOF", raw.len() - trimmed_end);
+            crate::log_step!(
+                "[PDF][repair] Trimming {} trailing bytes after %%EOF",
+                raw.len() - trimmed_end
+            );
             if let Ok(doc) = Document::load_mem(trimmed) {
                 return Ok(doc);
             }
@@ -514,7 +548,12 @@ fn repair_and_load(raw: &[u8]) -> Result<Document, String> {
     // Strategy 3b: Find startxref and verify the offset points to valid xref/obj
     if let Some(startxref_pos) = content.rfind("startxref") {
         let after_startxref = &content[startxref_pos + 9..];
-        let offset_str = after_startxref.trim_start().lines().next().unwrap_or("").trim();
+        let offset_str = after_startxref
+            .trim_start()
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim();
         if let Ok(xref_offset) = offset_str.parse::<usize>() {
             // Verify the offset is within file bounds
             if xref_offset < raw.len() {
@@ -523,9 +562,16 @@ fn repair_and_load(raw: &[u8]) -> Result<Document, String> {
                 // Try scanning backwards for an earlier valid xref
                 if !at_offset.starts_with("xref") && !at_offset.contains("obj") {
                     // The startxref offset is wrong - try to find actual xref location
-                    if let Some(real_xref) = content.rfind("\nxref\n").or_else(|| content.rfind("\nxref\r")) {
+                    if let Some(real_xref) = content
+                        .rfind("\nxref\n")
+                        .or_else(|| content.rfind("\nxref\r"))
+                    {
                         let real_offset = real_xref + 1; // skip the leading newline
-                        log_step!("[PDF][repair] Fixing startxref from {} to {}", xref_offset, real_offset);
+                        crate::log_step!(
+                            "[PDF][repair] Fixing startxref from {} to {}",
+                            xref_offset,
+                            real_offset
+                        );
                         let mut repaired = raw.to_vec();
                         let new_startxref = format!("startxref\n{}\n%%EOF\n", real_offset);
                         // Replace from startxref_pos to end
@@ -552,7 +598,10 @@ fn repair_and_load(raw: &[u8]) -> Result<Document, String> {
                 // Walk backwards to find the "N N obj" header
                 let before = &content[..pos];
                 if let Some(obj_line_start) = before.rfind('\n') {
-                    let candidate_start = before[..obj_line_start].rfind('\n').map(|p| p + 1).unwrap_or(0);
+                    let candidate_start = before[..obj_line_start]
+                        .rfind('\n')
+                        .map(|p| p + 1)
+                        .unwrap_or(0);
                     let obj_header = &before[candidate_start..obj_line_start];
                     if obj_header.trim().ends_with("obj") {
                         last_xref_stream_pos = Some(candidate_start);

@@ -24,9 +24,7 @@ pub fn chars_to_text(chars: Vec<char>) -> String {
     chars.into_iter().collect()
 }
 
-pub fn resolve_document_state(
-    state: &LiveEditorParagraphState,
-) -> EditorResolvedDocumentState {
+pub fn resolve_document_state(state: &LiveEditorParagraphState) -> EditorResolvedDocumentState {
     let source_text = state.source_text().to_string();
     let current_text = state.current_text().to_string();
     let current_chars: Vec<char> = current_text.chars().collect();

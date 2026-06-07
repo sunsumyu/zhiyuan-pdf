@@ -4,7 +4,7 @@ use crate::document::mutation_pipeline::request_document_refresh;
 use crate::editor::editor_controller::build_region_text_patch;
 use crate::present::plan_builder::FramePlanRequest;
 use crate::render::workflow::RenderFrameEnvelope;
-use crate::state_manager::apply_patch_with_history;
+use crate::ui_state_store::apply_patch_with_history;
 use pdf_viewer_core::text::search_replace::{replace_query_matches, SearchReplaceOptions};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

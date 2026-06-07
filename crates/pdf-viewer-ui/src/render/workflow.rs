@@ -68,7 +68,7 @@ pub fn settle_render_frame_inner(
 
     RenderFrameTransition {
         accepted,
+        settled_frame_plan: None,
         next_frame,
     }
 }
-

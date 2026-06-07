@@ -1,6 +1,6 @@
 use crate::editor::bridge::ParagraphInteractionTarget;
-use crate::editor::mode::get_active_editor_state;
 use crate::editor::editor_controller::collect_paragraph_targets;
+use crate::editor::mode::read_active_editor_state;
 use pdf_viewer_core::geometry::coordinate_transform::PdfToPageViewTransform;
 use serde::{Deserialize, Serialize};
 
@@ -93,7 +93,7 @@ pub fn project_active_editor_shell(
 ) -> Option<ProjectedEditorShell> {
     let zoom = sanitize_display_zoom(display_zoom);
     let transform = PdfToPageViewTransform::new(page_height);
-    let active_state = get_active_editor_state()?;
+    let active_state = read_active_editor_state()?;
     let caret_index = active_state.normalized_caret_index();
     let draft_text = active_state.current_text().to_string();
     let target = active_state.target;

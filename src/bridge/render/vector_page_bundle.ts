@@ -1,6 +1,10 @@
 import { getWasmApi, targetInvokeV3 } from '../shared/wasm_loader';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 import { logPdfLayoutTrace } from './layout_trace';
+import { createPagePresentationRuntimeAdapter } from '../viewer/page_presentation_runtime';
+import { createViewerSessionAdapter } from '../viewer/viewer_session';
+import type { PagePresentationRuntimeAdapter } from '../viewer/page_presentation_runtime';
+import type { ViewerSessionAdapter } from '../viewer/viewer_session';
 
 export type VectorPageBundle = {
     path: string;
@@ -15,8 +19,24 @@ type VectorPageBundleResolution = {
     bundleChanged: boolean;
 };
 
-const PAGE_CACHE_MAX = 5;
+const PAGE_CACHE_MAX = 15;
 const pageBundleCache: VectorPageBundle[] = [];
+let pagePresentationRuntime: PagePresentationRuntimeAdapter = createPagePresentationRuntimeAdapter({
+    getWasmApi: () => getWasmApi() as any,
+});
+let viewerSession: ViewerSessionAdapter = createViewerSessionAdapter({
+    getWasmApi: () => getWasmApi() as any,
+    getFallbackPageWidth: () => 595,
+    getFallbackPageHeight: () => 842,
+});
+
+export function configureVectorPageBundleRuntime(deps: {
+    pagePresentationRuntime: PagePresentationRuntimeAdapter;
+    viewerSession: ViewerSessionAdapter;
+}): void {
+    pagePresentationRuntime = deps.pagePresentationRuntime;
+    viewerSession = deps.viewerSession;
+}
 
 function isFrameCurrent(frameToken?: number): boolean {
     if (frameToken === undefined || !Number.isFinite(frameToken)) return true;
@@ -36,6 +56,26 @@ function getCurrentPageIndex(): number | null {
         }
     } catch {}
     return null;
+}
+
+function resolveAssetRole(pageIndex: number, frameToken?: number, explicitRole?: 'current' | 'prefetch'): 'current' | 'prefetch' {
+    if (explicitRole) return explicitRole;
+    if (frameToken !== undefined && Number.isFinite(frameToken)) return 'current';
+    return getCurrentPageIndex() === pageIndex ? 'current' : 'prefetch';
+}
+
+function admitPageAsset(pageIndex: number, role: 'current' | 'prefetch', assetKind: string, node: string): boolean {
+    const decision = pagePresentationRuntime.admitPageAsset(pageIndex, role, assetKind);
+    if (!decision.accepted) {
+        logPdfLayoutTrace(node, {
+            pageIndex,
+            role,
+            assetKind,
+            rejectReason: decision.rejectReason,
+            snapshot: decision.snapshot,
+        });
+    }
+    return decision.accepted;
 }
 
 function findCachedBundle(path: string, pageIndex: number): VectorPageBundle | null {
@@ -131,6 +171,7 @@ async function loadImageCacheMapForPage(
     modelObjects: any[],
     frameToken?: number,
     pageIndex?: number,
+    assetRole: 'current' | 'prefetch' = 'current',
 ): Promise<Map<string, HTMLImageElement>> {
     const imageCacheMap = new Map<string, HTMLImageElement>();
     const imageObjects = modelObjects.filter((o: any) => {
@@ -148,8 +189,7 @@ async function loadImageCacheMapForPage(
                         return;
                     }
                     if (pageIndex !== undefined) {
-                        const currentPage = getCurrentPageIndex();
-                        if (currentPage !== null && Math.abs(currentPage - pageIndex) > 1) {
+                        if (!admitPageAsset(pageIndex, assetRole, 'imageCache', 'page-bundle.image-cache.rejected')) {
                             resolve();
                             return;
                         }
@@ -173,6 +213,7 @@ export async function resolveVectorPageBundle(
     path: string,
     pageIndex: number,
     frameToken?: number,
+    explicitRole?: 'current' | 'prefetch',
 ): Promise<VectorPageBundleResolution> {
     const cached = findCachedBundle(path, pageIndex);
     if (cached) {
@@ -191,23 +232,30 @@ export async function resolveVectorPageBundle(
             pageIndex,
             cacheSize: pageBundleCache.length,
         });
-        const [model, paintPlan] = await Promise.all([
-            targetInvokeV3('read_vector', {
-                path,
-                pageIndex,
-                targetZoom: 1.0,
-            }),
-            targetInvokeV3('read_glyph_plan', { path, pageIndex }),
-        ]);
 
-        // Early-Abort check after IPC returns
-        if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
-            console.log(`[PDF-DIAG] Aborting bundle load for page ${pageIndex} due to stale frame`);
+        const assetRole = resolveAssetRole(pageIndex, frameToken, explicitRole);
+
+        // Rust owns page asset admission. TS keeps only the interrupt point.
+        if (!admitPageAsset(pageIndex, assetRole, 'vectorModel', 'page-bundle.load.rejected.before-ipc')) {
             throw new Error('stale frame');
         }
-        const currentPage = getCurrentPageIndex();
-        if (currentPage !== null && Math.abs(currentPage - pageIndex) > 1) {
-            console.log(`[PDF-DIAG] Aborting prefetch/load for page ${pageIndex} because currentPage is ${currentPage}`);
+
+        const pageAssetBundle = await targetInvokeV3('read_page_asset_bundle', {
+            path,
+            pageIndex,
+            targetZoom: 1.0,
+            requestRole: assetRole,
+            documentRevision: viewerSession.read().documentRevision,
+        });
+        const model = pageAssetBundle?.model;
+        const paintPlan = pageAssetBundle?.paintPlan;
+
+        // Preemption guard after IPC returns.
+        if (!admitPageAsset(pageIndex, assetRole, 'paintPlan', 'page-bundle.load.rejected.after-ipc')) {
+            throw new Error('stale frame');
+        }
+        if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
+            console.log(`[PDF-DIAG] Aborting bundle load for page ${pageIndex} due to stale frame`);
             throw new Error('stale frame');
         }
 
@@ -217,9 +265,15 @@ export async function resolveVectorPageBundle(
             const typeLower = String(o?.type).toLowerCase();
             return typeLower === 'image' && o?.dataUrl;
         });
+
+        // Preemption guard before image cache loading.
+        if (!admitPageAsset(pageIndex, assetRole, 'imageCache', 'page-bundle.load.rejected.before-images')) {
+            throw new Error('stale frame');
+        }
+
         const imageCacheMap = hasInlineImages
             ? new Map<string, HTMLImageElement>()
-            : await loadImageCacheMapForPage(modelObjects, frameToken, pageIndex);
+            : await loadImageCacheMapForPage(modelObjects, frameToken, pageIndex, assetRole);
 
         if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
             throw new Error('stale frame');
@@ -231,7 +285,7 @@ export async function resolveVectorPageBundle(
             acc[t] = (acc[t] || 0) + 1;
             return acc;
         }, {} as Record<string, number>);
-        console.log('[PDF-DIAG] read_vector result:', {
+        logPdfLayoutTrace('page-bundle.asset-result', {
             pageIndex,
             objectCount: modelObjects.length,
             types: objTypes,
@@ -272,7 +326,7 @@ export async function resolveVectorPageBundle(
                 const paragraphCount = Array.isArray(paintPlan?.regions)
                     ? paintPlan.regions.reduce((acc: number, r: any) => acc + (Array.isArray(r?.paragraphs) ? r.paragraphs.length : 0), 0)
                     : 0;
-                console.log('[EDITOR-DIAG] page-bundle.wasm-hydrated', {
+                logPdfLayoutTrace('page-bundle.wasm-hydrated', {
                     pageIndex,
                     regionCount,
                     paragraphCount,
@@ -317,15 +371,28 @@ export async function resolveVectorPageBundle(
 
 /** Prefetch adjacent page bundles in background (non-blocking). */
 export function prefetchAdjacentPages(path: string, currentPage: number, pageCount: number): void {
-    const targets: number[] = [];
-    if (currentPage + 1 < pageCount) targets.push(currentPage + 1);
-    if (currentPage - 1 >= 0) targets.push(currentPage - 1);
+    const decision = pagePresentationRuntime.decideAdjacentPrefetch(currentPage, pageCount);
+    if (!decision.allowed) {
+        logPdfLayoutTrace('page-bundle.prefetch.rejected', {
+            path,
+            currentPage,
+            pageCount,
+            rejectReason: decision.rejectReason,
+            snapshot: decision.snapshot,
+        });
+        return;
+    }
 
-    for (const target of targets) {
-        if (findCachedBundle(path, target)) continue;
+    for (const target of decision.targets) {
+        if (findCachedBundle(path, target.pageIndex)) continue;
         // Fire and forget — don't block current render
-        resolveVectorPageBundle(path, target).catch(() => {});
+        resolveVectorPageBundle(path, target.pageIndex, undefined, 'prefetch').catch(() => {});
     }
 }
+
+export function isPageBundleCached(path: string, pageIndex: number): boolean {
+    return pageBundleCache.some(b => b.path === path && b.pageIndex === pageIndex);
+}
+
 
 

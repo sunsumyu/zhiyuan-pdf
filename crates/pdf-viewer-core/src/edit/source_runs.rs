@@ -1,13 +1,13 @@
 use crate::models::{
-    BoundingBox, ParagraphEditContext, GlyphPaintParagraph, GlyphPaintRun, LayoutRun, StyledRun,
+    BoundingBox, GlyphPaintParagraph, GlyphPaintRun, LayoutRun, ParagraphEditContext, StyledRun,
     VectorPageModel, VectorRenderObject,
 };
 
-use crate::geometry::source_geometry::{source_run_visual_bbox, source_visual_bbox_from_runs};
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::geometry::bbox_utils::{bbox_height, bbox_width};
+use crate::geometry::bbox_ops::{bbox_height, bbox_width};
+use crate::geometry::source_geometry::{source_run_visual_bbox, source_visual_bbox_from_runs};
 use crate::utils::debug::truncate_debug_text;
 
 pub fn original_paint_runs_for_target(
@@ -201,10 +201,7 @@ pub fn resolve_preferred_editor_session(
                     anchor_bbox.left, anchor_bbox.top, anchor_bbox.right, anchor_bbox.bottom
                 ),
             ),
-            dbg_field(
-                "runSummary",
-                summarize_layout_runs(&paragraph_layout.runs),
-            ),
+            dbg_field("runSummary", summarize_layout_runs(&paragraph_layout.runs)),
         ],
     );
 
@@ -276,7 +273,6 @@ fn resolve_vector_model_runs_by_object_id(
         Some(exact_runs)
     }
 }
-
 
 fn bbox_intersection_width(a: BoundingBox, b: BoundingBox) -> f32 {
     (a.right.min(b.right) - a.left.max(b.left)).max(0.0)

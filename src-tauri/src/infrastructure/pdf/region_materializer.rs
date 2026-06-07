@@ -1,26 +1,25 @@
-use std::collections::HashMap;
-use serde_json::Value;
 use crate::infrastructure::pdf::models::{
     PdfMaterializationDecisionReport, PdfMaterializationReport, PdfMaterializationSourceStats,
     PersistableRegionPatch, TextReflowPatch,
 };
-use crate::log_step;
+use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct RegionMaterializationDecision {
-pub region_id: String,
-pub source: String,
-pub status: &'static str,
-pub reason: String,
+    pub region_id: String,
+    pub source: String,
+    pub status: &'static str,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct RegionMaterializationPlan {
-pub effective_text_reflows: Vec<TextReflowPatch>,
-pub decisions: Vec<RegionMaterializationDecision>,
+    pub effective_text_reflows: Vec<TextReflowPatch>,
+    pub decisions: Vec<RegionMaterializationDecision>,
 }
 impl RegionMaterializationPlan {
-pub fn to_report(
+    pub fn to_report(
         &self,
         path: &str,
         region_patch_count: usize,
@@ -266,7 +265,7 @@ fn materialize_field_row_patch_to_text_reflow(
             patch.group_id.as_deref().unwrap_or("-"),
             patch.target_indices.len()
         );
-        log_step!(
+        crate::log_step!(
             "[PDF][materialize][field-row][skip] region_id={} reason={}",
             patch.region_id,
             reason
@@ -347,7 +346,7 @@ fn materialize_paragraph_patch_to_text_reflow(
             snapshot_style_runs_len(&patch.snapshot),
             !patch.new_text.trim().is_empty()
         );
-        log_step!(
+        crate::log_step!(
             "[PDF][materialize][paragraph][skip] region_id={} reason={}",
             patch.region_id,
             reason
@@ -421,7 +420,7 @@ fn materialize_list_item_patch_to_text_reflow(
             snapshot_style_runs_len(&patch.snapshot),
             !patch.new_text.trim().is_empty()
         );
-        log_step!(
+        crate::log_step!(
             "[PDF][materialize][list-item][skip] region_id={} reason={}",
             patch.region_id,
             reason
@@ -498,7 +497,7 @@ fn materialize_region_patch_to_text_reflow(
 ) -> (Vec<TextReflowPatch>, RegionMaterializationDecision) {
     match patch.source.as_str() {
         "field-row" => {
-            log_step!(
+            crate::log_step!(
                 "[PDF][materialize][field-row] region_id={} group_id={} pair_id={} field_kind={}",
                 patch.region_id,
                 patch.group_id.as_deref().unwrap_or("-"),
@@ -508,7 +507,7 @@ fn materialize_region_patch_to_text_reflow(
             materialize_field_row_patch_to_text_reflow(patch)
         }
         "paragraph-region" => {
-            log_step!(
+            crate::log_step!(
                 "[PDF][materialize][paragraph] region_id={} kind={}",
                 patch.region_id,
                 patch.kind.as_deref().unwrap_or("paragraph")
@@ -516,7 +515,7 @@ fn materialize_region_patch_to_text_reflow(
             materialize_paragraph_patch_to_text_reflow(patch)
         }
         "list-item-region" => {
-            log_step!(
+            crate::log_step!(
                 "[PDF][materialize][list-item] region_id={} kind={}",
                 patch.region_id,
                 patch.kind.as_deref().unwrap_or("list-item")
@@ -524,14 +523,14 @@ fn materialize_region_patch_to_text_reflow(
             materialize_list_item_patch_to_text_reflow(patch)
         }
         _ => {
-            log_step!(
+            crate::log_step!(
                 "[PDF][materialize][fallback] region_id={} source={}",
                 patch.region_id,
                 patch.source
             );
             if !is_valid_patch_target(patch) {
                 let reason = "empty-targets".to_string();
-                log_step!(
+                crate::log_step!(
                     "[PDF][materialize][fallback][skip] region_id={} reason={}",
                     patch.region_id,
                     reason

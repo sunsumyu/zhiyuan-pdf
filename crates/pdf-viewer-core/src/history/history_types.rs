@@ -18,9 +18,7 @@ pub enum HistoryError {
     /// Attempted redo with empty redo stack.
     NothingToRedo,
     /// Internal state corruption (lock poisoning, etc.).
-    Internal {
-        message: String,
-    },
+    Internal { message: String },
 }
 
 // ── HistoryState ────────────────────────────────────────────────

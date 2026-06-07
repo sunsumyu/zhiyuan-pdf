@@ -8,24 +8,14 @@ use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
 use crate::document::comment::{
-    add_region_comment,
-    delete_page_annotation,
-    load_comment_overlay,
-    load_comment_review,
-    load_comment_target_overlay,
-    select_comment_review_and_load,
-    set_comment_review_panel_open_and_load,
-    set_comment_review_query_and_load,
-    set_comment_review_scope_and_load,
-    toggle_comment_review_panel_and_load,
-    update_page_comment,
-    PdfDeleteAnnotationRequest, PdfRegionCommentRequest,
-    PdfUpdateCommentRequest,
+    add_region_comment, delete_page_annotation, load_comment_overlay, load_comment_review,
+    load_comment_target_overlay, select_comment_review_and_load,
+    set_comment_review_panel_open_and_load, set_comment_review_query_and_load,
+    set_comment_review_scope_and_load, toggle_comment_review_panel_and_load, update_page_comment,
+    PdfDeleteAnnotationRequest, PdfRegionCommentRequest, PdfUpdateCommentRequest,
 };
 use crate::review::review_store::{
-    clear_comment_review_session,
-    get_comment_review_session,
-    HostCommentReviewScope,
+    clear_comment_review_session, read_comment_review_session, HostCommentReviewScope,
 };
 
 fn parse_scope(scope: &str) -> HostCommentReviewScope {
@@ -56,27 +46,19 @@ impl CommentManager {
 
     #[wasm_bindgen(js_name = "readReviewSession")]
     pub fn read_review_session(&self) -> JsValue {
-        to_value(&get_comment_review_session()).unwrap_or(JsValue::NULL)
+        to_value(&read_comment_review_session()).unwrap_or(JsValue::NULL)
     }
 
     // ── Review pipeline ─────────────────────────────────────────
 
     #[wasm_bindgen(js_name = "loadReview")]
-    pub async fn load_review(
-        &self,
-        path: String,
-        current_page: u16,
-    ) -> Result<JsValue, JsValue> {
+    pub async fn load_review(&self, path: String, current_page: u16) -> Result<JsValue, JsValue> {
         let result = load_comment_review(path, current_page).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
 
     #[wasm_bindgen(js_name = "loadOverlay")]
-    pub async fn load_overlay(
-        &self,
-        path: String,
-        current_page: u16,
-    ) -> Result<JsValue, JsValue> {
+    pub async fn load_overlay(&self, path: String, current_page: u16) -> Result<JsValue, JsValue> {
         let result = load_comment_overlay(path, current_page).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
@@ -119,7 +101,8 @@ impl CommentManager {
         current_page: u16,
         scope: String,
     ) -> Result<JsValue, JsValue> {
-        let result = set_comment_review_scope_and_load(path, current_page, parse_scope(&scope)).await?;
+        let result =
+            set_comment_review_scope_and_load(path, current_page, parse_scope(&scope)).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
 
@@ -141,7 +124,8 @@ impl CommentManager {
         current_page: u16,
         selected_comment_id: Option<String>,
     ) -> Result<JsValue, JsValue> {
-        let result = select_comment_review_and_load(path, current_page, selected_comment_id).await?;
+        let result =
+            select_comment_review_and_load(path, current_page, selected_comment_id).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
 

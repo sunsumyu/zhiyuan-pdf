@@ -1,26 +1,22 @@
 use std::cell::RefCell;
 
 use crate::editor::session::render_scene_key;
+use crate::present::plan_builder::{
+    build_frame_plan_result as inner_build_frame_plan_result, FramePlanRequest, FramePlanResult,
+};
 use crate::render::frame_cache::{
     reset_frame_cache as inner_reset_frame_cache,
     resolve_viewport_refresh as inner_resolve_viewport_refresh,
     store_frame_cache_entry as inner_store_frame_cache_entry,
     touch_frame_cache_entry as inner_touch_frame_cache_entry,
 };
-use crate::present::plan_builder::{
-    build_frame_plan_result as inner_build_frame_plan_result, FramePlanRequest, FramePlanResult,
-};
 use crate::render::render_store::{
-    schedule_render_frame,
-    RenderFrameEnvelope as HostRenderFrameEnvelope,
+    schedule_render_frame, RenderFrameEnvelope as HostRenderFrameEnvelope,
 };
+use crate::render::tile_cache::{FrameCacheStoreResult, HostFrameCacheState, HostPresentState};
 use crate::render::workflow::{
     build_render_frame_envelope, frame_plan_requires_render, frame_plans_share_render_work,
-    settle_render_frame_inner, RenderFrameEnvelope,
-    RenderFrameTransition,
-};
-use crate::render::tile_cache::{
-    FrameCacheStoreResult, HostFrameCacheState, HostPresentState,
+    settle_render_frame_inner, RenderFrameEnvelope, RenderFrameTransition,
 };
 use crate::viewer::viewer_store;
 use crate::viewport_refresh::{HostViewportRefreshState, ViewportRefreshDecision};
@@ -44,7 +40,7 @@ pub fn build_frame_plan_result(
     consume_anchor: bool,
 ) -> FramePlanResult {
     zoom_store::with_zoom_state_mut(|zoom_state| {
-        let viewer_session = viewer_store::get_viewer_session();
+        let viewer_session = viewer_store::read_viewer_session();
         PRESENT_STATE.with(|present_state| {
             inner_build_frame_plan_result(
                 request,
@@ -97,9 +93,7 @@ pub fn reset_present_runtime(reset_cache: bool, reset_refresh: bool) {
     }
 }
 
-pub fn schedule_render_frame_request(
-    request: &FramePlanRequest,
-) -> Option<RenderFrameEnvelope> {
+pub fn schedule_render_frame_request(request: &FramePlanRequest) -> Option<RenderFrameEnvelope> {
     let frame_plan = build_frame_plan_result(request, false);
     // Editor-driven renders carry a fresh scene_revision per keystroke, so any
     // pending in-flight frame is stale and will never be committed by JS (the
@@ -124,14 +118,13 @@ pub fn schedule_render_frame_request(
             let _ = settle_render_frame(stale_token, None);
         }
     }
-    let envelope: Option<HostRenderFrameEnvelope<FramePlanResult>> =
-        schedule_render_frame(
-            &frame_plan,
-            frame_plan_requires_render,
-            frame_plans_share_render_work,
-            |plan| serde_json::to_value(plan).unwrap_or(serde_json::Value::Null),
-            |plan_value| serde_json::from_value::<FramePlanResult>(plan_value.clone()).ok(),
-        );
+    let envelope: Option<HostRenderFrameEnvelope<FramePlanResult>> = schedule_render_frame(
+        &frame_plan,
+        frame_plan_requires_render,
+        frame_plans_share_render_work,
+        |plan| serde_json::to_value(plan).unwrap_or(serde_json::Value::Null),
+        |plan_value| serde_json::from_value::<FramePlanResult>(plan_value.clone()).ok(),
+    );
     envelope.map(|frame| build_render_frame_envelope(frame.frame_token, frame.frame_plan))
 }
 

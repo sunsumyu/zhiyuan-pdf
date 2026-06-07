@@ -4,47 +4,44 @@ use std::sync::OnceLock;
 use std::sync::RwLock;
 
 // Re-export pure data structures and helpers from core.
-pub use pdf_viewer_core::persistence::patch_state::*;
+pub use pdf_viewer_core::persistence::patch_store::*;
 
 pub static GLOBAL_PATCH_STATE: OnceLock<RwLock<GlobalPatchState>> = OnceLock::new();
 
-pub fn get_patch_state() -> &'static RwLock<GlobalPatchState> {
+pub fn read_patch_state() -> &'static RwLock<GlobalPatchState> {
     GLOBAL_PATCH_STATE.get_or_init(|| RwLock::new(GlobalPatchState::default()))
 }
 
-
 pub fn current_patch_revision() -> u64 {
-    get_patch_state()
+    read_patch_state()
         .read()
         .map(|state| state.patch_revision)
         .unwrap_or(0)
 }
 
 pub fn current_paragraph_patch_text(paragraph_id: &str) -> Option<String> {
-    get_patch_state()
+    read_patch_state()
         .read()
         .ok()
         .and_then(|state| state.paragraph_texts.get(paragraph_id).cloned())
 }
 
 pub fn current_paragraph_patch(paragraph_id: &str) -> Option<PersistableRegionPatch> {
-    get_patch_state()
+    read_patch_state()
         .read()
         .ok()
         .and_then(|state| state.paragraph_patches.get(paragraph_id).cloned())
 }
 
-
 pub fn remember_paragraph_replacement_target(paragraph_id: &str, target: ActiveEditorTarget) {
-    let mut state = get_patch_state().write().unwrap();
+    let mut state = read_patch_state().write().unwrap();
     state
         .paragraph_replacement_targets
         .insert(paragraph_id.to_string(), target);
 }
 
-
 pub fn apply_patch_with_history(patch: PersistableRegionPatch) {
-    let mut state = get_patch_state().write().unwrap();
+    let mut state = read_patch_state().write().unwrap();
     let old_patch = capture_existing_patch(&state, &patch);
     state.accepted_patch_keys.remove(&patch.patch_key);
     crate::chain_trace!(
@@ -71,7 +68,7 @@ pub fn apply_patch_with_history(patch: PersistableRegionPatch) {
 }
 
 pub fn collect_persistable_patches() -> Vec<PersistableRegionPatch> {
-    let state = get_patch_state().read().unwrap();
+    let state = read_patch_state().read().unwrap();
     let mut patches = state
         .paragraph_patches
         .values()
@@ -82,7 +79,7 @@ pub fn collect_persistable_patches() -> Vec<PersistableRegionPatch> {
 }
 
 pub fn clear_persistable_patches(clear_history: bool) {
-    let mut state = get_patch_state().write().unwrap();
+    let mut state = read_patch_state().write().unwrap();
     let had_visible_patches = has_visible_patches(&state);
     state.paragraph_texts.clear();
     state.paragraph_snapshots.clear();
@@ -101,28 +98,28 @@ pub fn clear_persistable_patches(clear_history: bool) {
 }
 
 pub fn can_undo() -> bool {
-    get_patch_state()
+    read_patch_state()
         .read()
         .map(|state| !state.history.is_empty())
         .unwrap_or(false)
 }
 
 pub fn can_redo() -> bool {
-    get_patch_state()
+    read_patch_state()
         .read()
         .map(|state| !state.redo_stack.is_empty())
         .unwrap_or(false)
 }
 
 pub fn undo_depth() -> usize {
-    get_patch_state()
+    read_patch_state()
         .read()
         .map(|state| state.history.len())
         .unwrap_or(0)
 }
 
 pub fn redo_depth() -> usize {
-    get_patch_state()
+    read_patch_state()
         .read()
         .map(|state| state.redo_stack.len())
         .unwrap_or(0)
@@ -134,13 +131,13 @@ pub fn redo_depth() -> usize {
 /// applied patch maps. Use this when you only want to forget edit history
 /// (e.g. after explicit user action "clear history").
 pub fn clear_history_stacks() {
-    let mut state = get_patch_state().write().unwrap();
+    let mut state = read_patch_state().write().unwrap();
     state.history.clear();
     state.redo_stack.clear();
 }
 
 pub fn undo() -> bool {
-    let mut state = get_patch_state().write().unwrap();
+    let mut state = read_patch_state().write().unwrap();
     if let Some(cmd) = state.history.pop() {
         if let Some(old_patch) = &cmd.old_patch {
             apply_patch_maps(&mut state, old_patch);
@@ -155,7 +152,7 @@ pub fn undo() -> bool {
 }
 
 pub fn redo() -> bool {
-    let mut state = get_patch_state().write().unwrap();
+    let mut state = read_patch_state().write().unwrap();
     if let Some(cmd) = state.redo_stack.pop() {
         apply_patch_maps(&mut state, &cmd.new_patch);
         bump_patch_revision(&mut state);
@@ -166,12 +163,14 @@ pub fn redo() -> bool {
 }
 
 pub fn collect_review_changes() -> Vec<ReviewChangeEntry> {
-    let state = get_patch_state().read().unwrap();
+    let state = read_patch_state().read().unwrap();
     let mut entries = state
         .paragraph_patches
         .values()
         .chain(state.field_group_patches.values())
-        .filter(|patch: &&PersistableRegionPatch| !state.accepted_patch_keys.contains(&patch.patch_key))
+        .filter(|patch: &&PersistableRegionPatch| {
+            !state.accepted_patch_keys.contains(&patch.patch_key)
+        })
         .map(|patch| ReviewChangeEntry {
             patch_key: patch.patch_key.clone(),
             page_index: patch.page_index,
@@ -191,7 +190,7 @@ pub fn collect_review_changes() -> Vec<ReviewChangeEntry> {
 }
 
 pub fn reject_review_change(patch_key: &str) -> bool {
-    let mut state = get_patch_state().write().unwrap();
+    let mut state = read_patch_state().write().unwrap();
 
     let paragraph_region_id = state
         .paragraph_patches
@@ -203,8 +202,12 @@ pub fn reject_review_change(patch_key: &str) -> bool {
         state.paragraph_texts.remove(&region_id);
         state.paragraph_snapshots.remove(&region_id);
         state.paragraph_patches.remove(&region_id);
-        state.history.retain(|cmd: &PatchCommand| cmd.patch_key != patch_key);
-        state.redo_stack.retain(|cmd: &PatchCommand| cmd.patch_key != patch_key);
+        state
+            .history
+            .retain(|cmd: &PatchCommand| cmd.patch_key != patch_key);
+        state
+            .redo_stack
+            .retain(|cmd: &PatchCommand| cmd.patch_key != patch_key);
         bump_patch_revision(&mut state);
         return true;
     }
@@ -219,8 +222,12 @@ pub fn reject_review_change(patch_key: &str) -> bool {
         state.field_group_texts.remove(&region_id);
         state.field_group_snapshots.remove(&region_id);
         state.field_group_patches.remove(&region_id);
-        state.history.retain(|cmd: &PatchCommand| cmd.patch_key != patch_key);
-        state.redo_stack.retain(|cmd: &PatchCommand| cmd.patch_key != patch_key);
+        state
+            .history
+            .retain(|cmd: &PatchCommand| cmd.patch_key != patch_key);
+        state
+            .redo_stack
+            .retain(|cmd: &PatchCommand| cmd.patch_key != patch_key);
         bump_patch_revision(&mut state);
         return true;
     }
@@ -229,7 +236,7 @@ pub fn reject_review_change(patch_key: &str) -> bool {
 }
 
 pub fn accept_review_change(patch_key: &str) -> bool {
-    let mut state = get_patch_state().write().unwrap();
+    let mut state = read_patch_state().write().unwrap();
     let exists = state
         .paragraph_patches
         .values()
@@ -246,7 +253,7 @@ pub fn accept_review_change(patch_key: &str) -> bool {
 }
 
 pub fn accept_all_review_changes() -> ReviewBulkChangeResult {
-    let mut state = get_patch_state().write().unwrap();
+    let mut state = read_patch_state().write().unwrap();
     let patch_keys = state
         .paragraph_patches
         .values()
@@ -270,7 +277,7 @@ pub fn accept_all_review_changes() -> ReviewBulkChangeResult {
 }
 
 pub fn reject_all_review_changes() -> ReviewBulkChangeResult {
-    let mut state = get_patch_state().write().unwrap();
+    let mut state = read_patch_state().write().unwrap();
     let paragraph_region_ids = state.paragraph_patches.keys().cloned().collect::<Vec<_>>();
     let field_region_ids = state
         .field_group_patches

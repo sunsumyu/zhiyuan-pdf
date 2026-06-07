@@ -1,16 +1,12 @@
-use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::to_value;
+use wasm_bindgen::prelude::*;
 
-use crate::find::host_find_store::{
-    clear_find_session,
-    get_find_session,
-    move_find_match,
-    set_find_session,
-    HostFindScope,
-};
 use crate::editor::orchestrator::replace_pipeline::{
     apply_region_text_replacements_tx, RegionTextReplaceRequest,
+};
+use crate::find::host_find_store::{
+    clear_find_session, move_find_match, read_find_session, set_find_session, HostFindScope,
 };
 use crate::present::plan_builder::FramePlanRequest;
 
@@ -32,50 +28,18 @@ pub struct SearchDocumentRequest {
     pub case_sensitive: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchMatch {
-    pub id: String,
-    pub kind: String,
-    pub page_index: u16,
-    pub page_width: f32,
-    pub page_height: f32,
-    pub line_index: usize,
-    pub source_text: String,
-    pub preview_text: String,
-    pub matched_text: String,
-    pub object_indices: Vec<usize>,
-    pub box_rect: SearchBoxRect,
-}
+pub use crate::find::find_store::{
+    ReplaceRequest, SearchBox as SearchBoxRect, SearchMatch, SearchResult,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SearchBoxRect {
-    pub left: f32,
-    pub top: f32,
-    pub width: f32,
-    pub height: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchResult {
+pub struct FindSessionData {
     pub query: String,
-    pub total_matches: usize,
-    pub matches: Vec<SearchMatch>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReplaceRequest {
-    pub path: String,
-    pub page_index: u16,
-    pub region_id: String,
-    pub kind: String,
-    pub original_text: String,
-    pub query: String,
-    pub replacement: String,
-    pub case_sensitive: bool,
+    pub scope: String,
+    pub page_indices: Vec<u16>,
+    pub current_page: u16,
+    pub active_index: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,21 +67,11 @@ pub struct BatchReplaceResult {
     pub touched_pages: Vec<u16>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FindSession {
-    pub query: String,
-    pub scope: String,
-    pub page_indices: Vec<u16>,
-    pub current_page: u16,
-    pub active_index: usize,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchFacadeResult {
     pub changed: bool,
-    pub session: Option<FindSession>,
+    pub session: Option<FindSessionData>,
     pub navigation: Option<FindNavigation>,
 }
 
@@ -211,7 +165,7 @@ pub fn facade_batch_replace(request_js: JsValue) -> JsValue {
 
 #[wasm_bindgen(js_name = "searchFacadeSetSession")]
 pub fn facade_set_session(session_js: JsValue) -> JsValue {
-    let session: FindSession = match serde_wasm_bindgen::from_value(session_js) {
+    let session: FindSessionData = match serde_wasm_bindgen::from_value(session_js) {
         Ok(s) => s,
         Err(_) => return JsValue::NULL,
     };
@@ -219,11 +173,19 @@ pub fn facade_set_session(session_js: JsValue) -> JsValue {
         "document" => HostFindScope::Document,
         _ => HostFindScope::Page,
     };
-    let nav = set_find_session(session.query.clone(), scope, session.page_indices.clone(), Some(session.current_page));
+    let nav = set_find_session(
+        session.query.clone(),
+        scope,
+        session.page_indices.clone(),
+        Some(session.current_page),
+    );
     let result = SearchFacadeResult {
         changed: true,
         session: Some(session),
-        navigation: Some(FindNavigation { active_index: nav.active_index, target_page: nav.active_page }),
+        navigation: Some(FindNavigation {
+            active_index: nav.active_index,
+            target_page: nav.active_page,
+        }),
     };
     to_value(&result).unwrap_or(JsValue::NULL)
 }
@@ -231,7 +193,11 @@ pub fn facade_set_session(session_js: JsValue) -> JsValue {
 #[wasm_bindgen(js_name = "searchFacadeClearSession")]
 pub fn facade_clear_session() -> JsValue {
     clear_find_session();
-    let result = SearchFacadeResult { changed: true, session: None, navigation: None };
+    let result = SearchFacadeResult {
+        changed: true,
+        session: None,
+        navigation: None,
+    };
     to_value(&result).unwrap_or(JsValue::NULL)
 }
 
@@ -241,17 +207,23 @@ pub fn facade_move_match(step: i32) -> JsValue {
     let result = SearchFacadeResult {
         changed: true,
         session: None,
-        navigation: Some(FindNavigation { active_index: nav.active_index, target_page: nav.active_page }),
+        navigation: Some(FindNavigation {
+            active_index: nav.active_index,
+            target_page: nav.active_page,
+        }),
     };
     to_value(&result).unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = "searchFacadeGetSession")]
 pub fn facade_get_session() -> JsValue {
-    let session = get_find_session();
-    let result = FindSession {
+    let session = read_find_session();
+    let result = FindSessionData {
         query: session.query,
-        scope: match session.scope { HostFindScope::Document => "document".into(), _ => "page".into() },
+        scope: match session.scope {
+            HostFindScope::Document => "document".into(),
+            _ => "page".into(),
+        },
         page_indices: session.match_pages,
         current_page: 0,
         active_index: session.active_index,

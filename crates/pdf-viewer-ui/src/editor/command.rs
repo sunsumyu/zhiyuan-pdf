@@ -3,8 +3,8 @@ use crate::editor::debug_trace::{
 };
 use crate::editor::document_edit_ops::{delete_backward, delete_forward, insert_text};
 use crate::editor::engine_state::LiveEditorParagraphState;
-use crate::editor::mode::get_active_editor_state;
-use crate::editor::navigation::handle_active_editor_navigation_key;
+use crate::editor::mode::read_active_editor_state;
+use crate::editor::navigation::execute_editor_navigation_key;
 use crate::editor::session::{
     active_editor_caret_index, set_active_editor_caret_index, sync_active_editor_input,
     ActiveEditorInputSyncResult,
@@ -31,7 +31,7 @@ fn effective_editor_state(
     host_text: Option<String>,
     host_caret_index: Option<usize>,
 ) -> Option<LiveEditorParagraphState> {
-    let state = get_active_editor_state()?;
+    let state = read_active_editor_state()?;
     let before_caret = state.caret_index;
     let before_text = state.current_text().to_string();
     // The host textarea is an IME/event adapter, not the source of truth. Keeping
@@ -61,9 +61,7 @@ fn effective_editor_state(
     Some(state)
 }
 
-pub fn apply_editor_input_command(
-    command: EditorInputCommand<'_>,
-) -> ActiveEditorInputSyncResult {
+pub fn apply_editor_input_command(command: EditorInputCommand<'_>) -> ActiveEditorInputSyncResult {
     apply_input_with_host(command, None, None)
 }
 
@@ -97,7 +95,7 @@ pub fn apply_input_with_host(
                     state.normalized_caret_index(),
                 );
             }
-            let next_caret = handle_active_editor_navigation_key(key);
+            let next_caret = execute_editor_navigation_key(key);
             ActiveEditorInputSyncResult {
                 caret_changed: next_caret.is_some(),
                 caret_index: next_caret.unwrap_or_else(active_editor_caret_index),
@@ -119,7 +117,11 @@ pub fn apply_input_with_host(
             let before_text = active_state.current_text().to_string();
             let before_len = before_text.chars().count();
             let mutation = delete_backward(&active_state);
-            let removed_char: String = before_text.chars().nth(before_caret.saturating_sub(1)).map(|c| c.to_string()).unwrap_or_default();
+            let removed_char: String = before_text
+                .chars()
+                .nth(before_caret.saturating_sub(1))
+                .map(|c| c.to_string())
+                .unwrap_or_default();
             crate::chain_trace!("cmd.backspace",
                 "beforeCaret" => before_caret,
                 "beforeLen" => before_len,

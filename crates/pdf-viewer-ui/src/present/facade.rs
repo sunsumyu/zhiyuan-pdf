@@ -11,10 +11,7 @@ pub fn resolve_render_zoom(request: &RenderZoomRequest) -> serde_json::Value {
     serde_json::to_value(resolve_render_zoom_result(request)).unwrap_or(serde_json::Value::Null)
 }
 
-pub fn resolve_frame_plan(
-    request: &FramePlanRequest,
-    consume_anchor: bool,
-) -> serde_json::Value {
+pub fn resolve_frame_plan(request: &FramePlanRequest, consume_anchor: bool) -> serde_json::Value {
     serde_json::to_value(build_frame_plan_result(request, consume_anchor))
         .unwrap_or(serde_json::Value::Null)
 }

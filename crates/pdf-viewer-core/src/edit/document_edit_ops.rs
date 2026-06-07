@@ -10,10 +10,7 @@ pub struct EditorTextMutation {
     pub caret_index: usize,
 }
 
-pub fn insert_text(
-    state: &LiveEditorParagraphState,
-    inserted_text: &str,
-) -> EditorTextMutation {
+pub fn insert_text(state: &LiveEditorParagraphState, inserted_text: &str) -> EditorTextMutation {
     let resolved = resolve_document_state(state);
     let current_caret = resolved.caret_index;
     let mut next_chars = resolved.mutation_chars;

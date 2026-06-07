@@ -50,14 +50,23 @@ pub fn facade_set_current_page(page: u16) -> JsValue {
 
 #[wasm_bindgen(js_name = "findControllerGetToolbarState")]
 pub fn facade_get_toolbar_state() -> JsValue {
-    to_value(&controller::get_toolbar_state()).unwrap_or(JsValue::NULL)
+    to_value(&controller::read_toolbar_state()).unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = "findControllerGetReplaceRequests")]
-pub fn facade_get_replace_requests(replacement: String, replace_all: bool, scope_js: String) -> JsValue {
+pub fn facade_get_replace_requests(
+    replacement: String,
+    replace_all: bool,
+    scope_js: String,
+) -> JsValue {
     let scope = match scope_js.as_str() {
         "document" => controller::FindScope::Document,
         _ => controller::FindScope::Page,
     };
-    to_value(&controller::get_replace_requests(&replacement, replace_all, scope)).unwrap_or(JsValue::NULL)
+    to_value(&controller::build_replace_requests(
+        &replacement,
+        replace_all,
+        scope,
+    ))
+    .unwrap_or(JsValue::NULL)
 }

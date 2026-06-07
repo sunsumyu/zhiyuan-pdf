@@ -5,7 +5,7 @@ use crate::edit::document_plan::{
     ParagraphEditorMarker,
 };
 use crate::models::{
-    BoundingBox, ParagraphEditContext, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph,
+    BoundingBox, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, ParagraphEditContext,
     VectorPageModel,
 };
 use serde::{Deserialize, Serialize};

@@ -8,55 +8,52 @@
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
+use crate::page::page_store::update_page_viewport as inner_update_page_viewport;
 use crate::present::plan_builder::FramePlanRequest;
+use crate::present::plan_builder::FramePlanResult;
 use crate::present::present_store::{
     build_frame_plan_result, is_render_frame_current as inner_is_render_frame_current,
-    resolve_viewport_refresh as inner_resolve_viewport_refresh,
-    schedule_render_frame_request, settle_render_frame as inner_settle_render_frame,
-    touch_frame_cache_entry as inner_touch_frame_cache_entry,
-    store_frame_cache_entry as inner_store_frame_cache_entry,
     reset_frame_cache as inner_reset_frame_cache,
+    resolve_viewport_refresh as inner_resolve_viewport_refresh, schedule_render_frame_request,
+    settle_render_frame as inner_settle_render_frame,
+    store_frame_cache_entry as inner_store_frame_cache_entry,
+    touch_frame_cache_entry as inner_touch_frame_cache_entry,
 };
 use crate::render::commit::commit_render_result as inner_commit_render_result;
+use crate::render::facade::resolve_progressive_render_policy_request;
 use crate::render::host_runtime::{
     advance_render_loop_frame as inner_advance_render_loop_frame,
     queue_render_loop_frame as inner_queue_render_loop_frame,
 };
-use crate::render::loop_workflow::schedule_render_follow_up_runtime;
-use crate::render::workflow::RenderFrameEnvelope;
-use crate::present::plan_builder::FramePlanResult;
 use crate::render::layer::{
-    resolve_render_execution_plan as inner_resolve_render_execution_plan,
     resolve_layer_execution_plan as inner_resolve_layer_execution_plan,
     resolve_layer_present_decision as inner_resolve_layer_present_decision,
+    resolve_render_execution_plan as inner_resolve_render_execution_plan,
 };
+use crate::render::loop_workflow::schedule_render_follow_up_runtime;
 use crate::render::progressive_workflow::{
-    render_page as inner_render_page,
+    cancel_progressive_render as inner_cancel_progressive_render, render_page as inner_render_page,
     start_progressive_render as inner_start_progressive_render,
     step_progressive_render as inner_step_progressive_render,
-    cancel_progressive_render as inner_cancel_progressive_render,
 };
-use crate::render::facade::resolve_progressive_render_policy_request;
-use crate::page::page_store::update_page_viewport as inner_update_page_viewport;
-use crate::zoom::zoom_controller::step_zoom_frame_plan as inner_step_zoom_frame_plan;
+use crate::render::workflow::RenderFrameEnvelope;
 use crate::zoom::event::{
-    handle_wheel_zoom_host as inner_handle_wheel_zoom_host,
-    step_preview_host as inner_step_preview_host,
-    WheelZoomHostRequest, PreviewHostStepRequest,
+    execute_wheel_zoom as inner_handle_wheel_zoom_host,
+    step_preview_host as inner_step_preview_host, PreviewHostStepRequest, WheelZoomHostRequest,
 };
 use crate::zoom::host::{
-    resolve_wheel_render_decision as inner_resolve_wheel_render_decision,
-    WheelRenderDecisionRequest,
     resolve_preview_tick_decision as inner_resolve_preview_tick_decision,
-    PreviewTickDecisionRequest,
+    resolve_wheel_render_decision as inner_resolve_wheel_render_decision,
+    PreviewTickDecisionRequest, WheelRenderDecisionRequest,
 };
 use crate::zoom::preview_host::{
     clear_zoom_preview_host_state as inner_clear_zoom_preview_host_state,
-    set_wheel_render_pending as inner_set_wheel_render_pending,
-    get_wheel_render_pending as inner_get_wheel_render_pending,
+    is_wheel_render_pending as inner_get_wheel_render_pending,
     queue_committed_frame as inner_queue_committed_frame,
+    set_wheel_render_pending as inner_set_wheel_render_pending,
     take_ready_committed_frame as inner_take_ready_committed_frame,
 };
+use crate::zoom::zoom_controller::step_zoom_frame_plan as inner_step_zoom_frame_plan;
 use crate::zoom::zoom_store::PendingCommittedFrame;
 
 // ─── Frame plan ─────────────────────────────────────────────────────────────
@@ -102,8 +99,7 @@ pub fn commit_render_result(
 
 #[wasm_bindgen]
 pub fn settle_render_frame(frame_token: u32, rendered_zoom: f32) -> JsValue {
-    to_value(&inner_settle_render_frame(frame_token, Some(rendered_zoom)))
-        .unwrap_or(JsValue::NULL)
+    to_value(&inner_settle_render_frame(frame_token, Some(rendered_zoom))).unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen]
@@ -199,22 +195,31 @@ pub fn step_preview_host(request_js: JsValue) -> JsValue {
 #[wasm_bindgen]
 pub fn resolve_render_execution_plan(bundle_changed: bool, frame_plan_js: JsValue) -> JsValue {
     let frame_plan: FramePlanResult = from_value(frame_plan_js).unwrap_or_default();
-    to_value(&inner_resolve_render_execution_plan(bundle_changed, &frame_plan))
-        .unwrap_or(JsValue::NULL)
+    to_value(&inner_resolve_render_execution_plan(
+        bundle_changed,
+        &frame_plan,
+    ))
+    .unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen]
 pub fn resolve_layer_execution_plan(bundle_changed: bool, frame_plan_js: JsValue) -> JsValue {
     let frame_plan: FramePlanResult = from_value(frame_plan_js).unwrap_or_default();
-    to_value(&inner_resolve_layer_execution_plan(bundle_changed, &frame_plan))
-        .unwrap_or(JsValue::NULL)
+    to_value(&inner_resolve_layer_execution_plan(
+        bundle_changed,
+        &frame_plan,
+    ))
+    .unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen]
 pub fn resolve_layer_present_decision(use_detail_layer: bool, frame_plan_js: JsValue) -> JsValue {
     let frame_plan: FramePlanResult = from_value(frame_plan_js).unwrap_or_default();
-    to_value(&inner_resolve_layer_present_decision(use_detail_layer, &frame_plan))
-        .unwrap_or(JsValue::NULL)
+    to_value(&inner_resolve_layer_present_decision(
+        use_detail_layer,
+        &frame_plan,
+    ))
+    .unwrap_or(JsValue::NULL)
 }
 
 // ─── Page context / viewport ────────────────────────────────────────────────
@@ -228,7 +233,14 @@ pub fn update_page_viewport(
     viewport_width: Option<f32>,
     viewport_height: Option<f32>,
 ) {
-    inner_update_page_viewport(zoom, dpr, viewport_left, viewport_top, viewport_width, viewport_height);
+    inner_update_page_viewport(
+        zoom,
+        dpr,
+        viewport_left,
+        viewport_top,
+        viewport_width,
+        viewport_height,
+    );
 }
 
 // ─── Canvas rendering ───────────────────────────────────────────────────────
@@ -250,8 +262,13 @@ pub fn step_progressive_render(
     budget_ms: f64,
     max_items: u32,
 ) -> JsValue {
-    to_value(&inner_step_progressive_render(canvas_id, image_cache, budget_ms, max_items))
-        .unwrap_or(JsValue::NULL)
+    to_value(&inner_step_progressive_render(
+        canvas_id,
+        image_cache,
+        budget_ms,
+        max_items,
+    ))
+    .unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen]
@@ -275,8 +292,7 @@ pub fn touch_frame_cache_entry(use_viewport_tile: bool, cache_key: String) -> Js
 
 #[wasm_bindgen]
 pub fn store_frame_cache_entry(use_viewport_tile: bool, cache_key: String) -> JsValue {
-    to_value(&inner_store_frame_cache_entry(use_viewport_tile, cache_key))
-        .unwrap_or(JsValue::NULL)
+    to_value(&inner_store_frame_cache_entry(use_viewport_tile, cache_key)).unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen]

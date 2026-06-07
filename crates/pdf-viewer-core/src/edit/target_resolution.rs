@@ -1,8 +1,6 @@
 use crate::models::PageState;
 
-use crate::edit::bridge::{
-    collect_paragraph_interaction_targets, ParagraphInteractionTarget,
-};
+use crate::edit::bridge::{collect_paragraph_interaction_targets, ParagraphInteractionTarget};
 
 pub fn resolve_region_target_from_page_state(
     page_state: &PageState,

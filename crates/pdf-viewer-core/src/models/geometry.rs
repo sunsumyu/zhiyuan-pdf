@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// # Invariants & Coordinate Systems (重要坐标系声明)
 /// `BoundingBox` 被设计为兼容两种极性空间，但**一旦被实例化进入流转层，必须约定其处于 Y-Down 规范**。
 /// 在 `Y-Down` 的前提下，`top` 始终表示视觉上方的边际，其数值 **严格小于** `bottom`。
-/// 
+///
 /// 违反 `top < bottom` 的包围盒被视为非法坍缩体，将直接导致碰撞检测抛出和选区渲染错误。
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -21,7 +21,7 @@ impl BoundingBox {
     ///
     /// # Arguments
     /// * `h` - 作为反射轴基准的页面总高度。
-    /// 
+    ///
     /// # Thread Safety
     /// 原地就地修改，开销仅为几个 f32 指令。
     pub fn flip_y(&mut self, h: f32) {

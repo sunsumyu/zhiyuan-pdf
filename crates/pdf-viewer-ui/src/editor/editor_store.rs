@@ -20,7 +20,7 @@ thread_local! {
 
 // ── Public accessors ────────────────────────────────────────────
 
-pub fn get_state() -> SessionState {
+pub fn read_state() -> SessionState {
     SESSION_STATE.with(|s| s.get())
 }
 
@@ -36,7 +36,7 @@ pub fn set_state(state: SessionState) {
     notify_change();
 }
 
-pub fn get_active_block_id() -> Option<String> {
+pub fn read_active_block_id() -> Option<String> {
     ACTIVE_BLOCK_ID.with(|id| id.borrow().clone())
 }
 
@@ -89,7 +89,10 @@ fn notify_change() {
         let _ = cb.call0(&wasm_bindgen::JsValue::NULL);
     }
     // Unified EventBus (Nutrient borrowing #1)
-    crate::events::emit(crate::events::event_names::EDITOR_CHANGE, &wasm_bindgen::JsValue::UNDEFINED);
+    crate::events::emit(
+        crate::events::event_names::EDITOR_CHANGE,
+        &wasm_bindgen::JsValue::UNDEFINED,
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -158,7 +161,7 @@ pub fn transition_save_complete() {
 #[macro_export]
 macro_rules! guard_state {
     ($expected:pat, $fn_name:expr) => {
-        let current = $crate::editor::editor_store::get_state();
+        let current = $crate::editor::editor_store::read_state();
         if !matches!(current, $expected) {
             log::warn!(
                 "[EditorSession::{}] invalid state: expected {}, got {}",

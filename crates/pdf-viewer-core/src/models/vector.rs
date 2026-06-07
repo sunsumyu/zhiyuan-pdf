@@ -75,7 +75,7 @@ pub struct VectorPageModel {
 
 impl VectorPageModel {
     /// 文档级空间标准化关卡 (The Great Normalization Gate)
-    /// 
+    ///
     /// 这是 `Y-Up` 历史遗留问题被阻绝在外的最后防线。
     /// 当底层的拉流解析器 (Stream Parser) 组装完原始树后，必须调用这个方法。
     /// 一旦该方法执行完毕，模型连带其挂载的子流（Text, Paths, Images）将不可逆地转换为安全的 Y-Down 坐标域。

@@ -15,20 +15,20 @@
 // paths continue to compile unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub mod geometry;
-pub mod font;
-pub mod styled_run;
-pub mod layout;
-pub mod glyph;
-pub mod vector;
 pub mod document_runtime;
+pub mod font;
+pub mod geometry;
+pub mod glyph;
 pub mod interaction;
+pub mod layout;
+pub mod styled_run;
+pub mod vector;
 
-pub use geometry::*;
-pub use font::*;
-pub use styled_run::*;
-pub use layout::*;
-pub use glyph::*;
-pub use vector::*;
 pub use document_runtime::*;
+pub use font::*;
+pub use geometry::*;
+pub use glyph::*;
 pub use interaction::*;
+pub use layout::*;
+pub use styled_run::*;
+pub use vector::*;

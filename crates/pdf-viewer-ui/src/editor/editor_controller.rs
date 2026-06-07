@@ -1,34 +1,27 @@
 use wasm_bindgen::prelude::JsValue;
 
-use super::target_resolution::{
-    is_supported_region_kind,
-    resolve_region_target_from_page_state,
-};
+use super::target_resolution::{is_supported_region_kind, resolve_region_target_from_page_state};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
 use crate::editor::list_format::resolve_active_marker_text;
+use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
 use crate::editor::replacement_snapshot::build_edit_replacement_snapshot;
 use crate::editor::session::{
-    active_edit_paragraph_id,
-    is_text_edit_enabled,
-    open_paragraph_editor,
-    set_active_editor_caret_index,
-    sync_active_editor_input, ActiveEditorInputSyncResult,
+    active_edit_paragraph_id, is_text_edit_enabled, open_paragraph_editor,
+    set_active_editor_caret_index, sync_active_editor_input, ActiveEditorInputSyncResult,
 };
 use crate::editor::workflow::{
+    build_paragraph_interaction_targets,
     build_region_text_patch as workflow_build_region_text_patch,
-    get_paragraph_interaction_targets,
-    open_paragraph_editor as workflow_open_paragraph_editor,
-    resolve_paragraph_shell_bbox,
+    open_paragraph_editor as workflow_open_paragraph_editor, resolve_paragraph_shell_bbox,
 };
 use crate::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
 use crate::utils::sanitize::sanitize_positive;
 use crate::zoom::zoom_store;
-use pdf_viewer_core::text::list_semantics::ListMarkerKind;
 use pdf_viewer_core::models::BoundingBox;
+use pdf_viewer_core::text::list_semantics::ListMarkerKind;
 
 fn summarize_object_ids<'a>(ids: impl Iterator<Item = &'a String>) -> String {
     let ids = ids.take(6).map(|id| id.as_str()).collect::<Vec<_>>();
@@ -47,13 +40,13 @@ pub struct EditorVisibilityAction {
 }
 
 pub use crate::editor::editor_format::{
-    ActiveEditorFormatState, EditorFormatAction, active_editor_format_state,
-    apply_active_editor_format_action,
+    active_editor_format_state, apply_active_editor_format_action, ActiveEditorFormatState,
+    EditorFormatAction,
 };
 
 pub fn collect_paragraph_targets() -> JsValue {
     let editing_enabled = is_text_edit_enabled();
-    with_page_state(|state| get_paragraph_interaction_targets(state, editing_enabled))
+    with_page_state(|state| build_paragraph_interaction_targets(state, editing_enabled))
 }
 
 pub fn open_editor_at_page_point(
@@ -76,13 +69,7 @@ pub fn open_editor_at_page_point(
     }
     let zoom = zoom_store::with_zoom_state(|state| sanitize_positive(state.visual_zoom, 1.0));
     let active_target = with_page_state(|state| {
-        workflow_open_paragraph_editor(
-            state,
-            paragraph_id,
-            click_page_x,
-            click_page_y,
-            zoom,
-        )
+        workflow_open_paragraph_editor(state, paragraph_id, click_page_x, click_page_y, zoom)
     });
     let Some(mut active_target) = active_target else {
         dbg_event(

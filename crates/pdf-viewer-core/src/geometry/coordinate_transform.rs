@@ -90,7 +90,11 @@ impl HostPageTransform {
         }
     }
 
-    pub fn client_to_page_in_box(&self, point: ClientPoint, page_box: BoundingBox) -> PageViewPoint {
+    pub fn client_to_page_in_box(
+        &self,
+        point: ClientPoint,
+        page_box: BoundingBox,
+    ) -> PageViewPoint {
         let box_width = (page_box.right - page_box.left).max(1.0);
         let box_height = (page_box.bottom - page_box.top).max(1.0);
         let scale_x = positive_ratio(self.reference.width, box_width);
@@ -101,7 +105,11 @@ impl HostPageTransform {
         }
     }
 
-    pub fn client_to_local_in_box(&self, point: ClientPoint, page_box: BoundingBox) -> EditorLocalPoint {
+    pub fn client_to_local_in_box(
+        &self,
+        point: ClientPoint,
+        page_box: BoundingBox,
+    ) -> EditorLocalPoint {
         let page_point = self.client_to_page_in_box(point, page_box);
         EditorLocalPoint {
             x: page_point.x - page_box.left,
@@ -112,12 +120,18 @@ impl HostPageTransform {
 
 #[inline]
 fn positive_ratio(numerator: f32, denominator: f32) -> f32 {
-    let value = if numerator.is_finite() && denominator.is_finite() && numerator > 0.0 && denominator > 0.0 {
-        numerator / denominator
+    let value =
+        if numerator.is_finite() && denominator.is_finite() && numerator > 0.0 && denominator > 0.0
+        {
+            numerator / denominator
+        } else {
+            1.0
+        };
+    if value.is_finite() && value > 0.0 {
+        value
     } else {
         1.0
-    };
-    if value.is_finite() && value > 0.0 { value } else { 1.0 }
+    }
 }
 
 /// 负责将 PDF 内部逻辑规范的全局点挂载到前端画布视图系（View）的基础投影能力。
@@ -138,7 +152,9 @@ impl PdfToPageViewTransform {
     /// # Arguments
     /// * `_page_height` - 目标界面的逻辑总高度。当前版本此参数作为架构占位保留符。
     pub fn new(_page_height: f32) -> Self {
-        Self { page_height: _page_height }
+        Self {
+            page_height: _page_height,
+        }
     }
 
     /// 将逻辑页面点投射进入目标观察者的视图原点系中。

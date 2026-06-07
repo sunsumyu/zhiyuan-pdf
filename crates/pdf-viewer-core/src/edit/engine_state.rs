@@ -1,13 +1,13 @@
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind};
 use crate::models::LayoutAlignment;
+use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind};
 use serde::{Deserialize, Serialize};
 
 use crate::edit::active_target::ActiveEditorTarget;
-use crate::text::text_model::EditorTextModel;
 use crate::text::style_mapper::StyleMapper;
+use crate::text::text_model::EditorTextModel;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

@@ -1,22 +1,14 @@
+use crate::persistence::patch_store::{apply_patch, PatchCommand, GLOBAL_PATCH_STATE};
 use std::sync::RwLock;
-use crate::persistence::state_manager::{GLOBAL_PATCH_STATE};
-use crate::persistence::models::PersistableRegionPatch;
-
-#[derive(Debug, Clone)]
-pub struct PatchCommand {
-    pub patch_key: String,
-    pub old_patch: Option<PersistableRegionPatch>,
-    pub new_patch: PersistableRegionPatch,
-}
 
 impl PatchCommand {
     pub fn execute(&self) {
-        crate::persistence::state_manager::apply_patch(self.new_patch.clone());
+        apply_patch(self.new_patch.clone());
     }
 
     pub fn undo(&self) {
         if let Some(old) = &self.old_patch {
-            crate::persistence::state_manager::apply_patch(old.clone());
+            apply_patch(old.clone());
         } else if let Ok(mut state) = GLOBAL_PATCH_STATE.write() {
             // If there was no old patch, we revert to original text.
             // For simplicity, we remove the patch key entry.
@@ -25,18 +17,18 @@ impl PatchCommand {
                 state.field_group_snapshots.remove(&self.patch_key);
             } else {
                 state.paragraph_texts.remove(&self.patch_key);
-                state.paragraph_snapshots.remove(&self.patch_key);
+                state.paragraph_layout_snapshots.remove(&self.patch_key);
             }
         }
     }
 }
 
-pub struct HistoryManager {
+pub struct HistoryStore {
     undo_stack: Vec<PatchCommand>,
     redo_stack: Vec<PatchCommand>,
 }
 
-impl HistoryManager {
+impl HistoryStore {
     pub fn new() -> Self {
         Self {
             undo_stack: Vec::new(),
@@ -82,7 +74,7 @@ impl HistoryManager {
 }
 
 lazy_static::lazy_static! {
-    pub static ref GLOBAL_HISTORY: RwLock<HistoryManager> = RwLock::new(HistoryManager::new());
+    pub static ref GLOBAL_HISTORY: RwLock<HistoryStore> = RwLock::new(HistoryStore::new());
 }
 
 pub fn push_command(cmd: PatchCommand) {

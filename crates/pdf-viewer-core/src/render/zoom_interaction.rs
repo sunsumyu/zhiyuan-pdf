@@ -1,13 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+use crate::render::plan_builder::{AnchorViewportLayoutResult, FramePlanRequest, FramePlanResult};
 use crate::render::present_plan::preview_is_settled;
-use crate::render::plan_builder::{
-    AnchorViewportLayoutResult, FramePlanRequest, FramePlanResult,
-};
 use crate::render::preview::{resolve_preview_present_plan, PreviewPresentPlan};
 use crate::render::zoom_state::{
-    HostZoomState, PreviewTransformState, VisualLayoutState, ZoomAnchorState,
-    ZoomAnimationStep,
+    HostZoomState, PreviewTransformState, VisualLayoutState, ZoomAnchorState, ZoomAnimationStep,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -1,12 +1,7 @@
 #[cfg(test)]
 mod tests {
-use crate::infrastructure::pdf::pdf_font::{
-        break_text_into_lines, ParsedFont,
-    };
-use pdf_viewer_core::models::LayoutAlignment;
-
     #[test]
-fn test_reflow_displacement_math() {
+    fn test_reflow_displacement_math() {
         // 模拟一个简单的字体：每个字符物理宽度 500 单位 (0.5 em)
         // 在 12pt 字号下，其 PDF WIDTH = 6.0 pts
         let font_size = 12.0;
@@ -35,7 +30,7 @@ fn test_reflow_displacement_math() {
     }
 
     #[test]
-fn test_encoding_reversal_detection() {
+    fn test_encoding_reversal_detection() {
         let cases = vec![
             (")thereumE(", true),
             ("Ethereum (", false),
@@ -51,24 +46,8 @@ fn test_encoding_reversal_detection() {
     }
 
     #[test]
-fn test_chinese_reflow_overlap_guard() {
+    fn test_chinese_reflow_overlap_guard() {
         println!("[PDF-V21-PRO-TEST] Starting Chinese Reflow Simulation...");
-
-        // 模拟一个不支持中文的基础字体
-        let active_font = std::sync::Arc::new(ParsedFont {
-            name: "Helvetica".to_string(),
-            base_font: "Helvetica".to_string(),
-            font_subtype: None,
-            cmap: None,
-            widths: std::collections::HashMap::new(),
-            default_width: 1000.0,
-            hints: None,
-            post_script_name: Some("Helvetica".to_string()),
-            family_hint: Some("Helvetica".to_string()),
-            embedded_font_key: None,
-            has_embedded_program: false,
-            has_to_unicode_cmap: false,
-        });
 
         // 模拟日志 #1929 中出现的异常重复文本 (Solana/Anchor)...
         let mut text_to_reflow =
@@ -93,7 +72,7 @@ fn test_chinese_reflow_overlap_guard() {
         for ch in text_to_reflow.chars() {
             let glyph_units = 1000.0; // 默认宽度
             let mut target_w = if ch.is_ascii() { 600.0 } else { 0.0 }; // 模拟中文没有宽度数据的情况
-            // [仿真重叠护卫] Overlap Guard
+                                                                        // [仿真重叠护卫] Overlap Guard
             if target_w < 50.0 && !ch.is_whitespace() {
                 println!(
                     "[OFFLINE-VERIFY][guard] Character '{}' target_w is too small. Forcing 500.0 overlap guard.",

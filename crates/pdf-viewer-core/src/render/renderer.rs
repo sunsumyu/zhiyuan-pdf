@@ -33,10 +33,10 @@ pub enum DrawCommand {
 pub trait PdfRenderer {
     /// 执行全量或增量绘图指令
     fn render(&mut self, commands: &[DrawCommand]);
-    
+
     /// 清除画布
     fn clear(&mut self);
-    
+
     /// 获取当前渲染后端名称 (e.g., "WebGPU", "Canvas2D")
     fn name(&self) -> &str;
 }

@@ -1,10 +1,10 @@
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
 use serde::Deserialize;
 use serde_wasm_bindgen::to_value;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
-use crate::editor::editor_types::*;
 use crate::editor::editor_store;
+use crate::editor::editor_types::*;
 use crate::guard_state;
 
 // ── Incoming request DTOs (JS → Rust) ───────────────────────────
@@ -147,12 +147,12 @@ impl EditorSession {
     /// If called from EditingBlock, auto-commits current block first (block switch).
     #[wasm_bindgen(js_name = "openBlock")]
     pub fn open_block(&self, request_js: JsValue) -> JsValue {
-        let current = editor_store::get_state();
+        let current = editor_store::read_state();
         match current {
             SessionState::Editing => {}
             SessionState::EditingBlock => {
                 // Auto-commit current block before switching
-                self.do_commit_internal();
+                self.commit_draft_internal();
                 editor_store::set_state(SessionState::Editing);
             }
             _ => {
@@ -287,7 +287,12 @@ impl EditorSession {
         use crate::editor::host_mode::set_text_edit_mode;
         let _ = set_text_edit_mode(false);
 
-        ok_response(CommitResult { changed: result.changed }, true)
+        ok_response(
+            CommitResult {
+                changed: result.changed,
+            },
+            true,
+        )
     }
 
     /// Commit the active block's edits: EditingBlock → Viewing.
@@ -315,7 +320,11 @@ impl EditorSession {
         }
 
         let frame_request = build_frame_request();
-        let result = commit_editor_tx(request.draft_text, request.caret_index as usize, frame_request);
+        let result = commit_editor_tx(
+            request.draft_text,
+            request.caret_index as usize,
+            frame_request,
+        );
         finish_commit();
 
         // commit = done = back to Viewing
@@ -324,7 +333,12 @@ impl EditorSession {
         use crate::editor::host_mode::set_text_edit_mode;
         let _ = set_text_edit_mode(false);
 
-        ok_response(CommitResult { changed: result.changed }, true)
+        ok_response(
+            CommitResult {
+                changed: result.changed,
+            },
+            true,
+        )
     }
 
     /// End the editing session, auto-committing any pending block edits.
@@ -336,13 +350,10 @@ impl EditorSession {
     /// See architecture proposal §14.3.
     #[wasm_bindgen(js_name = "end")]
     pub fn end(&self) -> JsValue {
-        guard_state!(
-            SessionState::Editing | SessionState::EditingBlock,
-            "end"
-        );
+        guard_state!(SessionState::Editing | SessionState::EditingBlock, "end");
 
-        if editor_store::get_state() == SessionState::EditingBlock {
-            self.do_commit_internal();
+        if editor_store::read_state() == SessionState::EditingBlock {
+            self.commit_draft_internal();
         }
         editor_store::transition_to_viewing();
 
@@ -355,7 +366,7 @@ impl EditorSession {
     /// Discard all edits and exit: any state → Viewing.
     #[wasm_bindgen(js_name = "discard")]
     pub fn discard(&self) -> JsValue {
-        let current = editor_store::get_state();
+        let current = editor_store::read_state();
         match current {
             SessionState::Viewing => {
                 return ok_empty(false);
@@ -384,17 +395,17 @@ impl EditorSession {
     // ── P0: Query ───────────────────────────────────────────────
 
     /// Read current session snapshot.
-    #[wasm_bindgen(js_name = "getSnapshot")]
-    pub fn get_snapshot(&self, display_zoom: f32) -> JsValue {
-        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+    #[wasm_bindgen(js_name = "readSnapshot")]
+    pub fn read_snapshot(&self, display_zoom: f32) -> JsValue {
         use crate::document::patch_persistence::has_persistable_patches;
+        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
 
         let snapshot = resolve_editor_host_snapshot(display_zoom);
 
         ok_response(
             SnapshotResult {
-                state: editor_store::get_state(),
-                block_id: editor_store::get_active_block_id(),
+                state: editor_store::read_state(),
+                block_id: editor_store::read_active_block_id(),
                 draft_text: snapshot.draft_text,
                 caret_index: snapshot.caret_index as u32,
                 has_unsaved_changes: has_persistable_patches(),
@@ -403,11 +414,17 @@ impl EditorSession {
         )
     }
 
+    #[wasm_bindgen(js_name = "getSnapshot")]
+    #[deprecated(since = "0.2.0", note = "Use readSnapshot instead")]
+    pub fn get_snapshot(&self, display_zoom: f32) -> JsValue {
+        self.read_snapshot(display_zoom)
+    }
+
     /// Check if the session is in an active editing state.
     #[wasm_bindgen(js_name = "isActive")]
     pub fn is_active(&self) -> bool {
         matches!(
-            editor_store::get_state(),
+            editor_store::read_state(),
             SessionState::Editing | SessionState::EditingBlock
         )
     }
@@ -477,15 +494,15 @@ impl EditorSession {
         };
 
         use crate::editor::command::EditorInputCommand;
-        use crate::editor::orchestrator::render_transaction::apply_input_tx;
         use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::orchestrator::render_transaction::apply_input_tx;
 
         let command = match request.command.as_str() {
             "backspace" => EditorInputCommand::DeleteBackward,
             "delete" => EditorInputCommand::DeleteForward,
-            "insert" => EditorInputCommand::InsertText(
-                request.inserted_text.as_deref().unwrap_or(""),
-            ),
+            "insert" => {
+                EditorInputCommand::InsertText(request.inserted_text.as_deref().unwrap_or(""))
+            }
             "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown" | "Home" | "End" => {
                 EditorInputCommand::Navigation(&request.command)
             }
@@ -518,7 +535,7 @@ impl EditorSession {
 
         // Sync our state machine
         if enabled {
-            let current = editor_store::get_state();
+            let current = editor_store::read_state();
             if current == SessionState::Viewing {
                 editor_store::transition_to_editing();
             }
@@ -582,11 +599,11 @@ impl EditorSession {
     /// Open a region-based editor (used by document review flows).
     #[wasm_bindgen(js_name = "openRegion")]
     pub fn open_region(&self, request_js: JsValue) -> JsValue {
-        let current = editor_store::get_state();
+        let current = editor_store::read_state();
         match current {
             SessionState::Viewing | SessionState::Editing => {}
             SessionState::EditingBlock => {
-                self.do_commit_internal();
+                self.commit_draft_internal();
                 editor_store::set_state(SessionState::Editing);
             }
             _ => {
@@ -688,8 +705,8 @@ impl EditorSession {
         guard_state!(SessionState::EditingBlock, "insert_text");
 
         use crate::editor::command::EditorInputCommand;
-        use crate::editor::orchestrator::render_transaction::apply_input_tx;
         use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::orchestrator::render_transaction::apply_input_tx;
 
         let frame_request = build_frame_request();
         let result = apply_input_tx(EditorInputCommand::InsertText(text), frame_request);
@@ -711,8 +728,8 @@ impl EditorSession {
         guard_state!(SessionState::EditingBlock, "delete_text");
 
         use crate::editor::command::EditorInputCommand;
-        use crate::editor::orchestrator::render_transaction::apply_input_tx;
         use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::orchestrator::render_transaction::apply_input_tx;
 
         let command = match direction {
             "forward" => EditorInputCommand::DeleteForward,
@@ -774,17 +791,17 @@ impl EditorSession {
     /// (with a warning log) instead of an error — that lets cross-page
     /// queries fail gracefully while we wait for multi-page caching.
     /// See architecture proposal §14.6.
-    #[wasm_bindgen(js_name = "getTextBlocks")]
-    pub fn get_text_blocks(&self, page_index: u16) -> JsValue {
+    #[wasm_bindgen(js_name = "readTextBlocks")]
+    pub fn read_text_blocks(&self, page_index: u16) -> JsValue {
         guard_state!(
             SessionState::Editing | SessionState::EditingBlock,
-            "get_text_blocks"
+            "read_text_blocks"
         );
 
-        let active_page = crate::viewer::viewer_store::get_viewer_session().current_page;
+        let active_page = crate::viewer::viewer_store::read_viewer_session().current_page;
         if page_index != active_page {
             log::warn!(
-                "[EditorSession::get_text_blocks] page_index={} but only the active page (={}) is currently cached; returning empty list",
+                "[EditorSession::read_text_blocks] page_index={} but only the active page (={}) is currently cached; returning empty list",
                 page_index,
                 active_page,
             );
@@ -796,14 +813,26 @@ impl EditorSession {
         ok_response(blocks, false)
     }
 
+    #[wasm_bindgen(js_name = "getTextBlocks")]
+    #[deprecated(since = "0.2.0", note = "Use readTextBlocks instead")]
+    pub fn get_text_blocks(&self, page_index: u16) -> JsValue {
+        self.read_text_blocks(page_index)
+    }
+
     /// Read the format state of the active editor.
-    #[wasm_bindgen(js_name = "getFormatState")]
-    pub fn get_format_state(&self) -> JsValue {
-        guard_state!(SessionState::EditingBlock, "get_format_state");
+    #[wasm_bindgen(js_name = "readFormatState")]
+    pub fn read_format_state(&self) -> JsValue {
+        guard_state!(SessionState::EditingBlock, "read_format_state");
 
         use crate::editor::editor_controller::active_editor_format_state;
         let state = active_editor_format_state();
         to_value(&state).unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(js_name = "getFormatState")]
+    #[deprecated(since = "0.2.0", note = "Use readFormatState instead")]
+    pub fn get_format_state(&self) -> JsValue {
+        self.read_format_state()
     }
 
     // ── P1: Event callbacks (§14.7) ─────────────────────────────
@@ -849,21 +878,20 @@ impl EditorSession {
         editor_store::set_change_callback(Some(func));
         ok_empty(false)
     }
-
 }
 
 // ── Internal helpers (not exported to JS) ───────────────────────
 
 impl EditorSession {
-    fn do_commit_internal(&self) {
+    fn commit_draft_internal(&self) {
         use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
         commit_pending_edit_if_any();
     }
 }
 
 fn build_frame_request() -> crate::present::plan_builder::FramePlanRequest {
-    let zoom_state = crate::zoom::zoom_store::get_zoom_state();
-    let viewer_session = crate::viewer::viewer_store::get_viewer_session();
+    let zoom_state = crate::zoom::zoom_store::read_zoom_state();
+    let viewer_session = crate::viewer::viewer_store::read_viewer_session();
     crate::present::plan_builder::FramePlanRequest {
         display_zoom: zoom_state.target_zoom.max(0.1),
         render_reason: String::new(),
@@ -902,12 +930,15 @@ fn resolve_target_at_page_point(
 
     // Direct hit only (with 4px tolerance).
     // No nearest-neighbor fallback — clicking blank area must NOT open a distant paragraph.
-    targets.iter().find(|t| {
-        page_x >= t.bbox.left - 4.0
-            && page_x <= t.bbox.right + 4.0
-            && page_y >= t.bbox.top - 4.0
-            && page_y <= t.bbox.bottom + 4.0
-    }).cloned()
+    targets
+        .iter()
+        .find(|t| {
+            page_x >= t.bbox.left - 4.0
+                && page_x <= t.bbox.right + 4.0
+                && page_y >= t.bbox.top - 4.0
+                && page_y <= t.bbox.bottom + 4.0
+        })
+        .cloned()
 }
 
 fn collect_text_blocks() -> Vec<TextBlockInfo> {

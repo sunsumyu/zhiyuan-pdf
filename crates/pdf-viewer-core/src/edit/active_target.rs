@@ -2,7 +2,7 @@
 //! thread_local / state 管理仍位于 ui 侧。
 
 use crate::edit::paragraph_scene::ParagraphEditorScene;
-use crate::models::{BoundingBox, ParagraphEditContext, LayoutParagraph};
+use crate::models::{BoundingBox, LayoutParagraph, ParagraphEditContext};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

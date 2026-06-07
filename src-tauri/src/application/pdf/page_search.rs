@@ -1,61 +1,60 @@
+use super::page_context::build_page_region_context_from_vector_model;
 use crate::infrastructure::pdf::models::NativeVectorPageModel;
 use pdf_viewer_core::document::page_region_context::{BoundingBoxOutput, PageRegionContextOutput};
 use serde::{Deserialize, Serialize};
-use super::page_context::build_page_region_context_from_vector_model;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfPageSearchRequest {
-pub query: String,
+    pub query: String,
     #[serde(default)]
-pub case_sensitive: bool,
+    pub case_sensitive: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfPageSearchBox {
-pub left: f32,
-pub top: f32,
-pub width: f32,
-pub height: f32,
+    pub left: f32,
+    pub top: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfPageSearchMatch {
-pub id: String,
-pub kind: String,
-pub page_index: u16,
-pub page_width: f32,
-pub page_height: f32,
-pub line_index: usize,
-pub source_text: String,
-pub preview_text: String,
-pub matched_text: String,
-pub object_indices: Vec<usize>,
-pub box_rect: PdfPageSearchBox,
+    pub id: String,
+    pub kind: String,
+    pub page_index: u16,
+    pub page_width: f32,
+    pub page_height: f32,
+    pub line_index: usize,
+    pub source_text: String,
+    pub preview_text: String,
+    pub matched_text: String,
+    pub object_indices: Vec<usize>,
+    pub box_rect: PdfPageSearchBox,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfPageSearchResult {
-pub page_index: u16,
-pub page_width: f32,
-pub page_height: f32,
-pub query: String,
-pub total_matches: usize,
-pub matches: Vec<PdfPageSearchMatch>,
+    pub page_index: u16,
+    pub page_width: f32,
+    pub page_height: f32,
+    pub query: String,
+    pub total_matches: usize,
+    pub matches: Vec<PdfPageSearchMatch>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfDocumentSearchResult {
-pub query: String,
-pub total_matches: usize,
-pub matches: Vec<PdfPageSearchMatch>,
+    pub query: String,
+    pub total_matches: usize,
+    pub matches: Vec<PdfPageSearchMatch>,
 }
-pub(crate)
-fn search_page_regions(
+pub(crate) fn search_page_regions(
     page_model: &NativeVectorPageModel,
     request: &PdfPageSearchRequest,
 ) -> PdfPageSearchResult {
@@ -100,8 +99,7 @@ fn search_page_regions(
         matches,
     }
 }
-pub(crate)
-fn search_document_regions(
+pub(crate) fn search_document_regions(
     page_models: &[NativeVectorPageModel],
     request: &PdfPageSearchRequest,
 ) -> PdfDocumentSearchResult {

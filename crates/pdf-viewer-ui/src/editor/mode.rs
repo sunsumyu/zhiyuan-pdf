@@ -1,23 +1,20 @@
 use crate::editor::engine_state::LiveEditorParagraphState;
 use crate::editor::session::{
-    active_edit_paragraph_id,
-    active_editor_state,
-    active_editor_target,
-    close_active_editor as session_close_active_editor,
-    is_text_edit_enabled,
+    active_edit_paragraph_id, active_editor_state, active_editor_target,
+    close_active_editor as session_close_active_editor, is_text_edit_enabled,
     reset_editor_mode as session_reset_editor_mode,
-    set_active_edit_paragraph as session_set_active_edit_paragraph,
-    set_text_edit_enabled, ActiveEditorTarget,
+    set_active_edit_paragraph as session_set_active_edit_paragraph, set_text_edit_enabled,
+    ActiveEditorTarget,
 };
-pub fn get_active_edit_paragraph() -> Option<String> {
+pub fn read_active_edit_paragraph() -> Option<String> {
     active_edit_paragraph_id()
 }
 
-pub fn get_active_editor_target() -> Option<ActiveEditorTarget> {
+pub fn read_active_editor_target() -> Option<ActiveEditorTarget> {
     active_editor_target()
 }
 
-pub fn get_active_editor_state() -> Option<LiveEditorParagraphState> {
+pub fn read_active_editor_state() -> Option<LiveEditorParagraphState> {
     active_editor_state()
 }
 

@@ -6,7 +6,8 @@ const outFile = process.argv[2] || 'console-tail.log';
 writeFileSync(outFile, `# CDP tail started ${new Date().toISOString()}\n`);
 
 const targets = await fetch('http://127.0.0.1:9222/json/list').then(r => r.json());
-const page = targets.find(t => t.type === 'page' && t.url.startsWith('http://localhost:5000'));
+const port = process.env.PORT || '5000';
+const page = targets.find(t => t.type === 'page' && t.url.startsWith(`http://localhost:${port}`));
 if (!page) {
     console.error('No page target. Targets:', targets.map(t => `${t.type}:${t.url}`));
     process.exit(1);

@@ -3,19 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::render::plan_builder::FramePlanResult;
 use crate::render::progressive::{ProgressiveRenderStart, ProgressiveRenderStep};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct RenderFrameEnvelope {
-    pub frame_token: u32,
-    pub frame_plan: FramePlanResult,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct RenderFrameTransition {
-    pub accepted: bool,
-    pub next_frame: Option<RenderFrameEnvelope>,
-}
+pub type RenderFrameEnvelope = crate::render::scheduler::RenderFrameEnvelope<FramePlanResult>;
+pub type RenderFrameTransition = crate::render::scheduler::RenderFrameTransition<FramePlanResult>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

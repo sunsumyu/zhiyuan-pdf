@@ -12,7 +12,10 @@ pub async fn read_annotation_targets(
     path: String,
     page_index: u16,
 ) -> Result<PdfPageAnnotationTargetResult, String> {
-    crate::application::pdf::page_annotation::list_page_annotation_targets(&state, &path, page_index).await
+    crate::application::pdf::page_annotation::list_page_annotation_targets(
+        &state, &path, page_index,
+    )
+    .await
 }
 
 #[command]

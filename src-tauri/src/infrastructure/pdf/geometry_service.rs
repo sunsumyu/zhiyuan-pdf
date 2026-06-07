@@ -1,72 +1,58 @@
 use crate::infrastructure::pdf::models::{GlyphPaintPlan, LayoutInferenceResult};
-use crate::log_step;
 use std::collections::HashMap;
 
-use super::cache::page_cache_key;
+use super::page_intermediate_service::PdfPageIntermediateService;
 
 pub struct PdfEditorGeometryService;
 
 impl PdfEditorGeometryService {
-    pub async fn get_layout_inference(
+    pub async fn resolve_layout_inference(
         state: tauri::State<'_, crate::AppState>,
         path: String,
         page_index: u16,
     ) -> Result<LayoutInferenceResult, String> {
-        log_step!("[PDF-V3] Requesting Inference for page={}", page_index);
-        let cache_key = page_cache_key(&path, page_index);
-
-        if let Some(result) = {
-            let cache = state.cache.pdf_layout_cache.lock().unwrap();
-            cache.get(&cache_key).cloned()
-        } {
-            log_step!("[PDF-Cache] HIT for {}", cache_key);
-            return Ok((*result).clone());
-        }
-
-        let lopdf_doc = {
-            let cache = state.docs.pdf_documents.lock().unwrap();
-            cache.get(&path).cloned()
-        };
-
-        let lopdf_doc = if let Some(doc) = lopdf_doc {
-            doc
-        } else {
-            return Err(format!("Document not found in cache for path={}", path));
-        };
-
-        let result: LayoutInferenceResult = tokio::task::spawn_blocking(move || {
-            crate::infrastructure::pdf::vector_engine::get_layout_inference(
-                &lopdf_doc, page_index,
-            )
-        })
-        .await
-        .map_err(|e| format!("Spawn Error V3: {}", e))??;
-
-        {
-            let mut cache = state.cache.pdf_layout_cache.lock().unwrap();
-            cache.insert(cache_key, std::sync::Arc::new(result.clone()));
-        }
-
-        Ok(result)
+        Self::resolve_layout_inference_with_revision(state, path, page_index, None).await
     }
 
-    pub async fn get_glyph_paint_plan(
+    pub async fn resolve_layout_inference_with_revision(
+        state: tauri::State<'_, crate::AppState>,
+        path: String,
+        page_index: u16,
+        document_revision: Option<u64>,
+    ) -> Result<LayoutInferenceResult, String> {
+        PdfPageIntermediateService::resolve_layout_inference_from_app_state(
+            &state,
+            path,
+            page_index,
+            document_revision,
+        )
+        .await
+    }
+
+    pub async fn resolve_glyph_paint_plan(
         state: tauri::State<'_, crate::AppState>,
         path: String,
         page_index: u16,
     ) -> Result<GlyphPaintPlan, String> {
-        let layout = Self::get_layout_inference(state, path, page_index).await?;
-        let plan = pdf_viewer_core::render::paint_plan::build_glyph_paint_plan(&layout);
-        let region_count = plan.regions.len();
-        let paragraph_count: usize = plan.regions.iter().map(|r| r.paragraphs.len()).sum();
-        crate::log_step!(
-            "[PDF][get_glyph_paint_plan] page={} regions={} paragraphs={} width={} height={}",
-            page_index, region_count, paragraph_count, plan.width, plan.height
-        );
-        Ok(plan)
+        Self::resolve_glyph_paint_plan_with_revision(state, path, page_index, None).await
     }
 
-    pub fn get_image_cache(_path: &str) -> HashMap<String, String> {
+    pub async fn resolve_glyph_paint_plan_with_revision(
+        state: tauri::State<'_, crate::AppState>,
+        path: String,
+        page_index: u16,
+        document_revision: Option<u64>,
+    ) -> Result<GlyphPaintPlan, String> {
+        PdfPageIntermediateService::resolve_glyph_paint_plan_from_app_state(
+            &state,
+            path,
+            page_index,
+            document_revision,
+        )
+        .await
+    }
+
+    pub fn read_image_cache(_path: &str) -> HashMap<String, String> {
         use base64::{engine::general_purpose, Engine as _};
         let cache = crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE
             .lock()
@@ -103,9 +89,7 @@ impl PdfEditorGeometryService {
     pub fn resolve_field_hit(
         request: pdf_viewer_core::models::FieldHitRequest,
     ) -> Result<pdf_viewer_core::models::FieldHitResolution, String> {
-        Ok(pdf_viewer_core::text::glyph_layout::resolve_field_hit_for_click(
-            &request,
-        ))
+        Ok(pdf_viewer_core::text::glyph_layout::resolve_field_hit_for_click(&request))
     }
 
     pub fn resolve_field_hit_target(
@@ -117,16 +101,12 @@ impl PdfEditorGeometryService {
     pub fn resolve_field_projection(
         request: pdf_viewer_core::models::FieldProjectionRequest,
     ) -> Result<pdf_viewer_core::models::FieldProjection, String> {
-        Ok(pdf_viewer_core::geometry::field_projection::resolve_field_projection(
-            &request,
-        ))
+        Ok(pdf_viewer_core::geometry::field_projection::resolve_field_projection(&request))
     }
 
     pub fn resolve_field_editor_params(
         request: pdf_viewer_core::models::FieldEditorParamsRequest,
     ) -> Result<pdf_viewer_core::models::FieldEditorParams, String> {
-        Ok(pdf_viewer_core::render::paint_plan::build_field_editor_params(
-            &request,
-        ))
+        Ok(pdf_viewer_core::render::paint_plan::build_field_editor_params(&request))
     }
 }

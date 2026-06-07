@@ -10,7 +10,7 @@
 pub mod annotation;
 pub mod comment;
 pub mod document;
-pub mod helpers;
+pub mod ipc_converters;
 pub mod page;
 pub mod render;
 pub mod replace;
@@ -30,7 +30,7 @@ pub use system::*;
 
 // ── Helper re-exports (used by `crate::application::pdf::*` modules) ─────
 
-pub(crate) use helpers::{
+pub(crate) use ipc_converters::{
     apply_highlight_annotation, apply_text_comment, delete_annotation_internal,
     ensure_document_loaded, update_text_comment,
 };

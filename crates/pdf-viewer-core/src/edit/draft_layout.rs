@@ -1,7 +1,7 @@
-use crate::typography::font_resolver::looks_like_symbolic_font;
-use crate::text::glyph_layout::is_decorative_text;
 use crate::geometry::layout_engine::{layout_paragraph, ParagraphLayout, VisualLine};
-use crate::models::{BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun};
+use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext};
+use crate::text::glyph_layout::is_decorative_text;
+use crate::typography::font_resolver::looks_like_symbolic_font;
 
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
@@ -243,11 +243,7 @@ fn remap_caret_indices_to_draft_space(
     );
 }
 
-fn same_existing_layout_line(
-    reference_baseline_y: f32,
-    run: &LayoutRun,
-    anchor_top: f32,
-) -> bool {
+fn same_existing_layout_line(reference_baseline_y: f32, run: &LayoutRun, anchor_top: f32) -> bool {
     let baseline_y = (run.origin_y - anchor_top).max(0.0);
     let tolerance = (run.style.font_size * 0.45).max(2.0);
     (reference_baseline_y - baseline_y).abs() <= tolerance
@@ -426,10 +422,7 @@ fn select_insert_style_run_with_policy(
             left -= 1;
         }
         if right < source_runs.len() {
-            if let Some(run) = source_runs
-                .get(right)
-                .filter(|run| is_good_body_style(run))
-            {
+            if let Some(run) = source_runs.get(right).filter(|run| is_good_body_style(run)) {
                 return normalize_style_run(run, preserve_underline);
             }
             right += 1;
@@ -682,11 +675,8 @@ fn build_draft_paragraph_with_policy(
     preserve_underline: bool,
 ) -> LayoutParagraph {
     let mut paragraph = document_plan.body_session.paragraph.clone();
-    let mut runs = build_style_runs_for_draft_text_with_policy(
-        document_plan,
-        draft_text,
-        preserve_underline,
-    );
+    let mut runs =
+        build_style_runs_for_draft_text_with_policy(document_plan, draft_text, preserve_underline);
     if runs.is_empty() {
         let mut template_run =
             resolve_draft_template_run_with_policy(document_plan, preserve_underline);
@@ -701,11 +691,22 @@ fn build_draft_paragraph_with_policy(
         );
     }
     // ── draft paragraph diagnostic ──
-    let run_summary: String = runs.iter().enumerate().take(8).map(|(i, r)| {
-        format!("r{}(co={} cw={} ox={:.1} text='{}')",
-            i, r.char_origins.len(), r.char_widths.len(),
-            r.origin_x, truncate_debug_text(&r.text, 15))
-    }).collect::<Vec<_>>().join(", ");
+    let run_summary: String = runs
+        .iter()
+        .enumerate()
+        .take(8)
+        .map(|(i, r)| {
+            format!(
+                "r{}(co={} cw={} ox={:.1} text='{}')",
+                i,
+                r.char_origins.len(),
+                r.char_widths.len(),
+                r.origin_x,
+                truncate_debug_text(&r.text, 15)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
     let anchor = &document_plan.body_session.anchor_bbox;
     let src_wrap = paragraph.wrap_width;
     let shell_w = shell_width(&document_plan.body_session);
@@ -727,8 +728,13 @@ fn build_draft_paragraph_with_policy(
             dbg_field("srcWrapWidth", format!("{:.2}", src_wrap)),
             dbg_field("shellWidth", format!("{:.2}", shell_w)),
             dbg_field("finalWrapWidth", format!("{:.2}", paragraph.wrap_width)),
-            dbg_field("anchorBBox", format!("[{:.2},{:.2},{:.2},{:.2}]",
-                anchor.left, anchor.top, anchor.right, anchor.bottom)),
+            dbg_field(
+                "anchorBBox",
+                format!(
+                    "[{:.2},{:.2},{:.2},{:.2}]",
+                    anchor.left, anchor.top, anchor.right, anchor.bottom
+                ),
+            ),
             dbg_field("runs", run_summary),
         ],
     );
@@ -886,8 +892,7 @@ pub fn build_draft_render_plan<F>(
 where
     F: Fn(&str, &LayoutRun) -> f32,
 {
-    if draft_text == document_plan.source_body_text()
-        && body_runs_match_source_text(document_plan)
+    if draft_text == document_plan.source_body_text() && body_runs_match_source_text(document_plan)
     {
         let layout = build_source_layout(document_plan);
         let caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
@@ -1029,10 +1034,8 @@ mod tests {
         build_draft_render_plan, build_persisted_overlay_render_plan, build_source_layout,
     };
     use crate::edit::document_plan::EditorDocumentPlan;
+    use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
     use crate::text::glyph_layout::build_editor_session_text_plan;
-    use crate::models::{
-        BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun, RunStyle,
-    };
 
     fn test_run(id: &str, text: &str, left: f32, right: f32, underline: bool) -> LayoutRun {
         LayoutRun {
@@ -1231,10 +1234,9 @@ mod tests {
         let document_plan = changed_text_document_plan();
         let draft_text = "智能合约: Anchor Framwork, Solana Program Library (SPL), ERC-20/721";
 
-        let plan =
-            build_persisted_overlay_render_plan(&document_plan, draft_text, |text, run| {
-                text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
-            });
+        let plan = build_persisted_overlay_render_plan(&document_plan, draft_text, |text, run| {
+            text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
+        });
 
         assert_eq!(rendered_text(&plan), draft_text);
         assert!(
@@ -1287,8 +1289,7 @@ mod tests {
         // 架构原则：渲染输出是 PDF 真实 compact 形态（synthetic 空格仅为编辑器
         // textarea 显示用，并不在原 PDF content-stream 内）。如此渲染才能让编辑后
         // 像素级匹配编辑前的 PDF 视觉，否则会插入 PDF 中根本不存在的空格 → 字体漂移。
-        let expected_compact =
-            "智能合约:AnchorFramwork,SolanaProgramLibrary(SPL),ERC-20/721";
+        let expected_compact = "智能合约:AnchorFramwork,SolanaProgramLibrary(SPL),ERC-20/721";
         assert_eq!(rendered_text(&plan), expected_compact);
         assert!(
             plan_has_source_char_origins(&plan),
@@ -1343,8 +1344,8 @@ mod tests {
     #[test]
     fn runs_to_source_index_map_accounts_for_synthetic_spaces() {
         // source_text has synthesized spaces; runs_text is compact PDF text.
-        let source = "编程语言: Rust";  // 10 chars (space after colon)
-        let runs   = "编程语言:Rust";   // 9 chars (no space)
+        let source = "编程语言: Rust"; // 10 chars (space after colon)
+        let runs = "编程语言:Rust"; // 9 chars (no space)
         let inv = super::build_runs_to_source_index_map(source, runs);
         // inv[0]=0(编), inv[1]=1(程), inv[2]=2(语), inv[3]=3(言),
         // inv[4]=4(:), inv[5]=6(R, skips space@5), inv[6]=7(u), inv[7]=8(s), inv[8]=9(t)
@@ -1358,8 +1359,8 @@ mod tests {
     #[test]
     fn runs_to_source_index_map_clamps_when_runs_has_chars_missing_in_source() {
         // 模拟：draft 已被删除最后两个字符 ('s', 't')，但 runs 仍是完整 "Rust"。
-        let source = "Ru";   // 2 chars
-        let runs   = "Rust"; // 4 chars
+        let source = "Ru"; // 2 chars
+        let runs = "Rust"; // 4 chars
         let inv = super::build_runs_to_source_index_map(source, runs);
         // inv 长度 = runs.chars().count() + 1 = 5
         // inv[0]=0(R), inv[1]=1(u),

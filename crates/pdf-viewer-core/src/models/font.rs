@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FontHints {
     pub flags: i32,
@@ -14,6 +14,11 @@ pub struct FontHints {
     pub is_serif: bool,
     pub is_italic: bool,
     pub is_bold: bool,
+    pub is_symbolic: bool,
+    pub is_script: bool,
+    pub is_all_cap: bool,
+    pub is_small_cap: bool,
+    pub is_force_bold: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]

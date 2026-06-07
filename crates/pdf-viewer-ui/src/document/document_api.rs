@@ -15,12 +15,8 @@ use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
 use crate::document::host_pipeline::{
-    close_document_pipeline,
-    open_document_pipeline,
-    redo_document_pipeline,
-    rotate_document_pipeline,
-    undo_document_pipeline,
-    OpenDocumentPipelineRequest,
+    close_document_pipeline, open_document_pipeline, redo_document_pipeline,
+    rotate_document_pipeline, undo_document_pipeline, OpenDocumentPipelineRequest,
 };
 use crate::document::mutation_pipeline::request_document_refresh;
 use crate::present::plan_builder::FramePlanRequest;
@@ -50,8 +46,11 @@ impl DocumentSession {
     /// Close the active document and reset host session to default dimensions.
     #[wasm_bindgen(js_name = "close")]
     pub fn close(&self, default_page_width: f32, default_page_height: f32) -> JsValue {
-        to_value(&close_document_pipeline(default_page_width, default_page_height))
-            .unwrap_or(JsValue::NULL)
+        to_value(&close_document_pipeline(
+            default_page_width,
+            default_page_height,
+        ))
+        .unwrap_or(JsValue::NULL)
     }
 
     // ── History ─────────────────────────────────────────────────
@@ -84,8 +83,8 @@ impl DocumentSession {
     /// Equivalent to Nutrient's `instance.hasUnsavedChanges()`.
     #[wasm_bindgen(js_name = "hasUnsavedChanges")]
     pub fn has_unsaved_changes(&self) -> bool {
-        use crate::state_manager::{get_patch_state, has_visible_patches};
-        get_patch_state()
+        use crate::ui_state_store::{has_visible_patches, read_patch_state};
+        read_patch_state()
             .read()
             .map(|state| has_visible_patches(&state))
             .unwrap_or(false)
@@ -94,20 +93,20 @@ impl DocumentSession {
     /// Number of persistable patches currently in memory.
     #[wasm_bindgen(js_name = "patchCount")]
     pub fn patch_count(&self) -> usize {
-        use crate::state_manager::collect_persistable_patches;
+        use crate::ui_state_store::collect_persistable_patches;
         collect_persistable_patches().len()
     }
 
     /// Whether an undo step is available.
     #[wasm_bindgen(js_name = "canUndo")]
     pub fn can_undo(&self) -> bool {
-        crate::state_manager::can_undo()
+        crate::ui_state_store::can_undo()
     }
 
     /// Whether a redo step is available.
     #[wasm_bindgen(js_name = "canRedo")]
     pub fn can_redo(&self) -> bool {
-        crate::state_manager::can_redo()
+        crate::ui_state_store::can_redo()
     }
 
     // ── Document refresh ───────────────────────────────────────
@@ -122,7 +121,6 @@ impl DocumentSession {
         let result = request_document_refresh(source, frame_request);
         to_value(&result).unwrap_or(JsValue::NULL)
     }
-
 }
 
 impl Default for DocumentSession {

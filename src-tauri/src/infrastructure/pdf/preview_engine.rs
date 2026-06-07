@@ -1,8 +1,7 @@
+use crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE;
+use crate::infrastructure::pdf::models::{LightPageKind, LightPageModel};
 use lopdf::{Document, ObjectId};
 use std::sync::Arc;
-use crate::infrastructure::pdf::models::{LightPageKind, LightPageModel};
-use crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE;
-use crate::log_step;
 fn page_dimensions(doc: &Document, page_id: ObjectId) -> Result<(f32, f32), String> {
     let page_dict = doc.get_dictionary(page_id).map_err(|e| e.to_string())?;
     let media_box = page_dict
@@ -58,9 +57,11 @@ fn page_dimensions(doc: &Document, page_id: ObjectId) -> Result<(f32, f32), Stri
     let normalized_rotation = ((rotation % 360) + 360) % 360;
     if normalized_rotation == 90 || normalized_rotation == 270 {
         std::mem::swap(&mut w, &mut h);
-        log_step!(
+        crate::log_step!(
             "[PDF][preview] swapped page size due to {} deg rotation. final={}x{}",
-            normalized_rotation, w, h
+            normalized_rotation,
+            w,
+            h
         );
     }
 
@@ -125,11 +126,14 @@ fn cache_image_asset(xobj_stream: &lopdf::Stream, width: i64, height: i64) -> Op
     // Must contain DCTDecode somewhere to be a JPEG
     let has_dct = filters.iter().any(|f| *f == b"DCTDecode");
     if !has_dct {
-        log_step!(
+        crate::log_step!(
             "[PDF][preview] skip non-jpeg preview asset {}x{} filters={:?}",
             width,
             height,
-            filters.iter().map(|f| String::from_utf8_lossy(f).to_string()).collect::<Vec<_>>()
+            filters
+                .iter()
+                .map(|f| String::from_utf8_lossy(f).to_string())
+                .collect::<Vec<_>>()
         );
         return None;
     }
@@ -161,9 +165,11 @@ fn cache_image_asset(xobj_stream: &lopdf::Stream, width: i64, height: i64) -> Op
                 match decoder2.read_to_end(&mut decompressed2) {
                     Ok(_) => Arc::from(decompressed2),
                     Err(e) => {
-                        log_step!(
+                        crate::log_step!(
                             "[PDF][preview] flate decompress failed for {}x{}: {:?}",
-                            width, height, e
+                            width,
+                            height,
+                            e
                         );
                         return None;
                     }
@@ -182,7 +188,7 @@ fn cache_image_asset(xobj_stream: &lopdf::Stream, width: i64, height: i64) -> Op
     let mut cache = PDF_IMAGE_CACHE.lock().unwrap();
     let byte_len = img_data.len();
     cache.insert(asset_id.clone(), img_data);
-    log_step!(
+    crate::log_step!(
         "[PDF][preview] cached original jpeg {}x{} bytes={} flate_decompressed={}",
         width,
         height,
@@ -200,7 +206,7 @@ pub fn build_light_page_model(doc: &Document, page_index: u16) -> Result<LightPa
 
     let (width, height) = page_dimensions(doc, page_id)?;
     let xobjects = collect_page_xobjects(doc, page_id);
-    log_step!(
+    crate::log_step!(
         "[PDF][preview] page={} size={}x{} xobjects={}",
         page_index,
         width,
@@ -240,7 +246,7 @@ pub fn build_light_page_model(doc: &Document, page_index: u16) -> Result<LightPa
         }
 
         let area = img_width.saturating_mul(img_height);
-        log_step!(
+        crate::log_step!(
             "[PDF][preview] candidate image {}x{} area={}",
             img_width,
             img_height,
@@ -269,7 +275,7 @@ pub fn build_light_page_model(doc: &Document, page_index: u16) -> Result<LightPa
         preview_image_url,
     })
     .inspect(|_| {
-        log_step!(
+        crate::log_step!(
             "[PDF][preview] build_light_page_model TOTAL {:?}",
             total_start.elapsed()
         );

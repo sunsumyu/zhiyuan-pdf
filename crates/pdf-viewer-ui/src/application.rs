@@ -35,9 +35,10 @@ use crate::editor::editor_store;
 use crate::editor::editor_types::SessionState as EditorSessionState;
 use crate::find::find_store;
 use crate::find::find_store::FindSessionState;
-use crate::review::review_api::{get_review_state, ReviewSessionState};
-use crate::viewer::viewer_store::{get_viewer_state, ViewerSessionState};
-use crate::zoom::zoom_store::{get_zoom_session_state, ZoomSessionState};
+use crate::presentation::page_turn::{read_page_turn_snapshot, PageTurnSnapshot};
+use crate::review::review_api::{read_review_state, ReviewSessionState};
+use crate::viewer::viewer_store::{read_viewer_state, ViewerSessionState};
+use crate::zoom::zoom_store::{read_zoom_session_state, ZoomSessionState};
 
 // ── Aggregated state snapshot ───────────────────────────────────
 
@@ -49,15 +50,17 @@ pub struct ApplicationState {
     pub find: FindSessionState,
     pub review: ReviewSessionState,
     pub zoom: ZoomSessionState,
+    pub presentation: PageTurnSnapshot,
 }
 
 fn snapshot_state() -> ApplicationState {
     ApplicationState {
-        viewer: get_viewer_state(),
-        editor: editor_store::get_state(),
-        find: find_store::get_find_state(),
-        review: get_review_state(),
-        zoom: get_zoom_session_state(),
+        viewer: read_viewer_state(),
+        editor: editor_store::read_state(),
+        find: find_store::read_find_state(),
+        review: read_review_state(),
+        zoom: read_zoom_session_state(),
+        presentation: read_page_turn_snapshot(),
     }
 }
 
@@ -111,11 +114,9 @@ impl Application {
         // (Viewing state) but the find controller keeps is_open + last_result.
         reset_find_controller();
 
-        let request: OpenDocumentPipelineRequest =
-            from_value(request_js).unwrap_or_default();
+        let request: OpenDocumentPipelineRequest = from_value(request_js).unwrap_or_default();
         let path_for_event = request.path.clone();
-        let result: OpenDocumentPipelineResult =
-            open_document_pipeline(request).await?;
+        let result: OpenDocumentPipelineResult = open_document_pipeline(request).await?;
 
         // Emit document.open event with the path as payload
         if result.opened {
@@ -168,9 +169,15 @@ impl Application {
     ///
     /// Returns `{ viewer, editor, find, review, zoom }` — one call instead of
     /// five individual Session.getState() calls.
-    #[wasm_bindgen(js_name = "getState")]
-    pub fn get_state(&self) -> JsValue {
+    #[wasm_bindgen(js_name = "readState")]
+    pub fn read_state(&self) -> JsValue {
         to_value(&snapshot_state()).unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(js_name = "getState")]
+    #[deprecated(since = "0.2.0", note = "Use readState instead")]
+    pub fn get_state(&self) -> JsValue {
+        self.read_state()
     }
 
     // ── Event system (Nutrient borrowing #1) ────────────────────

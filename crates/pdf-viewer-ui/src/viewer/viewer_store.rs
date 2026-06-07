@@ -32,7 +32,7 @@ impl ViewerSessionState {
 }
 
 /// Snapshot of the current viewer session state.
-pub fn get_viewer_state() -> ViewerSessionState {
+pub fn read_viewer_state() -> ViewerSessionState {
     VIEWER_SESSION.with(|session| {
         if session.borrow().path.is_some() {
             ViewerSessionState::DocumentOpen
@@ -89,7 +89,7 @@ pub fn set_zoom_and_page_dimensions(zoom: f32, page_width: Option<f32>, page_hei
     });
 }
 
-pub fn get_viewer_session() -> HostViewerSession {
+pub fn read_viewer_session() -> HostViewerSession {
     VIEWER_SESSION.with(|session| session.borrow().clone())
 }
 

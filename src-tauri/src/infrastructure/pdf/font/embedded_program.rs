@@ -58,10 +58,10 @@ fn is_sorted_records(records: &[[u8; 16]]) -> bool {
 
 #[cfg(test)]
 mod tests {
-use super::normalize_embedded_font_program;
+    use super::normalize_embedded_font_program;
 
     #[test]
-fn sorts_unsorted_sfnt_records_without_touching_payload() {
+    fn sorts_unsorted_sfnt_records_without_touching_payload() {
         let mut bytes = vec![
             0x00, 0x01, 0x00, 0x00, // sfnt
             0x00, 0x02, // numTables

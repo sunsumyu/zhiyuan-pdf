@@ -112,7 +112,9 @@ pub enum LayoutMode {
     Anchored,
 }
 
-fn default_scale() -> f32 { 1.0 }
+fn default_scale() -> f32 {
+    1.0
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -152,7 +154,10 @@ pub struct LayoutRun {
 impl LayoutRun {
     pub fn from_styled(run: &StyledRun) -> Self {
         Self {
-            id: run.object_id.clone().unwrap_or_else(|| format!("run-{}", run.tx)),
+            id: run
+                .object_id
+                .clone()
+                .unwrap_or_else(|| format!("run-{}", run.tx)),
             text: run.text.clone(),
             style: RunStyle {
                 font_name: run.font_name.clone(),

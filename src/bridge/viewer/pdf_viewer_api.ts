@@ -3,6 +3,8 @@ import type { RenderReason } from '../render/frame_plan';
 import type { RenderScheduler } from '../render/render_scheduler';
 import type { PdfEditSource } from '../document/document_edit_api';
 import type { EditorFormatAction } from '../editor/types';
+import type { PageTurnDecision } from './page_presentation_runtime';
+
 
 export type PdfViewerApiDeps = {
     ensureWasmInitialized: () => Promise<unknown>;
@@ -10,6 +12,7 @@ export type PdfViewerApiDeps = {
     readPath: () => string | null;
     readCurrentPage: () => number;
     readPageCount: () => number;
+    requestPageTurn: (targetPage: number, reason: 'next' | 'prev' | 'jump') => PageTurnDecision;
     setCurrentPage: (pageIndex: number) => void;
     refreshDocument: (reason: PdfEditSource) => Promise<unknown>;
     resetPdfViewerState: () => void;
@@ -91,17 +94,24 @@ export class PdfViewerAPI {
 
     async prevPage(): Promise<void> {
         const current = this.deps.readCurrentPage();
-        if (current <= 0) return;
-        this.deps.setCurrentPage(current - 1);
-        await this.deps.renderScheduler.requestRender('navigation');
+        const decision = this.deps.requestPageTurn(Math.max(0, current - 1), 'prev');
+        if (!decision.accepted) return;
+        this.deps.setCurrentPage(decision.targetPage);
+        await this.deps.renderScheduler.requestRender('navigation', 'navigation', {
+            pageTurnId: decision.pageTurnId,
+            targetPage: decision.targetPage,
+        });
     }
 
     async nextPage(): Promise<void> {
         const current = this.deps.readCurrentPage();
-        const total = this.deps.readPageCount();
-        if (total <= 0 || current + 1 >= total) return;
-        this.deps.setCurrentPage(current + 1);
-        await this.deps.renderScheduler.requestRender('navigation');
+        const decision = this.deps.requestPageTurn(current + 1, 'next');
+        if (!decision.accepted) return;
+        this.deps.setCurrentPage(decision.targetPage);
+        await this.deps.renderScheduler.requestRender('navigation', 'navigation', {
+            pageTurnId: decision.pageTurnId,
+            targetPage: decision.targetPage,
+        });
     }
 
     // === Zoom ===
@@ -379,4 +389,3 @@ export function registerPdfViewerAPI(deps: PdfViewerApiDeps): PdfViewerAPI {
 export function getPdfViewerAPI(): PdfViewerAPI | null {
     return globalApi;
 }
-

@@ -1,11 +1,10 @@
 import { logPdfLayoutTrace } from './layout_trace';
+import { CanvasPool } from './vector_canvas_pool';
 
 const viewportFrameCache = new Map<string, HTMLCanvasElement>();
 
 function cloneCanvas(source: HTMLCanvasElement): HTMLCanvasElement {
-    const snapshot = document.createElement('canvas');
-    snapshot.width = source.width;
-    snapshot.height = source.height;
+    const snapshot = CanvasPool.rent(source.width, source.height);
     const ctx = snapshot.getContext('2d', { alpha: false });
     if (ctx) {
         ctx.drawImage(source, 0, 0);
@@ -17,6 +16,9 @@ export function clearVectorFrameCache(): void {
     logPdfLayoutTrace('frame-cache.clear', {
         sizeBefore: viewportFrameCache.size,
     });
+    for (const canvas of viewportFrameCache.values()) {
+        CanvasPool.recycle(canvas);
+    }
     viewportFrameCache.clear();
 }
 
@@ -54,7 +56,11 @@ export function deleteViewportFrameCacheKeys(keys: string[]): void {
     }
     for (const key of keys) {
         if (!key) continue;
-        viewportFrameCache.delete(key);
+        const canvas = viewportFrameCache.get(key);
+        if (canvas) {
+            CanvasPool.recycle(canvas);
+            viewportFrameCache.delete(key);
+        }
     }
     if (keys.length > 0) {
         logPdfLayoutTrace('frame-cache.delete.after', {

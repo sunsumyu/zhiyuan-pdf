@@ -1,9 +1,9 @@
-use crate::editor::mode::{close_active_editor, get_active_editor_state};
+use crate::document::patch_persistence::apply_document_patch_direct;
 use crate::editor::editor_controller::build_active_editor_patch;
 use crate::editor::editor_controller::EditorVisibilityAction;
+use crate::editor::mode::{close_active_editor, read_active_editor_state};
 use crate::editor::session::active_editor_draft_text;
-use crate::document::patch_persistence::apply_document_patch_direct;
-use crate::state_manager::remember_paragraph_replacement_target;
+use crate::ui_state_store::remember_paragraph_replacement_target;
 
 /// 高层入口：若当前有未提交的 live state，强制走 commit 持久化它。
 /// 用于"退出 edit mode / 切换 edit mode / 关闭编辑器"等所有路径，
@@ -23,7 +23,7 @@ pub fn commit_pending_edit_if_any() -> bool {
 }
 
 pub fn commit_active_editor_text(new_text: String) -> EditorVisibilityAction {
-    let active_state = get_active_editor_state();
+    let active_state = read_active_editor_state();
     crate::chain_trace!(
         "commit.start",
         "newLen" => new_text.chars().count(),

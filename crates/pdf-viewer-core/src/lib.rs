@@ -10,6 +10,6 @@ pub mod text;
 pub mod typography;
 pub mod utils;
 
-pub fn get_core_version() -> &'static str {
+pub fn read_core_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }

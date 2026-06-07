@@ -6,20 +6,18 @@ use crate::edit::debug_trace::{
 use crate::edit::edit_target::{
     collect_edit_targets_from_session, resolve_edit_target_from_session, EditorEditTarget,
 };
-use crate::edit::source_runs::{
-    original_paint_runs_for_target, resolve_preferred_editor_session,
-};
+use crate::edit::source_runs::{original_paint_runs_for_target, resolve_preferred_editor_session};
 use crate::edit::source_text::session_source_text;
-use crate::typography::font_resolver::looks_like_symbolic_font;
 use crate::geometry::source_geometry::source_visual_bbox_from_runs;
+use crate::models::{
+    BoundingBox, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, LayoutRun,
+    ParagraphEditContext, VectorPageModel,
+};
 use crate::text::glyph_layout::{
     build_editor_session_text_plan, infer_run_advance, is_decorative_text, EditorSessionTextPlan,
 };
 use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind};
-use crate::models::{
-    BoundingBox, ParagraphEditContext, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, LayoutRun,
-    VectorPageModel,
-};
+use crate::typography::font_resolver::looks_like_symbolic_font;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -431,12 +429,7 @@ fn synthesize_marker_from_paragraph(
         .filter(|run| {
             let first_char = run.text.trim_start().chars().next();
             first_char
-                .map(|c| {
-                    matches!(
-                        c,
-                        '•' | '●' | '▪' | '◦' | '·' | '○' | '-' | '▶' | '➤'
-                    )
-                })
+                .map(|c| matches!(c, '•' | '●' | '▪' | '◦' | '·' | '○' | '-' | '▶' | '➤'))
                 .unwrap_or(false)
                 || looks_like_symbolic_font(&run.style.font_name)
         })
@@ -524,12 +517,7 @@ pub fn build_editor_document_plan(
     vector_model: Option<&VectorPageModel>,
     click_page_point: Option<(f32, f32)>,
 ) -> Option<EditorDocumentPlan> {
-    build_editor_document_plan_for_target(
-        paragraph,
-        vector_model,
-        &paragraph.id,
-        click_page_point,
-    )
+    build_editor_document_plan_for_target(paragraph, vector_model, &paragraph.id, click_page_point)
 }
 
 pub fn collect_editor_document_target_plans(
@@ -540,9 +528,7 @@ pub fn collect_editor_document_target_plans(
         .unwrap_or_else(|| paragraph.editor_session.clone());
     collect_edit_targets_from_session(&paragraph.id, &full_session)
         .into_iter()
-        .filter_map(|target| {
-            build_plan_for_target_session(paragraph, &full_session, target, None)
-        })
+        .filter_map(|target| build_plan_for_target_session(paragraph, &full_session, target, None))
         .collect()
 }
 
@@ -554,12 +540,8 @@ pub fn build_editor_document_plan_for_target(
 ) -> Option<EditorDocumentPlan> {
     let full_session = resolve_preferred_editor_session(paragraph, vector_model)
         .unwrap_or_else(|| paragraph.editor_session.clone());
-    let target = resolve_edit_target_from_session(
-        &paragraph.id,
-        target_id,
-        &full_session,
-        click_page_point,
-    );
+    let target =
+        resolve_edit_target_from_session(&paragraph.id, target_id, &full_session, click_page_point);
 
     build_plan_for_target_session(paragraph, &full_session, target, click_page_point)
 }
@@ -601,7 +583,8 @@ fn build_plan_for_target_session(
                 marker: None,
             },
         )
-    } else if let Some((body_char_start, marker_kind)) = detect_symbolic_font_marker(&full_session) {
+    } else if let Some((body_char_start, marker_kind)) = detect_symbolic_font_marker(&full_session)
+    {
         let raw_body_char_start = full_text_plan.map_reconstructed_to_raw(body_char_start);
         split_editor_session(&full_session, raw_body_char_start, marker_kind).unwrap_or(
             SessionSplit {
@@ -628,7 +611,10 @@ fn build_plan_for_target_session(
         vec![
             dbg_field("paragraphId", &target_id),
             dbg_field("markerPresent", split.marker.is_some()),
-            dbg_field("markerText", split.marker.as_ref().map(|m| m.text.as_str()).unwrap_or("")),
+            dbg_field(
+                "markerText",
+                split.marker.as_ref().map(|m| m.text.as_str()).unwrap_or(""),
+            ),
             dbg_field("bodyRunCount", split.body_session.paragraph.runs.len()),
         ],
     );
@@ -762,12 +748,12 @@ fn build_plan_for_target_session(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::glyph_layout::build_editor_session_text_plan;
     use crate::models::{
         EditorControlStyle, FontSourceKind, PaintMode, ParagraphStyle, ResolvedFontFace,
         ResolvedFontIdentity, RunStyle, SemanticRole, StyledRun, SymbolClass, VectorRenderObject,
         VectorTextObject,
     };
+    use crate::text::glyph_layout::build_editor_session_text_plan;
 
     const CANONICAL_MIXED_TEXT: &str =
         "智能合约: Anchor Framework, Solana Program Library (SPL), ERC-20/721";

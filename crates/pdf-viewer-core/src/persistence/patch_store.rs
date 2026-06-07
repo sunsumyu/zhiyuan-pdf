@@ -1,16 +1,19 @@
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::sync::RwLock;
 
 use crate::document::page_region_models::ParagraphRegionSnapshot;
 use crate::edit::active_target::ActiveEditorTarget;
+use crate::geometry::layout_engine::ParagraphLayout;
+use crate::models::{PaginationAction, PaginationCommand};
 use crate::persistence::models::PersistableRegionPatch;
-
-// ── Patch State ─────────────────────────────────────────────────
 
 #[derive(Default)]
 pub struct GlobalPatchState {
     pub paragraph_texts: HashMap<String, String>,
     pub paragraph_snapshots: HashMap<String, ParagraphRegionSnapshot>,
+    pub paragraph_layout_snapshots: HashMap<String, ParagraphLayout>,
     pub paragraph_patches: HashMap<String, PersistableRegionPatch>,
     pub paragraph_replacement_targets: HashMap<String, ActiveEditorTarget>,
     pub field_group_texts: HashMap<String, String>,
@@ -20,9 +23,27 @@ pub struct GlobalPatchState {
     pub redo_stack: Vec<PatchCommand>,
     pub accepted_patch_keys: HashSet<String>,
     pub patch_revision: u64,
+    pub patched_run_texts: HashMap<String, String>,
+    pub patched_texts: HashMap<String, String>,
 }
 
-#[derive(Clone, Debug)]
+impl GlobalPatchState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn find_paragraph_snapshot(&self, key: &str) -> Option<&ParagraphLayout> {
+        self.paragraph_layout_snapshots.get(key)
+    }
+}
+
+lazy_static! {
+    pub static ref GLOBAL_PATCH_STATE: RwLock<GlobalPatchState> =
+        RwLock::new(GlobalPatchState::new());
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PatchCommand {
     pub patch_key: String,
     pub old_patch: Option<PersistableRegionPatch>,
@@ -48,8 +69,6 @@ pub struct ReviewBulkChangeResult {
     pub revision: u64,
     pub affected_patch_count: usize,
 }
-
-// ── Pure helper functions (no global state access) ──────────────
 
 pub fn bump_patch_revision(state: &mut GlobalPatchState) {
     state.patch_revision = state.patch_revision.saturating_add(1);
@@ -137,4 +156,57 @@ pub fn capture_existing_patch(
     }
 
     None
+}
+
+pub fn apply_patch(patch: PersistableRegionPatch) {
+    if let Ok(mut state) = GLOBAL_PATCH_STATE.write() {
+        if patch.source == "field-row" {
+            state
+                .field_group_texts
+                .insert(patch.patch_key.clone(), patch.new_text.clone());
+            if let Some(snapshot) = patch.snapshot {
+                state
+                    .field_group_snapshots
+                    .insert(patch.patch_key, snapshot);
+            }
+        } else {
+            state
+                .paragraph_texts
+                .insert(patch.patch_key.clone(), patch.new_text.clone());
+        }
+    }
+}
+
+pub fn should_prefetch_page(current_page: usize, target_page: usize, buffer: usize) -> bool {
+    if target_page > current_page {
+        target_page - current_page <= buffer
+    } else if current_page > target_page {
+        current_page - target_page <= buffer
+    } else {
+        false
+    }
+}
+
+pub fn build_pagination_commands(
+    current_page: usize,
+    total_pages: usize,
+    path: &str,
+    zoom: f32,
+) -> Vec<crate::models::PaginationCommand> {
+    let mut commands = Vec::new();
+
+    // 计算滑动窗口 [current - 1, current + 1]
+    let start = current_page.saturating_sub(1);
+    let end = (current_page + 1).min(total_pages.saturating_sub(1));
+
+    for page in start..=end {
+        commands.push(PaginationCommand {
+            action: PaginationAction::Prefetch,
+            page_index: page,
+            path: path.to_string(),
+            zoom,
+        });
+    }
+
+    commands
 }

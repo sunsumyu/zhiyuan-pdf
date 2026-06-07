@@ -1,10 +1,10 @@
 use std::time::Instant;
 
 pub mod app_state;
+pub mod application;
 pub mod error;
 pub mod infrastructure;
 pub mod interfaces;
-pub mod application;
 pub mod state;
 
 pub use app_state::{AppState, CacheStore, DocumentStore, HistoryStore, RendererState};
@@ -15,7 +15,10 @@ pub fn run() {
     eprintln!("[BOOT] Rust main() entered");
 
     let app_state = AppState::new();
-    eprintln!("[BOOT] AppState::new completed in {:.2?}", boot_start.elapsed());
+    eprintln!(
+        "[BOOT] AppState::new completed in {:.2?}",
+        boot_start.elapsed()
+    );
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -55,7 +58,10 @@ pub fn run() {
         })
         // Debug 构建下自动打开 DevTools，方便从控制台调用 window.verifyEditorBugs()。
         .setup(move |app| {
-            eprintln!("[BOOT] tauri::Builder setup() entered at {:.2?}", boot_start.elapsed());
+            eprintln!(
+                "[BOOT] tauri::Builder setup() entered at {:.2?}",
+                boot_start.elapsed()
+            );
             #[cfg(debug_assertions)]
             {
                 use tauri::Manager;
@@ -64,7 +70,10 @@ pub fn run() {
                 }
             }
             let _ = app;
-            eprintln!("[BOOT] tauri::Builder setup() completed at {:.2?}", boot_start.elapsed());
+            eprintln!(
+                "[BOOT] tauri::Builder setup() completed at {:.2?}",
+                boot_start.elapsed()
+            );
             Ok(())
         })
         .manage(app_state)
@@ -72,6 +81,7 @@ pub fn run() {
             interfaces::pdf::open_pdf,
             interfaces::pdf::clear_cache,
             interfaces::pdf::read_preview,
+            interfaces::pdf::read_page_asset_bundle,
             interfaces::pdf::read_vector,
             interfaces::pdf::save_pdf,
             interfaces::pdf::apply_region_patches,
@@ -92,10 +102,17 @@ pub fn run() {
             interfaces::pdf::diagnose_page,
             interfaces::pdf::create_demo_pdf,
             interfaces::pdf::set_log_level,
-            interfaces::pdf::get_asset_url,
+            interfaces::pdf::clear_pdf_event_log,
+            interfaces::pdf::read_pdf_event_log,
+            interfaces::pdf::set_page_asset_test_delay_ms,
+            interfaces::pdf::terminal_log,
+            interfaces::pdf::resolve_asset_url,
             interfaces::pdf::pick_file,
         ]);
-    eprintln!("[BOOT] Tauri builder configured in {:.2?}", boot_start.elapsed());
+    eprintln!(
+        "[BOOT] Tauri builder configured in {:.2?}",
+        boot_start.elapsed()
+    );
 
     builder
         .run(tauri::generate_context!())

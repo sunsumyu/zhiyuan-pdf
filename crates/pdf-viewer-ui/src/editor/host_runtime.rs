@@ -23,7 +23,7 @@ thread_local! {
         RefCell::new(EditorHostRuntimeState::default());
 }
 
-pub fn get_state() -> EditorHostRuntimeState {
+pub fn read_state() -> EditorHostRuntimeState {
     EDITOR_HOST_RUNTIME_STATE.with(|state| state.borrow().clone())
 }
 

@@ -65,26 +65,28 @@ impl LayoutGraphAnalyzer {
         let mut regions = Vec::new();
 
         for (idx, run_indices) in components.into_iter().enumerate() {
-            let mut component_runs: Vec<LayoutRun> = run_indices
-                .iter()
-                .map(|&i| runs[i].clone())
-                .collect();
+            let mut component_runs: Vec<LayoutRun> =
+                run_indices.iter().map(|&i| runs[i].clone()).collect();
 
             // 阅读流强制对齐：基于标准的视觉从上至下扫描
             component_runs.sort_by(|a, b| {
-                a.bbox.top.partial_cmp(&b.bbox.top).unwrap_or(std::cmp::Ordering::Equal)
-                    .then_with(|| a.bbox.left.partial_cmp(&b.bbox.left).unwrap_or(std::cmp::Ordering::Equal))
+                a.bbox
+                    .top
+                    .partial_cmp(&b.bbox.top)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| {
+                        a.bbox
+                            .left
+                            .partial_cmp(&b.bbox.left)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
             });
 
             // 【模式判定】：探测这串合并好的几何簇符合哪类结构
             let (role, mode) = self.detect_layout_pattern(&component_runs);
 
-            let region = self.create_semantic_region(
-                format!("v4-node-{}", idx),
-                role,
-                mode,
-                component_runs,
-            );
+            let region =
+                self.create_semantic_region(format!("v4-node-{}", idx), role, mode, component_runs);
             regions.push(region);
         }
 
@@ -119,7 +121,8 @@ impl LayoutGraphAnalyzer {
         }
 
         // 3. 列表项模式 (List Pattern)
-        if trimmed.starts_with('•') || trimmed.starts_with('·')
+        if trimmed.starts_with('•')
+            || trimmed.starts_with('·')
             || (trimmed.chars().next().map_or(false, |c| c.is_digit(10)) && trimmed.contains('.'))
         {
             return (LayoutRole::ListItem, LayoutMode::Flow);
@@ -139,8 +142,16 @@ impl LayoutGraphAnalyzer {
         let mut sorted_runs = runs;
 
         sorted_runs.sort_by(|a, b| {
-            a.bbox.top.partial_cmp(&b.bbox.top).unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.bbox.left.partial_cmp(&b.bbox.left).unwrap_or(std::cmp::Ordering::Equal))
+            a.bbox
+                .top
+                .partial_cmp(&b.bbox.top)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    a.bbox
+                        .left
+                        .partial_cmp(&b.bbox.left)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
         });
 
         let mut bbox = BoundingBox {

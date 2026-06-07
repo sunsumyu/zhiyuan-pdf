@@ -211,11 +211,7 @@ pub fn clear_detail_tiles(state: &mut HostPresentState) {
     state.recent_detail_tiles.clear();
 }
 
-pub fn touch_frame_cache_key(
-    state: &mut HostFrameCacheState,
-    is_detail: bool,
-    key: &str,
-) -> bool {
+pub fn touch_frame_cache_key(state: &mut HostFrameCacheState, is_detail: bool, key: &str) -> bool {
     if key.is_empty() {
         return false;
     }

@@ -1,9 +1,11 @@
 use wasm_bindgen::{JsCast, JsValue};
 
 use crate::bridge::on_debug;
-use crate::render::canvas::CanvasRenderer;
-use crate::page::page_store::{with_page_state, with_page_and_scene, with_progressive_task_mut, set_progressive_task};
 use crate::editor::paragraph_overlay::collect_paragraph_render_overlays;
+use crate::page::page_store::{
+    set_progressive_task, with_page_and_scene, with_page_state, with_progressive_task_mut,
+};
+use crate::render::canvas::CanvasRenderer;
 use crate::render::progressive::{
     ProgressiveRenderStart, ProgressiveRenderStep, ProgressiveVectorRenderTask,
 };

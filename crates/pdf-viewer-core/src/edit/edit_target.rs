@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
-use crate::typography::font_resolver::looks_like_symbolic_font;
+use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext};
 use crate::text::list_semantics::derive_list_text_semantics;
-use crate::models::{BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun};
+use crate::typography::font_resolver::looks_like_symbolic_font;
 
 use crate::geometry::source_geometry::{source_run_visual_bbox, source_visual_bbox_from_runs};
 
@@ -129,17 +129,19 @@ fn build_visual_segments(session: &ParagraphEditContext) -> Vec<VisualSegment> {
         .enumerate()
         .filter(|(_, run)| !run.text.is_empty())
         .collect::<Vec<_>>();
-    indexed_runs.sort_by(|(left_index, left): &(usize, &LayoutRun), (right_index, right)| {
-        line_sort_key(left)
-            .partial_cmp(&line_sort_key(right))
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| {
-                left.origin_x
-                    .partial_cmp(&right.origin_x)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .then_with(|| left_index.cmp(right_index))
-    });
+    indexed_runs.sort_by(
+        |(left_index, left): &(usize, &LayoutRun), (right_index, right)| {
+            line_sort_key(left)
+                .partial_cmp(&line_sort_key(right))
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    left.origin_x
+                        .partial_cmp(&right.origin_x)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .then_with(|| left_index.cmp(right_index))
+        },
+    );
 
     let line_groups = group_runs_by_visual_line(indexed_runs);
     let mut segments = Vec::new();
@@ -373,9 +375,7 @@ fn target_hit_score(bbox: &BoundingBox, click_x: f32, click_y: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::collect_edit_targets_from_session;
-    use crate::models::{
-        BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun, RunStyle,
-    };
+    use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
 
     fn test_run(id: &str, text: &str, left: f32, baseline_y: f32) -> LayoutRun {
         let width = text.chars().count() as f32 * 6.0;

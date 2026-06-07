@@ -1,18 +1,17 @@
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::mode::get_active_editor_state;
+use crate::editor::mode::read_active_editor_state;
+use crate::editor::paragraph_overlay::{
+    collect_paragraph_render_overlays, ParagraphRenderOverlayOwner,
+};
 use crate::editor::replacement_region::paragraph_replacement_region;
 use crate::render::canvas_overlay::{
-    draw_active_editor_shell_overlay_page,
-    draw_persisted_paragraph_overlay_page, path_bbox_summary,
+    draw_active_editor_shell_overlay_page, draw_persisted_paragraph_overlay_page, path_bbox_summary,
 };
 use crate::render::effective_page_plan::{
     build_effective_glyph_render_plan, build_effective_vector_render_plan,
     EffectiveGlyphRenderEntry, EffectiveVectorRenderEntry, SuppressedVectorTextRuns,
-};
-use crate::editor::paragraph_overlay::{
-    collect_paragraph_render_overlays, ParagraphRenderOverlayOwner,
 };
 use crate::render::prepared_scene::PreparedPageScene;
 use crate::render::progressive::ProgressiveVectorRenderTask;
@@ -21,9 +20,9 @@ use crate::viewport_culling::{
     glyph_run_intersects_viewport, path_object_bbox, resolve_page_viewport_bbox,
 };
 use js_sys;
-use pdf_viewer_core::typography::font_resolver::resolve_font_face;
 use pdf_viewer_core::models::{BoundingBox, PageState, VectorRenderObject};
 use pdf_viewer_core::render::renderer::{DrawCommand, PdfRenderer};
+use pdf_viewer_core::typography::font_resolver::resolve_font_face;
 use std::cell::Cell;
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
@@ -90,7 +89,7 @@ fn current_time_ms() -> f64 {
 }
 
 fn active_shell_bbox_for_debug() -> Option<BoundingBox> {
-    get_active_editor_state()
+    read_active_editor_state()
         .map(|state| paragraph_replacement_region(&state.target).text_clear_bbox)
 }
 
@@ -639,28 +638,41 @@ impl CanvasRenderer {
         };
 
         let viewport_bbox = resolve_page_viewport_bbox(state, plan.width, plan.height);
-        dbg_event("canvas.render", "render_page.start", vec![
-            dbg_field("width", plan.width),
-            dbg_field("height", plan.height),
-            dbg_field("zoom", state.zoom),
-            dbg_field("viewport", format!("{:?}", viewport_bbox)),
-            dbg_field("has_vector_model", state.vector_model.is_some()),
-        ]);
+        dbg_event(
+            "canvas.render",
+            "render_page.start",
+            vec![
+                dbg_field("width", plan.width),
+                dbg_field("height", plan.height),
+                dbg_field("zoom", state.zoom),
+                dbg_field("viewport", format!("{:?}", viewport_bbox)),
+                dbg_field("has_vector_model", state.vector_model.is_some()),
+            ],
+        );
         self.prepare_page_surface(state, plan.width, plan.height);
         let overlays = collect_paragraph_render_overlays(plan, state.vector_model.as_ref());
-        dbg_event("canvas.render", "overlay-summary", vec![
-            dbg_field("overlayCount", overlays.len()),
-        ]);
+        dbg_event(
+            "canvas.render",
+            "overlay-summary",
+            vec![dbg_field("overlayCount", overlays.len())],
+        );
         for (ov_idx, ov) in overlays.iter().enumerate() {
-            dbg_event("canvas.render", "overlay-detail", vec![
-                dbg_field("index", ov_idx),
-                dbg_field("paragraphId", ov.target.paragraph_id.as_str()),
-                dbg_field("owner", format!("{:?}", ov.owner)),
-                dbg_field("replacesSource", ov.replaces_source),
-                dbg_field("sourceObjectIndices", format!("{:?}", ov.source_object_indices)),
-                dbg_field("sourceTextLen", ov.source_text.chars().count()),
-                dbg_field("draftTextLen", ov.draft_text.chars().count()),
-            ]);
+            dbg_event(
+                "canvas.render",
+                "overlay-detail",
+                vec![
+                    dbg_field("index", ov_idx),
+                    dbg_field("paragraphId", ov.target.paragraph_id.as_str()),
+                    dbg_field("owner", format!("{:?}", ov.owner)),
+                    dbg_field("replacesSource", ov.replaces_source),
+                    dbg_field(
+                        "sourceObjectIndices",
+                        format!("{:?}", ov.source_object_indices),
+                    ),
+                    dbg_field("sourceTextLen", ov.source_text.chars().count()),
+                    dbg_field("draftTextLen", ov.draft_text.chars().count()),
+                ],
+            );
         }
 
         if let Some(vector_model) = &state.vector_model {

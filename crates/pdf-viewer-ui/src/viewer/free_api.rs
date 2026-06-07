@@ -22,20 +22,36 @@ pub fn init_page_context(
 ) {
     let vector_model: VectorPageModel =
         serde_json::from_str(&vector_model_json).unwrap_or_else(|e| {
-            crate::editor::debug_trace::record_editor_debug_event("wasm.init", "json_error", vec![
-                crate::editor::debug_trace::editor_debug_field("error", e.to_string()),
-                crate::editor::debug_trace::editor_debug_field("json_len", vector_model_json.len()),
-            ]);
+            crate::editor::debug_trace::record_editor_debug_event(
+                "wasm.init",
+                "json_error",
+                vec![
+                    crate::editor::debug_trace::editor_debug_field("error", e.to_string()),
+                    crate::editor::debug_trace::editor_debug_field(
+                        "json_len",
+                        vector_model_json.len(),
+                    ),
+                ],
+            );
             VectorPageModel::default()
         });
-    crate::editor::debug_trace::record_editor_debug_event("wasm.init", "model_parsed", vec![
-        crate::editor::debug_trace::editor_debug_field("object_count", vector_model.objects.len()),
-    ]);
+    crate::editor::debug_trace::record_editor_debug_event(
+        "wasm.init",
+        "model_parsed",
+        vec![crate::editor::debug_trace::editor_debug_field(
+            "object_count",
+            vector_model.objects.len(),
+        )],
+    );
     let paint_plan: GlyphPaintPlan = serde_json::from_str(&glyph_plan_json).unwrap_or_else(|e| {
-        crate::editor::debug_trace::record_editor_debug_event("wasm.init", "glyph_plan_json_error", vec![
-            crate::editor::debug_trace::editor_debug_field("error", e.to_string()),
-            crate::editor::debug_trace::editor_debug_field("json_len", glyph_plan_json.len()),
-        ]);
+        crate::editor::debug_trace::record_editor_debug_event(
+            "wasm.init",
+            "glyph_plan_json_error",
+            vec![
+                crate::editor::debug_trace::editor_debug_field("error", e.to_string()),
+                crate::editor::debug_trace::editor_debug_field("json_len", glyph_plan_json.len()),
+            ],
+        );
         GlyphPaintPlan::default()
     });
     context::init_page_context_from_models(
@@ -64,10 +80,7 @@ pub fn dump_editor_debug_trace(filter_substr: Option<String>) -> u32 {
     let needle = filter_substr.unwrap_or_default();
     let mut printed = 0u32;
     for ev in &events {
-        if !needle.is_empty()
-            && !ev.node.contains(&needle)
-            && !ev.action.contains(&needle)
-        {
+        if !needle.is_empty() && !ev.node.contains(&needle) && !ev.action.contains(&needle) {
             continue;
         }
         let mut details = String::new();

@@ -1,7 +1,7 @@
 pub mod comment;
 pub mod document_api;
-pub mod free_api;
 pub mod document_types;
+pub mod free_api;
 pub mod history;
 pub mod host_pipeline;
 pub mod io;

@@ -1,10 +1,9 @@
+use crate::infrastructure::pdf::commands::PdfEditCommand;
 use crate::infrastructure::pdf::models::PdfModifications;
 use crate::infrastructure::pdf::save_engine::apply_pdf_commands;
-use crate::infrastructure::pdf::commands::PdfEditCommand;
-use crate::log_step;
+use lopdf::Document as LopdfDocument;
 use std::fs;
 use std::sync::Arc;
-use lopdf::Document as LopdfDocument;
 
 pub struct PdfWriteService;
 
@@ -15,8 +14,8 @@ impl PdfWriteService {
         path: String,
         modifications: PdfModifications,
     ) -> Result<(), String> {
-        log_step!("[PDF][save_pdf] START path={}", path);
-        
+        crate::log_step!("[PDF][save_pdf] START path={}", path);
+
         let working_path = {
             let docs = state.docs.pdf_documents.lock().unwrap();
             let current_doc = docs
@@ -24,22 +23,25 @@ impl PdfWriteService {
                 .ok_or_else(|| "Document not found in cache".to_string())?;
             let mut modified_doc = (**current_doc).clone();
             drop(docs); // 释放锁
-            
+
             // 应用修改
             for patch in modifications.text_patches {
-                let commands: Vec<Box<dyn PdfEditCommand>> = vec![
-                    Box::new(crate::infrastructure::pdf::commands::ReplaceTextCommand { patch })
-                ];
+                let commands: Vec<Box<dyn PdfEditCommand>> = vec![Box::new(
+                    crate::infrastructure::pdf::commands::ReplaceTextCommand { patch },
+                )];
                 modified_doc = apply_pdf_commands(modified_doc, 0, commands)
                     .map_err(|e| format!("Failed to apply text patch: {}", e))?;
             }
-            
+
             // 保存到工作路径
-            let working_path = crate::infrastructure::pdf::pdf_read_service::PdfReadService::get_working_path(&path);
+            let working_path =
+                crate::infrastructure::pdf::pdf_read_service::PdfReadService::resolve_working_path(
+                    &path,
+                );
             modified_doc
                 .save(&working_path)
                 .map_err(|e| format!("Failed to save working copy: {}", e))?;
-            
+
             working_path
         };
 
@@ -60,7 +62,7 @@ impl PdfWriteService {
         // 清除相关缓存
         Self::invalidate_caches(&state, &path);
 
-        log_step!("[PDF][save_pdf] SUCCESS");
+        crate::log_step!("[PDF][save_pdf] SUCCESS");
         Ok(())
     }
 
@@ -69,13 +71,13 @@ impl PdfWriteService {
         state: tauri::State<'_, crate::AppState>,
         path: &str,
     ) -> Result<(), String> {
-        log_step!("[PDF][rollback_pdf] START path={}", path);
+        crate::log_step!("[PDF][rollback_pdf] START path={}", path);
 
         // 获取历史记录
         let previous_doc = {
             let mut txs = state.history.pdf_transactions.lock().unwrap();
             let history = txs.get_mut(path);
-            
+
             if let Some(history) = history {
                 if history.len() > 1 {
                     history.pop(); // 移除当前版本
@@ -90,15 +92,16 @@ impl PdfWriteService {
 
         if let Some(previous_doc) = previous_doc {
             // 保存到磁盘
-            let working_path = crate::infrastructure::pdf::pdf_read_service::PdfReadService::get_working_path(path);
+            let working_path =
+                crate::infrastructure::pdf::pdf_read_service::PdfReadService::resolve_working_path(
+                    path,
+                );
             let mut doc_clone = (*previous_doc).clone();
-            
-            tokio::task::spawn_blocking(move || {
-                doc_clone.save(&working_path)
-            })
-            .await
-            .map_err(|e| e.to_string())?
-            .map_err(|e| format!("Failed to save rollback document: {}", e))?;
+
+            tokio::task::spawn_blocking(move || doc_clone.save(&working_path))
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(|e| format!("Failed to save rollback document: {}", e))?;
 
             // 更新内存缓存
             {
@@ -115,7 +118,7 @@ impl PdfWriteService {
                 redo.remove(path);
             }
 
-            log_step!("[PDF][rollback_pdf] SUCCESS");
+            crate::log_step!("[PDF][rollback_pdf] SUCCESS");
             Ok(())
         } else {
             Err("No previous document available for rollback".to_string())
@@ -127,15 +130,19 @@ impl PdfWriteService {
         state: tauri::State<'_, crate::AppState>,
         path: &str,
     ) -> Result<(), String> {
-        log_step!("[PDF][redo_pdf] START path={}", path);
+        crate::log_step!("[PDF][redo_pdf] START path={}", path);
 
         // 获取重做历史
         let redo_doc = {
-            let mut redo = state.history.pdf_redo_transactions.lock().unwrap();
+            let redo = state.history.pdf_redo_transactions.lock().unwrap();
             redo.get(path).cloned()
         };
 
-        if let Some(redo_doc) = redo_doc.as_ref().and_then(|v| v.last()).map(|arc| (**arc).clone()) {
+        if let Some(redo_doc) = redo_doc
+            .as_ref()
+            .and_then(|v| v.last())
+            .map(|arc| (**arc).clone())
+        {
             // 保存当前版本到撤销历史
             {
                 let docs = state.docs.pdf_documents.lock().unwrap();
@@ -150,15 +157,16 @@ impl PdfWriteService {
             }
 
             // 应用重做版本
-            let working_path = crate::infrastructure::pdf::pdf_read_service::PdfReadService::get_working_path(path);
+            let working_path =
+                crate::infrastructure::pdf::pdf_read_service::PdfReadService::resolve_working_path(
+                    path,
+                );
             let mut doc_clone = redo_doc.clone();
-            
-            tokio::task::spawn_blocking(move || {
-                doc_clone.save(&working_path)
-            })
-            .await
-            .map_err(|e| e.to_string())?
-            .map_err(|e| format!("Failed to save redo document: {}", e))?;
+
+            tokio::task::spawn_blocking(move || doc_clone.save(&working_path))
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(|e| format!("Failed to save redo document: {}", e))?;
 
             // 更新内存缓存
             {
@@ -175,7 +183,7 @@ impl PdfWriteService {
                 redo.remove(path);
             }
 
-            log_step!("[PDF][redo_pdf] SUCCESS");
+            crate::log_step!("[PDF][redo_pdf] SUCCESS");
             Ok(())
         } else {
             Err("No redo operation available".to_string())
@@ -231,6 +239,12 @@ startxref
         {
             let mut cache = state.cache.pdf_light_page_cache.lock().unwrap();
             cache.retain(|key, _| !key.starts_with(&format!("light::{}::", path)));
+        }
+
+        // 清除页面中间缓存
+        {
+            let mut cache = state.cache.pdf_page_intermediate_cache.lock().unwrap();
+            cache.retain(|key, _| !key.starts_with(&format!("{}::", path)));
         }
 
         // 清除页面缓存

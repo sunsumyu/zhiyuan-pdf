@@ -24,7 +24,7 @@ pub struct VelloRenderer {
     font_matcher: crate::infrastructure::pdf::font::matching::PdfSystemFontMatcher,
 }
 impl VelloRenderer {
-pub async fn new() -> Result<Self, String> {
+    pub async fn new() -> Result<Self, String> {
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::all(),
             ..Default::default()
@@ -78,7 +78,7 @@ pub async fn new() -> Result<Self, String> {
     /// Two-phase rendering:
     /// Phase 1 (GPU): Vello renders paths + images
     /// Phase 2 (CPU): cosmic_text + swash renders text as pixel coverage
-pub fn render_objects_to_png(
+    pub fn render_objects_to_png(
         &mut self,
         objects: &[RenderObject],
         width: u32,
@@ -198,7 +198,7 @@ pub fn render_objects_to_png(
     }
 
     /// CPU image rendering for icons/logos.
-fn draw_image_cpu(
+    fn draw_image_cpu(
         &mut self,
         img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
         model: &crate::infrastructure::pdf::models::NativeImageModel,
@@ -288,7 +288,7 @@ fn draw_image_cpu(
     /// that correctly handles CJK fonts via cosmic_text's font fallback.
     /// [DEPRECATED] Hardware rasterization was producing fuzzy/thin text.
     /// Now weuse draw_text_vector instead.
-fn draw_text_bitmap_deprecated(
+    fn draw_text_bitmap_deprecated(
         &mut self,
         img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
         text: &NativeTextModel,
@@ -391,7 +391,7 @@ fn draw_text_bitmap_deprecated(
     }
 
     /// Helper to composite a single glyph mask/color image onto the PNG buffer
-fn composite_glyph(
+    fn composite_glyph(
         &self,
         img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
         glyph_img: &cosmic_text::SwashImage,
@@ -490,7 +490,7 @@ fn composite_glyph(
             }
         }
     }
-fn text_fill_color(&self, text: &NativeTextModel) -> Color {
+    fn text_fill_color(&self, text: &NativeTextModel) -> Color {
         parse_hex_vello_color(
             if text.color.is_empty() {
                 "#000000"
@@ -500,7 +500,7 @@ fn text_fill_color(&self, text: &NativeTextModel) -> Color {
             text.alpha,
         )
     }
-fn text_stroke_color(&self, text: &NativeTextModel) -> Color {
+    fn text_stroke_color(&self, text: &NativeTextModel) -> Color {
         let fallback = if text.color.is_empty() {
             "#000000"
         } else {
@@ -508,7 +508,7 @@ fn text_stroke_color(&self, text: &NativeTextModel) -> Color {
         };
         parse_hex_vello_color(text.stroke_color.as_deref().unwrap_or(fallback), text.alpha)
     }
-fn text_stroke_width(&self, text: &NativeTextModel) -> f64 {
+    fn text_stroke_width(&self, text: &NativeTextModel) -> f64 {
         let width = if text.stroke_width > 0.0 {
             text.stroke_width as f64
         } else {
@@ -516,7 +516,7 @@ fn text_stroke_width(&self, text: &NativeTextModel) -> f64 {
         };
         width.max(0.1)
     }
-fn paint_text_outline(
+    fn paint_text_outline(
         &self,
         scene: &mut Scene,
         mut path: BezPath,
@@ -553,7 +553,7 @@ fn paint_text_outline(
 
         painted
     }
-fn raw_outline_transform(
+    fn raw_outline_transform(
         &self,
         flip_y: Affine,
         baseline_x: f32,
@@ -572,7 +572,7 @@ fn raw_outline_transform(
     }
 
     /// GPU render paths/images via Vello, returns raw RGBA pixel data
-fn perform_vello_render_raw(
+    fn perform_vello_render_raw(
         &mut self,
         scene: &Scene,
         width: u32,
@@ -717,7 +717,7 @@ fn text_is_non_painting(render_mode: i32) -> bool {
 impl VelloRenderer {
     /// Render text as sharp vector paths using swash outlines.
     /// [DEFINITIVE FIX] This implementation correctly normalizes Font Units to Pixels.
-fn draw_text_vector(
+    fn draw_text_vector(
         &mut self,
         scene: &mut Scene,
         scale_context: &mut ScaleContext,
@@ -771,7 +771,10 @@ fn draw_text_vector(
                 text.font_subtype,
                 text.has_to_unicode_cmap,
                 &text.text,
-                text.text.chars().map(|c| format!("U+{:04X}", c as u32)).collect::<Vec<_>>(),
+                text.text
+                    .chars()
+                    .map(|c| format!("U+{:04X}", c as u32))
+                    .collect::<Vec<_>>(),
             );
         }
 
@@ -869,7 +872,7 @@ fn draw_text_vector(
                         let mut bez_path = BezPath::new();
                         let mut points = outline.points().iter();
                         for verb in outline.verbs() {
-use swash::zeno::Verb;
+                            use swash::zeno::Verb;
                             match verb {
                                 Verb::MoveTo => {
                                     if let Some(p) = points.next() {
@@ -921,10 +924,10 @@ use swash::zeno::Verb;
 
         drew_any_glyph
     }
-fn resolve_pdf_font(&mut self, text: &NativeTextModel) -> ResolvedPdfFont {
+    fn resolve_pdf_font(&mut self, text: &NativeTextModel) -> ResolvedPdfFont {
         self.font_matcher.resolve_native_text(text)
     }
-fn draw_embedded_text_vector(
+    fn draw_embedded_text_vector(
         &mut self,
         scene: &mut Scene,
         scale_context: &mut ScaleContext,
@@ -1026,7 +1029,7 @@ fn draw_embedded_text_vector(
             let mut bez_path = BezPath::new();
             let mut points = outline.points().iter();
             for verb in outline.verbs() {
-use swash::zeno::Verb;
+                use swash::zeno::Verb;
                 match verb {
                     Verb::MoveTo => {
                         if let Some(p) = points.next() {
@@ -1096,7 +1099,7 @@ use swash::zeno::Verb;
 
         drew_any_glyph
     }
-fn build_embedded_glyph_positions(&self, text: &NativeTextModel) -> Vec<(f32, f32)> {
+    fn build_embedded_glyph_positions(&self, text: &NativeTextModel) -> Vec<(f32, f32)> {
         let glyph_count = self.embedded_glyph_count(text);
         if glyph_count == 0 {
             return Vec::new();
@@ -1126,13 +1129,13 @@ fn build_embedded_glyph_positions(&self, text: &NativeTextModel) -> Vec<(f32, f3
 
         Vec::new()
     }
-fn embedded_glyph_count(&self, text: &NativeTextModel) -> usize {
+    fn embedded_glyph_count(&self, text: &NativeTextModel) -> usize {
         if !text.pdf_char_codes.is_empty() {
             return text.pdf_char_codes.len();
         }
         text.text.chars().count()
     }
-fn resolve_embedded_glyph_id(
+    fn resolve_embedded_glyph_id(
         &self,
         text: &NativeTextModel,
         font_ref: &swash::FontRef<'_>,
@@ -1211,7 +1214,7 @@ fn resolve_embedded_glyph_id(
         }
         0
     }
-fn resolve_cached_cid_glyph_id(&self, text: &NativeTextModel, raw_code: u32) -> Option<u16> {
+    fn resolve_cached_cid_glyph_id(&self, text: &NativeTextModel, raw_code: u32) -> Option<u16> {
         let font_key = text.embedded_font_key.as_deref()?;
         let cache = crate::infrastructure::pdf::cache::PDF_FONT_GLYPH_MAP_CACHE
             .lock()
@@ -1227,14 +1230,14 @@ fn resolve_cached_cid_glyph_id(&self, text: &NativeTextModel, raw_code: u32) -> 
 
         None
     }
-fn prefers_pdf_code_glyph_mapping(&self, text: &NativeTextModel) -> bool {
+    fn prefers_pdf_code_glyph_mapping(&self, text: &NativeTextModel) -> bool {
         let Some(subtype) = text.font_subtype.as_deref() else {
             return false;
         };
         let lower = subtype.trim().trim_start_matches('/').to_ascii_lowercase();
         matches!(lower.as_str(), "truetype" | "opentype" | "type1")
     }
-fn resolve_cosmic_family<'a>(
+    fn resolve_cosmic_family<'a>(
         &self,
         text: &NativeTextModel,
         resolved_font: &'a ResolvedPdfFont,

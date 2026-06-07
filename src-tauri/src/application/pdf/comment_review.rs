@@ -1,32 +1,9 @@
-use crate::application::pdf::page_annotation::{list_page_comments, PdfPageCommentItem};
+use crate::application::pdf::page_annotation::list_page_comments;
 use crate::interfaces::pdf::ensure_document_loaded;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewRequest {
-pub page_index: Option<u16>,
-    #[serde(default)]
-pub query: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewPageSummary {
-pub page_index: u16,
-pub total_comments: usize,
-pub filtered_comments: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewResult {
-pub total_comments: usize,
-pub filtered_comments: usize,
-pub pages_with_comments: usize,
-pub summaries: Vec<PdfCommentReviewPageSummary>,
-pub comments: Vec<PdfPageCommentItem>,
-}
+pub use pdf_viewer_core::annotation::{
+    PdfCommentReviewPageSummary, PdfCommentReviewRequest, PdfCommentReviewResult,
+};
 pub(crate) async fn review_document_comments(
     app_state: &crate::AppState,
     path: &str,
@@ -98,10 +75,10 @@ pub(crate) async fn review_document_comments(
 
 #[cfg(test)]
 mod tests {
-use super::*;
+    use super::*;
 
     #[test]
-fn review_request_defaults_to_document_scope() {
+    fn review_request_defaults_to_document_scope() {
         let request = PdfCommentReviewRequest::default();
         assert_eq!(request.page_index, None);
         assert!(request.query.is_empty());

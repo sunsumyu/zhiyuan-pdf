@@ -74,6 +74,18 @@ pub enum PdfDocumentKind {
     Vector,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ClassificationReason {
+    FullPageImageNoText,
+    FullPageImageWithOcrLayer,
+    TextOperatorsDominant,
+    FontResourcesDominant,
+    LowConfidenceFallback,
+    #[default]
+    Unknown,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadDocumentMeta {
@@ -83,7 +95,7 @@ pub struct ReadDocumentMeta {
     pub kind: PdfDocumentKind,
     pub confidence: f32,
     pub allow_scan_preview_first_paint: bool,
-    pub classification_reason: String,
+    pub classification_reason: ClassificationReason,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -101,4 +113,40 @@ pub struct PaginationCommand {
     pub page_index: usize,
     pub path: String,
     pub zoom: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletePageCommand {
+    pub page_num: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RotatePageCommand {
+    pub page_num: u32,
+    pub delta: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct InsertPageCommand {
+    pub at_index: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AddHighlightCommand {
+    pub page_num: u32,
+    pub rect: [f32; 4],
+    pub color: [f32; 3],
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateMetadataCommand {
+    pub title: String,
+    pub author: String,
+    pub subject: String,
+    pub keywords: String,
 }

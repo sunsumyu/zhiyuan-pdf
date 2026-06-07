@@ -1,6 +1,6 @@
 use crate::render::tile_cache::{
-    clear_frame_cache_keys, store_frame_cache_key, touch_frame_cache_key,
-    FrameCacheStoreResult, HostFrameCacheState,
+    clear_frame_cache_keys, store_frame_cache_key, touch_frame_cache_key, FrameCacheStoreResult,
+    HostFrameCacheState,
 };
 use crate::render::viewport_refresh::{
     resolve_viewport_refresh_decision, HostViewportRefreshState, ViewportRefreshDecision,

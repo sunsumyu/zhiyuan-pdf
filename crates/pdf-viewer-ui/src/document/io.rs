@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 
 use crate::bridge::target_invoke;
-use crate::viewer::viewer_controller::get_session;
+use crate::viewer::viewer_controller::read_session;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -42,7 +42,7 @@ pub async fn pick_pdf_file() -> Result<Option<String>, JsValue> {
 }
 
 pub async fn rotate_current_page(delta: i32) -> Result<RotateCurrentPageResult, JsValue> {
-    let session = get_session();
+    let session = read_session();
     let Some(path) = session.path else {
         return Ok(RotateCurrentPageResult { rotated: false });
     };

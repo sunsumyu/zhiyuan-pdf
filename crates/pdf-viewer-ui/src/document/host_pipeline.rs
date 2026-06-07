@@ -3,8 +3,7 @@ use wasm_bindgen::JsValue;
 
 use crate::document::history::{redo_document_edit, undo_document_edit};
 use crate::document::io::{
-    open_pdf_file, pick_pdf_file, rotate_current_page, OpenPdfFileResult,
-    RotateCurrentPageResult,
+    open_pdf_file, pick_pdf_file, rotate_current_page, OpenPdfFileResult, RotateCurrentPageResult,
 };
 use crate::host::command::{
     open_document_session, reset_host_document_session, HostActionResult,
@@ -136,9 +135,7 @@ pub fn close_document_pipeline(
     }
 }
 
-pub async fn rotate_document_pipeline(
-    delta: i32,
-) -> Result<RotateDocumentPipelineResult, JsValue> {
+pub async fn rotate_document_pipeline(delta: i32) -> Result<RotateDocumentPipelineResult, JsValue> {
     let result: RotateCurrentPageResult = rotate_current_page(delta).await?;
     Ok(RotateDocumentPipelineResult {
         rotated: result.rotated,

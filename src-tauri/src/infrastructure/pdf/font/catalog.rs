@@ -14,8 +14,7 @@ use windows_sys::Win32::{
 
 #[cfg(windows)]
 pub fn load_system_font_candidates() -> Vec<SystemFontCandidate> {
-    unsafe extern "system"
-fn enum_font_proc(
+    unsafe extern "system" fn enum_font_proc(
         logfont: *const LOGFONTW,
         text_metric: *const TEXTMETRICW,
         _font_type: u32,

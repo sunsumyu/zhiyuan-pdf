@@ -1,6 +1,8 @@
-use crate::typography::font_resolver::resolve_font_face;
+use crate::document::page_region_context::{
+    FieldGroupSnapshot, ParagraphRegionSnapshot, StyleRunSnapshot,
+};
 use crate::models::{FontHints, GlyphPaintRun, PaintMode, ResolvedFontFace};
-use crate::document::page_region_context::{FieldGroupSnapshot, ParagraphRegionSnapshot, StyleRunSnapshot};
+use crate::typography::font_resolver::resolve_font_face;
 
 fn to_paint_mode(render_mode: Option<i64>) -> PaintMode {
     match render_mode {
@@ -34,6 +36,7 @@ pub fn build_resolved_font_face(
                 is_serif: false,
                 is_italic,
                 is_bold,
+                ..Default::default()
             };
             &synthesized_hints
         }
@@ -142,7 +145,8 @@ where
 
     if !run.char_origins.is_empty() {
         let first_origin = run.char_origins[0];
-        let normalized_origins: Vec<f32> = run.char_origins.iter().map(|o| o - first_origin).collect();
+        let normalized_origins: Vec<f32> =
+            run.char_origins.iter().map(|o| o - first_origin).collect();
         let last_index = normalized_origins.len() - 1;
         let last_origin = normalized_origins[last_index];
         let last_width = if last_index < run.char_widths.len() {
@@ -154,7 +158,11 @@ where
                 measured_width / (run.char_origins.len().max(1) as f32)
             }
         };
-        let final_width = run.width.max(measured_width).max(last_origin + last_width).max(1.0);
+        let final_width = run
+            .width
+            .max(measured_width)
+            .max(last_origin + last_width)
+            .max(1.0);
         return RunLayout {
             left: line_left + first_origin,
             width: final_width,
@@ -185,7 +193,8 @@ where
             if !marker_runs.is_empty() {
                 let mut marker_cursor_left = line.left;
                 for run in marker_runs {
-                    let layout = resolve_run_layout(line.left, marker_cursor_left, run, measure_text);
+                    let layout =
+                        resolve_run_layout(line.left, marker_cursor_left, run, measure_text);
                     let mut synth_run = run.clone();
                     synth_run.width = layout.width;
                     synth_run.char_origins = layout.char_origins.clone();

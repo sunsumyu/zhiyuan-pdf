@@ -1,219 +1,25 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 
-use crate::runtime::smart_invoke;
 use crate::review::review_store::{
-    get_comment_review_session, select_comment_review_comment,
-    set_comment_review_panel_open, set_comment_review_query, set_comment_review_scope,
-    toggle_comment_review_panel, HostCommentReviewScope, HostCommentReviewSession,
+    read_comment_review_session, select_comment_review_comment, set_comment_review_panel_open,
+    set_comment_review_query, set_comment_review_scope, toggle_comment_review_panel,
+    HostCommentReviewScope, HostCommentReviewSession,
+};
+use crate::runtime::smart_invoke;
+
+pub use pdf_viewer_core::annotation::{
+    CommentBoxRect, CommentPercentFrame, PdfCommentOverlayDisplay, PdfCommentOverlayMarker,
+    PdfCommentReviewCard, PdfCommentReviewCardAction, PdfCommentReviewPageSummary,
+    PdfCommentReviewPanel, PdfCommentReviewRequest, PdfCommentReviewResult,
+    PdfCommentReviewSummaryChip, PdfCommentTargetOverlayDisplay, PdfCommentTargetOverlayMarker,
+    PdfDeleteAnnotationRequest, PdfDeleteAnnotationResult, PdfPageAnnotationTarget,
+    PdfPageAnnotationTargetResult, PdfPageCommentItem, PdfPageCommentList, PdfRegionCommentRequest,
+    PdfRegionCommentResult, PdfUpdateCommentRequest, PdfUpdateCommentResult,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct CommentBoxRect {
-    pub left: f32,
-    pub top: f32,
-    pub width: f32,
-    pub height: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct CommentPercentFrame {
-    pub left_percent: f32,
-    pub top_percent: f32,
-    pub width_percent: f32,
-    pub height_percent: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfPageCommentItem {
-    pub id: String,
-    pub page_index: u16,
-    pub page_width: f32,
-    pub page_height: f32,
-    pub color: [f32; 3],
-    pub contents: String,
-    pub box_rect: CommentBoxRect,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfPageCommentList {
-    pub comments: Vec<PdfPageCommentItem>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfPageAnnotationTarget {
-    pub id: String,
-    pub kind: String,
-    pub page_index: u16,
-    pub page_width: f32,
-    pub page_height: f32,
-    pub label: String,
-    pub box_rect: CommentBoxRect,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfPageAnnotationTargetResult {
-    pub targets: Vec<PdfPageAnnotationTarget>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentTargetOverlayMarker {
-    pub id: String,
-    pub kind: String,
-    pub page_index: u16,
-    pub label: String,
-    pub title: String,
-    pub frame: CommentPercentFrame,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentTargetOverlayDisplay {
-    pub targets: Vec<PdfCommentTargetOverlayMarker>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewPageSummary {
-    pub page_index: u16,
-    pub total_comments: usize,
-    pub filtered_comments: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewRequest {
-    pub page_index: Option<u16>,
-    #[serde(default)]
-    pub query: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewResult {
-    pub total_comments: usize,
-    pub filtered_comments: usize,
-    pub pages_with_comments: usize,
-    pub summaries: Vec<PdfCommentReviewPageSummary>,
-    pub comments: Vec<PdfPageCommentItem>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewSummaryChip {
-    pub page_index: u16,
-    pub label: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewCard {
-    pub id: String,
-    pub page_index: u16,
-    pub contents: String,
-    pub page_label: String,
-    pub location_label: String,
-    pub helper_label: String,
-    pub selected: bool,
-    pub actions: Vec<PdfCommentReviewCardAction>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewCardAction {
-    pub id: String,
-    pub label: String,
-    pub tone: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewPanel {
-    pub meta_text: String,
-    pub empty: bool,
-    pub summary_chips: Vec<PdfCommentReviewSummaryChip>,
-    pub cards: Vec<PdfCommentReviewCard>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentOverlayMarker {
-    pub id: String,
-    pub title: String,
-    pub frame: CommentPercentFrame,
-    pub selected: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentOverlayDisplay {
-    pub comments: Vec<PdfCommentOverlayMarker>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfCommentReviewDisplay {
-    pub session: HostCommentReviewSession,
-    pub review: PdfCommentReviewResult,
-    pub panel: PdfCommentReviewPanel,
-    pub overlay: PdfCommentOverlayDisplay,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfRegionCommentRequest {
-    pub page_index: u16,
-    pub region_id: String,
-    pub kind: String,
-    pub contents: String,
-    pub color: [f32; 3],
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfRegionCommentResult {
-    pub added: bool,
-    pub page_index: u16,
-    pub region_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfDeleteAnnotationRequest {
-    pub page_index: u16,
-    pub annotation_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfDeleteAnnotationResult {
-    pub deleted: bool,
-    pub page_index: u16,
-    pub annotation_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfUpdateCommentRequest {
-    pub page_index: u16,
-    pub annotation_id: String,
-    pub contents: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfUpdateCommentResult {
-    pub updated: bool,
-    pub page_index: u16,
-    pub annotation_id: String,
-}
+pub type PdfCommentReviewDisplay =
+    pdf_viewer_core::annotation::PdfCommentReviewDisplay<HostCommentReviewSession>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -233,40 +39,28 @@ pub async fn list_page_comments(
     path: String,
     page_index: u16,
 ) -> Result<PdfPageCommentList, JsValue> {
-    smart_invoke(
-        "read_comments",
-        PathPageArgs { path, page_index },
-    )
-    .await
+    smart_invoke("read_comments", PathPageArgs { path, page_index }).await
 }
 
 pub async fn list_page_annotation_targets(
     path: String,
     page_index: u16,
 ) -> Result<PdfPageAnnotationTargetResult, JsValue> {
-    smart_invoke(
-        "read_annotation_targets",
-        PathPageArgs { path, page_index },
-    )
-    .await
+    smart_invoke("read_annotation_targets", PathPageArgs { path, page_index }).await
 }
 
 pub async fn review_document_comments(
     path: String,
     request: PdfCommentReviewRequest,
 ) -> Result<PdfCommentReviewResult, JsValue> {
-    smart_invoke(
-        "read_comment_review",
-        PathRequestArgs { path, request },
-    )
-    .await
+    smart_invoke("read_comment_review", PathRequestArgs { path, request }).await
 }
 
 pub async fn load_comment_review(
     path: String,
     current_page: u16,
 ) -> Result<PdfCommentReviewDisplay, JsValue> {
-    let session = get_comment_review_session();
+    let session = read_comment_review_session();
     load_comment_review_from_session(path, current_page, session).await
 }
 
@@ -274,12 +68,9 @@ pub async fn load_comment_overlay(
     path: String,
     current_page: u16,
 ) -> Result<PdfCommentOverlayDisplay, JsValue> {
-    let session = get_comment_review_session();
+    let session = read_comment_review_session();
     let comments = list_page_comments(path, current_page).await?;
-    Ok(build_comment_overlay_display(
-        &session,
-        &comments.comments,
-    ))
+    Ok(build_comment_overlay_display(&session, &comments.comments))
 }
 
 pub async fn load_comment_target_overlay(
@@ -504,31 +295,19 @@ pub async fn add_region_comment(
     path: String,
     request: PdfRegionCommentRequest,
 ) -> Result<PdfRegionCommentResult, JsValue> {
-    smart_invoke(
-        "apply_comment",
-        PathRequestArgs { path, request },
-    )
-    .await
+    smart_invoke("apply_comment", PathRequestArgs { path, request }).await
 }
 
 pub async fn delete_page_annotation(
     path: String,
     request: PdfDeleteAnnotationRequest,
 ) -> Result<PdfDeleteAnnotationResult, JsValue> {
-    smart_invoke(
-        "delete_annotation",
-        PathRequestArgs { path, request },
-    )
-    .await
+    smart_invoke("delete_annotation", PathRequestArgs { path, request }).await
 }
 
 pub async fn update_page_comment(
     path: String,
     request: PdfUpdateCommentRequest,
 ) -> Result<PdfUpdateCommentResult, JsValue> {
-    smart_invoke(
-        "apply_comment_update",
-        PathRequestArgs { path, request },
-    )
-    .await
+    smart_invoke("apply_comment_update", PathRequestArgs { path, request }).await
 }

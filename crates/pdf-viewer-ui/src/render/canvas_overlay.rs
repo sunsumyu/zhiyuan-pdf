@@ -2,14 +2,16 @@ use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::draft_layout::build_persisted_overlay_render_plan;
+use crate::editor::paragraph_overlay::ParagraphRenderOverlay;
 use crate::editor::replacement_region::paragraph_replacement_region;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::text_geometry::measure_editor_layout_text_width as measure_editor_layout_text_width_shared;
-use crate::editor::paragraph_overlay::ParagraphRenderOverlay;
 use crate::render::canvas::{draw_text_run_core, CanvasRenderer, CoordinateMode};
 use crate::utils::debug::truncate_debug_text;
 
-pub(crate) fn path_bbox_summary(path: &pdf_viewer_core::models::VectorPathObject) -> Option<(f32, f32)> {
+pub(crate) fn path_bbox_summary(
+    path: &pdf_viewer_core::models::VectorPathObject,
+) -> Option<(f32, f32)> {
     let mut min_x = f32::INFINITY;
     let mut min_y = f32::INFINITY;
     let mut max_x = f32::NEG_INFINITY;
@@ -349,10 +351,7 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
                 "underlineRunCount",
                 count_overlay_underline_runs(&render_plan),
             ),
-            dbg_field(
-                "lineSummary",
-                summarize_overlay_render_plan(&render_plan),
-            ),
+            dbg_field("lineSummary", summarize_overlay_render_plan(&render_plan)),
         ],
     );
     for (_line_idx, line) in render_plan.layout.lines.iter().enumerate() {

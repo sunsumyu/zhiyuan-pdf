@@ -26,16 +26,22 @@ impl<TPlan> Default for HostRenderState<TPlan> {
     }
 }
 
-#[derive(Debug, Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct RenderFrameEnvelope<TPlan> {
     pub frame_token: u32,
     pub frame_plan: TPlan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RenderFrameTransition<TPlan> {
     pub accepted: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub settled_frame_plan: Option<TPlan>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub next_frame: Option<RenderFrameEnvelope<TPlan>>,
 }
 

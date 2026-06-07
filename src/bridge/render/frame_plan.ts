@@ -128,7 +128,7 @@ type FramePlanAdapterDeps = {
     getMaxCanvasDim: () => number;
 };
 
-export type RenderReason = 'default' | 'zoom' | 'editorVisibility' | 'documentMutation';
+export type RenderReason = 'default' | 'navigation' | 'zoom' | 'editorVisibility' | 'documentMutation';
 
 export type FramePlanAdapter = {
     buildRenderRequest: (displayZoom: number, renderReason?: RenderReason) => Record<string, number | string | boolean>;

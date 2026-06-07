@@ -1,8 +1,73 @@
 //! Rendering commands: vector page model, glyph plans, image cache, raster tile.
 
-use crate::infrastructure::pdf::engine::{PdfEditorGeometryService, PdfPageModelService};
+use crate::application::pdf::page_asset::{
+    PageAssetAdmissionService, PageAssetKind, PageAssetRole,
+};
+use crate::infrastructure::pdf::engine::{PdfEditorGeometryService, PdfPageIntermediateService};
 use crate::infrastructure::pdf::models::{GlyphPaintPlan, NativeVectorPageModel};
 use tauri::command;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageAssetBundle {
+    pub model: NativeVectorPageModel,
+    pub paint_plan: GlyphPaintPlan,
+}
+
+#[command]
+pub async fn read_page_asset_bundle(
+    state: tauri::State<'_, crate::AppState>,
+    path: String,
+    page_index: u16,
+    target_zoom: Option<f32>,
+    request_role: Option<String>,
+    document_revision: Option<u64>,
+) -> Result<PageAssetBundle, String> {
+    let role = PageAssetRole::from_request(request_role);
+    let kind = PageAssetKind::PageBundle;
+    let span = crate::infrastructure::pdf::log_service::PdfEventSpan::begin(
+        1,
+        "pageAsset.bundle",
+        vec![
+            ("role", role.as_str().to_string()),
+            ("page", page_index.to_string()),
+            ("revision", document_revision.unwrap_or(0).to_string()),
+        ],
+    );
+    PageAssetAdmissionService::admit_before_work(&state, &path, page_index, role, kind)?;
+    let _asset_guard = PageAssetAdmissionService::acquire_inflight_lock(
+        &state,
+        &path,
+        page_index,
+        document_revision,
+        role,
+        kind,
+    )
+    .await;
+    PageAssetAdmissionService::admit_after_wait(&state, &path, page_index, role, kind)?;
+    PageAssetAdmissionService::apply_test_delay().await;
+
+    let bundle = PdfPageIntermediateService::resolve_page_asset_bundle(
+        state.clone(),
+        path.clone(),
+        page_index,
+        target_zoom.unwrap_or(1.0),
+        document_revision,
+    )
+    .await?;
+    let model = bundle.model;
+    let paint_plan = bundle.paint_plan;
+
+    PageAssetAdmissionService::admit_after_work(&state, &path, page_index, role, kind)?;
+    span.finish(
+        "accepted",
+        vec![
+            ("objects", model.objects.len().to_string()),
+            ("regions", paint_plan.regions.len().to_string()),
+        ],
+    );
+    Ok(PageAssetBundle { model, paint_plan })
+}
 
 #[command]
 pub async fn read_vector(
@@ -10,25 +75,35 @@ pub async fn read_vector(
     path: String,
     page_index: u16,
     target_zoom: Option<f32>,
+    request_role: Option<String>,
+    document_revision: Option<u64>,
 ) -> Result<NativeVectorPageModel, String> {
-    // 1. 登记当前文档最新被请求的活动页面
-    {
-        let mut active = state.active_pages.lock().unwrap();
-        active.insert(path.clone(), page_index);
-    }
+    let role = PageAssetRole::from_request(request_role);
+    let kind = PageAssetKind::VectorModel;
+    PageAssetAdmissionService::admit_before_work(&state, &path, page_index, role, kind)?;
+    let _asset_guard = PageAssetAdmissionService::acquire_inflight_lock(
+        &state,
+        &path,
+        page_index,
+        document_revision,
+        role,
+        kind,
+    )
+    .await;
+    PageAssetAdmissionService::admit_after_wait(&state, &path, page_index, role, kind)?;
+    PageAssetAdmissionService::apply_test_delay().await;
 
-    // 2. 接口层前置拦截：若已被后续的最新页面请求所抢占，直接抛弃执行，提前返回
-    {
-        let active = state.active_pages.lock().unwrap();
-        if let Some(&latest) = active.get(&path) {
-            if latest != page_index && (latest as i32 - page_index as i32).abs() > 1 {
-                crate::log_step!("[PDF][Interfaces-Abort] Skip heavy read_vector for stale page={}", page_index);
-                return Err("stale page request (interfaces layer aborted)".to_string());
-            }
-        }
-    }
+    let model = PdfPageIntermediateService::resolve_vector_page_model(
+        state.clone(),
+        path.clone(),
+        page_index,
+        target_zoom.unwrap_or(1.0),
+        document_revision,
+    )
+    .await?;
 
-    PdfPageModelService::get_vector_page_model(state, path, page_index, target_zoom.unwrap_or(1.0)).await
+    PageAssetAdmissionService::admit_after_work(&state, &path, page_index, role, kind)?;
+    Ok(model)
 }
 
 #[command]
@@ -36,32 +111,38 @@ pub async fn read_glyph_plan(
     state: tauri::State<'_, crate::AppState>,
     path: String,
     page_index: u16,
+    request_role: Option<String>,
+    document_revision: Option<u64>,
 ) -> Result<GlyphPaintPlan, String> {
-    // 1. 登记当前文档最新被请求的活动页面
-    {
-        let mut active = state.active_pages.lock().unwrap();
-        active.insert(path.clone(), page_index);
-    }
+    let role = PageAssetRole::from_request(request_role);
+    let kind = PageAssetKind::GlyphPlan;
+    PageAssetAdmissionService::admit_before_work(&state, &path, page_index, role, kind)?;
+    let _asset_guard = PageAssetAdmissionService::acquire_inflight_lock(
+        &state,
+        &path,
+        page_index,
+        document_revision,
+        role,
+        kind,
+    )
+    .await;
+    PageAssetAdmissionService::admit_after_wait(&state, &path, page_index, role, kind)?;
+    PageAssetAdmissionService::apply_test_delay().await;
 
-    // 2. 接口层前置拦截：若已被后续的最新页面请求所抢占，直接抛弃执行，提前返回
-    {
-        let active = state.active_pages.lock().unwrap();
-        if let Some(&latest) = active.get(&path) {
-            if latest != page_index && (latest as i32 - page_index as i32).abs() > 1 {
-                crate::log_step!("[PDF][Interfaces-Abort] Skip heavy read_glyph_plan for stale page={}", page_index);
-                return Err("stale page request (interfaces layer aborted)".to_string());
-            }
-        }
-    }
-
-    PdfEditorGeometryService::get_glyph_paint_plan(state, path, page_index).await
+    let plan = PdfPageIntermediateService::resolve_glyph_paint_plan(
+        state.clone(),
+        path.clone(),
+        page_index,
+        document_revision,
+    )
+    .await?;
+    PageAssetAdmissionService::admit_after_work(&state, &path, page_index, role, kind)?;
+    Ok(plan)
 }
 
 #[command]
-pub fn read_images(
-    path: String,
-) -> Result<std::collections::HashMap<String, String>, String> {
-    Ok(PdfEditorGeometryService::get_image_cache(&path))
+pub fn read_images(path: String) -> Result<std::collections::HashMap<String, String>, String> {
+    Ok(PdfEditorGeometryService::read_image_cache(&path))
 }
 
 #[command]
@@ -73,11 +154,14 @@ pub async fn diagnose_page(
     use lopdf::content::Content;
 
     // Ensure document is loaded
-    crate::interfaces::pdf::helpers::ensure_document_loaded(&state, &path).await?;
+    crate::interfaces::pdf::ipc_converters::ensure_document_loaded(&state, &path).await?;
 
     let doc_arc = {
         let cache = state.docs.pdf_documents.lock().unwrap();
-        cache.get(&path).cloned().ok_or("Doc not in cache after load")?
+        cache
+            .get(&path)
+            .cloned()
+            .ok_or("Doc not in cache after load")?
     };
 
     let pages = doc_arc.get_pages();
@@ -94,7 +178,8 @@ pub async fn diagnose_page(
     };
 
     let page_dict = doc_arc.get_dictionary(page_id).map_err(|e| e.to_string())?;
-    let page_dict_keys: Vec<String> = page_dict.iter()
+    let page_dict_keys: Vec<String> = page_dict
+        .iter()
         .map(|(k, _)| String::from_utf8_lossy(k).to_string())
         .collect();
 
@@ -121,9 +206,12 @@ pub async fn diagnose_page(
         match Content::decode(bytes) {
             Ok(content) => {
                 ops_count = content.operations.len();
-                first_ops = content.operations.iter().take(30).map(|op| {
-                    format!("{}({})", op.operator, op.operands.len())
-                }).collect();
+                first_ops = content
+                    .operations
+                    .iter()
+                    .take(30)
+                    .map(|op| format!("{}({})", op.operator, op.operands.len()))
+                    .collect();
             }
             Err(e) => decode_err = Some(e.to_string()),
         }
@@ -139,13 +227,24 @@ pub async fn diagnose_page(
         Err(_) => "Missing(inherited?)".to_string(),
     };
 
-    // Run resolve_paths and capture results
-    let (objects_count, text_runs_count, page_w, page_h, resolve_err) = {
-        match crate::infrastructure::pdf::pdf_read::resolve_paths(&doc_arc, page_index as u32) {
-            Ok((objs, runs, w, h)) => (objs.len(), runs.len(), w, h, None),
+    let (objects_count, text_runs_count, page_w, page_h, resolve_err) =
+        match PdfPageIntermediateService::resolve_page_display_list_from_app_state(
+            &state,
+            path.clone(),
+            page_index,
+            None,
+        )
+        .await
+        {
+            Ok(display_list) => (
+                display_list.objects.len(),
+                display_list.text_runs.len(),
+                display_list.width,
+                display_list.height,
+                None,
+            ),
             Err(e) => (0, 0, 0.0, 0.0, Some(e)),
-        }
-    };
+        };
 
     Ok(serde_json::json!({
         "pageIndex": page_index,
@@ -165,4 +264,3 @@ pub async fn diagnose_page(
         "resolveErr": resolve_err,
     }))
 }
-

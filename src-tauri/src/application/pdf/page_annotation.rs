@@ -1,8 +1,6 @@
 use crate::application::pdf::page_context::build_page_region_context_from_vector_model;
-use crate::infrastructure::pdf::annotation_store::{
-    read_page_comments, read_page_highlights,
-};
-use crate::infrastructure::pdf::engine::PdfPageModelService;
+use crate::infrastructure::pdf::annotation_store::{read_page_comments, read_page_highlights};
+use crate::infrastructure::pdf::engine::PdfPageIntermediateService;
 use crate::interfaces::pdf::{
     apply_highlight_annotation, apply_text_comment, ensure_document_loaded,
 };
@@ -10,152 +8,54 @@ use crate::log_step;
 use pdf_viewer_core::document::page_region_context::{BoundingBoxOutput, PageRegionContextOutput};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfPageAnnotationBox {
-pub left: f32,
-pub top: f32,
-pub width: f32,
-pub height: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfPageAnnotationTarget {
-pub id: String,
-pub kind: String,
-pub page_index: u16,
-pub page_width: f32,
-pub page_height: f32,
-pub label: String,
-pub box_rect: PdfPageAnnotationBox,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfPageAnnotationTargetResult {
-pub page_index: u16,
-pub page_width: f32,
-pub page_height: f32,
-pub targets: Vec<PdfPageAnnotationTarget>,
-}
+pub use pdf_viewer_core::annotation::{
+    PdfDeleteAnnotationRequest, PdfDeleteAnnotationResult, PdfPageAnnotationBox,
+    PdfPageAnnotationTarget, PdfPageAnnotationTargetResult, PdfPageCommentItem, PdfPageCommentList,
+    PdfRegionCommentRequest, PdfRegionCommentResult, PdfUpdateCommentRequest,
+    PdfUpdateCommentResult,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfPageHighlightItem {
-pub id: String,
-pub page_index: u16,
-pub page_width: f32,
-pub page_height: f32,
-pub color: [f32; 3],
-pub box_rect: PdfPageAnnotationBox,
+    pub id: String,
+    pub page_index: u16,
+    pub page_width: f32,
+    pub page_height: f32,
+    pub color: [f32; 3],
+    pub box_rect: PdfPageAnnotationBox,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfPageHighlightList {
-pub page_index: u16,
-pub page_width: f32,
-pub page_height: f32,
-pub highlights: Vec<PdfPageHighlightItem>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfPageCommentItem {
-pub id: String,
-pub page_index: u16,
-pub page_width: f32,
-pub page_height: f32,
-pub color: [f32; 3],
-pub contents: String,
-pub box_rect: PdfPageAnnotationBox,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfPageCommentList {
-pub page_index: u16,
-pub page_width: f32,
-pub page_height: f32,
-pub comments: Vec<PdfPageCommentItem>,
+    pub page_index: u16,
+    pub page_width: f32,
+    pub page_height: f32,
+    pub highlights: Vec<PdfPageHighlightItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfRegionHighlightRequest {
-pub page_index: u16,
-pub region_id: String,
-pub kind: String,
+    pub page_index: u16,
+    pub region_id: String,
+    pub kind: String,
     #[serde(default = "default_highlight_color")]
-pub color: [f32; 3],
+    pub color: [f32; 3],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfRegionHighlightResult {
-pub added: bool,
-pub page_index: u16,
-pub region_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfRegionCommentRequest {
-pub page_index: u16,
-pub region_id: String,
-pub kind: String,
-pub contents: String,
-    #[serde(default = "default_comment_color")]
-pub color: [f32; 3],
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfRegionCommentResult {
-pub added: bool,
-pub page_index: u16,
-pub region_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfUpdateCommentRequest {
-pub page_index: u16,
-pub annotation_id: String,
-pub contents: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfUpdateCommentResult {
-pub updated: bool,
-pub page_index: u16,
-pub annotation_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfDeleteAnnotationRequest {
-pub page_index: u16,
-pub annotation_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PdfDeleteAnnotationResult {
-pub deleted: bool,
-pub page_index: u16,
-pub annotation_id: String,
+    pub added: bool,
+    pub page_index: u16,
+    pub region_id: String,
 }
 fn default_highlight_color() -> [f32; 3] {
     [1.0, 0.92, 0.4]
 }
-fn default_comment_color() -> [f32; 3] {
-    [0.42, 0.73, 0.98]
-}
-pub(crate)
-fn collect_page_annotation_targets(
+pub(crate) fn collect_page_annotation_targets(
     page_context: &PageRegionContextOutput,
     page_index: u16,
     page_width: f32,
@@ -226,8 +126,14 @@ pub(crate) async fn list_page_annotation_targets(
     path: &str,
     page_index: u16,
 ) -> Result<PdfPageAnnotationTargetResult, String> {
-    let page_model =
-        PdfPageModelService::get_vector_page_model_from_app_state(app_state, path.to_string(), page_index, 1.0).await?;
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+        app_state,
+        path.to_string(),
+        page_index,
+        1.0,
+        None,
+    )
+    .await?;
     let page_context = build_page_region_context_from_vector_model(&page_model);
     Ok(collect_page_annotation_targets(
         &page_context,
@@ -242,8 +148,14 @@ pub(crate) async fn list_page_highlights(
     page_index: u16,
 ) -> Result<PdfPageHighlightList, String> {
     ensure_document_loaded(app_state, path).await?;
-    let page_model =
-        PdfPageModelService::get_vector_page_model_from_app_state(app_state, path.to_string(), page_index, 1.0).await?;
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+        app_state,
+        path.to_string(),
+        page_index,
+        1.0,
+        None,
+    )
+    .await?;
     let doc = {
         let docs = app_state.docs.pdf_documents.lock().unwrap();
         docs.get(path)
@@ -283,8 +195,14 @@ pub(crate) async fn list_page_comments(
     page_index: u16,
 ) -> Result<PdfPageCommentList, String> {
     ensure_document_loaded(app_state, path).await?;
-    let page_model =
-        PdfPageModelService::get_vector_page_model_from_app_state(app_state, path.to_string(), page_index, 1.0).await?;
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+        app_state,
+        path.to_string(),
+        page_index,
+        1.0,
+        None,
+    )
+    .await?;
     let doc = {
         let docs = app_state.docs.pdf_documents.lock().unwrap();
         docs.get(path)
@@ -324,9 +242,14 @@ pub(crate) async fn add_region_highlight(
     path: &str,
     request: &PdfRegionHighlightRequest,
 ) -> Result<PdfRegionHighlightResult, String> {
-    let page_model =
-        PdfPageModelService::get_vector_page_model_from_app_state(app_state, path.to_string(), request.page_index, 1.0)
-            .await?;
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+        app_state,
+        path.to_string(),
+        request.page_index,
+        1.0,
+        None,
+    )
+    .await?;
     let page_context = build_page_region_context_from_vector_model(&page_model);
     let target_box = resolve_region_box(&page_context, &request.region_id, &request.kind)
         .ok_or_else(|| {
@@ -377,9 +300,14 @@ pub(crate) async fn add_region_comment(
         return Err("Comment content cannot be empty".to_string());
     }
 
-    let page_model =
-        PdfPageModelService::get_vector_page_model_from_app_state(app_state, path.to_string(), request.page_index, 1.0)
-            .await?;
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+        app_state,
+        path.to_string(),
+        request.page_index,
+        1.0,
+        None,
+    )
+    .await?;
     let page_context = build_page_region_context_from_vector_model(&page_model);
     let target_box = resolve_region_box(&page_context, &request.region_id, &request.kind)
         .ok_or_else(|| {

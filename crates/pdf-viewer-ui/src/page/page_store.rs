@@ -17,15 +17,13 @@ pub fn with_page_state<R>(f: impl FnOnce(&PageState) -> R) -> R {
     PAGE_STATE.with(|state| f(&state.borrow()))
 }
 
-pub fn with_page_and_scene<R>(
-    f: impl FnOnce(&PageState, &Option<PreparedPageScene>) -> R,
-) -> R {
-    PAGE_STATE.with(|state| {
-        PREPARED_SCENE.with(|scene| f(&state.borrow(), &scene.borrow()))
-    })
+pub fn with_page_and_scene<R>(f: impl FnOnce(&PageState, &Option<PreparedPageScene>) -> R) -> R {
+    PAGE_STATE.with(|state| PREPARED_SCENE.with(|scene| f(&state.borrow(), &scene.borrow())))
 }
 
-pub fn with_progressive_task_mut<R>(f: impl FnOnce(&mut Option<ProgressiveVectorRenderTask>) -> R) -> R {
+pub fn with_progressive_task_mut<R>(
+    f: impl FnOnce(&mut Option<ProgressiveVectorRenderTask>) -> R,
+) -> R {
     PROGRESSIVE_RENDER_TASK.with(|task| f(&mut task.borrow_mut()))
 }
 

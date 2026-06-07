@@ -1,9 +1,6 @@
 use pdf_viewer_core::models::{GlyphPaintPlan, VectorPageModel};
 
-use crate::page::page_store::{
-    init_page_context,
-    update_page_viewport,
-};
+use crate::page::page_store::{init_page_context, update_page_viewport};
 use crate::viewer::viewer_store;
 
 pub fn init_page_context_from_models(

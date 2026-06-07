@@ -2,7 +2,7 @@
 //! 纯几何计算，无 wasm 依赖。
 
 use crate::edit::active_target::ActiveEditorTarget;
-use crate::geometry::bbox_utils::{bbox_height, bbox_width, union_bbox};
+use crate::geometry::bbox_ops::{bbox_height, bbox_width, union_bbox};
 use crate::geometry::source_geometry::source_session_visual_bbox;
 use crate::models::BoundingBox;
 
@@ -43,9 +43,7 @@ impl ParagraphReplacementRegion {
     }
 }
 
-pub fn paragraph_replacement_region(
-    target: &ActiveEditorTarget,
-) -> ParagraphReplacementRegion {
+pub fn paragraph_replacement_region(target: &ActiveEditorTarget) -> ParagraphReplacementRegion {
     let shell_bbox = target.scene.shell_bbox;
     let source_bbox = preferred_source_bbox(target);
     let row_height = bbox_height(&source_bbox).max(1.0);
@@ -112,9 +110,7 @@ fn bbox_has_area(bbox: &BoundingBox) -> bool {
 mod tests {
     use super::paragraph_replacement_region;
     use crate::edit::active_target::ActiveEditorTarget;
-    use crate::models::{
-        BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun, RunStyle,
-    };
+    use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
 
     fn target_for_body(body_bbox: BoundingBox) -> ActiveEditorTarget {
         let mut target = ActiveEditorTarget::default();

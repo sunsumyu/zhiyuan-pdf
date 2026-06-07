@@ -4,10 +4,8 @@
 use std::collections::HashSet;
 
 use crate::edit::paragraph_overlay::ParagraphRenderOverlay;
-use crate::edit::replacement_region::{
-    paragraph_replacement_region, ParagraphReplacementRegion,
-};
-use crate::geometry::bbox_utils::bbox_intersects;
+use crate::edit::replacement_region::{paragraph_replacement_region, ParagraphReplacementRegion};
+use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, StyledRun, VectorRenderObject,
     VectorTextObject,
@@ -61,8 +59,10 @@ pub fn run_text_is_list_marker_only(text: &str) -> bool {
     if trimmed.is_empty() {
         return false;
     }
-    trimmed.chars().all(|c| matches!(c,
-        '\u{2022}' | // •
+    trimmed.chars().all(|c| {
+        matches!(
+            c,
+            '\u{2022}' | // •
         '\u{25CF}' | // ●
         '\u{25CB}' | // ○
         '\u{25E6}' | // ◦
@@ -72,7 +72,8 @@ pub fn run_text_is_list_marker_only(text: &str) -> bool {
         '\u{25AA}' | // ▪
         '\u{2043}' | // ⁃
         '*' | '-'
-    ))
+        )
+    })
 }
 
 pub fn text_run_spatially_matches_replacement_region(

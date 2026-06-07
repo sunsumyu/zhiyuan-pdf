@@ -4,11 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 5000 --strictPort",
+    "dev": "node scripts/dev.mjs --vite-only",
+    "dev:vite": "vite --strictPort",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri": "node scripts/dev.mjs --shim",
+    "tauri:dev": "node scripts/dev.mjs",
     "wasm:pdf-viewer-ui": "wasm-pack build ./crates/pdf-viewer-ui --target web",
     "e2e:build": "tauri build --debug --no-bundle",
     "e2e": "cross-env TS_NODE_PROJECT=tests/e2e/tsconfig.json wdio run tests/e2e/wdio.conf.ts"

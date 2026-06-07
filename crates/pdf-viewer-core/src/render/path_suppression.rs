@@ -1,7 +1,7 @@
 //! 装饰性路径/图像抑制判断 — 从 ui::render::path_suppression 迁入。
 
 use crate::edit::replacement_region::ParagraphReplacementRegion;
-use crate::geometry::bbox_utils::bbox_intersects;
+use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{BoundingBox, VectorImageObject, VectorRenderObject};
 use crate::render::viewport_culling::path_object_bbox;
 
@@ -37,11 +37,7 @@ pub fn decorative_object_should_be_suppressed_by_overlay(
             Some(format!(
                 "type=path id={} {} stroke={} strokeColor={} fillColor={}",
                 path.id,
-                source_row_decoration_summary(
-                    &visual_bbox,
-                    replacement_region,
-                    suppression_bbox
-                ),
+                source_row_decoration_summary(&visual_bbox, replacement_region, suppression_bbox),
                 path.stroke_width,
                 path.stroke_color.as_deref().unwrap_or("none"),
                 path.fill_color.as_deref().unwrap_or("none")
@@ -179,7 +175,7 @@ mod tests {
     use crate::edit::active_target::ActiveEditorTarget;
     use crate::edit::replacement_region::paragraph_replacement_region;
     use crate::models::{
-        BoundingBox, ParagraphEditContext, LayoutParagraph, VectorImageObject, VectorRenderObject,
+        BoundingBox, LayoutParagraph, ParagraphEditContext, VectorImageObject, VectorRenderObject,
     };
 
     fn replacement_target() -> ActiveEditorTarget {

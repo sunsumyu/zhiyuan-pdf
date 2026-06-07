@@ -1,4 +1,3 @@
-use crate::log_step;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -20,6 +19,17 @@ pub(crate) fn page_cache_key(path: &str, page_index: u16) -> String {
     format!("{}::{}", path, page_index)
 }
 
+pub(crate) fn page_revision_cache_key(
+    path: &str,
+    page_index: u16,
+    document_revision: Option<u64>,
+) -> String {
+    match document_revision {
+        Some(revision) => format!("{}::rev{}::{}", path, revision, page_index),
+        None => page_cache_key(path, page_index),
+    }
+}
+
 pub(crate) fn light_page_cache_key(path: &str, page_index: u16) -> String {
     format!("light::{}::{}", path, page_index)
 }
@@ -28,7 +38,7 @@ pub(crate) fn invalidate_pdf_light_page_cache(state: &crate::AppState, path: &st
     let prefix = format!("light::{}::", path);
     let mut cache = state.cache.pdf_light_page_cache.lock().unwrap();
     cache.retain(|key, _| !key.starts_with(&prefix));
-    log_step!(
+    crate::log_step!(
         "[PDF][LightPageCache] Invalidated cached light page models for {}",
         path
     );
@@ -37,8 +47,16 @@ pub(crate) fn invalidate_pdf_light_page_cache(state: &crate::AppState, path: &st
 pub(crate) fn invalidate_pdf_page_cache(state: &crate::AppState, path: &str) {
     let prefix = format!("{}::", path);
     {
+        let mut cache = state.cache.pdf_page_intermediate_cache.lock().unwrap();
+        cache.retain(|key, _| !key.starts_with(&prefix));
+    }
+    {
         let mut cache = state.cache.pdf_page_cache.lock().unwrap();
         cache.retain(|key, _| !key.starts_with(&prefix));
+    }
+    {
+        let mut locks = state.cache.pdf_page_asset_locks.lock().unwrap();
+        locks.retain(|key, _| !key.starts_with(&prefix));
     }
 
     // Clean up memory-address-based resolve_paths cache entries for this document
@@ -51,7 +69,7 @@ pub(crate) fn invalidate_pdf_page_cache(state: &crate::AppState, path: &str) {
         cache.retain(|key, _| !key.starts_with(&format!("{}_", doc_id)));
     }
 
-    log_step!(
+    crate::log_step!(
         "[PDF][PageCache] Invalidated cached page models and resolve_paths cache for {}",
         path
     );
@@ -61,8 +79,5 @@ pub(crate) fn invalidate_pdf_layout_cache(state: &crate::AppState, path: &str) {
     let prefix = format!("{}::", path);
     let mut cache = state.cache.pdf_layout_cache.lock().unwrap();
     cache.retain(|key, _| !key.starts_with(&prefix));
-    log_step!(
-        "[PDF][LayoutCache] Invalidated cached models for {}",
-        path
-    );
+    crate::log_step!("[PDF][LayoutCache] Invalidated cached models for {}", path);
 }

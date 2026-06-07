@@ -94,12 +94,7 @@ impl AnnotationManager {
     ///
     /// Returns a structured `AnnotationResponse<{ deleted: bool }>` payload.
     #[wasm_bindgen(js_name = "delete")]
-    pub async fn delete(
-        &self,
-        path: String,
-        page_index: u16,
-        annotation_id: String,
-    ) -> JsValue {
+    pub async fn delete(&self, path: String, page_index: u16, annotation_id: String) -> JsValue {
         let request = PdfDeleteAnnotationRequest {
             page_index,
             annotation_id: annotation_id.clone(),
@@ -111,7 +106,6 @@ impl AnnotationManager {
             }),
         }
     }
-
 }
 
 impl Default for AnnotationManager {

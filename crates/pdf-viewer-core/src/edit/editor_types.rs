@@ -32,27 +32,15 @@ impl SessionState {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum EditorError {
     /// Called an API in an illegal state (e.g. open_block before begin).
-    InvalidState {
-        expected: String,
-        actual: String,
-    },
+    InvalidState { expected: String, actual: String },
     /// Target entity not found (e.g. block_id doesn't exist).
-    NotFound {
-        entity: String,
-        id: String,
-    },
+    NotFound { entity: String, id: String },
     /// Feature not yet implemented (P1-P3 stubs).
-    NotImplemented {
-        method: String,
-    },
+    NotImplemented { method: String },
     /// Unrecoverable internal error.
-    Internal {
-        message: String,
-    },
+    Internal { message: String },
     /// IO error during save.
-    IoError {
-        message: String,
-    },
+    IoError { message: String },
 }
 
 // ── EditorResponse<T> ───────────────────────────────────────────

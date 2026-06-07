@@ -1,6 +1,6 @@
 //! Region-patch application command.
 
-use super::helpers::execute_region_patches;
+use super::ipc_converters::execute_region_patches;
 use crate::log_step;
 use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use tauri::command;
@@ -25,4 +25,3 @@ pub async fn apply_region_patches(
     );
     execute_region_patches(&state, path, page_index, patches).await
 }
-

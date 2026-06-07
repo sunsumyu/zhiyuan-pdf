@@ -1,5 +1,5 @@
-use pdf_viewer_core::text::list_semantics::ListMarkerKind;
 use pdf_viewer_core::models::LayoutAlignment;
+use pdf_viewer_core::text::list_semantics::ListMarkerKind;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -246,36 +246,26 @@ pub fn active_editor_format_state() -> ActiveEditorFormatState {
     })
 }
 
-pub fn apply_active_editor_format_action(
-    action: EditorFormatAction,
-) -> ActiveEditorFormatState {
+pub fn apply_active_editor_format_action(action: EditorFormatAction) -> ActiveEditorFormatState {
     match action {
         EditorFormatAction::ToggleBold => toggle_active_editor_bold(),
         EditorFormatAction::ToggleItalic => toggle_active_editor_italic(),
         EditorFormatAction::ToggleUnderline => toggle_active_editor_underline(),
         EditorFormatAction::IncreaseFontSize => step_active_editor_font_size(true),
         EditorFormatAction::DecreaseFontSize => step_active_editor_font_size(false),
-        EditorFormatAction::SetParagraphMode { mode } => {
-            set_active_editor_paragraph_mode(&mode)
-        }
+        EditorFormatAction::SetParagraphMode { mode } => set_active_editor_paragraph_mode(&mode),
         EditorFormatAction::SetColor { color } => set_active_editor_color(&color),
         EditorFormatAction::SetFontFamily { font_family } => {
             set_active_editor_font_family(&font_family)
         }
-        EditorFormatAction::SetFontSize { font_size } => {
-            set_active_editor_font_size(font_size)
-        }
+        EditorFormatAction::SetFontSize { font_size } => set_active_editor_font_size(font_size),
         EditorFormatAction::SetCharSpacing { char_spacing } => {
             set_active_editor_char_spacing(char_spacing)
         }
         EditorFormatAction::SetLineHeight { line_height } => {
             set_active_editor_line_height(line_height)
         }
-        EditorFormatAction::SetAlignment { alignment } => {
-            set_active_editor_alignment(&alignment)
-        }
-        EditorFormatAction::SetListKind { list_kind } => {
-            set_active_editor_list_kind(&list_kind)
-        }
+        EditorFormatAction::SetAlignment { alignment } => set_active_editor_alignment(&alignment),
+        EditorFormatAction::SetListKind { list_kind } => set_active_editor_list_kind(&list_kind),
     }
 }

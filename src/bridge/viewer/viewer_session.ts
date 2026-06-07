@@ -16,6 +16,7 @@ export type ViewerSessionSnapshot = {
     currentPage: number;
     pageCount: number;
     currentZoom: number;
+    documentRevision: number;
     pageWidth: number;
     pageHeight: number;
 };
@@ -58,6 +59,7 @@ export function createViewerSessionAdapter(deps: ViewerSessionDeps): ViewerSessi
                 currentPage: snap?.currentPage ?? 0,
                 pageCount: snap?.pageCount ?? 0,
                 currentZoom: snap?.currentZoom ?? 1.0,
+                documentRevision: Number(snap?.documentRevision ?? 0),
                 pageWidth: snap?.pageWidth ?? deps.getFallbackPageWidth(),
                 pageHeight: snap?.pageHeight ?? deps.getFallbackPageHeight(),
             };
@@ -67,6 +69,7 @@ export function createViewerSessionAdapter(deps: ViewerSessionDeps): ViewerSessi
                 currentPage: 0,
                 pageCount: 0,
                 currentZoom: 1.0,
+                documentRevision: 0,
                 pageWidth: deps.getFallbackPageWidth(),
                 pageHeight: deps.getFallbackPageHeight(),
             };

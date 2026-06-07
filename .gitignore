@@ -39,3 +39,7 @@ Thumbs.db
 src/prof/
 
 # docs/ is part of source (architecture, API contracts, development guide)
+
+# Dynamic Tauri port override config
+src-tauri/tauri.port-override.json
+

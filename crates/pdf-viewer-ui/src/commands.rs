@@ -12,36 +12,9 @@ pub enum PdfEditCommand {
     Redo,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DeletePageCommand {
-    pub page_num: u32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RotatePageCommand {
-    pub page_num: u32,
-    pub delta: i32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct InsertPageCommand {
-    pub at_index: u32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AddHighlightCommand {
-    pub page_num: u32,
-    pub rect: [f32; 4],
-    pub color: [f32; 3],
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UpdateMetadataCommand {
-    pub title: String,
-    pub author: String,
-    pub subject: String,
-    pub keywords: String,
-}
+pub use pdf_viewer_core::models::{
+    DeletePageCommand, RotatePageCommand, InsertPageCommand, AddHighlightCommand, UpdateMetadataCommand,
+};
 
 impl From<DeletePageCommand> for PdfEditCommand {
     fn from(c: DeletePageCommand) -> Self {

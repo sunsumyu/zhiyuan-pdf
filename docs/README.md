@@ -12,7 +12,8 @@
 
 1. **[architecture-principles.md](architecture-principles.md)** — 项目架构铁律：单一渲染链、单一所有者、Rust core/UI/TS 边界。
 2. **[editor-render-architecture.md](editor-render-architecture.md)** — 编辑态渲染机制：canvas 单链、textarea 仅做输入捕获、为何不能用浏览器字体。
-3. **[nushell-divergence-report-2026-05-06.md](nushell-divergence-report-2026-05-06.md)** — 2026-05-06 发现的与 nushell-enhanced 的 4 处分叉点及修复记录。
+3. **[page-presentation-runtime-architecture.md](page-presentation-runtime-architecture.md)** — 翻页、preview、vector、detail、prefetch、present 的框架级 runtime 方案。
+4. **[nushell-divergence-report-2026-05-06.md](nushell-divergence-report-2026-05-06.md)** — 2026-05-06 发现的与 nushell-enhanced 的 4 处分叉点及修复记录。
 
 ### 参考
 

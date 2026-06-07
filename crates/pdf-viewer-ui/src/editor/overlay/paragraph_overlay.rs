@@ -7,15 +7,13 @@ use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::edit_target::edit_target_base_paragraph_id;
-use crate::editor::list_format::{
-    collect_marker_overrides, resolve_active_marker_text,
-};
-use crate::editor::mode::get_active_editor_state;
+use crate::editor::list_format::{collect_marker_overrides, resolve_active_marker_text};
+use crate::editor::mode::read_active_editor_state;
 use crate::editor::replacement_snapshot::replacement_target_from_patch_snapshot;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::source_identity::collect_target_source_object_indices;
 use crate::page::page_store::PAGE_STATE;
-use crate::state_manager::get_patch_state;
+use crate::ui_state_store::read_patch_state;
 
 // 数据结构已迁至 pdf_viewer_core::edit::paragraph_overlay。
 pub use pdf_viewer_core::edit::paragraph_overlay::{
@@ -45,10 +43,10 @@ pub fn collect_paragraph_render_overlays(
     vector_model: Option<&VectorPageModel>,
 ) -> Vec<ParagraphRenderOverlay> {
     let mut overlays = BTreeMap::<String, ParagraphRenderOverlay>::new();
-    let active_state = get_active_editor_state();
+    let active_state = read_active_editor_state();
     let marker_overrides = collect_marker_overrides(Some(plan), active_state.as_ref());
 
-    if let Ok(state) = get_patch_state().read() {
+    if let Ok(state) = read_patch_state().read() {
         dbg_event(
             "overlay.collect",
             "start",
@@ -90,8 +88,7 @@ pub fn collect_paragraph_render_overlays(
                 "target-resolved",
                 vec![dbg_field("paragraphId", paragraph_id)],
             );
-            let base_paragraph_id =
-                edit_target_base_paragraph_id(&target.paragraph_id).to_string();
+            let base_paragraph_id = edit_target_base_paragraph_id(&target.paragraph_id).to_string();
             let source_object_indices = persisted_patch_source_indices(
                 &patch.target_indices,
                 &patch.full_target_indices,
@@ -130,9 +127,7 @@ pub fn collect_paragraph_render_overlays(
 
     if let Some(active_state) = active_state {
         let marker_text_override = marker_overrides
-            .get(edit_target_base_paragraph_id(
-                active_state.paragraph_id(),
-            ))
+            .get(edit_target_base_paragraph_id(active_state.paragraph_id()))
             .cloned()
             .flatten()
             .or_else(|| {
@@ -154,14 +149,38 @@ pub fn collect_paragraph_render_overlays(
             let obj_indices = collect_target_source_object_indices_set(&active_state.target);
             let orig_run_count = active_state.target.scene.original_runs.len();
             let body_run_count = active_state.target.scene.body_session.paragraph.runs.len();
-            let orig_obj_ids: Vec<String> = active_state.target.scene.original_runs
-                .iter().flat_map(|r| r.object_ids.iter().cloned()).collect();
-            let orig_obj_indices: Vec<usize> = active_state.target.scene.original_runs
-                .iter().flat_map(|r| r.object_indices.iter().copied()).collect();
-            let body_obj_ids: Vec<String> = active_state.target.scene.body_session.paragraph.runs
-                .iter().flat_map(|r| r.object_ids.iter().cloned()).collect();
-            let body_obj_indices: Vec<usize> = active_state.target.scene.body_session.paragraph.runs
-                .iter().flat_map(|r| r.object_indices.iter().copied()).collect();
+            let orig_obj_ids: Vec<String> = active_state
+                .target
+                .scene
+                .original_runs
+                .iter()
+                .flat_map(|r| r.object_ids.iter().cloned())
+                .collect();
+            let orig_obj_indices: Vec<usize> = active_state
+                .target
+                .scene
+                .original_runs
+                .iter()
+                .flat_map(|r| r.object_indices.iter().copied())
+                .collect();
+            let body_obj_ids: Vec<String> = active_state
+                .target
+                .scene
+                .body_session
+                .paragraph
+                .runs
+                .iter()
+                .flat_map(|r| r.object_ids.iter().cloned())
+                .collect();
+            let body_obj_indices: Vec<usize> = active_state
+                .target
+                .scene
+                .body_session
+                .paragraph
+                .runs
+                .iter()
+                .flat_map(|r| r.object_indices.iter().copied())
+                .collect();
             dbg_event(
                 "overlay.collect",
                 "active-identity-detail",
@@ -175,7 +194,10 @@ pub fn collect_paragraph_render_overlays(
                     dbg_field("mergedObjectIdCount", obj_ids.len()),
                     dbg_field("mergedObjectIndices", format!("{:?}", obj_indices)),
                     dbg_field("mergedObjectIndexCount", obj_indices.len()),
-                    dbg_field("sourceObjectIndices", format!("{:?}", source_object_indices)),
+                    dbg_field(
+                        "sourceObjectIndices",
+                        format!("{:?}", source_object_indices),
+                    ),
                     dbg_field("origRunCount", orig_run_count),
                     dbg_field("origRunObjectIds", format!("{:?}", orig_obj_ids)),
                     dbg_field("origRunObjectIndices", format!("{:?}", orig_obj_indices)),
@@ -224,10 +246,10 @@ pub fn collect_paragraph_render_overlays(
 mod persisted_overlay_tests {
     use super::*;
     use crate::models::PersistableRegionPatch;
-    use crate::state_manager::{apply_patch_with_history, get_patch_state};
+    use crate::ui_state_store::{apply_patch_with_history, read_patch_state};
     use pdf_viewer_core::models::{
-        BoundingBox, ParagraphEditContext, GlyphPaintPlan, GlyphPaintRegion, LayoutMode, LayoutParagraph,
-        LayoutRole,
+        BoundingBox, GlyphPaintPlan, GlyphPaintRegion, LayoutMode, LayoutParagraph, LayoutRole,
+        ParagraphEditContext,
     };
     use serde_json::json;
     use wasm_bindgen_test::wasm_bindgen_test;
@@ -276,7 +298,7 @@ mod persisted_overlay_tests {
     }
 
     fn clear_state() {
-        let mut s = get_patch_state().write().unwrap();
+        let mut s = read_patch_state().write().unwrap();
         s.paragraph_texts.clear();
         s.paragraph_snapshots.clear();
         s.paragraph_patches.clear();
@@ -316,14 +338,16 @@ mod persisted_overlay_tests {
 
         // 确认 patch 入了 state
         {
-            let state = get_patch_state().read().unwrap();
+            let state = read_patch_state().read().unwrap();
             assert_eq!(
                 state.paragraph_patches.len(),
                 1,
                 "patch must be persisted in paragraph_patches"
             );
             assert!(
-                state.paragraph_replacement_targets.contains_key(paragraph_id),
+                state
+                    .paragraph_replacement_targets
+                    .contains_key(paragraph_id),
                 "replacement target must be persisted from snapshot"
             );
         }
@@ -370,7 +394,7 @@ mod persisted_overlay_tests {
         let target = make_active_editor_target(paragraph_id);
 
         // 模拟 commit.rs:42 显式记录 replacement target
-        crate::state_manager::remember_paragraph_replacement_target(paragraph_id, target);
+        crate::ui_state_store::remember_paragraph_replacement_target(paragraph_id, target);
 
         // 模拟生产 patch（snapshot 不含 replacementTarget，与真实 build_edit_replacement_snapshot 一致）
         let patch = PersistableRegionPatch {

@@ -1,5 +1,5 @@
-use crate::typography::font_resolver::looks_like_symbolic_font;
 use crate::models::{LayoutParagraph, LayoutRun, RunStyle};
+use crate::typography::font_resolver::looks_like_symbolic_font;
 use serde::{Deserialize, Serialize};
 
 /// 样式分片，表示一段具有相同样式的文本
@@ -37,20 +37,20 @@ impl StyleMapper {
 
     pub fn new_from_paragraph_for_text(paragraph: &LayoutParagraph, source_text: &str) -> Self {
         let mut mapper = Self::new_from_paragraph(paragraph);
-        if mapper.get_full_text() != source_text {
+        if mapper.read_full_text() != source_text {
             mapper.update_with_text(source_text);
         }
         mapper
     }
 
     /// 获取当前全文本
-    pub fn get_full_text(&self) -> String {
+    pub fn read_full_text(&self) -> String {
         self.spans.iter().map(|s| s.text.as_str()).collect()
     }
 
     /// 当用户输入新文本时，更新样式映射
     pub fn update_with_text(&mut self, new_text: &str) {
-        let old_text = self.get_full_text();
+        let old_text = self.read_full_text();
         if old_text == new_text {
             return;
         }
@@ -70,10 +70,10 @@ impl StyleMapper {
             return;
         }
 
-        let lcp_len = get_lcp_len(&old_text, new_text);
+        let lcp_len = compute_lcp_len(&old_text, new_text);
         let remaining_old = &old_text[lcp_len..];
         let remaining_new = &new_text[lcp_len..];
-        let lcs_len = get_lcs_len(remaining_old, remaining_new);
+        let lcs_len = compute_lcs_len(remaining_old, remaining_new);
 
         let mid_text_new = &new_text[lcp_len..(new_text.len() - lcs_len)];
         let old_suffix_start = old_text.len() - lcs_len;
@@ -223,7 +223,7 @@ impl StyleMapper {
     }
 
     pub fn has_style_changes_against_paragraph(&self, paragraph: &LayoutParagraph) -> bool {
-        let current_text = self.get_full_text();
+        let current_text = self.read_full_text();
         let source_mapper = Self::new_from_paragraph_for_text(paragraph, &current_text);
         !style_spans_have_same_paint_style(&self.spans, &source_mapper.spans)
     }
@@ -274,7 +274,7 @@ pub fn should_preserve_editor_underline(paragraph: &LayoutParagraph) -> bool {
     visible_char_count > 0 && (underline_char_count as f32 / visible_char_count as f32) >= 0.8
 }
 
-fn get_lcp_len(a: &str, b: &str) -> usize {
+fn compute_lcp_len(a: &str, b: &str) -> usize {
     a.chars()
         .zip(b.chars())
         .take_while(|(ca, cb)| ca == cb)
@@ -282,7 +282,7 @@ fn get_lcp_len(a: &str, b: &str) -> usize {
         .sum()
 }
 
-fn get_lcs_len(a: &str, b: &str) -> usize {
+fn compute_lcs_len(a: &str, b: &str) -> usize {
     let ar: Vec<char> = a.chars().rev().collect();
     let br: Vec<char> = b.chars().rev().collect();
     ar.iter()
@@ -426,7 +426,7 @@ mod tests {
         };
         let mapper = StyleMapper::new_from_paragraph_for_text(&paragraph, "编程语言: Rust");
 
-        assert_eq!(mapper.get_full_text(), "编程语言: Rust");
+        assert_eq!(mapper.read_full_text(), "编程语言: Rust");
         assert!(!mapper.has_style_changes_against_paragraph(&paragraph));
     }
 }

@@ -2,7 +2,7 @@ use crate::models::FontHints;
 
 use super::models::{
     MatchReason, NormalizedPdfFontIdentity, PdfFontDescriptor, PdfFontMatchRequest,
-    PdfFontSourceKind, ResolvedPdfFont, RenderFontKind, SystemFontCandidate, SystemFontMatchResult,
+    PdfFontSourceKind, RenderFontKind, ResolvedPdfFont, SystemFontCandidate, SystemFontMatchResult,
 };
 
 pub fn build_match_request(name: &str, hints: Option<&FontHints>) -> PdfFontMatchRequest {
@@ -57,7 +57,9 @@ pub fn normalize_pdf_font_identity(name: &str) -> NormalizedPdfFontIdentity {
         canonical_family,
         style_name,
         subset_tag,
-        is_symbolic: lower.contains("symbol") || lower.contains("wingdings") || lower.contains("zapfdingbats"),
+        is_symbolic: lower.contains("symbol")
+            || lower.contains("wingdings")
+            || lower.contains("zapfdingbats"),
     }
 }
 
@@ -73,13 +75,30 @@ pub fn score_system_font_candidate(
     let candidate_key = normalized_font_key(&candidate.family_name);
 
     if request_family == candidate_family {
-        push_reason(&mut reasons, "family_exact", "canonical family exact match", 120);
+        push_reason(
+            &mut reasons,
+            "family_exact",
+            "canonical family exact match",
+            120,
+        );
         score += 120;
     } else if request_key == candidate_key {
-        push_reason(&mut reasons, "family_alias", "normalized font alias match", 110);
+        push_reason(
+            &mut reasons,
+            "family_alias",
+            "normalized font alias match",
+            110,
+        );
         score += 110;
-    } else if candidate_family.contains(&request_family) || request_family.contains(&candidate_family) {
-        push_reason(&mut reasons, "family_partial", "canonical family partial match", 70);
+    } else if candidate_family.contains(&request_family)
+        || request_family.contains(&candidate_family)
+    {
+        push_reason(
+            &mut reasons,
+            "family_partial",
+            "canonical family partial match",
+            70,
+        );
         score += 70;
     }
 
@@ -88,7 +107,12 @@ pub fn score_system_font_candidate(
             || ps_name.eq_ignore_ascii_case(&request.identity.raw_name)
             || normalized_font_key(ps_name) == request_key
         {
-            push_reason(&mut reasons, "postscript_exact", "postscript name exact match", 90);
+            push_reason(
+                &mut reasons,
+                "postscript_exact",
+                "postscript name exact match",
+                90,
+            );
             score += 90;
         }
     }
@@ -98,12 +122,22 @@ pub fn score_system_font_candidate(
         if !request_postscript_key.is_empty() {
             if let Some(candidate_postscript) = &candidate.post_script_name {
                 if normalized_font_key(candidate_postscript) == request_postscript_key {
-                    push_reason(&mut reasons, "postscript_descriptor", "descriptor postscript match", 95);
+                    push_reason(
+                        &mut reasons,
+                        "postscript_descriptor",
+                        "descriptor postscript match",
+                        95,
+                    );
                     score += 95;
                 }
             }
             if normalized_font_key(&candidate.family_name) == request_postscript_key {
-                push_reason(&mut reasons, "postscript_family_alias", "descriptor postscript aligns with family alias", 65);
+                push_reason(
+                    &mut reasons,
+                    "postscript_family_alias",
+                    "descriptor postscript aligns with family alias",
+                    65,
+                );
                 score += 65;
             }
         }
@@ -111,7 +145,12 @@ pub fn score_system_font_candidate(
 
     if let Some(full_name) = &candidate.full_name {
         if normalized_font_key(full_name) == request_key {
-            push_reason(&mut reasons, "fullname_alias", "full name normalized match", 80);
+            push_reason(
+                &mut reasons,
+                "fullname_alias",
+                "full name normalized match",
+                80,
+            );
             score += 80;
         }
     }
@@ -120,12 +159,22 @@ pub fn score_system_font_candidate(
         let family_hint_key = normalized_font_key(family_hint);
         if !family_hint_key.is_empty() {
             if normalized_font_key(&candidate.family_name) == family_hint_key {
-                push_reason(&mut reasons, "family_hint_match", "font descriptor family hint match", 85);
+                push_reason(
+                    &mut reasons,
+                    "family_hint_match",
+                    "font descriptor family hint match",
+                    85,
+                );
                 score += 85;
             }
             if let Some(full_name) = &candidate.full_name {
                 if normalized_font_key(full_name) == family_hint_key {
-                    push_reason(&mut reasons, "family_hint_fullname", "font descriptor family hint matches full name", 70);
+                    push_reason(
+                        &mut reasons,
+                        "family_hint_fullname",
+                        "font descriptor family hint matches full name",
+                        70,
+                    );
                     score += 70;
                 }
             }
@@ -136,7 +185,12 @@ pub fn score_system_font_candidate(
     let weight_delta = (requested_weight - candidate.weight).abs();
     let weight_score = (40 - (weight_delta / 10)).max(0);
     if weight_score > 0 {
-        push_reason(&mut reasons, "weight_near", format!("weight delta {}", weight_delta), weight_score);
+        push_reason(
+            &mut reasons,
+            "weight_near",
+            format!("weight delta {}", weight_delta),
+            weight_score,
+        );
         score += weight_score;
     }
 
@@ -145,15 +199,30 @@ pub fn score_system_font_candidate(
         score += 20;
     }
     if request.descriptor.is_fixed_pitch == candidate.is_fixed_pitch {
-        push_reason(&mut reasons, "mono_match", "fixed-pitch classification matches", 12);
+        push_reason(
+            &mut reasons,
+            "mono_match",
+            "fixed-pitch classification matches",
+            12,
+        );
         score += 12;
     }
     if request.descriptor.is_serif == candidate.is_serif {
-        push_reason(&mut reasons, "serif_match", "serif classification matches", 12);
+        push_reason(
+            &mut reasons,
+            "serif_match",
+            "serif classification matches",
+            12,
+        );
         score += 12;
     }
     if request.identity.is_symbolic == candidate.is_symbolic {
-        push_reason(&mut reasons, "symbol_match", "symbolic classification matches", 25);
+        push_reason(
+            &mut reasons,
+            "symbol_match",
+            "symbolic classification matches",
+            25,
+        );
         score += 25;
     }
 
@@ -188,7 +257,12 @@ pub fn score_system_font_candidate(
 
     if candidate.coverage_score > 0 {
         let coverage_delta = (candidate.coverage_score as i32).min(40);
-        push_reason(&mut reasons, "coverage", format!("coverage score {}", candidate.coverage_score), coverage_delta);
+        push_reason(
+            &mut reasons,
+            "coverage",
+            format!("coverage score {}", candidate.coverage_score),
+            coverage_delta,
+        );
         score += coverage_delta;
     }
 
@@ -203,7 +277,9 @@ pub fn choose_best_match(
     request: &PdfFontMatchRequest,
     candidates: &[SystemFontCandidate],
 ) -> Option<SystemFontMatchResult> {
-    choose_top_matches(request, candidates, 1).into_iter().next()
+    choose_top_matches(request, candidates, 1)
+        .into_iter()
+        .next()
 }
 
 pub fn choose_top_matches(
@@ -288,11 +364,24 @@ fn strip_subset_prefix(name: &str) -> (&str, Option<String>) {
 
 fn split_family_name(name: &str) -> String {
     let lower = name.to_ascii_lowercase();
-    for suffix in ["-bolditalic", " bolditalic", "-bold", " bold", "-italic", " italic", "-regular", " regular"] {
+    for suffix in [
+        "-bolditalic",
+        " bolditalic",
+        "-bold",
+        " bold",
+        "-italic",
+        " italic",
+        "-regular",
+        " regular",
+    ] {
         if lower.ends_with(suffix) {
             let family_len = name.len().saturating_sub(suffix.len());
             let family = name[..family_len].trim_end_matches(['-', ' ']).trim();
-            return if family.is_empty() { name.trim().to_string() } else { family.to_string() };
+            return if family.is_empty() {
+                name.trim().to_string()
+            } else {
+                family.to_string()
+            };
         }
     }
     name.trim().to_string()
@@ -300,7 +389,16 @@ fn split_family_name(name: &str) -> String {
 
 fn extract_style_name(name: &str) -> String {
     let lower = name.to_ascii_lowercase();
-    for suffix in ["-bolditalic", " bolditalic", "-bold", " bold", "-italic", " italic", "-regular", " regular"] {
+    for suffix in [
+        "-bolditalic",
+        " bolditalic",
+        "-bold",
+        " bold",
+        "-italic",
+        " italic",
+        "-regular",
+        " regular",
+    ] {
         if lower.ends_with(suffix) {
             return name[name.len().saturating_sub(suffix.len())..]
                 .trim_matches(['-', ' '])
@@ -311,7 +409,12 @@ fn extract_style_name(name: &str) -> String {
     "Regular".to_string()
 }
 
-fn push_reason(reasons: &mut Vec<MatchReason>, code: &str, detail: impl Into<String>, score_delta: i32) {
+fn push_reason(
+    reasons: &mut Vec<MatchReason>,
+    code: &str,
+    detail: impl Into<String>,
+    score_delta: i32,
+) {
     reasons.push(MatchReason {
         code: code.to_string(),
         detail: detail.into(),
@@ -382,7 +485,10 @@ mod tests {
     #[test]
     fn chinese_aliases_normalize_to_same_key() {
         assert_eq!(normalized_font_key("SimSun"), normalized_font_key("宋体"));
-        assert_eq!(normalized_font_key("Microsoft YaHei"), normalized_font_key("微软雅黑"));
+        assert_eq!(
+            normalized_font_key("Microsoft YaHei"),
+            normalized_font_key("微软雅黑")
+        );
     }
 
     #[test]
@@ -426,6 +532,9 @@ mod tests {
         );
         let resolved = resolve_system_or_fallback_font(&request, &[], "Microsoft YaHei");
         assert!(resolved.can_attempt_embedded_render);
-        assert_eq!(resolved.preferred_render_kind, Some(RenderFontKind::Embedded));
+        assert_eq!(
+            resolved.preferred_render_kind,
+            Some(RenderFontKind::Embedded)
+        );
     }
 }

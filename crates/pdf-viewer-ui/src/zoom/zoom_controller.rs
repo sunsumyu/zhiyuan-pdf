@@ -1,7 +1,6 @@
 use crate::editor::session::render_scene_key;
 use crate::present::plan_builder::{
-    build_frame_plan_result, AnchorViewportLayoutResult,
-    FramePlanRequest,
+    build_frame_plan_result, AnchorViewportLayoutResult, FramePlanRequest,
 };
 use crate::present::present_store;
 use crate::present::present_store::reset_present_runtime;
@@ -12,10 +11,7 @@ use crate::zoom::interaction::{
     compute_anchor_scroll_result, compute_anchor_viewport_layout_result, AnchorScrollResult,
     ZoomPreviewFrame,
 };
-use crate::zoom::zoom_store::{
-    reset_zoom_state, HostZoomState, VisualLayoutState,
-    ZOOM_STATE,
-};
+use crate::zoom::zoom_store::{reset_zoom_state, HostZoomState, VisualLayoutState, ZOOM_STATE};
 
 pub fn reset_zoom_runtime(initial_zoom: f32) {
     reset_zoom_state(initial_zoom);
@@ -23,7 +19,7 @@ pub fn reset_zoom_runtime(initial_zoom: f32) {
     reset_present_runtime(true, false);
 }
 
-pub fn get_zoom_state() -> HostZoomState {
+pub fn read_zoom_state() -> HostZoomState {
     ZOOM_STATE.with(|state| state.borrow().clone())
 }
 
@@ -54,7 +50,7 @@ pub fn step_zoom_animation() -> crate::zoom::zoom_store::ZoomAnimationStep {
 }
 
 pub fn step_zoom_frame_plan(request: &FramePlanRequest) -> ZoomPreviewFrame {
-    let viewer_session = viewer_store::get_viewer_session();
+    let viewer_session = viewer_store::read_viewer_session();
     present_store::with_present_state(|present_state| {
         ZOOM_STATE.with(|state| {
             let mut state = state.borrow_mut();

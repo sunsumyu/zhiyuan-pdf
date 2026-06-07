@@ -36,7 +36,7 @@ impl ZoomSessionState {
 }
 
 /// Snapshot of the current zoom state.
-pub fn get_zoom_session_state() -> ZoomSessionState {
+pub fn read_zoom_session_state() -> ZoomSessionState {
     ZOOM_STATE.with(|state| {
         let s = state.borrow();
         if s.preview_transform.is_some() {
@@ -54,7 +54,7 @@ thread_local! {
         RefCell::new(HostZoomState::default());
 }
 
-pub fn get_zoom_state() -> HostZoomState {
+pub fn read_zoom_state() -> HostZoomState {
     ZOOM_STATE.with(|state| state.borrow().clone())
 }
 

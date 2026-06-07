@@ -1,32 +1,66 @@
 use crate::infrastructure::pdf::layout_analyzer::LayoutGraphAnalyzer;
 use crate::infrastructure::pdf::models::{
-    LayoutInferenceResult, NativeTextModel, RenderObject, StyledRun, NativeVectorPageModel,
+    LayoutInferenceResult, NativeTextModel, NativeVectorPageModel, PageDisplayList, RenderObject,
+    StyledRun,
 };
-use crate::log_step;
 use std::time::Instant;
 
+pub fn resolve_page_display_list_with_doc(
+    doc: &lopdf::Document,
+    page_index: u16,
+) -> Result<PageDisplayList, String> {
+    crate::pdf_log!(2, "[PDF-Vector] Pure Vector Extraction starting...");
+    crate::infrastructure::pdf::pdf_read::resolve_paths(doc, page_index as u32).map(
+        |(objects, text_runs, width, height)| {
+            crate::pdf_log!(
+                2,
+                "[PDF-Vector] Extraction SUCCESS: paths/images={}, text_runs={}, size={}x{}",
+                objects.len(),
+                text_runs.len(),
+                width,
+                height
+            );
+            PageDisplayList {
+                page_index,
+                width,
+                height,
+                objects,
+                text_runs,
+            }
+        },
+    )
+}
+
 /// 瑙ｆ瀽 PDF 鍗曢〉鐨勭函鍚戦噺鏁版嵁 (V206.55 - Optimized Memory Cache 鐗
-pub fn get_vector_page_model_with_doc(
+pub fn resolve_vector_page_model_with_doc(
     doc: &lopdf::Document,
     page_index: u16,
 ) -> Result<NativeVectorPageModel, String> {
-    let start_total = Instant::now();
-    log_step!("[PDF-Vector] Pure Vector Extraction starting...");
-
-    let (mut render_objects, text_runs, pw, ph) =
-        match crate::infrastructure::pdf::pdf_read::resolve_paths(
-            &doc,
-            page_index as u32,
-        ) {
-            Ok(res) => {
-                log_step!("[PDF-Vector] Extraction SUCCESS: paths/images={}, text_runs={}, size={}x{}", res.0.len(), res.1.len(), res.2, res.3);
-                res
-            },
-            Err(e) => {
-                log_step!("[PDF-LOPDF-ERR] Failed: {}", e);
-                (Vec::new(), Vec::new(), 595.0, 842.0)
+    let display_list = match resolve_page_display_list_with_doc(doc, page_index) {
+        Ok(display_list) => display_list,
+        Err(e) => {
+            crate::log_step!("[PDF-LOPDF-ERR] Failed: {}", e);
+            PageDisplayList {
+                page_index,
+                width: 595.0,
+                height: 842.0,
+                objects: Vec::new(),
+                text_runs: Vec::new(),
             }
-        };
+        }
+    };
+    build_vector_page_model_from_display_list(&display_list)
+}
+
+pub fn build_vector_page_model_from_display_list(
+    display_list: &PageDisplayList,
+) -> Result<NativeVectorPageModel, String> {
+    let start_total = Instant::now();
+    let page_index = display_list.page_index;
+    let mut render_objects = display_list.objects.clone();
+    let text_runs = display_list.text_runs.clone();
+    let pw = display_list.width;
+    let ph = display_list.height;
 
     // 鎸?Z-index 鎺掑簭
     render_objects.sort_by_key(|o| match o {
@@ -70,7 +104,13 @@ pub fn get_vector_page_model_with_doc(
             }
 
             let object_indices: Vec<usize> = group.iter().map(|r| r.z_index).collect();
-            log_step!("[PDF-Vector] Grouped text line: '{}' at ({:.1}, {:.1})", line_text, first.tx, first.ty);
+            crate::pdf_log!(
+                3,
+                "[PDF-Vector] Grouped text line: '{}' at ({:.1}, {:.1})",
+                line_text,
+                first.tx,
+                first.ty
+            );
             render_objects.push(RenderObject::Text(NativeTextModel {
                 id: format!("text_{}_{}", page_index, render_objects.len()),
                 text: line_text,
@@ -116,7 +156,7 @@ pub fn get_vector_page_model_with_doc(
     // --- Phase 5: Advanced Layout Analysis (V263) ---
     // Instead of simple bundling, we perform spatial semantics extraction.
     {
-use crate::infrastructure::pdf::models::{LayoutAlignment, LayoutRole};
+        use crate::infrastructure::pdf::models::{LayoutAlignment, LayoutRole};
 
         let mut text_objs: Vec<&mut NativeTextModel> = render_objects
             .iter_mut()
@@ -231,7 +271,7 @@ use crate::infrastructure::pdf::models::{LayoutAlignment, LayoutRole};
     let mut palette_fonts = Vec::new();
 
     if render_objects.len() > 100 {
-use rayon::prelude::*;
+        use rayon::prelude::*;
         let mut color_freq = std::collections::HashMap::new();
         let mut font_freq = std::collections::HashMap::new();
 
@@ -336,12 +376,14 @@ use rayon::prelude::*;
         if let Some(idx) = cull_idx {
             if idx > 0 {
                 let dropped = idx;
-                log_step!(
+                crate::pdf_log!(
+                    2,
                     "[PROF] Occlusion Culling: Dropped {} objects hidden beneath full-page mask at index {}",
                     dropped,
                     idx
                 );
-                log_step!(
+                crate::pdf_log!(
+                    2,
                     "[PDF-CULL] Disabling drain for debug: would have culled {} objects",
                     idx
                 );
@@ -364,8 +406,9 @@ use rayon::prelude::*;
         background_image: None,
     };
     model.flip_y();
-    
-    log_step!(
+
+    crate::pdf_log!(
+        2,
         "[PROF] Vector Model Ready: {} objects, Palette size: (C:{}, F:{}). Total Time: {:?}",
         model.objects.len(),
         model.palette.colors.len(),
@@ -377,29 +420,31 @@ use rayon::prelude::*;
 }
 
 /// 鎵ц V3 绾у竷灞€鎺ㄦ柇 (涓夐樁娈靛浘椹卞姩)
-pub fn get_layout_inference(
+pub fn resolve_layout_inference(
     doc: &lopdf::Document,
     page_index: u16,
 ) -> Result<LayoutInferenceResult, String> {
-    log_step!("[PDF-V3] Starting Layout Inference...");
+    let display_list = resolve_page_display_list_with_doc(doc, page_index)
+        .map_err(|e| format!("Extraction failed: {}", e))?;
+    resolve_layout_inference_from_display_list(&display_list)
+}
 
-    // 1. 鐗╃悊鎻愬彇
-    let (_, text_runs, pw, ph) =
-        match crate::infrastructure::pdf::pdf_read::resolve_paths(
-            &doc,
-            page_index as u32,
-        ) {
-            Ok(res) => res,
-            Err(e) => return Err(format!("Extraction failed: {}", e)),
-        };
+pub fn resolve_layout_inference_from_display_list(
+    display_list: &PageDisplayList,
+) -> Result<LayoutInferenceResult, String> {
+    crate::pdf_log!(2, "[PDF-V3] Starting Layout Inference...");
 
-    // 2. 初始化 V3 分析器
-    let mut result = LayoutGraphAnalyzer::new(page_index, pw, ph).analyze(text_runs);
+    let mut result = LayoutGraphAnalyzer::new(
+        display_list.page_index,
+        display_list.width,
+        display_list.height,
+    )
+    .analyze(display_list.text_runs.clone());
 
-    // 3. 执行 Y 轴翻转，统一到 Y-Down 坐标系
     result.flip_y();
 
-    log_step!(
+    crate::pdf_log!(
+        2,
         "[PDF-V3] Inference complete: {} regions identified.",
         result.regions.len()
     );

@@ -172,7 +172,9 @@ export function ensureVectorCanvasHost(): VectorHostRefs | null {
     const backCanvas = ensureCanvas(container, VECTOR_BACK_CANVAS_ID, 2);
     const mainStageCanvas = ensureStageCanvas(container, VECTOR_STAGE_CANVAS_ID);
     const detailStageCanvas = ensureStageCanvas(container, VECTOR_DETAIL_STAGE_CANVAS_ID);
-    hideDetailCanvas({ container, mainCanvas, backCanvas, mainStageCanvas, detailStageCanvas });
+    if (containerCreated) {
+        hideDetailCanvas({ container, mainCanvas, backCanvas, mainStageCanvas, detailStageCanvas });
+    }
 
     let layer = document.getElementById(VECTOR_INTERACTION_LAYER_ID) as HTMLElement | null;
     if (!layer) {
@@ -209,6 +211,13 @@ export function getExistingVectorCanvasHost(): VectorHostRefs | null {
     return { container, mainCanvas, backCanvas, mainStageCanvas, detailStageCanvas };
 }
 
+export function hideVectorCanvasHostForPreview(): void {
+    const container = document.getElementById(VECTOR_CONTAINER_ID) as HTMLElement | null;
+    if (!container) return;
+    container.style.visibility = 'hidden';
+    container.style.pointerEvents = 'none';
+}
+
 export function getRenderBufferCanvas(refs: VectorHostRefs, useViewportTile: boolean): HTMLCanvasElement {
     return useViewportTile ? refs.detailStageCanvas : refs.mainStageCanvas;
 }
@@ -227,9 +236,9 @@ export function applyViewportCanvasFrame(
     if (!deferVisibleFrame) {
         refs.container.style.width = `${frame.displayWidth}px`;
         refs.container.style.height = `${frame.displayHeight}px`;
+        applyCanvasCssBox(refs.mainCanvas, 0, 0, frame.displayWidth, frame.displayHeight);
+        applyCanvasCssBox(refs.backCanvas, frame.viewportLeft, frame.viewportTop, frame.viewportWidth, frame.viewportHeight);
     }
-    applyCanvasCssBox(refs.mainCanvas, 0, 0, frame.displayWidth, frame.displayHeight);
-    applyCanvasCssBox(refs.backCanvas, frame.viewportLeft, frame.viewportTop, frame.viewportWidth, frame.viewportHeight);
 
     const baseScale =
         frame.displayZoom > 0.0001
@@ -272,6 +281,8 @@ export function presentViewportCanvas(
     logPdfLayoutTrace('canvas-present.visibility.before', {
         options,
     });
+    refs.container.style.visibility = 'visible';
+    refs.container.style.pointerEvents = '';
     refs.mainCanvas.style.visibility = 'visible';
     refs.mainCanvas.style.opacity = '1';
 
@@ -327,7 +338,6 @@ export function presentViewportCanvasFromSource(
     const ctx = presentCanvas.getContext('2d', { alpha: false });
     if (ctx) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, presentCanvas.width, presentCanvas.height);
         ctx.drawImage(sourceCanvas, 0, 0);
     }
     logPdfLayoutTrace('canvas-present.copy.after', {

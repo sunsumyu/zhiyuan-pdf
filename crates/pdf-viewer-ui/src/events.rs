@@ -34,6 +34,9 @@ pub mod event_names {
     pub const EDITOR_CHANGE: &str = "editor.change";
     pub const VIEWER_PAGE_CHANGE: &str = "viewer.pageChange";
     pub const VIEWER_ZOOM_CHANGE: &str = "viewer.zoomChange";
+    pub const PAGE_TURN_INTENT: &str = "pageTurn.intent";
+    pub const PAGE_TURN_REJECT: &str = "pageTurn.reject";
+    pub const PAGE_TURN_VISIBLE: &str = "pageTurn.visible";
     pub const DOCUMENT_OPEN: &str = "document.open";
     pub const DOCUMENT_CLOSE: &str = "document.close";
     pub const DOCUMENT_SAVE_STATE_CHANGE: &str = "document.saveStateChange";
@@ -62,10 +65,7 @@ struct EventBusInner {
 pub fn add_listener(event: &str, cb: js_sys::Function) {
     EVENT_BUS.with(|bus| {
         let mut bus = bus.borrow_mut();
-        bus.listeners
-            .entry(event.to_string())
-            .or_default()
-            .push(cb);
+        bus.listeners.entry(event.to_string()).or_default().push(cb);
     });
 }
 
@@ -135,7 +135,9 @@ pub fn listener_count(event: &str) -> usize {
 pub fn add_listener(_event: &str, _cb: js_sys::Function) {}
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn remove_listener(_event: &str, _cb: &js_sys::Function) -> bool { false }
+pub fn remove_listener(_event: &str, _cb: &js_sys::Function) -> bool {
+    false
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn emit(_event: &str, _payload: &wasm_bindgen::JsValue) {}
@@ -144,4 +146,6 @@ pub fn emit(_event: &str, _payload: &wasm_bindgen::JsValue) {}
 pub fn clear_all() {}
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn listener_count(_event: &str) -> usize { 0 }
+pub fn listener_count(_event: &str) -> usize {
+    0
+}

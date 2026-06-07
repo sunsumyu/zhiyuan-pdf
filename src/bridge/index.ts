@@ -46,6 +46,8 @@ registerPdfViewerAPI({
     readPath: () => runtime.viewerSession.read().path,
     readCurrentPage: () => runtime.viewerSession.read().currentPage,
     readPageCount: () => runtime.viewerSession.read().pageCount,
+    requestPageTurn: (targetPage, reason) =>
+        runtime.pagePresentationRuntime.requestPageTurn(targetPage, reason),
     setCurrentPage: (pageIndex: number) => runtime.viewerSession.setCurrentPage(pageIndex),
     refreshDocument: (reason) => runtime.documentEditApi.refreshDocument(reason),
     resetPdfViewerState: runtime.resetPdfViewerState,

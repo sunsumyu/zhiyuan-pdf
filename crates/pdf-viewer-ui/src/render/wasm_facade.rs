@@ -13,19 +13,13 @@ use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
-use crate::render::progressive_workflow::{
-    cancel_progressive_render,
-    render_page,
-    start_progressive_render,
-    step_progressive_render,
+use crate::present::present_store::{
+    is_render_frame_current, reset_frame_cache, settle_render_frame, store_frame_cache_entry,
+    touch_frame_cache_entry,
 };
 use crate::render::commit::commit_render_result;
-use crate::present::present_store::{
-    is_render_frame_current,
-    reset_frame_cache,
-    settle_render_frame,
-    store_frame_cache_entry,
-    touch_frame_cache_entry,
+use crate::render::progressive_workflow::{
+    cancel_progressive_render, render_page, start_progressive_render, step_progressive_render,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -57,8 +51,13 @@ pub fn facade_step_progressive(
     budget_ms: f64,
     max_items: u32,
 ) -> JsValue {
-    to_value(&step_progressive_render(canvas_id, image_cache, budget_ms, max_items))
-        .unwrap_or(JsValue::NULL)
+    to_value(&step_progressive_render(
+        canvas_id,
+        image_cache,
+        budget_ms,
+        max_items,
+    ))
+    .unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = "renderFacadeCancelProgressive")]
@@ -80,8 +79,13 @@ pub fn facade_commit_result(
     page_width: f32,
     page_height: f32,
 ) -> JsValue {
-    to_value(&commit_render_result(frame_token, rendered_zoom, page_width, page_height))
-        .unwrap_or(JsValue::NULL)
+    to_value(&commit_render_result(
+        frame_token,
+        rendered_zoom,
+        page_width,
+        page_height,
+    ))
+    .unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = "renderFacadeAbortFrame")]

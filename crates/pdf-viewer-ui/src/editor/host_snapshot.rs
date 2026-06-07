@@ -1,15 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-use crate::editor::debug_trace::{resolve_editor_debug_trace, EditorDebugTraceEvent};
-use crate::editor::host_runtime::get_state as get_editor_host_state;
-use crate::editor::mode::get_active_editor_state;
-use crate::editor::mode::is_text_edit_mode_enabled;
-use crate::editor::projection::{
-    project_active_editor_shell, project_paragraph_interaction_targets,
-    ProjectedEditorShell, ProjectedParagraphInteractionTarget,
-};
 use crate::document::patch_persistence::has_persistable_patches;
-use crate::zoom::zoom_controller::get_zoom_state;
+use crate::editor::debug_trace::{resolve_editor_debug_trace, EditorDebugTraceEvent};
+use crate::editor::host_runtime::read_state as get_editor_host_state;
+use crate::editor::mode::is_text_edit_mode_enabled;
+use crate::editor::mode::read_active_editor_state;
+use crate::editor::projection::{
+    project_active_editor_shell, project_paragraph_interaction_targets, ProjectedEditorShell,
+    ProjectedParagraphInteractionTarget,
+};
+use crate::zoom::zoom_controller::read_zoom_state;
 use pdf_viewer_core::text::glyph_layout::EditorGlyphSlotKind;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -75,7 +75,7 @@ fn sanitize_projection_zoom(value: f32, fallback: f32) -> f32 {
 
 fn resolve_editor_projection_zoom(requested_display_zoom: f32) -> f32 {
     let runtime_zoom = get_editor_host_state().last_display_zoom;
-    let zoom_state = get_zoom_state();
+    let zoom_state = read_zoom_state();
     if zoom_state.preview_host.preview_active
         || (zoom_state.target_zoom - zoom_state.visual_zoom).abs() >= 0.001
     {
@@ -88,7 +88,7 @@ fn resolve_editor_projection_zoom(requested_display_zoom: f32) -> f32 {
 pub fn resolve_editor_host_snapshot(display_zoom: f32) -> EditorHostSnapshot {
     let projection_zoom = resolve_editor_projection_zoom(display_zoom);
     let enabled = is_text_edit_mode_enabled();
-    let active_state = get_active_editor_state();
+    let active_state = read_active_editor_state();
     let page_height = crate::page::page_store::with_page_state(|state| {
         state
             .vector_model
@@ -123,7 +123,7 @@ pub fn resolve_editor_host_snapshot(display_zoom: f32) -> EditorHostSnapshot {
 }
 
 pub fn resolve_active_editor_diagnostics() -> Option<ActiveEditorDiagnostics> {
-    let active_state = get_active_editor_state()?;
+    let active_state = read_active_editor_state()?;
     let target = active_state.target.clone();
     let text_plan = target.scene.document_plan.body_text_plan.clone();
     let initial_caret_index = target.initial_body_caret_index();

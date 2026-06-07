@@ -23,8 +23,14 @@ pub fn reset_zoom_state(initial_zoom: f32) {
 }
 
 #[wasm_bindgen]
+pub fn read_zoom_state() -> JsValue {
+    to_value(&zoom_controller::read_zoom_state()).unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen]
+#[deprecated(since = "0.2.0", note = "Use read_zoom_state instead")]
 pub fn get_zoom_state() -> JsValue {
-    to_value(&zoom_controller::get_zoom_state()).unwrap_or(JsValue::NULL)
+    read_zoom_state()
 }
 
 #[wasm_bindgen]

@@ -1,12 +1,15 @@
-import { clearVectorHost, commitVectorRenderResult, ensureVectorHost, renderVectorPageWithPlan } from './vector_host';
+import { commitVectorRenderResult, ensureVectorHost, renderVectorPageWithPlan } from './vector_host';
+import { createPagePresenter } from '../presentation/page_presenter';
 import type { FramePlanAdapter, RenderReason, RustRenderCommitResult, RustRenderFrame } from './frame_plan';
 import type { ViewerSessionAdapter } from '../viewer/viewer_session';
+import type { PagePresentationRuntimeAdapter } from '../viewer/page_presentation_runtime';
 import { logPdfLayoutTrace } from './layout_trace';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 
 type RenderFlowDeps = {
     targetInvokeV3: (cmd: string, args: any) => Promise<any>;
     viewerSession: ViewerSessionAdapter;
+    pagePresentationRuntime: PagePresentationRuntimeAdapter;
     framePlanAdapter: FramePlanAdapter;
     clearPendingAnchor: () => void;
     commitRenderedFrame: (frame: { displayZoom: number; renderZoom: number; hostWidth: number; hostHeight: number; contentLeft: number; contentTop: number; scrollLeft: number; scrollTop: number; }) => void;
@@ -24,9 +27,24 @@ type RenderFlowDeps = {
     onRenderCommitted: () => void;
 };
 
+export type VisibleSurface = 'preview' | 'vector' | 'detail' | 'raster';
+
 export function createRenderFlow(deps: RenderFlowDeps) {
+    let lastVisibleSurface: VisibleSurface | null = null;
+    let lastRenderedPageIndex: number | null = null;
+    const pagePresenter = createPagePresenter({
+        getWrapper: deps.getWrapper,
+        getRasterTarget: deps.getRasterTarget,
+        getEmptyState: deps.getEmptyState,
+        clearEditorOverlay: deps.clearEditorOverlay,
+    });
+
     function logRenderFlow(node: string, details: Record<string, unknown>): void {
         emitPdfDiagnostic('render-flow', node, details, { verboseOnly: true });
+    }
+
+    function shouldPresentPreviewFirst(renderReason: string | undefined): boolean {
+        return renderReason === 'default' || renderReason === 'navigation';
     }
 
     async function runRenderLoop(initialFrame: RustRenderFrame | null): Promise<void> {
@@ -71,17 +89,116 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                 totalPagesSpan.textContent = String(session.pageCount);
             }
 
+            // Scanned PDF fast path: if the page is classified as scanned and has a ready preview image,
+            // render it directly via updateRasterFallback and bypass Vello entirely.
+            let preview: any = null;
             try {
+                preview = await deps.targetInvokeV3('read_preview', {
+                    path: session.path,
+                    pageIndex: session.currentPage,
+                });
+            } catch (e) {
+                console.warn('[PDF-FLOW] read_preview check failed:', e);
+            }
+
+            if (preview?.imageUrl && preview?.kind === 'scanned') {
+                logRenderFlow('scanned-preview-fast-path', {
+                    page: session.currentPage,
+                    hasImage: true,
+                });
+                const frameStartTs = performance.now();
+                const width = preview.width || session.pageWidth;
+                const height = preview.height || session.pageHeight;
+                const renderPlan = currentFrame.framePlan;
+                const transition = deps.commitRenderResult(
+                    currentFrame.frameToken,
+                    renderPlan.renderZoom,
+                    width,
+                    height,
+                );
+
+                if (transition?.accepted) {
+                    deps.onPageDimensionsResolved(width, height);
+                    const presented = await updateRasterFallback(preview.imageUrl, width, height, renderPlan.displayZoom, {
+                        role: 'current',
+                        pageIndex: session.currentPage,
+                    });
+                    if (presented) {
+                        lastVisibleSurface = 'raster';
+                        lastRenderedPageIndex = session.currentPage;
+                        deps.clearPendingAnchor();
+                        deps.clearEditorOverlay();
+                        deps.onRenderCommitted();
+
+                        const totalTime = performance.now() - frameStartTs;
+                        emitPdfDiagnostic('PROF', 'page-render-duration-raster-visible', {
+                            page: session.currentPage,
+                            totalTimeMs: totalTime,
+                        });
+                        emitPdfDiagnostic('PROF', 'page-render-duration-fast', {
+                            page: session.currentPage,
+                            totalTimeMs: totalTime,
+                        });
+                    }
+                }
+
+                nextFrame =
+                    transition?.nextFrame ??
+                    (renderPlan.renderReason === 'zoom'
+                        ? deps.scheduleRenderFollowUp(renderPlan.displayZoom)
+                        : null) ??
+                    null;
+                renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
+                continue;
+            }
+
+            const renderPlan = currentFrame.framePlan;
+            if (
+                preview?.imageUrl &&
+                shouldPresentPreviewFirst(renderPlan.renderReason) &&
+                deps.framePlanAdapter.isRenderFrameCurrent(currentFrame.frameToken)
+            ) {
+                const admission = deps.pagePresentationRuntime.admitPageAsset(
+                    session.currentPage,
+                    'current',
+                    'preview',
+                );
+                if (admission.accepted) {
+                    const width = preview.width || session.pageWidth;
+                    const height = preview.height || session.pageHeight;
+                    deps.onPageDimensionsResolved(width, height);
+                    const presented = await updateRasterFallback(preview.imageUrl, width, height, renderPlan.displayZoom, {
+                        hideVectorOnly: true,
+                        role: 'preview',
+                        pageIndex: session.currentPage,
+                    });
+                    if (presented) {
+                        lastVisibleSurface = 'preview';
+                        lastRenderedPageIndex = session.currentPage;
+                        deps.clearPendingAnchor();
+                        deps.clearEditorOverlay();
+                        deps.pagePresentationRuntime.markPageVisible(session.currentPage, 'preview');
+                        logRenderFlow('preview-first-frame.presented', {
+                            page: session.currentPage,
+                            width,
+                            height,
+                            frameToken: currentFrame.frameToken,
+                            renderReason: renderPlan.renderReason,
+                        });
+                    }
+                }
+            }
+
+            try {
+                const frameStartTs = performance.now();
                 logPdfLayoutTrace('render-loop.frame.begin', {
                     frameToken: currentFrame.frameToken,
                     framePlan: currentFrame.framePlan,
                     session,
                 });
                 ensureVectorHost();
-                console.log('[PDF-DIAG] render-loop: calling showWrapper, page=', session.currentPage, 'pageCount=', session.pageCount, 'path=', session.path?.substring(0, 30));
                 deps.showWrapper();
 
-                const renderPlan = currentFrame.framePlan;
                 if (renderPlan.prepareVisibleLayout === false) {
                     logRenderFlow('defer-visible-layout', {
                         frameToken: currentFrame.frameToken,
@@ -141,16 +258,21 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                             frameToken: currentFrame.frameToken,
                             renderPlan,
                         });
-                        deps.commitRenderedFrame(renderPlan);
-                        logPdfLayoutTrace('render-loop.deferred.commit-layout.after', {
-                            frameToken: currentFrame.frameToken,
-                            renderPlan,
-                        });
                         logPdfLayoutTrace('render-loop.deferred.present.before', {
                             frameToken: currentFrame.frameToken,
                             pendingPresentCount: result.pendingPresents?.length ?? 0,
                         });
-                        commitVectorRenderResult(result);
+                        commitVectorRenderResult(result, {
+                            beforePresent: () => {
+                                deps.commitRenderedFrame(renderPlan);
+                                logPdfLayoutTrace('render-loop.deferred.commit-layout.after', {
+                                    frameToken: currentFrame.frameToken,
+                                    renderPlan,
+                                });
+                            },
+                        });
+                        lastVisibleSurface = 'vector';
+                        lastRenderedPageIndex = session.currentPage;
                         logPdfLayoutTrace('render-loop.deferred.present.after', {
                             frameToken: currentFrame.frameToken,
                             pendingPresentCount: result.pendingPresents?.length ?? 0,
@@ -160,16 +282,21 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                             frameToken: currentFrame.frameToken,
                             renderPlan,
                         });
-                        deps.commitRenderedFrame(renderPlan);
-                        logPdfLayoutTrace('render-loop.commit-layout.after', {
-                            frameToken: currentFrame.frameToken,
-                            renderPlan,
-                        });
                         logPdfLayoutTrace('render-loop.present.before', {
                             frameToken: currentFrame.frameToken,
                             pendingPresentCount: result.pendingPresents?.length ?? 0,
                         });
-                        commitVectorRenderResult(result);
+                        commitVectorRenderResult(result, {
+                            beforePresent: () => {
+                                deps.commitRenderedFrame(renderPlan);
+                                logPdfLayoutTrace('render-loop.commit-layout.after', {
+                                    frameToken: currentFrame.frameToken,
+                                    renderPlan,
+                                });
+                            },
+                        });
+                        lastVisibleSurface = 'vector';
+                        lastRenderedPageIndex = session.currentPage;
                         logPdfLayoutTrace('render-loop.present.after', {
                             frameToken: currentFrame.frameToken,
                             pendingPresentCount: result.pendingPresents?.length ?? 0,
@@ -177,6 +304,13 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                     }
                     deps.syncEditorOverlay(renderPlan.displayZoom);
                     deps.onRenderCommitted();
+
+                    const totalTime = performance.now() - frameStartTs;
+                    emitPdfDiagnostic('PROF', 'page-render-duration', {
+                        page: session.currentPage,
+                        reason: renderPlan.renderReason,
+                        totalTimeMs: totalTime,
+                    });
                 }
 
                 nextFrame =
@@ -209,9 +343,16 @@ export function createRenderFlow(deps: RenderFlowDeps) {
 
                     if (transition?.accepted) {
                         deps.onPageDimensionsResolved(width, height);
-                        await updateRasterFallback(preview.imageUrl, width, height, renderPlan.displayZoom);
-                        deps.clearPendingAnchor();
-                        deps.clearEditorOverlay();
+                        const presented = await updateRasterFallback(preview.imageUrl, width, height, renderPlan.displayZoom, {
+                            role: 'current',
+                            pageIndex: session.currentPage,
+                        });
+                        if (presented) {
+                            lastVisibleSurface = 'raster';
+                            lastRenderedPageIndex = session.currentPage;
+                            deps.clearPendingAnchor();
+                            deps.clearEditorOverlay();
+                        }
                     }
 
                     nextFrame =
@@ -232,44 +373,59 @@ export function createRenderFlow(deps: RenderFlowDeps) {
         }
     }
 
-    async function updateRasterFallback(src: string, pageWidth?: number, pageHeight?: number, displayZoom?: number): Promise<void> {
-        const img = deps.getRasterTarget();
-        const wrapper = deps.getWrapper();
-        const emptyState = deps.getEmptyState();
-        if (!img || !wrapper) return;
-
-        clearVectorHost();
-        deps.clearEditorOverlay();
-        img.style.display = 'block';
-        img.src = src;
-
-        if (pageWidth && pageWidth > 0 && pageHeight && pageHeight > 0) {
-            const zoom = displayZoom && displayZoom > 0 ? displayZoom : 1;
-            const cssW = Math.round(pageWidth * zoom);
-            const cssH = Math.round(pageHeight * zoom);
-            img.style.width = cssW + 'px';
-            img.style.height = cssH + 'px';
-            wrapper.style.width = cssW + 'px';
-            wrapper.style.height = cssH + 'px';
-        }
-
-        wrapper.style.display = 'block';
-        if (emptyState) emptyState.style.display = 'none';
+    async function updateRasterFallback(
+        src: string,
+        pageWidth?: number,
+        pageHeight?: number,
+        displayZoom?: number,
+        options: {
+            hideVectorOnly?: boolean;
+            role?: 'current' | 'preview' | 'prefetch' | 'unknown';
+            pageIndex?: number;
+        } = {},
+    ): Promise<boolean> {
+        const presented = await pagePresenter.presentRaster(
+            src,
+            pageWidth,
+            pageHeight,
+            displayZoom,
+            options,
+        );
+        logRenderFlow('raster-present.result', {
+            role: options.role ?? 'current',
+            pageIndex: options.pageIndex,
+            presented,
+        });
+        return presented;
     }
 
     async function renderCurrentPage(renderReason: RenderReason = 'default'): Promise<void> {
+        await executeActualRender(renderReason);
+    }
+
+    async function executeActualRender(renderReason: RenderReason): Promise<void> {
         const session = deps.viewerSession.read();
-        console.log('[PDF-DIAG] renderFlow.renderCurrentPage: path=', session.path?.substring(0, 30) ?? 'NULL', 'pageCount=', session.pageCount, 'zoom=', session.currentZoom);
         const scheduled = session.path
             ? deps.framePlanAdapter.scheduleRender(session.currentZoom, renderReason)
             : null;
-        console.log('[PDF-DIAG] renderFlow scheduled=', scheduled ? 'FRAME' : 'NULL');
+        logRenderFlow('render-current-page.scheduled', {
+            hasPath: !!session.path,
+            page: session.currentPage,
+            pageCount: session.pageCount,
+            zoom: session.currentZoom,
+            scheduled: !!scheduled,
+            reason: renderReason,
+        });
+        lastVisibleSurface = null;
+        lastRenderedPageIndex = null;
         await runRenderLoop(scheduled);
     }
 
     return {
         renderCurrentPage,
         renderScheduledFrame: runRenderLoop,
+        getLastVisibleSurface: () => lastVisibleSurface,
+        getLastRenderedPageIndex: () => lastRenderedPageIndex,
     };
 }
 

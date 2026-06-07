@@ -21,13 +21,11 @@ pub fn clear_comment_review_session() {
     replace_comment_review_session(HostCommentReviewSession::default());
 }
 
-pub fn get_comment_review_session() -> HostCommentReviewSession {
+pub fn read_comment_review_session() -> HostCommentReviewSession {
     COMMENT_REVIEW_SESSION.with(|session| session.borrow().clone())
 }
 
-fn replace_comment_review_session(
-    next: HostCommentReviewSession,
-) -> HostCommentReviewSession {
+fn replace_comment_review_session(next: HostCommentReviewSession) -> HostCommentReviewSession {
     COMMENT_REVIEW_SESSION.with(|session| {
         *session.borrow_mut() = next.clone();
     });
@@ -37,7 +35,7 @@ fn replace_comment_review_session(
 fn update_comment_review_session(
     update: impl FnOnce(&mut HostCommentReviewSession),
 ) -> HostCommentReviewSession {
-    let mut next = get_comment_review_session();
+    let mut next = read_comment_review_session();
     update(&mut next);
     replace_comment_review_session(next)
 }

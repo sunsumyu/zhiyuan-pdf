@@ -22,13 +22,15 @@
 //! | [`FindSession`] | `find/` | search-in-document |
 //! | [`ReviewSession`] | `review/` | review feed (accept/reject) |
 //! | [`ViewerSession`] | `viewer/` | viewport / page navigation |
+//! | [`PagePresentationRuntime`] | `presentation/` | page-turn intent and presentation admission |
 
-pub use crate::application::Application;
-pub use crate::geometry_api::GeometryApi;
 pub use crate::annotation::annotation_api::AnnotationManager;
+pub use crate::application::Application;
 pub use crate::comment::comment_api::CommentManager;
 pub use crate::document::document_api::DocumentSession;
 pub use crate::editor::editor_api::EditorSession;
 pub use crate::find::find_api::FindSession;
+pub use crate::geometry_api::GeometryApi;
+pub use crate::presentation::presentation_api::PagePresentationRuntime;
 pub use crate::review::review_api::ReviewSession;
 pub use crate::viewer::viewer_api::ViewerSession;

@@ -1,18 +1,17 @@
 use pdf_viewer_core::models::PageState;
 use wasm_bindgen::JsValue;
 
-use super::target_resolution::{
-    is_supported_region_kind, resolve_region_target_from_page_state,
-};
+use super::target_resolution::{is_supported_region_kind, resolve_region_target_from_page_state};
 use crate::editor::bridge::{
     build_active_editor_target, build_paragraph_patch as core_build_paragraph_patch,
-    collect_paragraph_interaction_targets, resolve_paragraph_shell_bbox as bridge_resolve_paragraph_shell_bbox,
+    collect_paragraph_interaction_targets,
+    resolve_paragraph_shell_bbox as bridge_resolve_paragraph_shell_bbox,
 };
 use crate::editor::session::{is_text_edit_enabled, ActiveEditorTarget};
 use crate::models::PersistableRegionPatch;
 use pdf_viewer_core::models::BoundingBox;
 
-pub fn get_paragraph_interaction_targets(
+pub fn build_paragraph_interaction_targets(
     page_state: &PageState,
     editing_enabled: bool,
 ) -> JsValue {

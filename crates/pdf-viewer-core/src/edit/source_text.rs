@@ -1,4 +1,4 @@
-use crate::models::{ParagraphEditContext, LayoutRun};
+use crate::models::{LayoutRun, ParagraphEditContext};
 
 fn run_gap(previous: &LayoutRun, next: &LayoutRun) -> f32 {
     let previous_width = (previous.bbox.right - previous.bbox.left).max(0.0);
@@ -105,8 +105,7 @@ fn needs_compact_text_space(chars: &[char], index: usize) -> bool {
     if previous.is_whitespace() || next.is_whitespace() {
         return false;
     }
-    if is_pdf_text_separator(previous)
-        && (is_ascii_word_char(next) || next == '(' || next == '（')
+    if is_pdf_text_separator(previous) && (is_ascii_word_char(next) || next == '(' || next == '（')
     {
         return true;
     }

@@ -1,88 +1,147 @@
 import type { RenderReason } from './frame_plan';
+import { emitPdfDiagnostic } from '../shared/diagnostics';
+import type { PagePresentationRuntimeAdapter } from '../viewer/page_presentation_runtime';
 
 export type RenderSource = 'navigation' | 'scroll' | 'zoom' | 'editor' | 'mutation' | 'default';
 
+export type RenderRequestContext = {
+    pageTurnId?: number;
+    targetPage?: number;
+};
+
+export type RenderRequest = RenderRequestContext & {
+    source: RenderSource;
+    reason: RenderReason;
+    issuedAt: number;
+};
+
 export type RenderSchedulerDeps = {
-    executeRender: (reason: RenderReason) => Promise<void>;
+    executeRender: (request: RenderRequest) => Promise<void>;
+    pagePresentationRuntime: PagePresentationRuntimeAdapter;
 };
 
 export type RenderScheduler = {
-    requestRender: (source: RenderSource, reason?: RenderReason) => Promise<void>;
+    requestRender: (source: RenderSource, reason?: RenderReason, context?: RenderRequestContext) => Promise<void>;
     notifyCommit: () => void;
     reset: () => void;
 };
 
-const COMMIT_SUPPRESS_MS = 120;
-const SCROLL_DEBOUNCE_MS = 56;
-const NAVIGATION_DEBOUNCE_MS = 60;
+type QueuedRenderRequest = {
+    request: RenderRequest;
+    resolve: () => void;
+};
 
 export function createRenderScheduler(deps: RenderSchedulerDeps): RenderScheduler {
     // --- Debounce state ---
-    let navRafId: number | null = null;
-    let navTimerId: number | null = null;
-    let navResolvers: Array<() => void> = [];
-
     let scrollTimerId: number | null = null;
     let scrollRafId: number | null = null;
     let scrollResolvers: Array<() => void> = [];
 
     // --- Serialization state ---
     let executing = false;
-    let pendingReason: RenderReason | null = null;
-    let pendingResolvers: Array<() => void> = [];
+    let pendingQueue: QueuedRenderRequest[] = [];
 
     // --- Commit suppression state ---
     let lastCommitTs = 0;
 
-    function isScrollSuppressed(): boolean {
-        return performance.now() - lastCommitTs < COMMIT_SUPPRESS_MS;
+    function resolveQueueAction(source: RenderSource) {
+        return deps.pagePresentationRuntime.resolveRenderQueueAction(
+            source,
+            executing,
+            performance.now(),
+            lastCommitTs,
+        );
     }
 
-    function dispatch(reason: RenderReason): Promise<void> {
-        if (executing) {
-            // Replace any previously queued request with the latest
-            pendingReason = reason;
+    function isScrollSuppressed(): boolean {
+        return resolveQueueAction('scroll').suppress;
+    }
+
+    function dispatch(request: RenderRequest): Promise<void> {
+        const action = resolveQueueAction(request.source);
+        if (action.action === 'suppress') {
+            return Promise.resolve();
+        }
+
+        if (action.action !== 'dispatch') {
             return new Promise<void>((resolve) => {
-                pendingResolvers.push(resolve);
+                if (action.pendingQueueEffect === 'append') {
+                    pendingQueue.push({ request, resolve });
+                    emitPdfDiagnostic('render-flow', 'render-scheduler.navigation-queued', {
+                        pageTurnId: request.pageTurnId,
+                        targetPage: request.targetPage,
+                        queueSize: pendingQueue.length,
+                    }, { verboseOnly: true });
+                    return;
+                }
+
+                if (action.pendingQueueEffect === 'replaceAll') {
+                    const replaced = pendingQueue.length;
+                    pendingQueue.splice(0).forEach((queued) => queued.resolve());
+                    pendingQueue = [{ request, resolve }];
+                    emitPdfDiagnostic('render-flow', 'render-scheduler.navigation-replaced', {
+                        pageTurnId: request.pageTurnId,
+                        targetPage: request.targetPage,
+                        replaced,
+                        queueSize: pendingQueue.length,
+                    }, { verboseOnly: true });
+                    return;
+                }
+
+                if (action.pendingQueueEffect === 'replaceNonNavigation') {
+                    const keptNavigation = pendingQueue.filter((queued) => queued.request.source === 'navigation');
+                    const replaced = pendingQueue.length - keptNavigation.length;
+                    pendingQueue
+                        .filter((queued) => queued.request.source !== 'navigation')
+                        .forEach((queued) => queued.resolve());
+                    pendingQueue = [...keptNavigation, { request, resolve }];
+                    if (replaced > 0) {
+                        emitPdfDiagnostic('render-flow', 'render-scheduler.non-navigation-replaced', {
+                            source: request.source,
+                            reason: request.reason,
+                            replaced,
+                            queueSize: pendingQueue.length,
+                        }, { verboseOnly: true });
+                    }
+                    return;
+                }
+
+                resolve();
             });
         }
 
         executing = true;
-        return deps.executeRender(reason).finally(() => {
+        return deps.executeRender(request).finally(() => {
             executing = false;
-            if (pendingReason !== null) {
-                const nextReason = pendingReason;
-                const resolvers = pendingResolvers.splice(0);
-                pendingReason = null;
-                dispatch(nextReason).then(() => {
-                    resolvers.forEach((r) => r());
+            const next = pendingQueue.shift();
+            if (next) {
+                dispatch(next.request).then(() => {
+                    next.resolve();
                 });
             }
         });
     }
 
-    function requestNavigation(reason: RenderReason): Promise<void> {
-        return new Promise<void>((resolve) => {
-            navResolvers.push(resolve);
-            if (navTimerId !== null) {
-                clearTimeout(navTimerId);
-            }
-            navTimerId = window.setTimeout(() => {
-                navTimerId = null;
-                if (navRafId !== null) return;
-                navRafId = requestAnimationFrame(() => {
-                    navRafId = null;
-                    const resolvers = navResolvers.splice(0);
-                    dispatch(reason).then(() => {
-                        resolvers.forEach((r) => r());
-                    });
-                });
-            }, NAVIGATION_DEBOUNCE_MS);
-        });
+    function makeRequest(
+        source: RenderSource,
+        reason: RenderReason,
+        context: RenderRequestContext = {},
+    ): RenderRequest {
+        return {
+            source,
+            reason,
+            pageTurnId: context.pageTurnId,
+            targetPage: context.targetPage,
+            issuedAt: performance.now(),
+        };
     }
 
-    function requestScroll(reason: RenderReason): Promise<void> {
-        if (isScrollSuppressed()) return Promise.resolve();
+    function requestScroll(request: RenderRequest): Promise<void> {
+        const action = resolveQueueAction('scroll');
+        if (action.suppress) return Promise.resolve();
+        const scrollDebounceMs = Number.isFinite(action.scrollDebounceMs)
+            ? action.scrollDebounceMs
+            : 56;
 
         return new Promise<void>((resolve) => {
             scrollResolvers.push(resolve);
@@ -100,23 +159,29 @@ export function createRenderScheduler(deps: RenderSchedulerDeps): RenderSchedule
                         return;
                     }
                     const resolvers = scrollResolvers.splice(0);
-                    dispatch(reason).then(() => {
+                    dispatch(request).then(() => {
                         resolvers.forEach((r) => r());
                     });
                 });
-            }, SCROLL_DEBOUNCE_MS);
+            }, scrollDebounceMs);
         });
     }
 
-    function requestRender(source: RenderSource, reason: RenderReason = 'default'): Promise<void> {
+    function requestRender(
+        source: RenderSource,
+        reason: RenderReason = 'default',
+        context: RenderRequestContext = {},
+    ): Promise<void> {
+        const request = makeRequest(source, reason, context);
         switch (source) {
             case 'navigation':
-                return requestNavigation(reason);
+                // Route navigation immediately to dispatch without debounce delay
+                return dispatch(request);
             case 'scroll':
-                return requestScroll(reason);
+                return requestScroll(request);
             default:
                 // zoom, editor, mutation, default → dispatch immediately
-                return dispatch(reason);
+                return dispatch(request);
         }
     }
 
@@ -125,16 +190,6 @@ export function createRenderScheduler(deps: RenderSchedulerDeps): RenderSchedule
     }
 
     function reset(): void {
-        if (navTimerId !== null) {
-            clearTimeout(navTimerId);
-            navTimerId = null;
-        }
-        if (navRafId !== null) {
-            cancelAnimationFrame(navRafId);
-            navRafId = null;
-        }
-        navResolvers.splice(0).forEach((r) => r());
-
         if (scrollTimerId !== null) {
             clearTimeout(scrollTimerId);
             scrollTimerId = null;
@@ -145,8 +200,7 @@ export function createRenderScheduler(deps: RenderSchedulerDeps): RenderSchedule
         }
         scrollResolvers.splice(0).forEach((r) => r());
 
-        pendingReason = null;
-        pendingResolvers.splice(0).forEach((r) => r());
+        pendingQueue.splice(0).forEach((queued) => queued.resolve());
         executing = false;
         lastCommitTs = 0;
     }

@@ -3,10 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::geometry::bbox_utils::bbox_intersects;
-use crate::models::{
-    BoundingBox, GlyphPaintPlan, VectorPageModel, VectorRenderObject,
-};
+use crate::geometry::bbox_ops::bbox_intersects;
+use crate::models::{BoundingBox, GlyphPaintPlan, VectorPageModel, VectorRenderObject};
 use crate::render::viewport_culling::{path_object_bbox, styled_run_bbox};
 
 const DEFAULT_BUCKET_SIZE_POINTS: f32 = 96.0;

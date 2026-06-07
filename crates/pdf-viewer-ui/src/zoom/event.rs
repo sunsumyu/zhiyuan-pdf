@@ -3,14 +3,13 @@ use serde::{Deserialize, Serialize};
 use crate::present::plan_builder::{FramePlanRequest, FramePlanResult};
 use crate::present::present_store::build_frame_plan_result;
 use crate::zoom::host::{
-    resolve_preview_tick_decision, resolve_wheel_render_decision,
-    PreviewTickDecisionRequest, PreviewTickDecision, WheelRenderDecisionRequest,
-    WheelRenderDecision,
+    resolve_preview_tick_decision, resolve_wheel_render_decision, PreviewTickDecision,
+    PreviewTickDecisionRequest, WheelRenderDecision, WheelRenderDecisionRequest,
 };
 use crate::zoom::interaction::{WheelZoomRequest, WheelZoomResult};
 use crate::zoom::preview_host::{set_preview_active, set_wheel_render_pending};
 use crate::zoom::request::resolve_wheel_zoom;
-use crate::zoom::zoom_controller::{get_zoom_state, step_zoom_frame_plan};
+use crate::zoom::zoom_controller::{read_zoom_state, step_zoom_frame_plan};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -40,9 +39,9 @@ pub struct PreviewHostStepResult {
     pub decision: PreviewTickDecision,
 }
 
-pub fn handle_wheel_zoom_host(request: WheelZoomHostRequest) -> WheelZoomHostResult {
+pub fn execute_wheel_zoom(request: WheelZoomHostRequest) -> WheelZoomHostResult {
     let zoom = resolve_wheel_zoom(&request.wheel);
-    let zoom_state = get_zoom_state();
+    let zoom_state = read_zoom_state();
     let mut frame_request = request.frame;
     frame_request.display_zoom = zoom.target_zoom;
     let frame_plan = build_frame_plan_result(&frame_request, false);
@@ -65,7 +64,7 @@ pub fn handle_wheel_zoom_host(request: WheelZoomHostRequest) -> WheelZoomHostRes
 
 pub fn step_preview_host(request: PreviewHostStepRequest) -> PreviewHostStepResult {
     let preview = step_zoom_frame_plan(&request.frame);
-    let zoom_state = get_zoom_state();
+    let zoom_state = read_zoom_state();
     let decision = resolve_preview_tick_decision(PreviewTickDecisionRequest {
         settled: preview.settled,
         target_zoom: zoom_state.target_zoom,

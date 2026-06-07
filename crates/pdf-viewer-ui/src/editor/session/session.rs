@@ -4,10 +4,10 @@ use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::engine_state::LiveEditorParagraphState;
-use crate::state_manager::{
-    current_paragraph_patch_text, current_paragraph_patch, current_patch_revision,
-};
 use crate::style_mapper::StyleMapper;
+use crate::ui_state_store::{
+    current_paragraph_patch, current_paragraph_patch_text, current_patch_revision,
+};
 use crate::viewer::viewer_store::current_document_revision;
 use serde::{Deserialize, Serialize};
 

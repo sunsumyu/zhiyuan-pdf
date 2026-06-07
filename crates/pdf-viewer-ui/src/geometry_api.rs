@@ -18,8 +18,7 @@
 //!   **Raw**    — PDF original units (72 DPI, Y-Up)
 
 use pdf_viewer_core::geometry::coordinate_transform::{
-    ClientPoint, HostPageTransform, HostReferenceRect, PageSize,
-    PdfCoordinateSpace,
+    ClientPoint, HostPageTransform, HostReferenceRect, PageSize, PdfCoordinateSpace,
 };
 use pdf_viewer_core::geometry::dom_projection::{DomPointLike, DomRectLike};
 use serde::{Deserialize, Serialize};
@@ -81,7 +80,11 @@ impl GeometryApi {
             x: point.client_x,
             y: point.client_y,
         });
-        to_value(&PointResult { x: page.x, y: page.y }).unwrap_or(JsValue::NULL)
+        to_value(&PointResult {
+            x: page.x,
+            y: page.y,
+        })
+        .unwrap_or(JsValue::NULL)
     }
 
     /// Transform a page-space point back to DOM client coordinates.
@@ -167,7 +170,11 @@ impl GeometryApi {
     #[wasm_bindgen(js_name = "projectRect")]
     pub fn project_rect(&self, rect_js: JsValue, zoom: f32) -> JsValue {
         let rect: RectResult = unwrap_or_null!(from_value(rect_js));
-        let z = if zoom.is_finite() && zoom > 0.0 { zoom } else { 1.0 };
+        let z = if zoom.is_finite() && zoom > 0.0 {
+            zoom
+        } else {
+            1.0
+        };
         let projected = RectResult {
             left: rect.left * z,
             top: rect.top * z,

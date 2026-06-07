@@ -1,7 +1,7 @@
-use std::collections::HashSet;
-use crate::persistence::models::{PersistableRegionPatch, RegionTextReflow, PersistableSavePlan};
 use crate::document::page_region_context::PageRegionContextOutput;
-use crate::persistence::state_manager::GLOBAL_PATCH_STATE;
+use crate::persistence::models::{PersistableRegionPatch, PersistableSavePlan, RegionTextReflow};
+use crate::persistence::patch_store::GLOBAL_PATCH_STATE;
+use std::collections::HashSet;
 
 pub fn collect_persistable_region_patches(
     context: &PageRegionContextOutput,
@@ -41,7 +41,13 @@ pub fn collect_persistable_region_patches(
     }
 
     // 2. Process Paragraphs
-    let mut process_para = |id: &String, text: &String, indices: &Vec<usize>, source_name: &str, wrap_width: Option<f32>, char_spacing: f32, scale_x: f32| {
+    let mut process_para = |id: &String,
+                            text: &String,
+                            indices: &Vec<usize>,
+                            source_name: &str,
+                            wrap_width: Option<f32>,
+                            char_spacing: f32,
+                            scale_x: f32| {
         if let Some(new_text) = state.paragraph_texts.get(id) {
             let snapshot = state.paragraph_snapshots.get(id).cloned();
             patches.push(PersistableRegionPatch {
@@ -65,10 +71,26 @@ pub fn collect_persistable_region_patches(
     };
 
     for reg in &context.paragraph_regions {
-        process_para(&reg.id, &reg.text, &reg.object_indices, "paragraph-region", Some(reg.wrap_width), reg.char_spacing, reg.scale_x);
+        process_para(
+            &reg.id,
+            &reg.text,
+            &reg.object_indices,
+            "paragraph-region",
+            Some(reg.wrap_width),
+            reg.char_spacing,
+            reg.scale_x,
+        );
     }
     for reg in &context.list_item_regions {
-        process_para(&reg.id, &reg.text, &reg.object_indices, "list-item-region", Some(reg.wrap_width), reg.char_spacing, reg.scale_x);
+        process_para(
+            &reg.id,
+            &reg.text,
+            &reg.object_indices,
+            "list-item-region",
+            Some(reg.wrap_width),
+            reg.char_spacing,
+            reg.scale_x,
+        );
     }
 
     patches
@@ -87,12 +109,20 @@ pub fn collect_legacy_text_reflows(
     };
 
     for obj in &context.text_objects {
-        let _obj_key_field = format!("{}_{}", page_index, obj.object_indices.first().unwrap_or(&0)); // Check if this matches TS ID
-        // Actually TS uses obj.id. In Rust model, NativeTextModel has an id field.
+        let _obj_key_field = format!(
+            "{}_{}",
+            page_index,
+            obj.object_indices.first().unwrap_or(&0)
+        ); // Check if this matches TS ID
+           // Actually TS uses obj.id. In Rust model, NativeTextModel has an id field.
         let obj_id = &obj.id;
 
-        if covered_field_row_object_ids.contains(obj_id) { continue; }
-        if covered_paragraph_object_ids.contains(obj_id) { continue; }
+        if covered_field_row_object_ids.contains(obj_id) {
+            continue;
+        }
+        if covered_paragraph_object_ids.contains(obj_id) {
+            continue;
+        }
 
         // Check for run-level patches
         let mut has_run_patch = false;
@@ -107,9 +137,9 @@ pub fn collect_legacy_text_reflows(
         }
 
         if has_run_patch {
-            // In a real scenario, we'd compose the text here. 
-            // For now, if we have a run patch, we'll try to find a combined text if possible, 
-            // but the TS logic used a helper. 
+            // In a real scenario, we'd compose the text here.
+            // For now, if we have a run patch, we'll try to find a combined text if possible,
+            // but the TS logic used a helper.
             // We'll just look for a patched text for the whole object as a fallback.
             if let Some(new_text) = state.patched_texts.get(obj_id) {
                 reflows.push(RegionTextReflow {
@@ -162,10 +192,10 @@ pub fn build_persistable_save_plan(
     // Merging logic (Simplified from TS)
     let mut effective_text_reflows = Vec::new();
     let mut suppressed_text_reflows = Vec::new();
-    
+
     let mut region_owned_keys = HashSet::new();
     for reflow in &region_text_reflows {
-        region_owned_keys.insert(get_reflow_key(reflow));
+        region_owned_keys.insert(resolve_reflow_key(reflow));
     }
 
     for reflow in region_text_reflows {
@@ -173,7 +203,7 @@ pub fn build_persistable_save_plan(
     }
 
     for reflow in legacy_text_reflows {
-        let key = get_reflow_key(&reflow);
+        let key = resolve_reflow_key(&reflow);
         if region_owned_keys.contains(&key) {
             suppressed_text_reflows.push(reflow);
         } else {
@@ -190,6 +220,15 @@ pub fn build_persistable_save_plan(
     }
 }
 
-fn get_reflow_key(reflow: &RegionTextReflow) -> String {
-    format!("{}::{}", reflow.page_index, reflow.target_indices.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","))
+fn resolve_reflow_key(reflow: &RegionTextReflow) -> String {
+    format!(
+        "{}::{}",
+        reflow.page_index,
+        reflow
+            .target_indices
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    )
 }

@@ -62,9 +62,15 @@ impl FindSession {
     /// See `FindSessionState` in `find::find_store` for semantics. The
     /// value is derived from live controller data on every call — it is
     /// always in sync with the controller state, never stale.
+    #[wasm_bindgen(js_name = "readState")]
+    pub fn read_state(&self) -> JsValue {
+        to_value(&controller::read_find_state()).unwrap_or(JsValue::NULL)
+    }
+
     #[wasm_bindgen(js_name = "getState")]
+    #[deprecated(since = "0.2.0", note = "Use readState instead")]
     pub fn get_state(&self) -> JsValue {
-        to_value(&controller::get_find_state()).unwrap_or(JsValue::NULL)
+        self.read_state()
     }
 }
 

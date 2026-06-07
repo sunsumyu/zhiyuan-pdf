@@ -7,20 +7,17 @@ use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::edit::paragraph_overlay::{ParagraphRenderOverlay, ParagraphRenderOverlayOwner};
-use crate::edit::replacement_region::{
-    paragraph_replacement_region, ParagraphReplacementRegion,
-};
+use crate::edit::replacement_region::{paragraph_replacement_region, ParagraphReplacementRegion};
 use crate::edit::source_identity::{
     collect_target_source_object_ids, collect_target_source_object_indices_set,
 };
-use crate::geometry::bbox_utils::bbox_intersects;
+use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{BoundingBox, GlyphPaintPlan, VectorPageModel, VectorRenderObject};
 use crate::render::path_suppression::decorative_object_should_be_suppressed_by_overlay;
 use crate::render::prepared_scene::PreparedPageScene;
 use crate::render::source_suppression::{
-    glyph_paragraph_matches_overlay_source_text,
-    glyph_run_spatially_matches_replacement_region, matching_text_run_refs,
-    text_object_should_be_suppressed,
+    glyph_paragraph_matches_overlay_source_text, glyph_run_spatially_matches_replacement_region,
+    matching_text_run_refs, text_object_should_be_suppressed,
 };
 use crate::render::viewport_culling::{
     glyph_run_intersects_viewport, paragraph_intersects_viewport, path_object_bbox,
@@ -273,15 +270,25 @@ pub fn build_effective_vector_render_plan(
                 dbg_field("objectIdCount", ov.object_ids.len()),
                 dbg_field("objectIndices", format!("{:?}", ov_obj_indices)),
                 dbg_field("objectIndexCount", ov.object_indices.len()),
-                dbg_field("sourceText", crate::utils::debug::truncate_debug_text(&ov.overlay.source_text, 40)),
-                dbg_field("draftText", crate::utils::debug::truncate_debug_text(&ov.overlay.draft_text, 40)),
+                dbg_field(
+                    "sourceText",
+                    crate::utils::debug::truncate_debug_text(&ov.overlay.source_text, 40),
+                ),
+                dbg_field(
+                    "draftText",
+                    crate::utils::debug::truncate_debug_text(&ov.overlay.draft_text, 40),
+                ),
             ],
         );
     }
     // Dump all visible text objects so we can compare
     for &vi in &visible_indices {
         if let Some(VectorRenderObject::Text(text)) = vector_model.objects.get(vi) {
-            let first_run_text = text.runs.first().map(|r| crate::utils::debug::truncate_debug_text(&r.text, 30)).unwrap_or_default();
+            let first_run_text = text
+                .runs
+                .first()
+                .map(|r| crate::utils::debug::truncate_debug_text(&r.text, 30))
+                .unwrap_or_default();
             dbg_event(
                 "effective-plan",
                 "vector-text-object",
@@ -331,10 +338,14 @@ pub fn build_effective_vector_render_plan(
                 let array_index_hit = overlay.object_indices.contains(&object_index);
                 let index_hit = z_index_hit || array_index_hit;
                 let id_hit = matches!(object, VectorRenderObject::Text(text) if overlay.object_ids.contains(&text.id));
-                let text_object_index_match = matches!(object, VectorRenderObject::Text(_))
-                    && (index_hit || id_hit);
+                let text_object_index_match =
+                    matches!(object, VectorRenderObject::Text(_)) && (index_hit || id_hit);
                 if matches!(object, VectorRenderObject::Text(_)) {
-                    let (text_id, text_z) = if let VectorRenderObject::Text(text) = &object { (text.id.as_str(), text.z_index) } else { ("", 0) };
+                    let (text_id, text_z) = if let VectorRenderObject::Text(text) = &object {
+                        (text.id.as_str(), text.z_index)
+                    } else {
+                        ("", 0)
+                    };
                     dbg_event(
                         "effective-plan",
                         "suppress-check",
@@ -342,7 +353,10 @@ pub fn build_effective_vector_render_plan(
                             dbg_field("objectIndex", object_index),
                             dbg_field("textZIndex", text_z),
                             dbg_field("textId", text_id),
-                            dbg_field("overlayParagraphId", overlay.overlay.target.paragraph_id.as_str()),
+                            dbg_field(
+                                "overlayParagraphId",
+                                overlay.overlay.target.paragraph_id.as_str(),
+                            ),
                             dbg_field("zIndexHit", z_index_hit),
                             dbg_field("arrayIndexHit", array_index_hit),
                             dbg_field("idHit", id_hit),
@@ -700,10 +714,7 @@ pub fn build_effective_glyph_render_plan(
                     if source_text_match
                         || object_id_match
                         || object_index_match
-                        || glyph_run_spatially_matches_replacement_region(
-                            run,
-                            &replacement_region,
-                        )
+                        || glyph_run_spatially_matches_replacement_region(run, &replacement_region)
                     {
                         suppressed_run_indices.insert(run_index);
                     }
@@ -752,12 +763,10 @@ mod tests {
         EffectiveGlyphRenderEntry, EffectiveVectorRenderEntry,
     };
     use crate::edit::active_target::ActiveEditorTarget;
-    use crate::edit::paragraph_overlay::{
-        ParagraphRenderOverlay, ParagraphRenderOverlayOwner,
-    };
+    use crate::edit::paragraph_overlay::{ParagraphRenderOverlay, ParagraphRenderOverlayOwner};
     use crate::models::{
-        BoundingBox, EditorControlStyle, ParagraphEditContext, GlyphPaintParagraph, GlyphPaintPlan,
-        GlyphPaintRegion, GlyphPaintRun, LayoutMode, LayoutParagraph, LayoutRole, LayoutRun,
+        BoundingBox, EditorControlStyle, GlyphPaintParagraph, GlyphPaintPlan, GlyphPaintRegion,
+        GlyphPaintRun, LayoutMode, LayoutParagraph, LayoutRole, LayoutRun, ParagraphEditContext,
         StyledRun, VectorPageModel, VectorPathObject, VectorPathSegment, VectorRenderObject,
         VectorTextObject,
     };
@@ -1476,9 +1485,19 @@ mod tests {
 
         // 整对象不应该被 skip — 应该有一个 Object entry
         let obj_entry = entries.iter().find_map(|e| {
-            if let EffectiveVectorRenderEntry::Object { object_index, suppressed_text_runs } = e {
-                if *object_index == 0 { Some(suppressed_text_runs) } else { None }
-            } else { None }
+            if let EffectiveVectorRenderEntry::Object {
+                object_index,
+                suppressed_text_runs,
+            } = e
+            {
+                if *object_index == 0 {
+                    Some(suppressed_text_runs)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         });
         let suppressed = obj_entry.expect(
             "marker text object must remain in render plan (entire object got suppressed!)",
@@ -1563,33 +1582,55 @@ mod tests {
             text: "Hello world".to_string(),
             object_ids: vec!["text-z5".to_string()],
             object_indices: vec![5],
-            bbox: BoundingBox { left: 90.0, top: 100.0, right: 290.0, bottom: 112.0 },
+            bbox: BoundingBox {
+                left: 90.0,
+                top: 100.0,
+                right: 290.0,
+                bottom: 112.0,
+            },
             ..Default::default()
         }];
 
         let viewport = BoundingBox {
-            left: 0.0, top: 0.0, right: 595.0, bottom: 842.0,
+            left: 0.0,
+            top: 0.0,
+            right: 595.0,
+            bottom: 842.0,
         };
         let entries = build_effective_vector_render_plan(&model, None, &viewport, &[overlay]);
 
         // The text object (array pos 1, z_index 5) must be suppressed
-        let has_unsuppressed_text = entries.iter().any(|e| matches!(
-            e,
-            EffectiveVectorRenderEntry::Object { object_index: 1, suppressed_text_runs }
-            if suppressed_text_runs.run_indices.is_empty()
-        ));
+        let has_unsuppressed_text = entries.iter().any(|e| {
+            matches!(
+                e,
+                EffectiveVectorRenderEntry::Object { object_index: 1, suppressed_text_runs }
+                if suppressed_text_runs.run_indices.is_empty()
+            )
+        });
         assert!(
             !has_unsuppressed_text,
             "text object at array position 1 / z_index 5 must be suppressed; \
-             entries: {:?}", entries.iter().map(|e| match e {
-                EffectiveVectorRenderEntry::Object { object_index, suppressed_text_runs } =>
-                    format!("Object(idx={}, suppressed_runs={:?})", object_index, suppressed_text_runs.run_indices),
-                EffectiveVectorRenderEntry::ParagraphOverlay(_) => "ParagraphOverlay".to_string(),
-            }).collect::<Vec<_>>()
+             entries: {:?}",
+            entries
+                .iter()
+                .map(|e| match e {
+                    EffectiveVectorRenderEntry::Object {
+                        object_index,
+                        suppressed_text_runs,
+                    } => format!(
+                        "Object(idx={}, suppressed_runs={:?})",
+                        object_index, suppressed_text_runs.run_indices
+                    ),
+                    EffectiveVectorRenderEntry::ParagraphOverlay(_) =>
+                        "ParagraphOverlay".to_string(),
+                })
+                .collect::<Vec<_>>()
         );
         // overlay must have been inserted
         assert!(
-            entries.iter().any(|e| matches!(e, EffectiveVectorRenderEntry::ParagraphOverlay(_))),
+            entries
+                .iter()
+                .any(|e| matches!(e, EffectiveVectorRenderEntry::ParagraphOverlay(_))),
             "overlay must be inserted"
         );
     }

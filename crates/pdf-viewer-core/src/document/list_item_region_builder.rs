@@ -1,5 +1,5 @@
-use crate::text::list_semantics::derive_list_text_semantics;
 use crate::models::NativeTextModel;
+use crate::text::list_semantics::derive_list_text_semantics;
 
 use super::page_region_models::{
     BoundingBoxOutput, ListItemRegionOutput, ParagraphLineOutput, ParagraphLineProjectionOutput,
@@ -48,7 +48,12 @@ fn split_runs_by_body_start(
                     end: marker_count,
                     style: run.style.clone(),
                     width: run.width,
-                    char_origins: run.char_origins.iter().copied().take(marker_count).collect(),
+                    char_origins: run
+                        .char_origins
+                        .iter()
+                        .copied()
+                        .take(marker_count)
+                        .collect(),
                     char_widths: run.char_widths.iter().copied().take(marker_count).collect(),
                     object_ids: run.object_ids.clone(),
                     object_indices: run.object_indices.clone(),
@@ -70,7 +75,10 @@ fn split_runs_by_body_start(
                     end: chars.len() - marker_count,
                     style: run.style.clone(),
                     width: run.width,
-                    char_origins: body_origins.into_iter().map(|value| value - first_origin).collect(),
+                    char_origins: body_origins
+                        .into_iter()
+                        .map(|value| value - first_origin)
+                        .collect(),
                     char_widths: run.char_widths.iter().copied().skip(marker_count).collect(),
                     object_ids: run.object_ids.clone(),
                     object_indices: run.object_indices.clone(),
@@ -192,7 +200,9 @@ pub(crate) fn build_list_item_region(
         top: obj.ty + obj.height,
         bottom: obj.ty,
         text: text.clone(),
-        marker_text: semantics.has_marker.then_some(semantics.marker_text.clone()),
+        marker_text: semantics
+            .has_marker
+            .then_some(semantics.marker_text.clone()),
         marker_char_len: semantics.has_marker.then_some(semantics.marker_char_len),
         body_char_start: semantics.has_marker.then_some(semantics.body_char_start),
         body_text: semantics.has_marker.then_some(semantics.body_text.clone()),
@@ -222,7 +232,11 @@ pub(crate) fn build_list_item_region(
         char_origins: raw_line.char_origins.clone(),
         char_widths: raw_line.char_widths.clone(),
         marker_runs: semantics.has_marker.then_some(marker_runs),
-        style_runs: if semantics.has_marker { body_runs } else { raw_style_runs },
+        style_runs: if semantics.has_marker {
+            body_runs
+        } else {
+            raw_style_runs
+        },
         projection,
     }
 }

@@ -1,4 +1,4 @@
-use crate::models::{BoundingBox, ParagraphEditContext, LayoutRun};
+use crate::models::{BoundingBox, LayoutRun, ParagraphEditContext};
 
 pub fn source_session_visual_bbox(session: &ParagraphEditContext) -> Option<BoundingBox> {
     source_visual_bbox_from_runs(&session.paragraph.runs)
@@ -151,9 +151,7 @@ fn union_bbox(left: BoundingBox, right: BoundingBox) -> BoundingBox {
 #[cfg(test)]
 mod tests {
     use super::{source_line_visual_bbox_for_caret, source_visual_bbox_from_runs};
-    use crate::models::{
-        BoundingBox, ParagraphEditContext, LayoutParagraph, LayoutRun, RunStyle,
-    };
+    use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
 
     fn test_run(id: &str, left: f32, baseline_y: f32, font_size: f32) -> LayoutRun {
         LayoutRun {

@@ -5,6 +5,7 @@
 //!   eliminating the expensive pdf-rs re-parse that occurred on every page request.
 //!   pdf-rs is preserved for document classification at open time and future editing.
 
+use crate::application::pdf::page_asset::{PageAssetAdmissionService, PageAssetKind};
 use crate::infrastructure::pdf::preview_engine;
 use crate::infrastructure::pdf_read::types::{PagePreview, PdfDocumentKind};
 use crate::log_step;
@@ -15,9 +16,18 @@ pub async fn read_preview(
     state: tauri::State<'_, crate::AppState>,
     path: String,
     page_index: u16,
+    request_role: Option<String>,
 ) -> Result<PagePreview, String> {
     let total_start = std::time::Instant::now();
     let cache_key = format!("{}::{}", path, page_index);
+    let role = crate::application::pdf::page_asset::PageAssetRole::from_request(request_role);
+    PageAssetAdmissionService::admit_before_work(
+        &state,
+        &path,
+        page_index,
+        role,
+        PageAssetKind::Preview,
+    )?;
 
     // 1. Check preview cache first
     if let Some(preview) = state
@@ -35,6 +45,13 @@ pub async fn read_preview(
             total_start.elapsed(),
             path
         );
+        PageAssetAdmissionService::admit_after_work(
+            &state,
+            &path,
+            page_index,
+            role,
+            PageAssetKind::Preview,
+        )?;
         return Ok(preview);
     }
 
@@ -90,6 +107,12 @@ pub async fn read_preview(
         preview.height,
         path_clone
     );
+    PageAssetAdmissionService::admit_after_work(
+        &state,
+        &path,
+        page_index,
+        role,
+        PageAssetKind::Preview,
+    )?;
     Ok(preview)
 }
-

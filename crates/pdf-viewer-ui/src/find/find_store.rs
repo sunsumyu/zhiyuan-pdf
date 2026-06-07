@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 
 use crate::find::host_find_store::{
-    clear_find_session, get_find_session, move_find_match, set_find_session, HostFindScope,
+    clear_find_session, move_find_match, read_find_session, set_find_session, HostFindScope,
 };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ impl FindSessionState {
 }
 
 /// Snapshot of the current find session state, suitable for TS consumption.
-pub fn get_find_state() -> FindSessionState {
+pub fn read_find_state() -> FindSessionState {
     CONTROLLER.with(|c| {
         let ctrl = c.borrow();
         FindSessionState::derive(
@@ -154,13 +154,18 @@ pub struct CurrentPageMatch {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplaceRequest {
+    #[serde(default)]
+    pub path: String,
     pub page_index: u16,
     pub region_id: String,
     pub kind: String,
     pub original_text: String,
     pub query: String,
     pub replacement: String,
+    #[serde(default)]
     pub replace_all_occurrences: bool,
+    #[serde(default)]
+    pub case_sensitive: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -220,14 +225,23 @@ pub fn toggle_find(current_page: u16, page_count: u16, path: String) -> FindStat
     }
 }
 
-pub fn set_search_result(result: SearchResult, scope: FindScope, current_page: u16) -> FindStateUpdate {
+pub fn set_search_result(
+    result: SearchResult,
+    scope: FindScope,
+    current_page: u16,
+) -> FindStateUpdate {
     CONTROLLER.with(|c| {
         let mut ctrl = c.borrow_mut();
         ctrl.current_page = current_page;
         ctrl.last_result = result;
 
         // Update session tracking
-        let match_pages: Vec<u16> = ctrl.last_result.matches.iter().map(|m| m.page_index).collect();
+        let match_pages: Vec<u16> = ctrl
+            .last_result
+            .matches
+            .iter()
+            .map(|m| m.page_index)
+            .collect();
         let host_scope = match scope {
             FindScope::Page => HostFindScope::Page,
             FindScope::Document => HostFindScope::Document,
@@ -285,37 +299,51 @@ pub fn set_current_page(page: u16) -> FindStateUpdate {
     })
 }
 
-pub fn get_toolbar_state() -> FindToolbarState {
+pub fn read_toolbar_state() -> FindToolbarState {
     CONTROLLER.with(|c| {
         let ctrl = c.borrow();
         build_toolbar_state(&ctrl)
     })
 }
 
-pub fn get_replace_requests(replacement: &str, replace_all: bool, scope: FindScope) -> Vec<ReplaceRequest> {
+pub fn build_replace_requests(
+    replacement: &str,
+    replace_all: bool,
+    scope: FindScope,
+) -> Vec<ReplaceRequest> {
     CONTROLLER.with(|c| {
         let ctrl = c.borrow();
-        let session = get_find_session();
+        let session = read_find_session();
         let active_index = session.active_index;
 
         if replace_all {
             let matches_to_replace = match scope {
-                FindScope::Page => ctrl.last_result.matches.iter()
+                FindScope::Page => ctrl
+                    .last_result
+                    .matches
+                    .iter()
                     .filter(|m| m.page_index == ctrl.current_page && is_editable_kind(&m.kind))
                     .collect::<Vec<_>>(),
-                FindScope::Document => ctrl.last_result.matches.iter()
+                FindScope::Document => ctrl
+                    .last_result
+                    .matches
+                    .iter()
                     .filter(|m| is_editable_kind(&m.kind))
                     .collect::<Vec<_>>(),
             };
-            matches_to_replace.into_iter().map(|m| ReplaceRequest {
-                page_index: m.page_index,
-                region_id: m.id.clone(),
-                kind: m.kind.clone(),
-                original_text: m.source_text.clone(),
-                query: ctrl.last_result.query.clone(),
-                replacement: replacement.to_string(),
-                replace_all_occurrences: true,
-            }).collect()
+            matches_to_replace
+                .into_iter()
+                .map(|m| ReplaceRequest {
+                    page_index: m.page_index,
+                    region_id: m.id.clone(),
+                    kind: m.kind.clone(),
+                    original_text: m.source_text.clone(),
+                    query: ctrl.last_result.query.clone(),
+                    replacement: replacement.to_string(),
+                    replace_all_occurrences: true,
+                    ..Default::default()
+                })
+                .collect()
         } else {
             let active_match = ctrl.last_result.matches.get(active_index);
             match active_match {
@@ -327,6 +355,7 @@ pub fn get_replace_requests(replacement: &str, replace_all: bool, scope: FindSco
                     query: ctrl.last_result.query.clone(),
                     replacement: replacement.to_string(),
                     replace_all_occurrences: false,
+                    ..Default::default()
                 }],
                 _ => vec![],
             }
@@ -341,13 +370,10 @@ fn is_editable_kind(kind: &str) -> bool {
 }
 
 fn build_state_update(ctrl: &FindControllerInner) -> FindStateUpdate {
-    let session = get_find_session();
+    let session = read_find_session();
     let active_index = session.active_index;
-    let current_page_matches = build_current_page_matches(
-        &ctrl.last_result.matches,
-        ctrl.current_page,
-        active_index,
-    );
+    let current_page_matches =
+        build_current_page_matches(&ctrl.last_result.matches, ctrl.current_page, active_index);
 
     FindStateUpdate {
         state: FindControllerState {
@@ -393,7 +419,7 @@ fn build_current_page_matches(
 }
 
 fn build_toolbar_state(ctrl: &FindControllerInner) -> FindToolbarState {
-    let session = get_find_session();
+    let session = read_find_session();
     let active_index = session.active_index;
     let has_matches = ctrl.last_result.total_matches > 0;
     let scope = if session.scope == HostFindScope::Document {
@@ -404,15 +430,23 @@ fn build_toolbar_state(ctrl: &FindControllerInner) -> FindToolbarState {
 
     let active_match = ctrl.last_result.matches.get(active_index);
     let can_replace_current = match (scope, active_match) {
-        (FindScope::Page, Some(m)) => m.page_index == ctrl.current_page && is_editable_kind(&m.kind),
+        (FindScope::Page, Some(m)) => {
+            m.page_index == ctrl.current_page && is_editable_kind(&m.kind)
+        }
         (FindScope::Document, Some(m)) => is_editable_kind(&m.kind),
         _ => false,
     };
 
     let can_replace_all = match scope {
-        FindScope::Page => ctrl.last_result.matches.iter()
+        FindScope::Page => ctrl
+            .last_result
+            .matches
+            .iter()
             .any(|m| m.page_index == ctrl.current_page && is_editable_kind(&m.kind)),
-        FindScope::Document => ctrl.last_result.matches.iter()
+        FindScope::Document => ctrl
+            .last_result
+            .matches
+            .iter()
             .any(|m| is_editable_kind(&m.kind)),
     };
 

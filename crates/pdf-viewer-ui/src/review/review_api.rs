@@ -9,12 +9,8 @@ use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
 use crate::document::review::{
-    accept_all_review_changes,
-    accept_review_change,
-    collect_review_changes,
-    get_review_feed,
-    reject_all_review_changes,
-    reject_review_change,
+    accept_all_review_changes, accept_review_change, collect_review_changes, read_review_feed,
+    reject_all_review_changes, reject_review_change,
 };
 
 // ── ReviewSessionState (Batch 2 sec 4) ──────────────────────────
@@ -54,7 +50,7 @@ impl ReviewSessionState {
 }
 
 /// Snapshot of the current review session state.
-pub fn get_review_state() -> ReviewSessionState {
+pub fn read_review_state() -> ReviewSessionState {
     ReviewSessionState::derive(collect_review_changes().len())
 }
 
@@ -73,7 +69,7 @@ impl ReviewSession {
     /// Read the current review feed (all pending change patches).
     #[wasm_bindgen(js_name = "readFeed")]
     pub fn read_feed(&self) -> JsValue {
-        to_value(&get_review_feed()).unwrap_or(JsValue::NULL)
+        to_value(&read_review_feed()).unwrap_or(JsValue::NULL)
     }
 
     /// Accept a single change identified by `patch_key`.
@@ -104,9 +100,15 @@ impl ReviewSession {
     ///
     /// See `ReviewSessionState` for semantics. Derived from the live
     /// review change count on every call.
+    #[wasm_bindgen(js_name = "readState")]
+    pub fn read_state(&self) -> JsValue {
+        to_value(&read_review_state()).unwrap_or(JsValue::NULL)
+    }
+
     #[wasm_bindgen(js_name = "getState")]
+    #[deprecated(since = "0.2.0", note = "Use readState instead")]
     pub fn get_state(&self) -> JsValue {
-        to_value(&get_review_state()).unwrap_or(JsValue::NULL)
+        self.read_state()
     }
 }
 

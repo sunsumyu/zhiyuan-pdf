@@ -7,7 +7,9 @@
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
-use crate::document::host_pipeline::{self, OpenDocumentPipelineRequest, PickDocumentPipelineRequest};
+use crate::document::host_pipeline::{
+    self, OpenDocumentPipelineRequest, PickDocumentPipelineRequest,
+};
 use crate::viewer::viewer_controller;
 
 #[wasm_bindgen]
@@ -40,10 +42,7 @@ pub async fn rotate_document_pipeline(delta: i32) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn close_document_pipeline(
-    default_page_width: f32,
-    default_page_height: f32,
-) -> JsValue {
+pub fn close_document_pipeline(default_page_width: f32, default_page_height: f32) -> JsValue {
     to_value(&host_pipeline::close_document_pipeline(
         default_page_width,
         default_page_height,
@@ -52,8 +51,14 @@ pub fn close_document_pipeline(
 }
 
 #[wasm_bindgen]
+pub fn read_viewer_session() -> JsValue {
+    to_value(&viewer_controller::read_session()).unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen]
+#[deprecated(since = "0.2.0", note = "Use read_viewer_session instead")]
 pub fn get_viewer_session() -> JsValue {
-    to_value(&viewer_controller::get_session()).unwrap_or(JsValue::NULL)
+    read_viewer_session()
 }
 
 #[wasm_bindgen]

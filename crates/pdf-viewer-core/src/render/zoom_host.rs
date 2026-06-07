@@ -63,9 +63,7 @@ fn preview_is_active(preview_active: bool, target_zoom: f32, visual_zoom: f32) -
     preview_active || (target_zoom - visual_zoom).abs() >= 0.001
 }
 
-pub fn resolve_wheel_render_decision(
-    request: WheelRenderDecisionRequest,
-) -> WheelRenderDecision {
+pub fn resolve_wheel_render_decision(request: WheelRenderDecisionRequest) -> WheelRenderDecision {
     if !needs_render(request.target_zoom, request.last_rendered_zoom) {
         return WheelRenderDecision {
             skip_render: true,
@@ -109,9 +107,7 @@ pub fn resolve_wheel_render_decision(
     }
 }
 
-pub fn resolve_preview_tick_decision(
-    request: PreviewTickDecisionRequest,
-) -> PreviewTickDecision {
+pub fn resolve_preview_tick_decision(request: PreviewTickDecisionRequest) -> PreviewTickDecision {
     if request.settled {
         return PreviewTickDecision {
             continue_preview: false,

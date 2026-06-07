@@ -4,12 +4,12 @@ use crate::infrastructure::pdf_read::types::{
 };
 pub struct VectorReadBackend;
 impl VectorReadBackend {
-pub fn new() -> Self {
+    pub fn new() -> Self {
         Self
     }
 }
 impl PdfReadBackend for VectorReadBackend {
-fn open(&self, path: &str) -> Result<ReadDocumentMeta, String> {
+    fn open(&self, path: &str) -> Result<ReadDocumentMeta, String> {
         Ok(ReadDocumentMeta {
             doc_id: path.to_string(),
             path: path.to_string(),
@@ -20,7 +20,7 @@ fn open(&self, path: &str) -> Result<ReadDocumentMeta, String> {
             classification_reason: ClassificationReason::Unknown,
         })
     }
-fn get_page_preview(&self, path: &str, page_index: u16) -> Result<PagePreview, String> {
+    fn read_page_preview(&self, path: &str, page_index: u16) -> Result<PagePreview, String> {
         Ok(PagePreview {
             doc_id: path.to_string(),
             page_index,

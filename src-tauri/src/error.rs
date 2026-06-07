@@ -58,10 +58,7 @@ pub enum PdfError {
 
     /// A specific annotation could not be located on a page.
     #[error("Annotation {annot_id:?} not found on page {page}")]
-    AnnotationNotFound {
-        page: u32,
-        annot_id: (u32, u16),
-    },
+    AnnotationNotFound { page: u32, annot_id: (u32, u16) },
 
     /// PDF parse / structure error (lopdf).
     #[error("PDF parse error: {0}")]
@@ -122,10 +119,7 @@ mod tests {
 
     #[test]
     fn page_out_of_range_renders_indices() {
-        let err = PdfError::PageOutOfRange {
-            index: 5,
-            total: 3,
-        };
+        let err = PdfError::PageOutOfRange { index: 5, total: 3 };
         let msg: String = err.into();
         assert!(msg.contains("5"));
         assert!(msg.contains("3"));

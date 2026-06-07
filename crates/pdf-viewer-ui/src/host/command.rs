@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::viewer::viewer_controller::{
-    get_session, reset_session, set_document, set_page_size, set_page, set_zoom,
+    read_session, reset_session, set_document, set_page, set_page_size, set_zoom,
 };
 use crate::zoom::zoom_controller::{reset_zoom_runtime, set_target_zoom};
 
@@ -32,7 +32,7 @@ pub fn open_document_session(request: OpenDocumentSessionRequest) -> HostActionR
     set_document(Some(request.path), request.page_count, initial_zoom);
     set_page_size(request.default_page_width, request.default_page_height);
     reset_zoom_runtime(initial_zoom);
-    let session = get_session();
+    let session = read_session();
     HostActionResult {
         changed: true,
         current_page: session.current_page,
@@ -47,7 +47,7 @@ pub fn reset_host_document_session(
     reset_session();
     reset_zoom_runtime(1.0);
     set_page_size(default_page_width, default_page_height);
-    let session = get_session();
+    let session = read_session();
     HostActionResult {
         changed: true,
         current_page: session.current_page,
@@ -56,7 +56,7 @@ pub fn reset_host_document_session(
 }
 
 pub fn navigate_prev_page() -> HostActionResult {
-    let session = get_session();
+    let session = read_session();
     if session.path.is_none() || session.current_page == 0 {
         return HostActionResult {
             changed: false,
@@ -74,7 +74,7 @@ pub fn navigate_prev_page() -> HostActionResult {
 }
 
 pub fn navigate_next_page() -> HostActionResult {
-    let session = get_session();
+    let session = read_session();
     if session.path.is_none() || session.current_page + 1 >= session.page_count {
         return HostActionResult {
             changed: false,
@@ -92,7 +92,7 @@ pub fn navigate_next_page() -> HostActionResult {
 }
 
 pub fn apply_zoom_selection(zoom: f32) -> HostActionResult {
-    let session = get_session();
+    let session = read_session();
     if session.path.is_none() {
         return HostActionResult {
             changed: false,

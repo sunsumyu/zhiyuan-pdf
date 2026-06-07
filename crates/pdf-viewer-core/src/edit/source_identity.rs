@@ -6,9 +6,7 @@ use std::collections::{BTreeSet, HashSet};
 use crate::edit::active_target::ActiveEditorTarget;
 use crate::models::{GlyphPaintRun, VectorPageModel, VectorRenderObject};
 
-pub fn collect_target_source_object_ids(
-    target: &ActiveEditorTarget,
-) -> HashSet<String> {
+pub fn collect_target_source_object_ids(target: &ActiveEditorTarget) -> HashSet<String> {
     let mut object_ids = target
         .scene
         .original_runs
@@ -47,9 +45,7 @@ pub fn collect_target_source_object_ids(
     object_ids
 }
 
-pub fn collect_target_source_object_indices_set(
-    target: &ActiveEditorTarget,
-) -> HashSet<usize> {
+pub fn collect_target_source_object_indices_set(target: &ActiveEditorTarget) -> HashSet<usize> {
     let mut object_indices = target
         .scene
         .original_runs

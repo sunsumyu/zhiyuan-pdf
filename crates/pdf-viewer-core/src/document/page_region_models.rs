@@ -120,7 +120,9 @@ pub struct StyleSource {
     pub scale_x: f32,
 }
 
-fn default_scale_x_persistence() -> f32 { 100.0 }
+fn default_scale_x_persistence() -> f32 {
+    100.0
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

@@ -3,7 +3,7 @@
 use crate::application::pdf::page_search::{
     PdfDocumentSearchResult, PdfPageSearchRequest, PdfPageSearchResult,
 };
-use crate::infrastructure::pdf::engine::PdfPageModelService;
+use crate::infrastructure::pdf::engine::PdfPageIntermediateService;
 use tauri::command;
 
 #[command]
@@ -14,9 +14,14 @@ pub async fn find_in_page(
     query: String,
     case_sensitive: Option<bool>,
 ) -> Result<PdfPageSearchResult, String> {
-    let page_model =
-        PdfPageModelService::get_vector_page_model_from_app_state(&state, path, page_index, 1.0)
-            .await?;
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model(
+        state.clone(),
+        path,
+        page_index,
+        1.0,
+        None,
+    )
+    .await?;
     Ok(crate::application::pdf::page_search::search_page_regions(
         &page_model,
         &PdfPageSearchRequest {
@@ -40,11 +45,12 @@ pub async fn find_in_document(
     };
     let mut page_models = Vec::with_capacity(page_count);
     for page_index in 0..page_count {
-        let page_model = PdfPageModelService::get_vector_page_model_from_app_state(
-            &state,
+        let page_model = PdfPageIntermediateService::resolve_vector_page_model(
+            state.clone(),
             path.clone(),
             page_index as u16,
             1.0,
+            None,
         )
         .await?;
         page_models.push(page_model);

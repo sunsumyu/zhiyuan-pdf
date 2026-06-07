@@ -6,14 +6,14 @@ pub struct LayoutGraphAnalyzer {
     inner: CoreAnalyzer,
 }
 impl LayoutGraphAnalyzer {
-pub fn new(page_index: u16, width: f32, height: f32) -> Self {
+    pub fn new(page_index: u16, width: f32, height: f32) -> Self {
         Self {
             inner: CoreAnalyzer::new(page_index, width, height),
         }
     }
 
     /// 鎵ц涓夐樁娈垫帓鐗堟帹鏂?(濮旀淳缁欐牳蹇冨簱)
-pub fn analyze(&self, runs: Vec<StyledRun>) -> LayoutInferenceResult {
+    pub fn analyze(&self, runs: Vec<StyledRun>) -> LayoutInferenceResult {
         // [V3] 鏍稿績閫昏緫宸蹭笅娌夎嚦 pdf-viewer-core
         let layout_runs = runs
             .iter()
@@ -23,7 +23,7 @@ pub fn analyze(&self, runs: Vec<StyledRun>) -> LayoutInferenceResult {
     }
 
     /// 鎺ㄦ祴鍒楀甫 (濮旀淳缁欐牳蹇冨簱)
-pub fn detect_column_bands(&self, _runs: &[StyledRun]) -> Vec<f32> {
+    pub fn detect_column_bands(&self, _runs: &[StyledRun]) -> Vec<f32> {
         // TODO: 鍚庣画灏?detect_column_bands 鐨勫疄鐜颁篃鎼縼鑷虫牳蹇冨簱
         Vec::new()
     }

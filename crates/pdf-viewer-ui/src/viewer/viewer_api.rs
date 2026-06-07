@@ -30,7 +30,7 @@ impl ViewerSession {
     /// Read the current viewer-session snapshot (path / pages / zoom / page dims).
     #[wasm_bindgen(js_name = "read")]
     pub fn read(&self) -> JsValue {
-        to_value(&viewer_store::get_viewer_session()).unwrap_or(JsValue::NULL)
+        to_value(&viewer_store::read_viewer_session()).unwrap_or(JsValue::NULL)
     }
 
     /// Bind a freshly opened document into the viewer session.
@@ -67,9 +67,15 @@ impl ViewerSession {
     ///
     /// See `ViewerSessionState` in `viewer::viewer_store` for semantics.
     /// Derived from the live session's `path` field on every call.
+    #[wasm_bindgen(js_name = "readState")]
+    pub fn read_state(&self) -> JsValue {
+        to_value(&viewer_store::read_viewer_state()).unwrap_or(JsValue::NULL)
+    }
+
     #[wasm_bindgen(js_name = "getState")]
+    #[deprecated(since = "0.2.0", note = "Use readState instead")]
     pub fn get_state(&self) -> JsValue {
-        to_value(&viewer_store::get_viewer_state()).unwrap_or(JsValue::NULL)
+        self.read_state()
     }
 
     /// Functional (Nutrient-style) atomic state update.
@@ -93,7 +99,7 @@ impl ViewerSession {
         use pdf_viewer_core::render::viewer_session::HostViewerSession;
 
         // 1. Read current snapshot
-        let current = viewer_store::get_viewer_session();
+        let current = viewer_store::read_viewer_session();
         let current_js = to_value(&current).unwrap_or(JsValue::NULL);
 
         // 2. Call JS updater(currentState) → newState
@@ -117,12 +123,20 @@ impl ViewerSession {
             } else {
                 s.current_zoom
             };
-            s.page_width = if updated.page_width > 0.0 { updated.page_width } else { s.page_width };
-            s.page_height = if updated.page_height > 0.0 { updated.page_height } else { s.page_height };
+            s.page_width = if updated.page_width > 0.0 {
+                updated.page_width
+            } else {
+                s.page_width
+            };
+            s.page_height = if updated.page_height > 0.0 {
+                updated.page_height
+            } else {
+                s.page_height
+            };
         });
 
         // 5. Return the resulting snapshot
-        to_value(&viewer_store::get_viewer_session()).unwrap_or(JsValue::NULL)
+        to_value(&viewer_store::read_viewer_session()).unwrap_or(JsValue::NULL)
     }
 }
 

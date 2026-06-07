@@ -62,17 +62,16 @@ fn matches_query_at(
     query_chars: &[char],
     case_sensitive: bool,
 ) -> bool {
-    query_chars
-        .iter()
-        .enumerate()
-        .all(|(offset, query_char)| match text_chars.get(start + offset) {
+    query_chars.iter().enumerate().all(|(offset, query_char)| {
+        match text_chars.get(start + offset) {
             Some(text_char) if case_sensitive => *text_char == *query_char,
             Some(text_char) => {
                 text_char.to_lowercase().collect::<String>()
                     == query_char.to_lowercase().collect::<String>()
             }
             None => false,
-        })
+        }
+    })
 }
 
 fn slice_chars(text: &str, start: usize, end: usize) -> String {

@@ -1,30 +1,19 @@
 use serde::{Deserialize, Serialize};
 
 use crate::editor::host_runtime::reset_state as reset_editor_host_state;
-use crate::editor::session::{
-    close_active_editor,
-    reset_editor_mode,
-};
+use crate::editor::session::{close_active_editor, reset_editor_mode};
+use crate::find::host_find_store::clear_find_session;
 use crate::page::page_store::reset_progressive_render_task;
 use crate::present::present_store::reset_present_runtime;
 use crate::render::host_runtime::reset_render_loop_runtime;
 use crate::render::render_store::reset_render_state;
-use crate::state_manager::clear_persistable_patches;
 use crate::review::review_store::clear_comment_review_session;
-use crate::find::host_find_store::clear_find_session;
+use crate::ui_state_store::clear_persistable_patches;
 use crate::viewer::viewer_store::{
-    bump_document_revision,
-    reset_viewer_session,
-    set_current_page,
-    set_current_zoom,
-    set_page_dimensions,
-    set_viewer_document, HostViewerSession,
-    VIEWER_SESSION,
+    bump_document_revision, reset_viewer_session, set_current_page, set_current_zoom,
+    set_page_dimensions, set_viewer_document, HostViewerSession, VIEWER_SESSION,
 };
-use crate::zoom::preview_host::{
-    clear_zoom_preview_host_state,
-    settle_zoom_preview_at_target,
-};
+use crate::zoom::preview_host::{clear_zoom_preview_host_state, settle_zoom_preview_at_target};
 use crate::zoom::zoom_controller::reset_zoom_runtime;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -85,7 +74,7 @@ pub fn note_document_mutation(_reason: &str) -> u64 {
     revision
 }
 
-pub fn get_session() -> HostViewerSession {
+pub fn read_session() -> HostViewerSession {
     VIEWER_SESSION.with(|session| session.borrow().clone())
 }
 

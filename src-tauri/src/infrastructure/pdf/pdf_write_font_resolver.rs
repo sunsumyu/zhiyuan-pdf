@@ -1,17 +1,17 @@
+use crate::infrastructure::pdf::font::ttc::extract_ttc_face_as_ttf;
+use crate::infrastructure::pdf::pdf_font::{CMap, ParsedFont};
+use fontdb::{Database, Family, Query, Source, Stretch, Style, Weight};
+use lopdf::{Dictionary, Document, Object, Stream};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use fontdb::{Database, Family, Query, Source, Stretch, Style, Weight};
-use lopdf::{Dictionary, Document, Object, Stream};
 use ttf_parser::{Face, GlyphId};
-use crate::infrastructure::pdf::font::ttc::extract_ttc_face_as_ttf;
-use crate::infrastructure::pdf::pdf_font::{CMap, ParsedFont};
 
 #[derive(Clone)]
 pub struct PdfTextWriteFont {
-pub font_alias: Vec<u8>,
-pub parsed_font: ParsedFont,
+    pub font_alias: Vec<u8>,
+    pub parsed_font: ParsedFont,
     encoding: PdfTextWriteEncoding,
     source_label: String,
 }
@@ -25,7 +25,7 @@ enum PdfTextWriteEncoding {
     },
 }
 impl PdfTextWriteFont {
-pub fn encode_text(&self, text: &str) -> Result<Vec<u8>, String> {
+    pub fn encode_text(&self, text: &str) -> Result<Vec<u8>, String> {
         match &self.encoding {
             PdfTextWriteEncoding::OriginalPdfFont => Ok(self.parsed_font.encode_text(text)),
             PdfTextWriteEncoding::TrueTypeGlyphIds {
@@ -34,7 +34,7 @@ pub fn encode_text(&self, text: &str) -> Result<Vec<u8>, String> {
             } => encode_text_as_glyph_ids(font_bytes, *face_index, text),
         }
     }
-pub fn source_label(&self) -> &str {
+    pub fn source_label(&self) -> &str {
         &self.source_label
     }
 }
@@ -153,7 +153,8 @@ fn push_font_name_variants(out: &mut Vec<String>, name: &str) {
     push_unique(out, stripped.replace(' ', ""));
 
     let lower = stripped.to_ascii_lowercase();
-    if lower.contains("microsoftyahei") || lower.contains("msyh") || stripped == "寰蒋闆呴粦" {
+    if lower.contains("microsoftyahei") || lower.contains("msyh") || stripped == "寰蒋闆呴粦"
+    {
         push_unique(out, "Microsoft YaHei".to_string());
         push_unique(out, "寰蒋闆呴粦".to_string());
     }
@@ -332,8 +333,7 @@ fn build_resolved_program_from_face_data(
     })
 }
 fn normalize_font_program_for_pdf(data: &[u8], face_index: u32) -> Option<Vec<u8>> {
-    match data.get(0..4)
-{
+    match data.get(0..4) {
         Some(b"\x00\x01\x00\x00") | Some(b"true") => Some(data.to_vec()),
         Some(b"ttcf") => extract_ttc_face_as_ttf(data, face_index).ok(),
         Some(b"OTTO") => {

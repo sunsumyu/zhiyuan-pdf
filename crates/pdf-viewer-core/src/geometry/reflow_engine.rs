@@ -1,10 +1,8 @@
-use std::collections::HashMap;
 use crate::models::LayoutInferenceResult;
-use crate::persistence::state_manager::GLOBAL_PATCH_STATE;
+use crate::persistence::patch_store::GLOBAL_PATCH_STATE;
+use std::collections::HashMap;
 
-pub fn calculate_reflow_displacements(
-    v3_model: &LayoutInferenceResult
-) -> HashMap<String, f32> {
+pub fn calculate_reflow_displacements(v3_model: &LayoutInferenceResult) -> HashMap<String, f32> {
     let mut displacements = HashMap::new();
     let state = match GLOBAL_PATCH_STATE.read() {
         Ok(s) => s,
@@ -27,8 +25,8 @@ pub fn calculate_reflow_displacements(
 
         for para in &region.paragraphs {
             let patch_key = para.id.clone(); // para.id is often used as patch key directly or similar
-            
-            if let Some(snapshot) = state.get_paragraph_snapshot(&patch_key) {
+
+            if let Some(snapshot) = state.find_paragraph_snapshot(&patch_key) {
                 if !snapshot.lines.is_empty() {
                     let original_line_count = para.runs.len().max(1) as f32;
                     let avg_line_height = original_height / original_line_count;
@@ -47,13 +45,17 @@ pub fn calculate_reflow_displacements(
     }
 
     // 2. Sort by Y descending (Top-to-Bottom in PDF Y-up)
-    units.sort_by(|a, b| b.top.partial_cmp(&a.top).unwrap_or(std::cmp::Ordering::Equal));
+    units.sort_by(|a, b| {
+        b.top
+            .partial_cmp(&a.top)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // 3. Accumulate Displacement
     let mut cumulative_delta_y = 0.0;
     for unit in units {
         displacements.insert(unit.id, cumulative_delta_y);
-        
+
         let delta_h = unit.new_height - unit.height;
         if delta_h.is_finite() {
             cumulative_delta_y -= delta_h; // Growth downwards subtracts from Y

@@ -1,9 +1,9 @@
-use crate::typography::font_resolver::resolve_font_face;
 use crate::models::{
-    BoundingBox, EditorControlStyle, ParagraphEditContext, FieldEditorParamsRequest, FieldEditorParams,
-    FontHints, GlyphPaintParagraph, GlyphPaintPlan, GlyphPaintRegion, GlyphPaintRun, LayoutInferenceResult,
-    LayoutParagraph, LayoutRun, PaintMode, ResolvedFontFace,
+    BoundingBox, EditorControlStyle, FieldEditorParams, FieldEditorParamsRequest, FontHints,
+    GlyphPaintParagraph, GlyphPaintPlan, GlyphPaintRegion, GlyphPaintRun, LayoutInferenceResult,
+    LayoutParagraph, LayoutRun, PaintMode, ParagraphEditContext, ResolvedFontFace,
 };
+use crate::typography::font_resolver::resolve_font_face;
 
 fn paint_mode_from_render_mode(render_mode: i64) -> PaintMode {
     match render_mode {
@@ -26,6 +26,7 @@ fn resolve_run_font(run: &LayoutRun) -> ResolvedFontFace {
         is_serif: false,
         is_italic: run.style.is_italic,
         is_bold: run.style.is_bold,
+        ..Default::default()
     };
     resolve_font_face(&run.style.font_name, Some(&hints))
 }
@@ -71,17 +72,19 @@ fn build_editor_session(paragraph: &crate::models::LayoutParagraph) -> Paragraph
         })
         .collect();
 
-    let anchor_bbox = paragraph
-        .runs
-        .iter()
-        .fold(paragraph.runs.first().map(|run| run.bbox).unwrap_or_default(), |acc, run| {
-            crate::models::BoundingBox {
-                left: acc.left.min(run.bbox.left),
-                top: acc.top.min(run.bbox.top),
-                right: acc.right.max(run.bbox.right),
-                bottom: acc.bottom.max(run.bbox.bottom),
-            }
-        });
+    let anchor_bbox = paragraph.runs.iter().fold(
+        paragraph
+            .runs
+            .first()
+            .map(|run| run.bbox)
+            .unwrap_or_default(),
+        |acc, run| crate::models::BoundingBox {
+            left: acc.left.min(run.bbox.left),
+            top: acc.top.min(run.bbox.top),
+            right: acc.right.max(run.bbox.right),
+            bottom: acc.bottom.max(run.bbox.bottom),
+        },
+    );
     ParagraphEditContext {
         anchor_bbox,
         paragraph: normalized_paragraph,
@@ -105,7 +108,12 @@ fn build_control_style(paragraph: &crate::models::LayoutParagraph) -> EditorCont
             !is_decorative_text(&run.text)
                 && resolved.identity.symbol_class == crate::models::SymbolClass::None
         })
-        .or_else(|| paragraph.runs.iter().find(|run| !is_decorative_text(&run.text)))
+        .or_else(|| {
+            paragraph
+                .runs
+                .iter()
+                .find(|run| !is_decorative_text(&run.text))
+        })
         .or_else(|| paragraph.runs.first());
 
     if let Some(run) = preferred_run {
@@ -113,10 +121,22 @@ fn build_control_style(paragraph: &crate::models::LayoutParagraph) -> EditorCont
         return EditorControlStyle {
             font_family: resolved.render_family,
             font_size: run.style.font_size,
-            font_weight: if run.style.is_bold { "bold".to_string() } else { "normal".to_string() },
-            font_style: if run.style.is_italic { "italic".to_string() } else { "normal".to_string() },
+            font_weight: if run.style.is_bold {
+                "bold".to_string()
+            } else {
+                "normal".to_string()
+            },
+            font_style: if run.style.is_italic {
+                "italic".to_string()
+            } else {
+                "normal".to_string()
+            },
             color: run.style.color.clone(),
-            text_decoration: if run.style.is_underline { "underline".to_string() } else { "none".to_string() },
+            text_decoration: if run.style.is_underline {
+                "underline".to_string()
+            } else {
+                "none".to_string()
+            },
         };
     }
 
@@ -145,10 +165,7 @@ pub fn build_field_editor_params(request: &FieldEditorParamsRequest) -> FieldEdi
                 id: run.id.clone(),
                 text: run.text.clone(),
                 style: crate::models::RunStyle {
-                    font_name: run
-                        .resolved_font
-                        .render_family
-                        .clone(),
+                    font_name: run.resolved_font.render_family.clone(),
                     font_size: run.font_size,
                     color: run.color.clone(),
                     is_bold: run.is_bold,
@@ -201,14 +218,19 @@ pub fn build_glyph_paint_plan(layout: &LayoutInferenceResult) -> GlyphPaintPlan 
                 .paragraphs
                 .iter()
                 .map(|paragraph| {
-                    let bbox = paragraph.runs.iter().fold(paragraph.runs.first().map(|run| run.bbox).unwrap_or_default(), |acc, run| {
-                        crate::models::BoundingBox {
+                    let bbox = paragraph.runs.iter().fold(
+                        paragraph
+                            .runs
+                            .first()
+                            .map(|run| run.bbox)
+                            .unwrap_or_default(),
+                        |acc, run| crate::models::BoundingBox {
                             left: acc.left.min(run.bbox.left),
                             top: acc.top.min(run.bbox.top),
                             right: acc.right.max(run.bbox.right),
                             bottom: acc.bottom.max(run.bbox.bottom),
-                        }
-                    });
+                        },
+                    );
 
                     GlyphPaintParagraph {
                         id: paragraph.id.clone(),
@@ -221,7 +243,9 @@ pub fn build_glyph_paint_plan(layout: &LayoutInferenceResult) -> GlyphPaintPlan 
                         runs: paragraph
                             .runs
                             .iter()
-                            .map(|run| build_paint_run(layout.page_index, &region.id, &paragraph.id, run))
+                            .map(|run| {
+                                build_paint_run(layout.page_index, &region.id, &paragraph.id, run)
+                            })
                             .collect(),
                     }
                 })

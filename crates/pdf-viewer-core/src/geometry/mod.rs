@@ -1,4 +1,4 @@
-pub mod bbox_utils;
+pub mod bbox_ops;
 pub mod coordinate_transform;
 pub mod dom_projection;
 pub mod field_projection;

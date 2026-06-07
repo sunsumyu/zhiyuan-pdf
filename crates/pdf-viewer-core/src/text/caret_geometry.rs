@@ -2,8 +2,8 @@
 //! 不依赖 wasm_bindgen / web_sys / canvas。
 //! 含 wasm 平台依赖的函数（canvas.measureText、ActiveEditorTarget 相关）仍留在 ui 侧。
 
-use crate::text::glyph_layout::{build_editor_session_text_plan, EditorSessionTextPlan};
 use crate::models::ParagraphEditContext;
+use crate::text::glyph_layout::{build_editor_session_text_plan, EditorSessionTextPlan};
 
 #[derive(Debug, Clone, Copy)]
 pub struct EditorCaretVisualPosition {
@@ -61,7 +61,11 @@ pub fn dedupe_caret_stops(line: &mut CaretLine) {
         .dedup_by(|a, b| a.index == b.index && (a.left - b.left).abs() <= 0.5);
 }
 
-pub fn caret_index_at_page_point(session: &ParagraphEditContext, page_x: f32, page_y: f32) -> usize {
+pub fn caret_index_at_page_point(
+    session: &ParagraphEditContext,
+    page_x: f32,
+    page_y: f32,
+) -> usize {
     let text_plan = build_editor_session_text_plan(session);
     caret_index_at_page_point_with_plan(session, &text_plan, page_x, page_y)
 }

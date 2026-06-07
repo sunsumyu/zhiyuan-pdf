@@ -14,22 +14,13 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum DocumentError {
     /// Input payload failed to deserialize or had illegal values.
-    InvalidInput {
-        field: String,
-        reason: String,
-    },
+    InvalidInput { field: String, reason: String },
     /// The requested method is reserved but not yet implemented.
-    NotImplemented {
-        method: String,
-    },
+    NotImplemented { method: String },
     /// IO failure when reading / writing document bytes.
-    IoError {
-        message: String,
-    },
+    IoError { message: String },
     /// Unrecoverable internal error.
-    Internal {
-        message: String,
-    },
+    Internal { message: String },
 }
 
 // ── DocumentResponse<T> ─────────────────────────────────────────

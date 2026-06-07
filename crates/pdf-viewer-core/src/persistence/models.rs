@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -42,7 +42,9 @@ pub struct PersistableRegionPatch {
     pub horizontal_scaling: f32,
 }
 
-fn default_scale_x_model() -> f32 { 100.0 }
+fn default_scale_x_model() -> f32 {
+    100.0
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

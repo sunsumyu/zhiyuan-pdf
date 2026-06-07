@@ -1,12 +1,12 @@
+use crate::edit::active_target::ActiveEditorTarget;
 use crate::edit::document_plan::collect_editor_document_target_plans;
 use crate::edit::edit_target::edit_target_base_paragraph_id;
-use crate::edit::replacement_snapshot::build_edit_replacement_snapshot;
-use crate::edit::active_target::ActiveEditorTarget;
-use crate::edit::source_identity::collect_object_indices_from_runs;
-use crate::persistence::models::PersistableRegionPatch;
 use crate::edit::paragraph_scene::build_paragraph_editor_scene_for_target;
 use crate::edit::paragraph_scene::ParagraphEditorScene;
+use crate::edit::replacement_snapshot::build_edit_replacement_snapshot;
+use crate::edit::source_identity::collect_object_indices_from_runs;
 use crate::models::{GlyphPaintParagraph, GlyphPaintPlan, VectorPageModel};
+use crate::persistence::models::PersistableRegionPatch;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 

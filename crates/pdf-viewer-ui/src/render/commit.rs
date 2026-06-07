@@ -19,8 +19,7 @@ pub fn commit_render_result(
     page_width: f32,
     page_height: f32,
 ) -> RenderCommitResult {
-    let transition: RenderFrameTransition =
-        settle_render_frame(frame_token, Some(rendered_zoom));
+    let transition: RenderFrameTransition = settle_render_frame(frame_token, Some(rendered_zoom));
     if transition.accepted {
         set_page_size(page_width, page_height);
     }

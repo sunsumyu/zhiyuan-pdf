@@ -10,11 +10,23 @@ pub async fn open_pdf(
     state: tauri::State<'_, crate::AppState>,
     path: String,
 ) -> Result<usize, String> {
-    PdfDocumentService::open_pdf(app_handle, state, &path).await
+    let span = crate::infrastructure::pdf::log_service::PdfEventSpan::begin(
+        1,
+        "document.open",
+        vec![("pathHash", format!("{:x}", md5::compute(&path)))],
+    );
+    let page_count = PdfDocumentService::open_pdf(app_handle, state, &path).await?;
+    span.finish("accepted", vec![("pageCount", page_count.to_string())]);
+    Ok(page_count)
 }
 
 #[command]
 pub fn clear_cache(state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
+    let span = crate::infrastructure::pdf::log_service::PdfEventSpan::begin(
+        1,
+        "document.clearCache",
+        Vec::new(),
+    );
     PdfDocumentService::release_all_pdf_resources(&state);
     {
         let mut cache = state.docs.read_document_meta_cache.lock().unwrap();
@@ -24,6 +36,7 @@ pub fn clear_cache(state: tauri::State<'_, crate::AppState>) -> Result<(), Strin
         let mut cache = state.cache.page_preview_cache.lock().unwrap();
         cache.clear();
     }
+    span.finish("accepted", Vec::new());
     Ok(())
 }
 
@@ -33,21 +46,42 @@ pub async fn save_pdf(
     path: String,
     modifications: PdfModifications,
 ) -> Result<(), String> {
-    PdfDocumentService::save_pdf(state, &path, modifications).await
+    let region_patches = modifications.region_patches.len();
+    let text_reflows = modifications.text_reflows.len();
+    let span = crate::infrastructure::pdf::log_service::PdfEventSpan::begin(
+        1,
+        "document.save",
+        vec![
+            ("pathHash", format!("{:x}", md5::compute(&path))),
+            ("regionPatches", region_patches.to_string()),
+            ("textReflows", text_reflows.to_string()),
+        ],
+    );
+    PdfDocumentService::save_pdf(state, &path, modifications).await?;
+    span.finish("accepted", Vec::new());
+    Ok(())
 }
 
 #[command]
-pub async fn undo(
-    state: tauri::State<'_, crate::AppState>,
-    path: String,
-) -> Result<(), String> {
-    PdfDocumentService::rollback_pdf(state, &path).await
+pub async fn undo(state: tauri::State<'_, crate::AppState>, path: String) -> Result<(), String> {
+    let span = crate::infrastructure::pdf::log_service::PdfEventSpan::begin(
+        1,
+        "document.undo",
+        vec![("pathHash", format!("{:x}", md5::compute(&path)))],
+    );
+    PdfDocumentService::rollback_pdf(state, &path).await?;
+    span.finish("accepted", Vec::new());
+    Ok(())
 }
 
 #[command]
-pub async fn redo(
-    state: tauri::State<'_, crate::AppState>,
-    path: String,
-) -> Result<(), String> {
-    PdfDocumentService::redo_pdf(state, &path).await
+pub async fn redo(state: tauri::State<'_, crate::AppState>, path: String) -> Result<(), String> {
+    let span = crate::infrastructure::pdf::log_service::PdfEventSpan::begin(
+        1,
+        "document.redo",
+        vec![("pathHash", format!("{:x}", md5::compute(&path)))],
+    );
+    PdfDocumentService::redo_pdf(state, &path).await?;
+    span.finish("accepted", Vec::new());
+    Ok(())
 }

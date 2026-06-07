@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::font::ResolvedFontFace;
 use super::geometry::BoundingBox;
 use super::layout::{
-    ParagraphEditContext, LayoutMode, LayoutRole, PaintMode, ParagraphStyle, SemanticRole,
+    LayoutMode, LayoutRole, PaintMode, ParagraphEditContext, ParagraphStyle, SemanticRole,
 };
 
 fn default_scale_x() -> f32 {
@@ -83,7 +83,7 @@ pub enum ExternalObject {
         stroke_color: Option<String>,
         fill_color: Option<String>,
         z_index: i32,
-        commands: Vec<String>, 
+        commands: Vec<String>,
     },
 }
 

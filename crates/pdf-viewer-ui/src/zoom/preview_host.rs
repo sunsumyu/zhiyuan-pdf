@@ -1,5 +1,5 @@
 use crate::zoom::zoom_controller::{
-    clear_pending_anchor as core_clear_pending_anchor, get_zoom_state, mark_rendered_zoom,
+    clear_pending_anchor as core_clear_pending_anchor, mark_rendered_zoom, read_zoom_state,
 };
 use crate::zoom::zoom_store::{self, PendingCommittedFrame};
 
@@ -48,11 +48,11 @@ pub fn set_preview_active(active: bool) {
     });
 }
 
-pub fn get_preview_active() -> bool {
+pub fn is_preview_active() -> bool {
     zoom_store::with_zoom_state(|state| state.preview_host.preview_active)
 }
 
-pub fn get_wheel_render_pending() -> bool {
+pub fn is_wheel_render_pending() -> bool {
     zoom_store::with_zoom_state(|state| state.preview_host.wheel_render_pending)
 }
 
@@ -63,11 +63,9 @@ pub fn queue_committed_frame(frame_plan: &PendingCommittedFrame) {
 }
 
 pub fn take_ready_committed_frame() -> Option<PendingCommittedFrame> {
-    let zoom_state = get_zoom_state();
+    let zoom_state = read_zoom_state();
     if (zoom_state.target_zoom - zoom_state.visual_zoom).abs() >= 0.001 {
         return None;
     }
-    zoom_store::with_zoom_state_mut(|state| {
-        state.preview_host.pending_committed_frame.take()
-    })
+    zoom_store::with_zoom_state_mut(|state| state.preview_host.pending_committed_frame.take())
 }

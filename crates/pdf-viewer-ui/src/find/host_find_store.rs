@@ -25,7 +25,7 @@ pub fn clear_find_session() {
     });
 }
 
-pub fn get_find_session() -> HostFindSession {
+pub fn read_find_session() -> HostFindSession {
     FIND_SESSION.with(|session| session.borrow().clone())
 }
 

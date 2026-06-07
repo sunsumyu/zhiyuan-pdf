@@ -4,8 +4,9 @@ use crate::bridge::target_invoke;
 use crate::editor::list_format::reconcile_numbering_patches;
 use crate::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
-use crate::state_manager::{
-    apply_patch_with_history, clear_persistable_patches as core_clear_persistable_patches, collect_persistable_patches,
+use crate::ui_state_store::{
+    apply_patch_with_history, clear_persistable_patches as core_clear_persistable_patches,
+    collect_persistable_patches,
 };
 
 /// Direct Rust-to-Rust patch application (no JsValue roundtrip).
@@ -56,10 +57,7 @@ pub fn clear_persistable_patches(clear_history: bool) {
 }
 
 /// Persists queued document patches through the host save command.
-pub async fn save_persistable_patches(
-    path: String,
-    page_index: u16,
-) -> Result<JsValue, JsValue> {
+pub async fn save_persistable_patches(path: String, page_index: u16) -> Result<JsValue, JsValue> {
     let patches = with_page_state(|state| {
         let base_patches = collect_persistable_patches()
             .into_iter()

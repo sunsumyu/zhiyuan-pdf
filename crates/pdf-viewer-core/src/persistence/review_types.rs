@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::persistence::patch_state::ReviewChangeEntry;
+use crate::persistence::patch_store::ReviewChangeEntry;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

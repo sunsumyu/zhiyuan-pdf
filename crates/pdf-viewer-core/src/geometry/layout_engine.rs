@@ -1,19 +1,19 @@
 //! 动态流式段落重排引擎 (Dynamic Flow Reflow Engine)
 //!
-//! # Overview 
+//! # Overview
 //! 传统 PDF 是一个硬编码的“定版”死格式，所有文字依靠绝对坐标描绘，一旦修改哪怕一个单词，
 //! 原生 PDF 是无法自动把后面的单词“推”入下一行的。
-//! 本引擎即是在结构被 `analyzer` (拓扑推断) 组装之后，提供类似于网页浏览器引擎 (Blink/WebKit) 
+//! 本引擎即是在结构被 `analyzer` (拓扑推断) 组装之后，提供类似于网页浏览器引擎 (Blink/WebKit)
 //! 那样的 **流式容器边界内重排 (Reflow)** 算法。
 //!
 //! # Invariants (不变式约定)
 //! - 所有的几何排版只会在水平 (X轴) 发生推挤与拆行，垂直方向依靠 `font_size` 与 `line_height` 线性累加。
 //! - 禁则排版边界保证 (Kinsoku Shori)：强约束支持中日韩 (CJK) 标点的避头尾策略，例如逗号绝对不能出现在行首。
 
-use crate::models::{BoundingBox, GlyphPaintPlan, LayoutAlignment, LayoutParagraph, LayoutRun};
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
+use crate::models::{BoundingBox, GlyphPaintPlan, LayoutAlignment, LayoutParagraph, LayoutRun};
 use crate::utils::debug::truncate_debug_text;
 
 /// 表示在特定的容器宽度约束下，经历过物理换行算法生成的一行“视觉行”。
@@ -42,7 +42,8 @@ pub struct ParagraphLayout {
 }
 
 // [V3.1] CJK Punctuation Rules (避头尾)
-const CJK_NO_START: &str = "!%),.:;?]}¢°'\"†‡›»〉》」』】〕〗〞〟’﹂﹁﹂﹃﹄～~！％），．：；？］｝、。";
+const CJK_NO_START: &str =
+    "!%),.:;?]}¢°'\"†‡›»〉》」』】〕〗〞〟’﹂﹁﹂﹃﹄～~！％），．：；？］｝、。";
 const CJK_NO_END: &str = "([{£$¥@〈《「『【〔〖〝’﹃﹂﹁";
 
 fn is_no_start(c: char) -> bool {
@@ -61,7 +62,7 @@ fn is_forced_line_break_run(run: &LayoutRun) -> bool {
 ///
 /// # Overview
 /// 接受一个离散组装而成的复合段落，给定一个包裹限界 (Boundary Width)，对其进行贪心折行（Greedy Line Breaking）。
-/// 
+///
 /// # Algorithmic Complexity
 /// 本算法基于逐词（Run-level）迭代游走，时间复杂度为 `O(N)`，其中 N 是一段内包含的游程数量。
 /// 注意，在当前的极速模式下，不支持复杂的字元级 (Character-level) 跨骑连字元折行 (Hyphenation)。
@@ -74,17 +75,17 @@ pub fn layout_paragraph<F>(
     paragraph: &LayoutParagraph,
     wrap_width: f32,
     measure_width: F,
-) -> ParagraphLayout 
-where 
-    F: Fn(&str, &LayoutRun) -> f32 
+) -> ParagraphLayout
+where
+    F: Fn(&str, &LayoutRun) -> f32,
 {
     let style = &paragraph.style;
     let mut visual_lines = Vec::new();
     let mut current_line_runs: Vec<LayoutRun> = Vec::new();
-    
+
     // 第一行考虑首行缩进
     let mut line_cursor_x = style.first_line_indent + style.left_indent;
-    
+
     for run in &paragraph.runs {
         if is_forced_line_break_run(run) {
             if !current_line_runs.is_empty() {
@@ -102,7 +103,7 @@ where
 
         let run_text = &run.text;
         let run_width = measure_width(run_text, run);
-        
+
         // 简单换行判定 (暂不处理单词拆分)
         let is_first_run_in_line = current_line_runs.is_empty();
         let available_width = wrap_width - line_cursor_x;
@@ -135,9 +136,9 @@ where
                 line_cursor_x,
                 wrap_width,
                 style.align,
-                false
+                false,
             ));
-            
+
             // 下一行起始位置 (使用左缩进，不再使用首行缩进)
             line_cursor_x = style.left_indent;
             let mut next_run = run.clone();
@@ -169,18 +170,24 @@ where
             line_cursor_x,
             wrap_width,
             style.align,
-            true
+            true,
         ));
     }
 
     // 垂直布局计算 (Vertical Layout)
     let mut current_y = 0.0;
     for line in &mut visual_lines {
-        let h_factor = if style.line_height > 0.0 { style.line_height } else { 1.2 };
-        let max_font_size = line.runs.iter()
+        let h_factor = if style.line_height > 0.0 {
+            style.line_height
+        } else {
+            1.2
+        };
+        let max_font_size = line
+            .runs
+            .iter()
             .map(|r| r.style.font_size)
             .fold(12.0, f32::max);
-            
+
         line.height = max_font_size * h_factor;
         line.baseline_y = current_y + max_font_size;
         current_y += line.height;
@@ -188,11 +195,22 @@ where
 
     // ── layout result diagnostic ──
     for (line_idx, line) in visual_lines.iter().enumerate() {
-        let run_summary: String = line.runs.iter().enumerate().take(6).map(|(ri, r)| {
-            format!("r{}(ox={:.1} co={} text='{}')",
-                ri, r.origin_x, r.char_origins.len(),
-                truncate_debug_text(&r.text, 12))
-        }).collect::<Vec<_>>().join(", ");
+        let run_summary: String = line
+            .runs
+            .iter()
+            .enumerate()
+            .take(6)
+            .map(|(ri, r)| {
+                format!(
+                    "r{}(ox={:.1} co={} text='{}')",
+                    ri,
+                    r.origin_x,
+                    r.char_origins.len(),
+                    truncate_debug_text(&r.text, 12)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
         dbg_event(
             "layout.result",
             "line",
@@ -278,21 +296,21 @@ pub fn layout_anchored_pair(
 ) -> (LayoutRun, LayoutParagraph) {
     let new_anchor = anchor_run.clone();
     let mut new_body = body_paragraph.clone();
-    
+
     // 将 body 放置在 anchor 之后
     let anchor_right = anchor_run.bbox.right;
     new_body.origin_x = anchor_right + gap;
-    
+
     // 对齐基线 (Baseline Alignment)
     new_body.origin_y = anchor_run.origin_y;
-    
+
     (new_anchor, new_body)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{LayoutRun, RunStyle, ParagraphStyle, LayoutAlignment};
+    use crate::models::{LayoutAlignment, LayoutRun, ParagraphStyle, RunStyle};
 
     fn mock_run(text: &str, _width: f32) -> LayoutRun {
         LayoutRun {
@@ -318,8 +336,8 @@ mod tests {
         // Width 10.0 per run. Total width 40.0.
         runs.push(mock_run("Hello", 25.0));
         runs.push(mock_run("世界", 10.0));
-        runs.push(mock_run("。", 5.0)); // Total 40.0. 
-        
+        runs.push(mock_run("。", 5.0)); // Total 40.0.
+
         let paragraph = LayoutParagraph {
             runs,
             wrap_width: 38.0, // Should break before "世界" or "。"?
@@ -329,11 +347,15 @@ mod tests {
         // If we break before "。", it would be at the start of the next line.
         // Rule should force it to stay with "世界" or force "世界" to next line.
         let layout = layout_paragraph(&paragraph, 38.0, |_, _| 10.0); // Simple fixed width mock
-        
+
         // Check if "。" is at the start of a line
         for line in layout.lines {
             if let Some(first) = line.runs.first() {
-                assert!(!is_no_start(first.text.chars().next().unwrap()), "Punctuation at start of line: {}", first.text);
+                assert!(
+                    !is_no_start(first.text.chars().next().unwrap()),
+                    "Punctuation at start of line: {}",
+                    first.text
+                );
             }
         }
     }
@@ -341,7 +363,7 @@ mod tests {
     #[test]
     fn test_justified_alignment() {
         let mut runs = Vec::new();
-        // 5 runs, 10.0 width each. 
+        // 5 runs, 10.0 width each.
         // Line 1: 3 runs (30.0). Wrap 40.0. Gap 10.0. 2 gaps -> 5.0 each.
         // Line 2: 2 runs.
         runs.push(mock_run("A", 10.0));
@@ -349,7 +371,7 @@ mod tests {
         runs.push(mock_run("C", 10.0));
         runs.push(mock_run("D", 10.0));
         runs.push(mock_run("E", 10.0));
-        
+
         let paragraph = LayoutParagraph {
             runs,
             style: ParagraphStyle {
@@ -359,10 +381,10 @@ mod tests {
             ..Default::default()
         };
 
-        // Wrap width 35.0. 
+        // Wrap width 35.0.
         // Line 1: A, B, C (30.0). Remaining 5.0. 2 gaps -> 2.5 each.
         let layout = layout_paragraph(&paragraph, 35.0, |_, _| 10.0);
-        
+
         let line = &layout.lines[0];
         assert_eq!(line.runs.len(), 3);
         assert_eq!(line.runs[0].origin_x, 0.0);
@@ -428,7 +450,9 @@ pub fn find_paragraph_at(plan: &GlyphPaintPlan, x: f32, y: f32) -> Option<String
             }
         }
     }
-    best_run_hit.map(|(_, id)| id).or_else(|| best_paragraph_hit.map(|(_, id)| id))
+    best_run_hit
+        .map(|(_, id)| id)
+        .or_else(|| best_paragraph_hit.map(|(_, id)| id))
 }
 
 pub fn is_point_in_bbox(bbox: &BoundingBox, x: f32, y: f32) -> bool {

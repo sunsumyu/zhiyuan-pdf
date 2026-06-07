@@ -1,9 +1,9 @@
 //! 宏观页面域上下文树投影与序列化桥接 (Page Region Context & Projection)
 //!
-//! # Overview 
+//! # Overview
 //! 在 PDF 文档解析的管道末端，原生的 `VectorPageModel` 被送入本模块。
 //! 它的核心任务是完成 **"物理态" 到 "纯渲染态 (Snapshot)"** 的结构降维。
-//! 
+//!
 //! # Architectural Rationale (架构缘由)
 //! 为什么我们需要多出这么多带有 `Snapshot` 和 `Output` 后缀的类型？
 //! 因为 Rust 端拥有的复杂指针引用、生命周期约束和庞大的全局 PDF 字体上下文，
@@ -13,14 +13,14 @@
 //! # Invariants
 //! 全部结构体默认 `Y-Down` 坐标系，`top` 值随肉眼视界向下增加。
 
-use crate::models::{
-    EditableSegment, FontHints, LayoutRole, NativePageModel, NativePageObject, NativeTextModel,
-    StyledRun, SemanticRole,
-};
 use super::list_item_region_builder::build_list_item_region;
 pub use super::page_region_models::*;
+use crate::models::{
+    EditableSegment, FontHints, LayoutRole, NativePageModel, NativePageObject, NativeTextModel,
+    SemanticRole, StyledRun,
+};
 
-fn get_object_display_text(obj: &NativeTextModel) -> String {
+fn read_object_display_text(obj: &NativeTextModel) -> String {
     if !obj.runs.is_empty() {
         obj.runs.iter().map(|run| run.text.as_str()).collect()
     } else {
@@ -32,7 +32,7 @@ fn chars_count(text: &str) -> usize {
     text.chars().count()
 }
 
-fn get_run_visible_glyph_width(run: &StyledRun, parent: &NativeTextModel) -> f32 {
+fn resolve_run_visible_glyph_width(run: &StyledRun, parent: &NativeTextModel) -> f32 {
     if run.width > 0.0 {
         run.width
     } else if parent.width > 0.0 && !parent.text.is_empty() {
@@ -68,7 +68,10 @@ fn build_style_source(
     }
 }
 
-fn build_style_runs_from_text_object(obj: &NativeTextModel, line_key: &str) -> Vec<StyleRunSnapshot> {
+fn build_style_runs_from_text_object(
+    obj: &NativeTextModel,
+    line_key: &str,
+) -> Vec<StyleRunSnapshot> {
     let line_left = obj.tx;
     let mut char_offset = 0usize;
     let mut runs_out = Vec::new();
@@ -81,7 +84,11 @@ fn build_style_runs_from_text_object(obj: &NativeTextModel, line_key: &str) -> V
                 continue;
             }
             let run_left = run.tx - line_left;
-            let measured_width = if run.width > 0.0 { run.width } else { get_run_visible_glyph_width(run, obj) };
+            let measured_width = if run.width > 0.0 {
+                run.width
+            } else {
+                resolve_run_visible_glyph_width(run, obj)
+            };
             let fallback_char_width = run
                 .char_widths
                 .iter()
@@ -96,7 +103,10 @@ fn build_style_runs_from_text_object(obj: &NativeTextModel, line_key: &str) -> V
                 });
 
             let next_char_origins = if !run.char_origins.is_empty() {
-                run.char_origins.iter().map(|origin| run_left + origin).collect::<Vec<_>>()
+                run.char_origins
+                    .iter()
+                    .map(|origin| run_left + origin)
+                    .collect::<Vec<_>>()
             } else {
                 (0..glyph_count)
                     .map(|char_index| run_left + (char_index as f32 * fallback_char_width))
@@ -111,7 +121,8 @@ fn build_style_runs_from_text_object(obj: &NativeTextModel, line_key: &str) -> V
                         if explicit.is_finite() && explicit > 0.0 {
                             explicit
                         } else if char_index + 1 < next_char_origins.len() {
-                            let delta = next_char_origins[char_index + 1] - next_char_origins[char_index];
+                            let delta =
+                                next_char_origins[char_index + 1] - next_char_origins[char_index];
                             if delta.is_finite() && delta > 0.0 {
                                 delta
                             } else {
@@ -138,14 +149,30 @@ fn build_style_runs_from_text_object(obj: &NativeTextModel, line_key: &str) -> V
                 start: char_offset,
                 end: char_offset + length,
                 style: build_style_source(
-                    if run.font_name.is_empty() { obj.font_name.clone() } else { run.font_name.clone() },
-                    if run.font_size > 0.0 { run.font_size } else { obj.font_size },
-                    if run.color.is_empty() { obj.color.clone() } else { run.color.clone() },
+                    if run.font_name.is_empty() {
+                        obj.font_name.clone()
+                    } else {
+                        run.font_name.clone()
+                    },
+                    if run.font_size > 0.0 {
+                        run.font_size
+                    } else {
+                        obj.font_size
+                    },
+                    if run.color.is_empty() {
+                        obj.color.clone()
+                    } else {
+                        run.color.clone()
+                    },
                     run.is_bold || obj.is_bold,
                     run.is_italic || obj.is_italic,
                     run.is_underline || obj.is_underline,
                     run.font_hints.clone().or_else(|| obj.font_hints.clone()),
-                    if run.render_mode != 0 { run.render_mode } else { obj.render_mode },
+                    if run.render_mode != 0 {
+                        run.render_mode
+                    } else {
+                        obj.render_mode
+                    },
                     run.char_spacing,
                     run.horizontal_scaling,
                 ),
@@ -172,9 +199,13 @@ fn build_style_runs_from_text_object(obj: &NativeTextModel, line_key: &str) -> V
         }
     }
 
-    let text = get_object_display_text(obj);
+    let text = read_object_display_text(obj);
     let glyph_count = chars_count(&text);
-    let char_width = if glyph_count > 0 { obj.width / glyph_count as f32 } else { obj.font_size };
+    let char_width = if glyph_count > 0 {
+        obj.width / glyph_count as f32
+    } else {
+        obj.font_size
+    };
     vec![StyleRunSnapshot {
         id: format!("{line_key}::run::0"),
         text,
@@ -205,7 +236,7 @@ fn build_paragraph_line_from_text_object(
     line_index: usize,
     page_height: f32,
 ) -> ParagraphLineOutput {
-    let text = get_object_display_text(obj);
+    let text = read_object_display_text(obj);
     let style_runs =
         build_style_runs_from_text_object(obj, &format!("{}::line::{}", obj.id, line_index));
 
@@ -245,7 +276,11 @@ fn build_paragraph_line_from_text_object(
         is_italic: obj.is_italic,
         is_underline: obj.is_underline,
         char_spacing: obj.runs.get(0).map(|r| r.char_spacing).unwrap_or(0.0),
-        scale_x: obj.runs.get(0).map(|r| r.horizontal_scaling).unwrap_or(100.0),
+        scale_x: obj
+            .runs
+            .get(0)
+            .map(|r| r.horizontal_scaling)
+            .unwrap_or(100.0),
         font_hints: obj.font_hints.clone(),
         render_mode: obj.render_mode,
         object_ids: vec![obj.id.clone()],
@@ -268,7 +303,7 @@ fn infer_scene_hint(text_objects: &[NativeTextModel]) -> String {
     let combined = text_objects
         .iter()
         .take(40)
-        .map(|obj| get_object_display_text(obj).trim().to_string())
+        .map(|obj| read_object_display_text(obj).trim().to_string())
         .collect::<Vec<_>>()
         .join(" ");
     if ["简历", "求职意向", "教育背景", "专业技能", "核心优势"]
@@ -287,11 +322,17 @@ fn infer_scene_hint(text_objects: &[NativeTextModel]) -> String {
 }
 
 fn is_standalone_paragraph_candidate(obj: &NativeTextModel) -> bool {
-    let text = get_object_display_text(obj);
+    let text = read_object_display_text(obj);
     let trimmed = text.trim();
     obj.font_size >= 18.0
-        || matches!(obj.role, Some(LayoutRole::SectionHeader | LayoutRole::Title))
-        || (obj.is_bold && chars_count(trimmed) <= 12 && !trimmed.contains('：') && !trimmed.contains(':'))
+        || matches!(
+            obj.role,
+            Some(LayoutRole::SectionHeader | LayoutRole::Title)
+        )
+        || (obj.is_bold
+            && chars_count(trimmed) <= 12
+            && !trimmed.contains('：')
+            && !trimmed.contains(':'))
 }
 
 fn should_merge_paragraph_objects(previous: &NativeTextModel, current: &NativeTextModel) -> bool {
@@ -327,10 +368,9 @@ fn build_paragraph_region_from_objects(
             .get(&b.id)
             .copied()
             .unwrap_or_default();
-        a_line.cmp(&b_line).then_with(|| {
-            a.tx.partial_cmp(&b.tx)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        a_line
+            .cmp(&b_line)
+            .then_with(|| a.tx.partial_cmp(&b.tx).unwrap_or(std::cmp::Ordering::Equal))
     });
     let lines = sorted_objects
         .iter()
@@ -348,7 +388,10 @@ fn build_paragraph_region_from_objects(
     let left = lines.iter().map(|line| line.left).fold(f32::MAX, f32::min);
     let right = lines.iter().map(|line| line.right).fold(f32::MIN, f32::max);
     let top_pdf = lines.iter().map(|line| line.top).fold(f32::MIN, f32::max);
-    let bottom_pdf = lines.iter().map(|line| line.bottom).fold(f32::MAX, f32::min);
+    let bottom_pdf = lines
+        .iter()
+        .map(|line| line.bottom)
+        .fold(f32::MAX, f32::min);
 
     let region_box = BoundingBoxOutput {
         left,
@@ -363,11 +406,7 @@ fn build_paragraph_region_from_objects(
 
     let id = sorted_objects
         .first()
-        .and_then(|obj| {
-            obj.paragraph_id
-                .clone()
-                .or_else(|| Some(obj.id.clone()))
-        })
+        .and_then(|obj| obj.paragraph_id.clone().or_else(|| Some(obj.id.clone())))
         .unwrap_or_else(|| {
             format!(
                 "paragraph-{}-{}",
@@ -395,10 +434,7 @@ fn build_paragraph_region_from_objects(
             .first()
             .map(|line| line.line_index)
             .unwrap_or_default(),
-        line_index_end: lines
-            .last()
-            .map(|line| line.line_index)
-            .unwrap_or_default(),
+        line_index_end: lines.last().map(|line| line.line_index).unwrap_or_default(),
         left,
         right,
         top: top_pdf,
@@ -465,11 +501,12 @@ pub fn build_page_region_context(page: &NativePageModel) -> PageRegionContextOut
     let mut list_item_by_object_id = std::collections::HashMap::new();
     let mut active_paragraph_group: Vec<NativeTextModel> = Vec::new();
 
-    let flush_paragraph_group = |groups: &mut Vec<Vec<NativeTextModel>>, active: &mut Vec<NativeTextModel>| {
-        if !active.is_empty() {
-            groups.push(std::mem::take(active));
-        }
-    };
+    let flush_paragraph_group =
+        |groups: &mut Vec<Vec<NativeTextModel>>, active: &mut Vec<NativeTextModel>| {
+            if !active.is_empty() {
+                groups.push(std::mem::take(active));
+            }
+        };
 
     for (idx, obj) in text_objects.iter().cloned().enumerate() {
         let top = page.height - obj.ty - obj.height;
@@ -490,7 +527,12 @@ pub fn build_page_region_context(page: &NativePageModel) -> PageRegionContextOut
                 segment_key: obj.id.clone(),
                 object_ids: vec![obj.id.clone()],
                 object_indices: obj.object_indices.clone(),
-                run_keys: obj.runs.iter().enumerate().map(|(i, _)| format!("{}::{}", obj.id, i)).collect(),
+                run_keys: obj
+                    .runs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("{}::{}", obj.id, i))
+                    .collect(),
                 first_object_id: obj.id.clone(),
                 field_name: key_text.clone(),
                 field_kind: "unknown".into(),
@@ -511,8 +553,30 @@ pub fn build_page_region_context(page: &NativePageModel) -> PageRegionContextOut
                     field_kind: "unknown".into(),
                     key_text: key_text.clone(),
                     value_text: value_text.clone(),
-                    key_style: build_style_source(obj.font_name.clone(), obj.font_size, obj.color.clone(), obj.is_bold, obj.is_italic, obj.is_underline, obj.font_hints.clone(), obj.render_mode, obj.char_spacing, obj.horizontal_scaling),
-                    value_style: build_style_source(obj.font_name.clone(), obj.font_size, obj.color.clone(), obj.is_bold, obj.is_italic, obj.is_underline, obj.font_hints.clone(), obj.render_mode, obj.char_spacing, obj.horizontal_scaling),
+                    key_style: build_style_source(
+                        obj.font_name.clone(),
+                        obj.font_size,
+                        obj.color.clone(),
+                        obj.is_bold,
+                        obj.is_italic,
+                        obj.is_underline,
+                        obj.font_hints.clone(),
+                        obj.render_mode,
+                        obj.char_spacing,
+                        obj.horizontal_scaling,
+                    ),
+                    value_style: build_style_source(
+                        obj.font_name.clone(),
+                        obj.font_size,
+                        obj.color.clone(),
+                        obj.is_bold,
+                        obj.is_italic,
+                        obj.is_underline,
+                        obj.font_hints.clone(),
+                        obj.render_mode,
+                        obj.char_spacing,
+                        obj.horizontal_scaling,
+                    ),
                     key_object_ids: vec![obj.id.clone()],
                     value_object_ids: vec![obj.id.clone()],
                     key_run_keys: vec![],
@@ -607,7 +671,11 @@ pub fn build_page_region_context(page: &NativePageModel) -> PageRegionContextOut
 
         line_regions.push(LineRegionModelOutput {
             id: obj.id.clone(),
-            kind: if is_field { "field-row".into() } else { "free-text".into() },
+            kind: if is_field {
+                "field-row".into()
+            } else {
+                "free-text".into()
+            },
             page_index: page.page_index,
             line_index: idx,
             objects: vec![obj.clone()],
@@ -629,7 +697,7 @@ pub fn build_page_region_context(page: &NativePageModel) -> PageRegionContextOut
                 page.page_index,
                 idx,
                 page.height,
-                get_object_display_text(&obj),
+                read_object_display_text(&obj),
                 build_style_runs_from_text_object(&obj, &format!("{}::line::{}", obj.id, idx)),
             );
             list_item_by_object_id.insert(obj.id.clone(), list_item.clone());
@@ -675,7 +743,9 @@ pub fn build_page_region_context(page: &NativePageModel) -> PageRegionContextOut
         if let Some(first_object) = first_object {
             if let Some(list_item_region) = list_item_by_object_id.get(&first_object.id).cloned() {
                 line_region.list_item_region = Some(list_item_region);
-            } else if let Some(paragraph_region) = paragraph_region_by_object_id.get(&first_object.id).cloned() {
+            } else if let Some(paragraph_region) =
+                paragraph_region_by_object_id.get(&first_object.id).cloned()
+            {
                 line_region.paragraph_region = Some(paragraph_region);
             }
         }
@@ -685,7 +755,10 @@ pub fn build_page_region_context(page: &NativePageModel) -> PageRegionContextOut
         scene_hint: infer_scene_hint(&text_objects),
         text_objects: text_objects.clone(),
         visual_lines: text_objects.iter().cloned().map(|obj| vec![obj]).collect(),
-        field_rows: line_regions.iter().filter_map(|line| line.field_row.clone()).collect(),
+        field_rows: line_regions
+            .iter()
+            .filter_map(|line| line.field_row.clone())
+            .collect(),
         paragraph_regions,
         list_item_regions,
         line_regions,

@@ -33,6 +33,10 @@ export type VectorRenderResult = {
     pendingPresents?: VectorLayerPresent[];
 };
 
+export type VectorCommitOptions = {
+    beforePresent?: () => void;
+};
+
 export type VectorLayerPresent = {
     sourceCanvas: HTMLCanvasElement;
     viewportWidth: number;
@@ -128,12 +132,24 @@ export function ensureVectorHost(): VectorHostRefs | null {
     return ensureVectorCanvasHost();
 }
 
-export function commitVectorRenderResult(result: VectorRenderResult): void {
+export function commitVectorRenderResult(result: VectorRenderResult, options: VectorCommitOptions = {}): void {
     const pendingPresents = result.pendingPresents ?? [];
-    if (pendingPresents.length === 0) return;
+    let preparedVisibleFrame = false;
+    const prepareVisibleFrame = (): void => {
+        if (preparedVisibleFrame) return;
+        preparedVisibleFrame = true;
+        options.beforePresent?.();
+    };
+
+    if (pendingPresents.length === 0) {
+        prepareVisibleFrame();
+        return;
+    }
+
     const refs = getExistingVectorCanvasHost();
     if (!refs) return;
 
+    prepareVisibleFrame();
     for (const pending of pendingPresents) {
         presentViewportCanvasFromSource(
             refs,
@@ -221,7 +237,34 @@ export async function renderVectorPageWithPlan(
     const dpr = window.devicePixelRatio || 1;
     const displayWidth = model.width * plan.displayZoom;
     const displayHeight = model.height * plan.displayZoom;
-    const deferVisiblePresent = plan.prepareVisibleLayout === false;
+
+    // FORCE DOUBLE-BUFFERING: Globally force deferring presentation of onscreen canvases.
+    // This preserves the old page's pixels on screen until the new page is 100% rendered offscreen,
+    // avoiding intermediate flashing and canvas aspect-ratio stretching.
+    const deferVisiblePresent = true;
+
+    const isPipelineStale = (): boolean => {
+        try {
+            const w = window as any;
+            if (typeof w.__getCurrentPage === 'function') {
+                const currentPage = w.__getCurrentPage();
+                if (currentPage !== null && currentPage !== pageIndex) {
+                    return true;
+                }
+            }
+        } catch {}
+        return false;
+    };
+
+    if (isPipelineStale()) {
+        console.log(`[PDF-DIAG] Pipeline pre-emptively aborted before canvas-frame setup for page ${pageIndex}`);
+        return {
+            width: model.width,
+            height: model.height,
+            aborted: true,
+        };
+    }
+
     const pendingPresents: VectorLayerPresent[] = [];
 
     let viewportLeft = 0;
@@ -243,7 +286,7 @@ export async function renderVectorPageWithPlan(
         }
     }
 
-    if (abortStaleFrameIfNeeded(frameToken, 'ts.frame.stale.before-canvas-frame', {
+    if (isPipelineStale() || abortStaleFrameIfNeeded(frameToken, 'ts.frame.stale.before-canvas-frame', {
         pageIndex,
         displayZoom: plan.displayZoom,
         renderZoom: plan.renderZoom,
@@ -303,7 +346,7 @@ export async function renderVectorPageWithPlan(
         const layerCacheKey = layerPlan.cacheKey;
         const layerRenderZoom = layerPlan.renderZoom;
 
-        if (abortStaleFrameIfNeeded(frameToken, 'ts.frame.stale.before-layer', {
+        if (isPipelineStale() || abortStaleFrameIfNeeded(frameToken, 'ts.frame.stale.before-layer', {
             pageIndex,
             useViewportTile: layerUseViewportTile,
             cacheKey: layerCacheKey,
@@ -391,7 +434,7 @@ export async function renderVectorPageWithPlan(
                     useViewportTile: layerUseViewportTile,
                     cacheKey: layerCacheKey,
                 });
-                if (abortStaleFrameIfNeeded(frameToken, 'ts.frame.stale.before-cache-present', {
+                if (isPipelineStale() || abortStaleFrameIfNeeded(frameToken, 'ts.frame.stale.before-cache-present', {
                     pageIndex,
                     useViewportTile: layerUseViewportTile,
                     cacheKey: layerCacheKey,
@@ -439,6 +482,8 @@ export async function renderVectorPageWithPlan(
             layerUseViewportTile,
             frameToken,
             !!layerPlan.preferProgressive,
+            path,
+            pageIndex,
         );
 
         if (progressiveResult?.aborted) {
@@ -450,7 +495,7 @@ export async function renderVectorPageWithPlan(
             return { aborted: true };
         }
 
-        if (abortStaleFrameIfNeeded(frameToken, 'ts.frame.stale.before-layer-present', {
+        if (isPipelineStale() || abortStaleFrameIfNeeded(frameToken, 'ts.frame.stale.before-layer-present', {
             pageIndex,
             useViewportTile: layerUseViewportTile,
             cacheKey: layerCacheKey,
@@ -618,7 +663,28 @@ async function renderViewportProgressiveIfNeeded(
     useViewportTile: boolean,
     frameToken?: number,
     preferProgressiveLayer?: boolean,
+    path?: string,
+    pageIndex?: number,
 ): Promise<{ aborted?: boolean } | null> {
+    const isProgressivePipelineStale = (): boolean => {
+        if (path === undefined || pageIndex === undefined) return false;
+        try {
+            const w = window as any;
+            if (typeof w.__getCurrentPage === 'function') {
+                const currentPage = w.__getCurrentPage();
+                if (currentPage !== null && currentPage !== pageIndex) {
+                    return true;
+                }
+            }
+        } catch {}
+        return false;
+    };
+
+    if (isProgressivePipelineStale()) {
+        renderApi.cancelProgressiveRender();
+        return { aborted: true };
+    }
+
     const start = renderApi.startProgressiveRender() as
         | { started?: boolean; totalItems?: number }
         | null
@@ -627,8 +693,10 @@ async function renderViewportProgressiveIfNeeded(
     const renderTargetId = renderTarget.id;
 
     if (
-        Number.isFinite(frameToken as number) &&
-        !renderApi.isRenderFrameCurrent(frameToken as number)
+        isProgressivePipelineStale() || (
+            Number.isFinite(frameToken as number) &&
+            !renderApi.isRenderFrameCurrent(frameToken as number)
+        )
     ) {
         renderApi.cancelProgressiveRender();
         return { aborted: true };
@@ -637,8 +705,10 @@ async function renderViewportProgressiveIfNeeded(
     if (!start?.started) {
         renderApi.renderPage(renderTargetId, imageCacheMap);
         if (
-            Number.isFinite(frameToken as number) &&
-            !renderApi.isRenderFrameCurrent(frameToken as number)
+            isProgressivePipelineStale() || (
+                Number.isFinite(frameToken as number) &&
+                !renderApi.isRenderFrameCurrent(frameToken as number)
+            )
         ) {
             renderApi.cancelProgressiveRender();
             return { aborted: true };
@@ -660,8 +730,10 @@ async function renderViewportProgressiveIfNeeded(
         renderApi.cancelProgressiveRender();
         renderApi.renderPage(renderTargetId, imageCacheMap);
         if (
-            Number.isFinite(frameToken as number) &&
-            !renderApi.isRenderFrameCurrent(frameToken as number)
+            isProgressivePipelineStale() || (
+                Number.isFinite(frameToken as number) &&
+                !renderApi.isRenderFrameCurrent(frameToken as number)
+            )
         ) {
             renderApi.cancelProgressiveRender();
             return { aborted: true };
@@ -672,8 +744,10 @@ async function renderViewportProgressiveIfNeeded(
     let guard = 0;
     while (guard < 4000) {
         if (
-            Number.isFinite(frameToken as number) &&
-            !renderApi.isRenderFrameCurrent(frameToken as number)
+            isProgressivePipelineStale() || (
+                Number.isFinite(frameToken as number) &&
+                !renderApi.isRenderFrameCurrent(frameToken as number)
+            )
         ) {
             renderApi.cancelProgressiveRender();
             return { aborted: true };

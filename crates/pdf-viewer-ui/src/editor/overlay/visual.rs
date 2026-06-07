@@ -1,15 +1,15 @@
 use wasm_bindgen::JsCast;
 use web_sys::HtmlCanvasElement;
 
-use crate::render::canvas::CanvasRenderer;
-use crate::editor::source_geometry::source_line_visual_bbox_for_caret;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::host_runtime::get_state as get_editor_host_state;
-use crate::editor::mode::get_active_editor_state;
+use crate::editor::host_runtime::read_state as get_editor_host_state;
+use crate::editor::mode::read_active_editor_state;
+use crate::editor::source_geometry::source_line_visual_bbox_for_caret;
 use crate::editor::text_geometry::active_caret_visual;
-use crate::zoom::zoom_controller::get_zoom_state;
+use crate::render::canvas::CanvasRenderer;
+use crate::zoom::zoom_controller::read_zoom_state;
 
 const EDITOR_Y_BUFFER: f32 = 1.0;
 const CARET_WIDTH: f32 = 1.5;
@@ -26,7 +26,7 @@ fn sanitize_projection_zoom(value: f32, fallback: f32) -> f32 {
 
 fn resolve_editor_projection_zoom(requested_display_zoom: f32) -> f32 {
     let runtime_zoom = get_editor_host_state().last_display_zoom;
-    let zoom_state = get_zoom_state();
+    let zoom_state = read_zoom_state();
     if zoom_state.preview_host.preview_active
         || (zoom_state.target_zoom - zoom_state.visual_zoom).abs() >= 0.001
     {
@@ -83,7 +83,7 @@ pub fn render_active_editor_canvas(
     _draft_text: String,
     _caret_index: u32,
 ) -> bool {
-    let Some(active_state) = get_active_editor_state() else {
+    let Some(active_state) = read_active_editor_state() else {
         return false;
     };
     let caret_index = active_state.normalized_caret_index();

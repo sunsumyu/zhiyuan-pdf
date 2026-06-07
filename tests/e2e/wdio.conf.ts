@@ -27,6 +27,9 @@ const debugBinary = path.join(repoRoot, 'target', 'debug', 'pdf-viewer-standalon
 // 优先 release，缺则用 debug。
 const appBinary = existsSync(releaseBinary) ? releaseBinary : debugBinary;
 const msedgedriverPath = path.join(repoRoot, 'tools', 'msedgedriver', 'msedgedriver.exe');
+// 4444/4445 and several nearby ranges can fall inside Windows excluded TCP ranges on some machines.
+const tauriDriverPort = 5210;
+const nativeDriverPort = 5211;
 
 if (!existsSync(appBinary)) {
     throw new Error(
@@ -77,7 +80,7 @@ export const config: CustomConfig = {
     connectionRetryTimeout: 120_000,
     connectionRetryCount: 3,
     hostname: '127.0.0.1',
-    port: 4444,
+    port: tauriDriverPort,
     framework: 'mocha',
     reporters: ['spec'],
     mochaOpts: {
@@ -96,7 +99,14 @@ export const config: CustomConfig = {
         }
         tauriDriverProc = spawn(
             tauriDriverBin,
-            ['--port', '4444', '--native-driver', msedgedriverPath],
+            [
+                '--port',
+                String(tauriDriverPort),
+                '--native-port',
+                String(nativeDriverPort),
+                '--native-driver',
+                msedgedriverPath,
+            ],
             { stdio: ['ignore', 'inherit', 'inherit'] },
         );
         tauriDriverProc.on('error', (err) => {

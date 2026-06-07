@@ -113,8 +113,8 @@ fn replacement_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
 mod tests {
     use super::{build_edit_replacement_snapshot, replacement_target_from_patch_snapshot};
     use crate::edit::active_target::ActiveEditorTarget;
-    use crate::persistence::models::PersistableRegionPatch;
     use crate::models::BoundingBox;
+    use crate::persistence::models::PersistableRegionPatch;
 
     #[test]
     fn replacement_snapshot_stays_lightweight() {
