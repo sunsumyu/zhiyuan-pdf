@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' tauri:; img-src 'self' asset: pdfasset: http://asset.localhost https://asset.localhost http://pdfasset.localhost https://pdfasset.localhost blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' tauri: http://localhost:* ws://localhost:* ipc: http://ipc.localhost https://ipc.localhost tauri-plugin-shell: https://generativelanguage.googleapis.com;",
+      "csp": "default-src 'self' tauri:; img-src 'self' asset: pdfasset: http://asset.localhost https://asset.localhost http://pdfasset.localhost https://pdfasset.localhost blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' tauri: http://localhost:* ws://localhost:* ipc: http://ipc.localhost https://ipc.localhost http://asset.localhost https://asset.localhost http://pdfasset.localhost https://pdfasset.localhost tauri-plugin-shell: https://generativelanguage.googleapis.com;",
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]
@@ -34,7 +34,11 @@
     "active": true,
     "targets": ["msi", "nsis"],
     "icon": [
-      "icons/32x32.png"
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
     ]
   }
 }

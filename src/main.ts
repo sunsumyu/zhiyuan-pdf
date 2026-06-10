@@ -1,7 +1,8 @@
-import '@fortawesome/fontawesome-free/css/all.min.css';
+// Icons are inlined as SVG in index.html — no FontAwesome dependency needed.
+
 import { plugin } from './bridge';
 import { getPdfViewerAPI } from './bridge/viewer/pdf_viewer_api';
-import { open } from '@tauri-apps/plugin-dialog';
+import { invoke } from '@tauri-apps/api/core';
 // 应用内自验证：挂 `window.verifyEditorBugs()` 到全局，DevTools 控制台可直调。
 import './dev/verify_editor_bugs';
 
@@ -14,6 +15,7 @@ async function init() {
     console.log('Initializing Sovereignty PDF Viewer...');
 
     const openBtn = document.getElementById('open-btn');
+    const openEmptyStateBtn = document.getElementById('open-empty-state-btn');
     // 不阻塞 UI：plugin.initialize() (含 WASM 加载) 在后台并行进行。
     // 用户点击"打开"时，openPdfFile 内部会自己 await ensureWasmInitialized()。
     performance.mark('plugin-init-start');
@@ -47,12 +49,9 @@ async function init() {
     (window as any).__pdfOpenHandler = async () => {
         if ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__) {
             try {
-                const selected = await open({
-                    multiple: false,
-                    filters: [{ name: 'PDF', extensions: ['pdf'] }]
-                });
-                if (selected && !Array.isArray(selected)) {
-                    handleFileOpen(selected);
+                const selected = await invoke<string | null>('pick_file', {});
+                if (selected) {
+                    await handleFileOpen(selected);
                 }
             } catch (err) {
                 console.error('Tauri open failed:', err);
@@ -62,6 +61,10 @@ async function init() {
         }
         (document.activeElement as HTMLElement | null)?.blur?.();
     };
+
+    openEmptyStateBtn?.addEventListener('click', () => {
+        openBtn?.click();
+    });
 
     // 消费 inline script 已经选好的文件（用户在模块加载完之前就点了 Open）
     const pendingPath = (window as any).__pendingPdfPath;
@@ -211,5 +214,3 @@ async function init() {
 init().catch(err => {
     console.error('Failed to initialize PDF viewer:', err);
 });
-
-

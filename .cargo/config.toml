@@ -1,0 +1,21 @@
+# 纸鸢 PDF — Cargo dev build 优化配置
+# 仅影响开发编译速度，不影响 release 产物。
+
+[target.x86_64-pc-windows-msvc]
+# rust-lld：Rust 内置的 LLVM LLD 链接器，比 MSVC link.exe 快 2-4 倍。
+# 无需安装额外工具，随 rustup 一起提供。
+linker = "rust-lld"
+
+[profile.dev]
+# debug=1：只保留行号信息（不含完整符号表），编译快 20-40%，调试断点仍可用。
+# 若需要完整 backtrace/堆栈符号，改回 debug = true。
+debug = 1
+# split-debuginfo=unpacked：Windows 下不打包 PDB，减少链接时磁盘 I/O。
+# （部分 Rust 版本在 Windows 下不支持，若报错请删除此行）
+# split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+# 所有第三方依赖在 dev 模式下也用 opt-level=1（轻度优化），
+# 可防止 wgpu/vello 等运行时慢导致开发调试困难。
+# 对编译时间影响较小（第三方 crate 有增量缓存）。
+opt-level = 1

@@ -837,28 +837,48 @@ pub fn parse_content_stream(
                                                     "[PDF-IMG] Do image id={} {}x{} ctm=[{:.1},{:.1},{:.1},{:.1},{:.1},{:.1}] jpeg={}",
                                                     asset_id, img_w, img_h, ctm[0], ctm[1], ctm[2], ctm[3], ctm[4], ctm[5], is_jpeg
                                                 );
-                                                objects.push(RenderObject::Image(
-                                                    NativeImageModel {
-                                                        id: asset_id,
-                                                        data_url: String::new(),
-                                                        x: ctm[4],
-                                                        y: ctm[5],
-                                                        width: ctm[0].abs(),
-                                                        height: ctm[3].abs(),
-                                                        a: ctm[0],
-                                                        b: ctm[1],
-                                                        c: ctm[2],
-                                                        d: ctm[3],
-                                                        e: ctm[4],
-                                                        f: ctm[5],
-                                                        z_index: *obj_counter,
-                                                        extraction_method: if is_jpeg {
-                                                            "JPEG".into()
-                                                        } else {
-                                                            "PNG".into()
-                                                        },
+                                                let corners = [
+                                                    state.transform_point(0.0, 0.0),
+                                                    state.transform_point(1.0, 0.0),
+                                                    state.transform_point(0.0, 1.0),
+                                                    state.transform_point(1.0, 1.0),
+                                                ];
+                                                let min_x = corners
+                                                    .iter()
+                                                    .map(|p| p[0])
+                                                    .fold(f32::INFINITY, f32::min);
+                                                let max_x = corners
+                                                    .iter()
+                                                    .map(|p| p[0])
+                                                    .fold(f32::NEG_INFINITY, f32::max);
+                                                let min_y = corners
+                                                    .iter()
+                                                    .map(|p| p[1])
+                                                    .fold(f32::INFINITY, f32::min);
+                                                let max_y = corners
+                                                    .iter()
+                                                    .map(|p| p[1])
+                                                    .fold(f32::NEG_INFINITY, f32::max);
+                                                objects.push(RenderObject::Image(NativeImageModel {
+                                                    id: asset_id,
+                                                    data_url: String::new(),
+                                                    x: min_x,
+                                                    y: min_y,
+                                                    width: (max_x - min_x).abs(),
+                                                    height: (max_y - min_y).abs(),
+                                                    a: ctm[0],
+                                                    b: ctm[1],
+                                                    c: ctm[2],
+                                                    d: ctm[3],
+                                                    e: ctm[4],
+                                                    f: ctm[5],
+                                                    z_index: *obj_counter,
+                                                    extraction_method: if is_jpeg {
+                                                        "JPEG".into()
+                                                    } else {
+                                                        "PNG".into()
                                                     },
-                                                ));
+                                                }));
                                             } else {
                                                 crate::pdf_log!(3, "[PDF-DIAG][Do-Image] image data empty name={:?}", String::from_utf8_lossy(name));
                                             }

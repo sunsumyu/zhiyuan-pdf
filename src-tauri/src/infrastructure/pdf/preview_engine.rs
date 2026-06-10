@@ -107,6 +107,52 @@ fn collect_page_xobjects(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
 
     result
 }
+
+fn page_has_font_resources(doc: &Document, page_id: ObjectId) -> bool {
+    let mut current_id = page_id;
+    let mut visited = std::collections::HashSet::new();
+
+    while let Ok(dict) = doc.get_dictionary(current_id) {
+        if let Ok(resources_obj) = dict.get(b"Resources") {
+            if let Ok(resources_dict) = resources_obj.as_dict().or_else(|_| {
+                resources_obj
+                    .as_reference()
+                    .and_then(|id| doc.get_dictionary(id))
+            }) {
+                if resources_dict.get(b"Font").is_ok() {
+                    return true;
+                }
+            }
+        }
+
+        if let Ok(parent_id) = dict.get(b"Parent").and_then(|o| o.as_reference()) {
+            if !visited.insert(parent_id) {
+                break;
+            }
+            current_id = parent_id;
+        } else {
+            break;
+        }
+    }
+
+    false
+}
+
+fn page_has_text_operators(doc: &Document, page_id: ObjectId) -> bool {
+    let Ok(content_data) = doc.get_page_content(page_id) else {
+        return false;
+    };
+    let Ok(content) = lopdf::content::Content::decode(&content_data) else {
+        return false;
+    };
+    content.operations.iter().any(|op| {
+        matches!(
+            op.operator.as_str(),
+            "Tj" | "TJ" | "'" | "\"" | "BT" | "Tf" | "Td" | "TD" | "Tm"
+        )
+    })
+}
+
 fn cache_image_asset(xobj_stream: &lopdf::Stream, width: i64, height: i64) -> Option<String> {
     // Determine the effective image filter, handling both single name and array forms.
     // Common patterns:
@@ -205,6 +251,24 @@ pub fn build_light_page_model(doc: &Document, page_index: u16) -> Result<LightPa
         .ok_or_else(|| format!("Page not found: {}", page_index))?;
 
     let (width, height) = page_dimensions(doc, page_id)?;
+    let has_text_content = page_has_text_operators(doc, page_id);
+    let has_font_resources = page_has_font_resources(doc, page_id);
+    if has_text_content || has_font_resources {
+        crate::log_step!(
+            "[PDF][preview] page={} vector-like page detected text={} fonts={} - skip scanned preview",
+            page_index,
+            has_text_content,
+            has_font_resources
+        );
+        return Ok(LightPageModel {
+            page_index,
+            width,
+            height,
+            kind: LightPageKind::Text,
+            preview_image_url: None,
+        });
+    }
+
     let xobjects = collect_page_xobjects(doc, page_id);
     crate::log_step!(
         "[PDF][preview] page={} size={}x{} xobjects={}",

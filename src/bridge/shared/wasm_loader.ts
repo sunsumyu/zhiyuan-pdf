@@ -58,8 +58,9 @@ export async function ensureWasmInitialized() {
             await init();
             wasmInitialized = true;
             currentWasm = wasmExports;
-            (window as any).wasmv3 = wasmExports;
-            (window as any).__pdfViewerRuntimeFingerprint = PDF_VIEWER_RUNTIME_FINGERPRINT;
+            const host = globalThis as any;
+            host.wasmv3 = wasmExports;
+            host.__pdfViewerRuntimeFingerprint = PDF_VIEWER_RUNTIME_FINGERPRINT;
             installTargetInvokeBridge();
             console.log('[V3-Sovereign] Rust Kernel Active');
             return wasmExports;
