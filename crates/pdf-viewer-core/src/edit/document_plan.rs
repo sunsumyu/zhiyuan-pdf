@@ -795,7 +795,7 @@ mod tests {
         }
     }
 
-    fn test_layout_run_with_char_gaps(
+    fn layout_with_gaps(
         id: &str,
         text: &str,
         left: f32,
@@ -843,7 +843,7 @@ mod tests {
         }
     }
 
-    fn mixed_text_runs_with_pdf_split_words() -> Vec<LayoutRun> {
+    fn mixed_runs() -> Vec<LayoutRun> {
         vec![
             test_layout_run("r0", "智能合约: ", 0.0, 50.0),
             test_layout_run("r1", "A", 50.0, 5.0),
@@ -864,8 +864,8 @@ mod tests {
     }
 
     #[test]
-    fn source_text_stays_canonical_when_text_plan_has_synthetic_gap_slots() {
-        let session = session_from_runs(mixed_text_runs_with_pdf_split_words());
+    fn preserves_canonical_source() {
+        let session = session_from_runs(mixed_runs());
         let reconstructed = build_editor_session_text_plan(&session).text;
 
         assert!(reconstructed.contains("A nchor"));
@@ -881,7 +881,7 @@ mod tests {
     }
 
     #[test]
-    fn source_text_restores_pdf_visual_word_gaps_without_intra_word_noise() {
+    fn restores_visual_gaps() {
         let session = session_from_runs(vec![
             test_layout_run("r0", "智能合约:", 0.0, 46.0),
             test_layout_run("r1", "A", 51.0, 5.0),
@@ -904,7 +904,7 @@ mod tests {
     }
 
     #[test]
-    fn source_text_restores_visual_spaces_inside_single_pdf_run() {
+    fn restores_run_spaces() {
         let text = "智能合约:AnchorFramework,SolanaProgramLibrary(SPL),ERC-20/721";
         let chars = text.chars().collect::<Vec<_>>();
         let mut x = 0.0;
@@ -930,7 +930,7 @@ mod tests {
                 x += 4.0;
             }
         }
-        let session = session_from_runs(vec![test_layout_run_with_char_gaps(
+        let session = session_from_runs(vec![layout_with_gaps(
             "single-run",
             text,
             0.0,
@@ -1010,7 +1010,7 @@ mod tests {
     }
 
     #[test]
-    fn editor_prefers_vector_source_over_paint_projection_text() {
+    fn prefers_vector_source() {
         let polluted_paint_run = test_paint_run("paint-1", "智能合约: A nchor", 0.0, 90.0);
         let paint_session = session_from_runs(vec![test_layout_run(
             "paint-layout-1",
@@ -1052,7 +1052,7 @@ mod tests {
     }
 
     #[test]
-    fn patched_display_runs_keep_original_vector_source_for_overlay_target() {
+    fn keeps_overlay_source() {
         let source_session = session_from_runs(vec![test_layout_run(
             "source-layout-1",
             "编程语言: Rust (Solana/Anchor), Solidity (Ethereum)",
@@ -1109,7 +1109,7 @@ mod tests {
     }
 
     #[test]
-    fn vector_geometry_source_is_used_when_object_ids_are_missing() {
+    fn uses_vector_geometry() {
         let paint_session = session_from_runs(vec![test_layout_run(
             "paint-layout-1",
             "编程语言:Rust(Solana/Anchor),Solidity(Ethereum)",

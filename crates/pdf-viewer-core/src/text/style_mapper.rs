@@ -419,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn canonical_gap_reconstruction_is_not_a_style_change() {
+    fn ignores_canonical_gaps() {
         let paragraph = LayoutParagraph {
             runs: vec![create_test_run("编程语言:"), create_test_run("Rust")],
             ..Default::default()

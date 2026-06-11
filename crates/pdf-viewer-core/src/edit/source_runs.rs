@@ -8,7 +8,7 @@ use crate::edit::debug_trace::{
 };
 use crate::geometry::bbox_ops::{bbox_height, bbox_width};
 use crate::geometry::source_geometry::{source_run_visual_bbox, source_visual_bbox_from_runs};
-use crate::utils::debug::truncate_debug_text;
+use crate::common::debug::truncate_debug_text;
 
 pub fn original_paint_runs_for_target(
     paragraph: &GlyphPaintParagraph,
@@ -249,7 +249,7 @@ fn resolve_vector_model_runs_by_object_id(
             .iter()
             .enumerate()
             .filter(|(_, run)| !run.text.is_empty())
-            .map(|(run_index, run)| layout_run_from_styled_with_owner(run, &text.id, run_index))
+            .map(|(run_index, run)| build_layout(run, &text.id, run_index))
             .collect::<Vec<_>>();
         if !mapped_runs.is_empty() {
             runs_by_object.insert(text.id.clone(), mapped_runs);
@@ -328,7 +328,7 @@ fn resolve_vector_model_runs_by_geometry(
             if run.text.is_empty() {
                 continue;
             }
-            let layout_run = layout_run_from_styled_with_owner(run, &text.id, run_index);
+            let layout_run = build_layout(run, &text.id, run_index);
             if vector_run_matches_paragraph_geometry(&layout_run, target_bbox) {
                 matched_runs.push(layout_run);
             }
@@ -405,7 +405,7 @@ fn resolve_glyph_paint_runs(paragraph: &GlyphPaintParagraph) -> Option<Vec<Layou
     }
 }
 
-fn layout_run_from_styled_with_owner(
+fn build_layout(
     run: &StyledRun,
     owner_object_id: &str,
     run_index: usize,

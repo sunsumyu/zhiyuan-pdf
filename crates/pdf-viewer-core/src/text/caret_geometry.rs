@@ -67,10 +67,10 @@ pub fn caret_index_at_page_point(
     page_y: f32,
 ) -> usize {
     let text_plan = build_editor_session_text_plan(session);
-    caret_index_at_page_point_with_plan(session, &text_plan, page_x, page_y)
+    resolve_index(session, &text_plan, page_x, page_y)
 }
 
-pub fn caret_index_at_page_point_with_plan(
+pub fn resolve_index(
     session: &ParagraphEditContext,
     text_plan: &EditorSessionTextPlan,
     page_x: f32,

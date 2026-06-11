@@ -101,7 +101,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn text_edit_mode_starts_disabled_until_toolbar_enables_it() {
+    fn starts_disabled() {
         reset_editor_mode();
         assert!(!is_text_edit_enabled());
 

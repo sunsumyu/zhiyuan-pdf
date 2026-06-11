@@ -183,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn visual_bbox_uses_baseline_font_geometry_when_stored_bbox_is_baseline_down() {
+    fn uses_baseline_bbox() {
         let run = test_run("r1", 70.0, 112.0, 12.0);
 
         let bbox = source_visual_bbox_from_runs(&[run]).expect("source bbox");
@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn caret_line_bbox_uses_same_source_visual_geometry() {
+    fn uses_source_geometry() {
         let run = test_run("r1", 70.0, 112.0, 12.0);
         let session = ParagraphEditContext {
             anchor_bbox: BoundingBox {

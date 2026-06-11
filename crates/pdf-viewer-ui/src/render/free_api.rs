@@ -60,13 +60,13 @@ use crate::zoom::zoom_store::PendingCommittedFrame;
 
 // ─── Frame plan ─────────────────────────────────────────────────────────────
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "resolveFramePlan")]
 pub fn resolve_frame_plan(request_js: JsValue) -> JsValue {
     let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
     to_value(&build_frame_plan_result(&request, false)).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "takeFramePlan")]
 pub fn take_frame_plan(request_js: JsValue) -> JsValue {
     let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
     to_value(&build_frame_plan_result(&request, true)).unwrap_or(JsValue::NULL)
@@ -74,7 +74,7 @@ pub fn take_frame_plan(request_js: JsValue) -> JsValue {
 
 // ─── Schedule / commit / settle ─────────────────────────────────────────────
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "scheduleRenderFrame")]
 pub fn schedule_render_frame(request_js: JsValue) -> JsValue {
     let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
     match schedule_render_frame_request(&request) {
@@ -83,7 +83,7 @@ pub fn schedule_render_frame(request_js: JsValue) -> JsValue {
     }
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "commitRenderResult")]
 pub fn commit_render_result(
     frame_token: u32,
     rendered_zoom: f32,
@@ -99,22 +99,22 @@ pub fn commit_render_result(
     .unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "settleRenderFrame")]
 pub fn settle_render_frame(frame_token: u32, rendered_zoom: f32) -> JsValue {
     to_value(&inner_settle_render_frame(frame_token, Some(rendered_zoom))).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "abortRenderFrame")]
 pub fn abort_render_frame(frame_token: u32) -> JsValue {
     to_value(&inner_settle_render_frame(frame_token, None)).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "isRenderFrameCurrent")]
 pub fn is_render_frame_current(frame_token: u32) -> bool {
     inner_is_render_frame_current(frame_token)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "scheduleRenderFollowUp")]
 pub fn schedule_render_follow_up(rendered_display_zoom: f32, request_js: JsValue) -> JsValue {
     let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
     match schedule_render_follow_up_runtime(rendered_display_zoom, &request) {
@@ -125,7 +125,7 @@ pub fn schedule_render_follow_up(rendered_display_zoom: f32, request_js: JsValue
 
 // ─── Render loop management ─────────────────────────────────────────────────
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "queueRenderLoopFrame")]
 pub fn queue_render_loop_frame(frame_js: JsValue) -> JsValue {
     let frame: Option<RenderFrameEnvelope> = from_value(frame_js).ok();
     match inner_queue_render_loop_frame(frame) {
@@ -134,7 +134,7 @@ pub fn queue_render_loop_frame(frame_js: JsValue) -> JsValue {
     }
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "advanceRenderLoopFrame")]
 pub fn advance_render_loop_frame(frame_js: JsValue) -> JsValue {
     let frame: Option<RenderFrameEnvelope> = from_value(frame_js).ok();
     match inner_advance_render_loop_frame(frame) {
@@ -145,19 +145,19 @@ pub fn advance_render_loop_frame(frame_js: JsValue) -> JsValue {
 
 // ─── Zoom preview ───────────────────────────────────────────────────────────
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "stepZoomFramePlan")]
 pub fn step_zoom_frame_plan(request_js: JsValue) -> JsValue {
     let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
     to_value(&inner_step_zoom_frame_plan(&request)).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "resolveViewportRefresh")]
 pub fn resolve_viewport_refresh(request_js: JsValue) -> JsValue {
     let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
     to_value(&inner_resolve_viewport_refresh(&request)).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "resolveHostScrollRefresh")]
 pub fn resolve_host_scroll_refresh(request_js: JsValue) -> JsValue {
     let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
     to_value(&inner_resolve_viewport_refresh(&request)).unwrap_or(JsValue::NULL)
@@ -168,25 +168,25 @@ pub fn clear_zoom_preview_host_state(clear_anchor: bool) {
     inner_clear_zoom_preview_host_state(clear_anchor);
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "resolveWheelRenderDecision")]
 pub fn resolve_wheel_render_decision(request_js: JsValue) -> JsValue {
     let request: WheelRenderDecisionRequest = from_value(request_js).unwrap_or_default();
     to_value(&inner_resolve_wheel_render_decision(request)).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "resolvePreviewTickDecision")]
 pub fn resolve_preview_tick_decision(request_js: JsValue) -> JsValue {
     let request: PreviewTickDecisionRequest = from_value(request_js).unwrap_or_default();
     to_value(&inner_resolve_preview_tick_decision(request)).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "handleWheelZoomHost")]
 pub fn handle_wheel_zoom_host(request_js: JsValue) -> JsValue {
     let request: WheelZoomHostRequest = from_value(request_js).unwrap_or_default();
     to_value(&inner_handle_wheel_zoom_host(request)).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "stepPreviewHost")]
 pub fn step_preview_host(request_js: JsValue) -> JsValue {
     let request: PreviewHostStepRequest = from_value(request_js).unwrap_or_default();
     to_value(&inner_step_preview_host(request)).unwrap_or(JsValue::NULL)
@@ -194,7 +194,7 @@ pub fn step_preview_host(request_js: JsValue) -> JsValue {
 
 // ─── Layer execution plan ───────────────────────────────────────────────────
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "resolveRenderExecutionPlan")]
 pub fn resolve_render_execution_plan(bundle_changed: bool, frame_plan_js: JsValue) -> JsValue {
     let frame_plan: FramePlanResult = from_value(frame_plan_js).unwrap_or_default();
     to_value(&inner_resolve_render_execution_plan(
@@ -204,7 +204,7 @@ pub fn resolve_render_execution_plan(bundle_changed: bool, frame_plan_js: JsValu
     .unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "resolveLayerExecutionPlan")]
 pub fn resolve_layer_execution_plan(bundle_changed: bool, frame_plan_js: JsValue) -> JsValue {
     let frame_plan: FramePlanResult = from_value(frame_plan_js).unwrap_or_default();
     to_value(&inner_resolve_layer_execution_plan(
@@ -214,7 +214,7 @@ pub fn resolve_layer_execution_plan(bundle_changed: bool, frame_plan_js: JsValue
     .unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "resolveLayerPresentDecision")]
 pub fn resolve_layer_present_decision(use_detail_layer: bool, frame_plan_js: JsValue) -> JsValue {
     let frame_plan: FramePlanResult = from_value(frame_plan_js).unwrap_or_default();
     to_value(&inner_resolve_layer_present_decision(
@@ -226,7 +226,7 @@ pub fn resolve_layer_present_decision(use_detail_layer: bool, frame_plan_js: JsV
 
 // ─── Page context / viewport ────────────────────────────────────────────────
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "updatePageViewport")]
 pub fn update_page_viewport(
     zoom: f32,
     dpr: f32,
@@ -247,22 +247,22 @@ pub fn update_page_viewport(
 
 // ─── Canvas rendering ───────────────────────────────────────────────────────
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "renderPage")]
 pub fn render_page(canvas_id: String, image_cache: JsValue) {
     inner_render_page(canvas_id, image_cache);
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "renderPageOffscreen")]
 pub fn render_page_offscreen(canvas_js: JsValue, image_cache: JsValue, dpr: f32) {
     inner_render_page_offscreen(canvas_js, image_cache, dpr);
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "startProgressiveRender")]
 pub fn start_progressive_render() -> JsValue {
     to_value(&inner_start_progressive_render()).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "stepProgressiveRender")]
 pub fn step_progressive_render(
     canvas_id: String,
     image_cache: JsValue,
@@ -278,7 +278,7 @@ pub fn step_progressive_render(
     .unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "stepProgressiveRenderOffscreen")]
 pub fn step_progressive_render_offscreen(
     canvas_js: JsValue,
     image_cache: JsValue,
@@ -296,12 +296,12 @@ pub fn step_progressive_render_offscreen(
     .unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "cancelProgressiveRender")]
 pub fn cancel_progressive_render() {
     inner_cancel_progressive_render();
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "resolveProgressiveRenderPolicy")]
 pub fn resolve_progressive_render_policy(request_js: JsValue) -> JsValue {
     let request = from_value(request_js).unwrap_or_default();
     to_value(&resolve_progressive_render_policy_request(request)).unwrap_or(JsValue::NULL)
@@ -309,42 +309,42 @@ pub fn resolve_progressive_render_policy(request_js: JsValue) -> JsValue {
 
 // ─── Frame cache ────────────────────────────────────────────────────────────
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "touchFrameCacheEntry")]
 pub fn touch_frame_cache_entry(use_viewport_tile: bool, cache_key: String) -> JsValue {
     let result = inner_touch_frame_cache_entry(use_viewport_tile, &cache_key);
     to_value(&result).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "storeFrameCacheEntry")]
 pub fn store_frame_cache_entry(use_viewport_tile: bool, cache_key: String) -> JsValue {
     to_value(&inner_store_frame_cache_entry(use_viewport_tile, cache_key)).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "resetFrameCache")]
 pub fn reset_frame_cache() {
     inner_reset_frame_cache();
 }
 
 // ─── Wheel / preview host ───────────────────────────────────────────────────
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "setWheelRenderPending")]
 pub fn set_wheel_render_pending(pending: bool) {
     inner_set_wheel_render_pending(pending);
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "getWheelRenderPending")]
 pub fn get_wheel_render_pending() -> bool {
     inner_get_wheel_render_pending()
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "queueCommittedFrame")]
 pub fn queue_committed_frame(frame_js: JsValue) {
     if let Ok(frame) = from_value::<PendingCommittedFrame>(frame_js) {
         inner_queue_committed_frame(&frame);
     }
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "takeReadyCommittedFrame")]
 pub fn take_ready_committed_frame() -> JsValue {
     match inner_take_ready_committed_frame() {
         Some(frame) => to_value(&frame).unwrap_or(JsValue::NULL),

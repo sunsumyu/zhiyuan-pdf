@@ -61,7 +61,7 @@ mod tests {
     use super::normalize_embedded_font_program;
 
     #[test]
-    fn sorts_unsorted_sfnt_records_without_touching_payload() {
+    fn sorts_sfnt_records() {
         let mut bytes = vec![
             0x00, 0x01, 0x00, 0x00, // sfnt
             0x00, 0x02, // numTables

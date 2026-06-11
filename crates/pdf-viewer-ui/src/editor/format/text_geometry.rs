@@ -4,7 +4,7 @@
 use pdf_viewer_core::models::LayoutRun;
 // 重新导出 core 提供的纯计算 API，保持 ui 内的旧调用路径不变。
 pub use pdf_viewer_core::text::caret_geometry::{
-    caret_index_at_page_point, caret_index_at_page_point_with_plan, caret_visual_for_session,
+    caret_index_at_page_point, resolve_index, caret_visual_for_session,
     caret_visual_for_session_plan, resolve_caret_index_from_lines, resolve_navigation_from_lines,
     CaretLine, CaretStop, EditorCaretVisualPosition,
 };
@@ -161,7 +161,7 @@ fn resolve_caret_index_for_draft_point(
     page_y: f32,
 ) -> usize {
     let Some(lines) = build_unified_draft_caret_lines(active_target, draft_text) else {
-        let resolved = caret_index_at_page_point_with_plan(
+        let resolved = resolve_index(
             &active_target.scene.body_session,
             &active_target.scene.document_plan.body_text_plan,
             page_x,

@@ -34,10 +34,10 @@ impl PdfEditorGeometryService {
         path: String,
         page_index: u16,
     ) -> Result<GlyphPaintPlan, String> {
-        Self::resolve_glyph_paint_plan_with_revision(state, path, page_index, None).await
+        Self::resolve_plan(state, path, page_index, None).await
     }
 
-    pub async fn resolve_glyph_paint_plan_with_revision(
+    pub async fn resolve_plan(
         state: tauri::State<'_, crate::AppState>,
         path: String,
         page_index: u16,

@@ -5,7 +5,7 @@ use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{BoundingBox, VectorImageObject, VectorRenderObject};
 use crate::render::viewport_culling::path_object_bbox;
 
-pub fn decorative_object_should_be_suppressed_by_overlay(
+pub fn should_suppress(
     object: &VectorRenderObject,
     replacement_region: &ParagraphReplacementRegion,
     suppression_bbox: &BoundingBox,
@@ -171,7 +171,7 @@ fn row_overlap_height(
 
 #[cfg(test)]
 mod tests {
-    use super::decorative_object_should_be_suppressed_by_overlay;
+    use super::should_suppress;
     use crate::edit::active_target::ActiveEditorTarget;
     use crate::edit::replacement_region::paragraph_replacement_region;
     use crate::models::{
@@ -210,13 +210,13 @@ mod tests {
     }
 
     #[test]
-    fn suppresses_thin_horizontal_image_decoration_on_source_row() {
+    fn suppresses_thin_decoration() {
         let target = replacement_target();
         let region = paragraph_replacement_region(&target);
         let suppression_bbox = region.row_path_suppression_bbox_for_page_width(420.0);
         let object = row_image("blue-image-row", 101.0, 8.0);
 
-        assert!(decorative_object_should_be_suppressed_by_overlay(
+        assert!(should_suppress(
             &object,
             &region,
             &suppression_bbox
@@ -225,13 +225,13 @@ mod tests {
     }
 
     #[test]
-    fn keeps_normal_image_near_source_row() {
+    fn keeps_normal_image() {
         let target = replacement_target();
         let region = paragraph_replacement_region(&target);
         let suppression_bbox = region.row_path_suppression_bbox_for_page_width(420.0);
         let object = row_image("normal-image", 96.0, 42.0);
 
-        assert!(decorative_object_should_be_suppressed_by_overlay(
+        assert!(should_suppress(
             &object,
             &region,
             &suppression_bbox

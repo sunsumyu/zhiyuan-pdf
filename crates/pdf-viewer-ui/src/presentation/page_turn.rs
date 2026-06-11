@@ -586,7 +586,7 @@ mod tests {
     }
 
     #[test]
-    fn page_turn_tracks_latest_intent_and_rejects_stale_visible_page() {
+    fn rejects_stale_page() {
         reset_with_document(2, 10);
 
         let decision = request_page_turn(3, "next".to_string(), 1000.0);
@@ -613,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    fn prefetch_decision_prefers_turn_direction_with_preview_runway_and_nearby_vector() {
+    fn prefers_turn_direction() {
         reset_with_document(4, 20);
         let decision = request_page_turn(5, "next".to_string(), 1000.0);
         assert!(decision.accepted);
@@ -639,7 +639,7 @@ mod tests {
     }
 
     #[test]
-    fn asset_admission_rejects_stale_current_and_out_of_window_prefetch() {
+    fn rejects_stale_assets() {
         reset_with_document(4, 10);
         let decision = request_page_turn(5, "next".to_string(), 1000.0);
         assert!(decision.accepted);
@@ -675,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn page_turn_rejects_without_document_or_out_of_range_target() {
+    fn rejects_invalid_turn() {
         reset_page_turn_state();
         reset_viewer_session();
         let no_document = request_page_turn(1, "next".to_string(), 1000.0);
@@ -692,7 +692,7 @@ mod tests {
     }
 
     #[test]
-    fn fast_flip_mode_activates_when_turns_are_rapid() {
+    fn activates_fast_flip() {
         reset_with_document(0, 20);
         // 第一次翻页，时刻 500ms
         let first = request_page_turn(1, "next".to_string(), 500.0);
@@ -713,7 +713,7 @@ mod tests {
     }
 
     #[test]
-    fn fast_flip_pauses_vector_prefetch_and_reduces_reverse_preview() {
+    fn throttles_fast_flip() {
         reset_with_document(0, 30);
         // 快速两连翻进入 fast-flip
         let _ = request_page_turn(1, "next".to_string(), 500.0);

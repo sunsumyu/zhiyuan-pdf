@@ -86,7 +86,7 @@ impl PdfPageIntermediateService {
         };
 
         let display_list = tokio::task::spawn_blocking(move || {
-            crate::infrastructure::pdf::vector_engine::resolve_page_display_list_with_doc(
+            crate::infrastructure::pdf::vector_engine::resolve_display_list(
                 &lopdf_doc, page_index,
             )
         })
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn vector_and_layout_derive_from_seeded_display_list_cache() {
+    async fn uses_seeded_display_list() {
         crate::infrastructure::pdf::log_service::clear_pdf_event_log();
         let state = crate::AppState::new();
         let path = "cached-doc.pdf".to_string();
@@ -381,7 +381,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn annotation_and_search_can_use_display_list_derived_page_model() {
+    async fn shares_derived_page_model() {
         let state = crate::AppState::new();
         let path = "region-doc.pdf".to_string();
         let page_index = 0;

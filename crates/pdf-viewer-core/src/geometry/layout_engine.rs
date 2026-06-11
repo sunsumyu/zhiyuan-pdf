@@ -14,7 +14,7 @@ use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::models::{BoundingBox, GlyphPaintPlan, LayoutAlignment, LayoutParagraph, LayoutRun};
-use crate::utils::debug::truncate_debug_text;
+use crate::common::debug::truncate_debug_text;
 
 /// 表示在特定的容器宽度约束下，经历过物理换行算法生成的一行“视觉行”。
 ///

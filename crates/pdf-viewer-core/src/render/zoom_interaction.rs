@@ -96,7 +96,7 @@ pub fn clamp_zoom(value: f32, min_zoom: f32, max_zoom: f32) -> f32 {
     value.max(min_zoom).min(max_zoom)
 }
 
-pub use crate::utils::sanitize::{sanitize_non_negative, sanitize_positive};
+pub use crate::common::sanitize::{sanitize_non_negative, sanitize_positive};
 
 pub fn clamp_f32(value: f32, min_value: f32, max_value: f32) -> f32 {
     let min_value = if min_value.is_finite() {
@@ -516,7 +516,7 @@ mod tests {
     use super::compute_anchor_viewport_layout_result;
 
     #[test]
-    fn anchor_layout_preserves_cursor_point_when_page_is_centered() {
+    fn preserves_cursor_anchor() {
         let page_width = 595.0;
         let page_height = 842.0;
         let display_width = 595.0;

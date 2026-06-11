@@ -597,7 +597,7 @@ fn line_contextual_run_delta(runs: &[&LayoutRun], run_index: usize) -> Option<f3
     Some(deltas[index.min(deltas.len() - 1)].max(1.0))
 }
 
-fn should_insert_visual_gap_space_with_context(
+fn needs_gap(
     prev: &LayoutRun,
     next: &LayoutRun,
     line_typical_delta: Option<f32>,
@@ -665,7 +665,7 @@ pub fn build_editor_session_text_plan(session: &ParagraphEditContext) -> EditorS
     for (run_index, run) in ordered_runs.iter().enumerate() {
         if let Some(prev_run) = prev {
             let line_typical_delta = line_contextual_run_delta(&ordered_runs, run_index);
-            if should_insert_visual_gap_space_with_context(prev_run, run, line_typical_delta) {
+            if needs_gap(prev_run, run, line_typical_delta) {
                 let gap_left = prev_right.unwrap_or(prev_run.bbox.right);
                 let gap_right = run.bbox.left.max(gap_left);
                 slots.push(EditorGlyphSlot {

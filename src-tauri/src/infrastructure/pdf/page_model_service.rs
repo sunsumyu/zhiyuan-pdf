@@ -74,7 +74,7 @@ impl PdfPageModelService {
         page_index: u16,
         _target_zoom: f32,
     ) -> Result<NativeVectorPageModel, String> {
-        Self::resolve_vector_page_model_from_app_state_with_revision(
+        Self::resolve_model_from_state(
             app_state,
             path,
             page_index,
@@ -84,7 +84,7 @@ impl PdfPageModelService {
         .await
     }
 
-    pub(crate) async fn resolve_vector_page_model_from_app_state_with_revision(
+    pub(crate) async fn resolve_model_from_state(
         app_state: &crate::AppState,
         path: String,
         page_index: u16,
@@ -110,14 +110,14 @@ impl PdfPageModelService {
         Self::resolve_vector_page_model_from_app_state(&state, path, page_index, target_zoom).await
     }
 
-    pub async fn resolve_vector_page_model_with_revision(
+    pub async fn resolve_model(
         state: tauri::State<'_, crate::AppState>,
         path: String,
         page_index: u16,
         target_zoom: f32,
         document_revision: Option<u64>,
     ) -> Result<NativeVectorPageModel, String> {
-        Self::resolve_vector_page_model_from_app_state_with_revision(
+        Self::resolve_model_from_state(
             &state,
             path,
             page_index,

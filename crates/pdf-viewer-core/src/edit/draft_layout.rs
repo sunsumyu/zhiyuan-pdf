@@ -8,7 +8,7 @@ use crate::edit::debug_trace::{
 };
 use crate::edit::document_plan::EditorDocumentPlan;
 use crate::text::style_mapper::should_preserve_editor_underline;
-use crate::utils::debug::truncate_debug_text;
+use crate::common::debug::truncate_debug_text;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -300,13 +300,13 @@ fn build_source_layout(document_plan: &EditorDocumentPlan) -> ParagraphLayout {
 }
 
 fn resolve_draft_template_run(document_plan: &EditorDocumentPlan) -> LayoutRun {
-    resolve_draft_template_run_with_policy(
+    resolve_template(
         document_plan,
         paragraph_preserve_underline(&document_plan.body_session.paragraph),
     )
 }
 
-fn resolve_draft_template_run_with_policy(
+fn resolve_template(
     document_plan: &EditorDocumentPlan,
     preserve_underline: bool,
 ) -> LayoutRun {
@@ -392,14 +392,14 @@ fn is_good_body_style(run: &LayoutRun) -> bool {
         && !looks_like_symbolic_font(&run.style.font_name)
 }
 
-fn select_insert_style_run_with_policy(
+fn select_style(
     document_plan: &EditorDocumentPlan,
     source_runs: &[LayoutRun],
     anchor_index: usize,
     preserve_underline: bool,
 ) -> LayoutRun {
     let Some(anchor_run_index) = find_source_run_index_at_char(source_runs, anchor_index) else {
-        return resolve_draft_template_run_with_policy(document_plan, preserve_underline);
+        return resolve_template(document_plan, preserve_underline);
     };
 
     if let Some(run) = source_runs
@@ -429,7 +429,7 @@ fn select_insert_style_run_with_policy(
         }
     }
 
-    resolve_draft_template_run_with_policy(document_plan, preserve_underline)
+    resolve_template(document_plan, preserve_underline)
 }
 
 fn slice_runs_by_char_range(runs: &[LayoutRun], start: usize, end: usize) -> Vec<LayoutRun> {
@@ -484,7 +484,7 @@ fn slice_runs_by_char_range(runs: &[LayoutRun], start: usize, end: usize) -> Vec
     output
 }
 
-fn build_style_runs_for_draft_text_with_policy(
+fn build_styles(
     document_plan: &EditorDocumentPlan,
     draft_text: &str,
     preserve_underline: bool,
@@ -568,7 +568,7 @@ fn build_style_runs_for_draft_text_with_policy(
             .saturating_sub(1)
             .min(source_len.saturating_sub(1));
         let anchor_runs_index = map_to_runs_index(anchor_source_index);
-        let mut template = select_insert_style_run_with_policy(
+        let mut template = select_style(
             document_plan,
             source_runs,
             anchor_runs_index,
@@ -598,7 +598,7 @@ fn build_style_runs_for_draft_text_with_policy(
 
     if runs.is_empty() {
         let mut fallback =
-            resolve_draft_template_run_with_policy(document_plan, preserve_underline);
+            resolve_template(document_plan, preserve_underline);
         fallback.text = draft_text.to_string();
         runs.push(normalize_style_run(&fallback, preserve_underline));
     }
@@ -676,10 +676,10 @@ fn build_draft_paragraph_with_policy(
 ) -> LayoutParagraph {
     let mut paragraph = document_plan.body_session.paragraph.clone();
     let mut runs =
-        build_style_runs_for_draft_text_with_policy(document_plan, draft_text, preserve_underline);
+        build_styles(document_plan, draft_text, preserve_underline);
     if runs.is_empty() {
         let mut template_run =
-            resolve_draft_template_run_with_policy(document_plan, preserve_underline);
+            resolve_template(document_plan, preserve_underline);
         template_run.id = format!("editor-draft-{}", document_plan.body_session.paragraph.id);
         template_run.text = draft_text.to_string();
         runs.push(template_run);
@@ -1123,7 +1123,7 @@ mod tests {
     }
 
     #[test]
-    fn source_layout_sanitizes_partial_underlines_for_editor_canvas() {
+    fn sanitizes_underlines() {
         let runs = vec![
             test_run("r1", "专业：", 10.0, 40.0, true),
             test_run("r2", "计算机科学与技术", 40.0, 130.0, false),
@@ -1159,7 +1159,7 @@ mod tests {
     }
 
     #[test]
-    fn draft_layout_renders_compact_pdf_text_when_runs_have_no_spaces() {
+    fn renders_compact_runs() {
         // 架构原则（单一渲染链）：编辑器 overlay 渲染的是 *PDF 真实 compact 形态*，
         // 不是 `source_body_text` 的 visual 形态（visual 形态包含 normalize 注入的
         // 合成空格，那些字符并不存在于 PDF content-stream 中）。如此渲染才能让
@@ -1207,7 +1207,7 @@ mod tests {
     }
 
     #[test]
-    fn changed_active_draft_layout_preserves_source_geometry_for_unchanged_parts() {
+    fn preserves_active_geometry() {
         // 架构原则（编辑前后视觉完全一致）：
         // 编辑后未修改的前后缀必须继续使用 PDF 原始 char_origins，
         // 仅"新插入"中间片段（无 PDF 度量可用）回退 measureText。
@@ -1228,7 +1228,7 @@ mod tests {
     }
 
     #[test]
-    fn changed_persisted_overlay_layout_preserves_source_geometry_for_unchanged_parts() {
+    fn preserves_overlay_geometry() {
         // 同上：persisted/commit overlay 与 active editing 共享同一布局逻辑，
         // 必须保留未修改前后缀的 PDF 度量，避免提交后字体/字距漂移。
         let document_plan = changed_text_document_plan();
@@ -1247,7 +1247,7 @@ mod tests {
     }
 
     #[test]
-    fn edited_draft_preserves_origins_when_runs_lack_synthetic_spaces() {
+    fn preserves_origins() {
         // 真实 PDF 场景回归：raw runs 文本 = compact "智能合约:AnchorFramework,..."（无空格），
         // session_source_text 注入合成空格 → "智能合约: Anchor Framework, ..."。
         // 旧实现因 body_runs_match_source_text==false 直接走 reconstructed-fallback，
@@ -1299,7 +1299,7 @@ mod tests {
     }
 
     #[test]
-    fn active_draft_layout_keeps_source_geometry_for_unchanged_split_words() {
+    fn keeps_split_word_geometry() {
         let runs = vec![
             test_run("r1", "A", 0.0, 5.0, false),
             test_run("r2", "nchor", 8.0, 33.0, false),
@@ -1342,7 +1342,7 @@ mod tests {
     }
 
     #[test]
-    fn runs_to_source_index_map_accounts_for_synthetic_spaces() {
+    fn maps_synthetic_spaces() {
         // source_text has synthesized spaces; runs_text is compact PDF text.
         let source = "编程语言: Rust"; // 10 chars (space after colon)
         let runs = "编程语言:Rust"; // 9 chars (no space)
@@ -1357,7 +1357,7 @@ mod tests {
     /// 此前实现会让 source_cursor 越过 source_len 后无界递增，
     /// 导致 inverse 表里出现 > source_len 的非法值（caret 跳到末尾之外）。
     #[test]
-    fn runs_to_source_index_map_clamps_when_runs_has_chars_missing_in_source() {
+    fn clamps_missing_source_chars() {
         // 模拟：draft 已被删除最后两个字符 ('s', 't')，但 runs 仍是完整 "Rust"。
         let source = "Ru"; // 2 chars
         let runs = "Rust"; // 4 chars

@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn page_out_of_range_renders_indices() {
+    fn renders_page_indices() {
         let err = PdfError::PageOutOfRange { index: 5, total: 3 };
         let msg: String = err.into();
         assert!(msg.contains("5"));

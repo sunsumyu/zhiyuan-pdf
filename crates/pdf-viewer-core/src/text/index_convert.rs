@@ -19,7 +19,7 @@ mod tests {
     use super::{char_index_to_utf16_offset, utf16_offset_to_char_index};
 
     #[test]
-    fn converts_between_dom_utf16_offsets_and_rust_char_indexes() {
+    fn converts_utf16_indexes() {
         let text = "A💡中";
 
         assert_eq!(char_index_to_utf16_offset(text, 0), 0);

@@ -18,7 +18,7 @@ use crate::editor::workflow::{
 };
 use crate::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
-use crate::utils::sanitize::sanitize_positive;
+use crate::common::sanitize::sanitize_positive;
 use crate::zoom::zoom_store;
 use pdf_viewer_core::models::BoundingBox;
 use pdf_viewer_core::text::list_semantics::ListMarkerKind;

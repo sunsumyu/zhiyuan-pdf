@@ -74,7 +74,7 @@ pub fn trace_step(step: &str, fields: &[(&str, &dyn std::fmt::Display)]) {
 #[macro_export]
 macro_rules! chain_trace {
     ($step:expr $(, $key:literal => $val:expr )* $(,)?) => {
-        $crate::utils::chain_trace::trace_step(
+        $crate::common::chain_trace::trace_step(
             $step,
             &[ $(($key, &$val as &dyn std::fmt::Display)),* ],
         )

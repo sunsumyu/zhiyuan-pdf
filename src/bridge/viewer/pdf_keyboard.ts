@@ -45,19 +45,9 @@ export function createPdfKeyboardShortcutHandler(
             const isPrev = navKey === 'ArrowLeft' || navKey === 'ArrowUp' || navKey === 'PageUp';
             const isNext = navKey === 'ArrowRight' || navKey === 'ArrowDown' || navKey === 'PageDown';
             if (isPrev || isNext) {
-                const scope = isPdfViewerKeyboardScope(deps.getScrollContainer);
-                const editing = deps.isTextEditEnabled();
                 const editable = isPlainEditableTarget(event.target);
-                console.log('[PDF-KEY]', {
-                    key: navKey,
-                    scope,
-                    editing,
-                    editable,
-                    activeTag: (document.activeElement as HTMLElement | null)?.tagName,
-                    activeId: (document.activeElement as HTMLElement | null)?.id,
-                });
-                if (editing) return;
                 if (editable) return;
+                const scope = isPdfViewerKeyboardScope(deps.getScrollContainer);
                 if (!scope) return;
                 event.preventDefault();
                 event.stopPropagation();

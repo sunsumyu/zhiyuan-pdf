@@ -518,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    fn embedded_font_with_cmap_marks_embedded_attempt_viable() {
+    fn accepts_embedded_cmap() {
         let request = build_match_request_with_descriptor(
             "ABCDEE+SimSun",
             None,

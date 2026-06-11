@@ -127,7 +127,7 @@ mod tests {
         target
     }
 
-    fn target_with_baseline_down_body_run() -> ActiveEditorTarget {
+    fn find_target() -> ActiveEditorTarget {
         let mut target = target_for_body(BoundingBox {
             left: 70.0,
             top: 112.0,
@@ -181,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn path_suppression_is_tighter_than_source_replacement() {
+    fn tightens_path_suppression() {
         let target = target_for_body(BoundingBox {
             left: 70.0,
             top: 100.0,
@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn viewport_cull_region_covers_whole_row_for_tiled_path_suppression() {
+    fn covers_tiled_row() {
         let target = target_for_body(BoundingBox {
             left: 90.0,
             top: 100.0,
@@ -216,8 +216,8 @@ mod tests {
     }
 
     #[test]
-    fn replacement_region_uses_baseline_font_source_geometry() {
-        let target = target_with_baseline_down_body_run();
+    fn uses_baseline_geometry() {
+        let target = find_target();
 
         let region = paragraph_replacement_region(&target);
 

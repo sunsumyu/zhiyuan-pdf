@@ -5,7 +5,7 @@ use crate::infrastructure::pdf::models::{
 };
 use std::time::Instant;
 
-pub fn resolve_page_display_list_with_doc(
+pub fn resolve_display_list(
     doc: &lopdf::Document,
     page_index: u16,
 ) -> Result<PageDisplayList, String> {
@@ -32,11 +32,11 @@ pub fn resolve_page_display_list_with_doc(
 }
 
 /// 瑙ｆ瀽 PDF 鍗曢〉鐨勭函鍚戦噺鏁版嵁 (V206.55 - Optimized Memory Cache 鐗
-pub fn resolve_vector_page_model_with_doc(
+pub fn resolve_model(
     doc: &lopdf::Document,
     page_index: u16,
 ) -> Result<NativeVectorPageModel, String> {
-    let display_list = match resolve_page_display_list_with_doc(doc, page_index) {
+    let display_list = match resolve_display_list(doc, page_index) {
         Ok(display_list) => display_list,
         Err(e) => {
             crate::log_step!("[PDF-LOPDF-ERR] Failed: {}", e);
@@ -424,7 +424,7 @@ pub fn resolve_layout_inference(
     doc: &lopdf::Document,
     page_index: u16,
 ) -> Result<LayoutInferenceResult, String> {
-    let display_list = resolve_page_display_list_with_doc(doc, page_index)
+    let display_list = resolve_display_list(doc, page_index)
         .map_err(|e| format!("Extraction failed: {}", e))?;
     resolve_layout_inference_from_display_list(&display_list)
 }

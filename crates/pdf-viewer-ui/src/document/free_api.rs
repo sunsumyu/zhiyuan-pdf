@@ -12,36 +12,36 @@ use crate::document::host_pipeline::{
 };
 use crate::viewer::viewer_controller;
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "undoDocumentPipeline")]
 pub fn undo_document_pipeline() -> JsValue {
     to_value(&host_pipeline::undo_document_pipeline()).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "redoDocumentPipeline")]
 pub fn redo_document_pipeline() -> JsValue {
     to_value(&host_pipeline::redo_document_pipeline()).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "openDocumentPipeline")]
 pub async fn open_document_pipeline(request_js: JsValue) -> Result<JsValue, JsValue> {
     let request: OpenDocumentPipelineRequest = from_value(request_js).unwrap_or_default();
     let result = host_pipeline::open_document_pipeline(request).await?;
     Ok(to_value(&result).unwrap_or(JsValue::NULL))
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "pickDocumentPipeline")]
 pub async fn pick_document_pipeline(request_js: JsValue) -> Result<JsValue, JsValue> {
     let request: PickDocumentPipelineRequest = from_value(request_js).unwrap_or_default();
     host_pipeline::pick_document_pipeline(request).await
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "rotateDocumentPipeline")]
 pub async fn rotate_document_pipeline(delta: i32) -> Result<JsValue, JsValue> {
     let result = host_pipeline::rotate_document_pipeline(delta).await?;
     Ok(to_value(&result).unwrap_or(JsValue::NULL))
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "closeDocumentPipeline")]
 pub fn close_document_pipeline(default_page_width: f32, default_page_height: f32) -> JsValue {
     to_value(&host_pipeline::close_document_pipeline(
         default_page_width,
@@ -50,18 +50,18 @@ pub fn close_document_pipeline(default_page_width: f32, default_page_height: f32
     .unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "readViewerSession")]
 pub fn read_viewer_session() -> JsValue {
     to_value(&viewer_controller::read_session()).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "getViewerSession")]
 #[deprecated(since = "0.2.0", note = "Use read_viewer_session instead")]
 pub fn get_viewer_session() -> JsValue {
     read_viewer_session()
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "setViewerDocument")]
 pub fn set_viewer_document(path: Option<String>, page_count: u16, initial_zoom: f32) {
     viewer_controller::set_document(path, page_count, initial_zoom);
 }

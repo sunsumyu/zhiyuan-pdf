@@ -972,7 +972,7 @@ pub fn extract_vector_page_model(
     doc: &Document,
     page_index: u16,
 ) -> Result<crate::infrastructure::pdf::models::NativeVectorPageModel, String> {
-    crate::infrastructure::pdf::vector_engine::resolve_vector_page_model_with_doc(doc, page_index)
+    crate::infrastructure::pdf::vector_engine::resolve_model(doc, page_index)
 }
 
 pub fn extract_layout_inference(

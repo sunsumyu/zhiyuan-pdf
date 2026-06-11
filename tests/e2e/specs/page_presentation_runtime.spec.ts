@@ -25,6 +25,8 @@ type DiagnosticWindow = Window & {
     __targetInvokeV3?: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
     pdfNextPage?: () => Promise<void> | void;
     pdfPrevPage?: () => Promise<void> | void;
+    toggleAddTextMode?: () => Promise<void> | void;
+    __pageShortcutTestAddTextEnabled?: boolean;
 };
 
 type PageSearchResult = {
@@ -324,6 +326,75 @@ describe('Page presentation runtime', () => {
             throw new Error(
                 `real PDF annotation targets did not include page text: ${JSON.stringify(targetResult)}`,
             );
+        }
+    });
+
+    it('keeps page navigation shortcuts active when add-text mode is enabled but no text is focused', async function () {
+        await invokeTauriCommand<void>('set_page_asset_test_delay_ms', { delayMs: 0 });
+        await pagePresentationHelpers.loadFixturePdf(pagePresentationFixturePath);
+
+        const initial = await readViewerState();
+        if (initial.totalPages < 2) {
+            this.skip();
+            return;
+        }
+
+        try {
+            await browser.executeAsync((done) => {
+                const w = window as DiagnosticWindow;
+                Promise.resolve(w.toggleAddTextMode?.())
+                    .then(() => {
+                        w.__pageShortcutTestAddTextEnabled = true;
+                        done({ ok: true });
+                    })
+                    .catch((error) =>
+                        done({
+                            ok: false,
+                            error: error && error.message ? error.message : String(error),
+                        }),
+                    );
+            });
+            await browser.execute(() => {
+                (document.activeElement as HTMLElement | null)?.blur?.();
+                window.dispatchEvent(
+                    new KeyboardEvent('keydown', {
+                        key: 'PageDown',
+                        bubbles: true,
+                        cancelable: true,
+                    }),
+                );
+            });
+
+            await browser.waitUntil(
+                async () => {
+                    const state = await readViewerState();
+                    return state.currentPage === 1;
+                },
+                {
+                    timeout: 10_000,
+                    interval: 250,
+                    timeoutMsg: 'PageDown shortcut did not navigate while add-text mode was enabled',
+                },
+            );
+        } finally {
+            await browser.executeAsync((done) => {
+                const w = window as DiagnosticWindow;
+                if (!w.__pageShortcutTestAddTextEnabled) {
+                    done({ ok: true });
+                    return;
+                }
+                Promise.resolve(w.toggleAddTextMode?.())
+                    .then(() => {
+                        w.__pageShortcutTestAddTextEnabled = false;
+                        done({ ok: true });
+                    })
+                    .catch((error) =>
+                        done({
+                            ok: false,
+                            error: error && error.message ? error.message : String(error),
+                        }),
+                    );
+            });
         }
     });
 });

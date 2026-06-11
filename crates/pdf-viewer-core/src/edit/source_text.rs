@@ -217,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn compact_pdf_text_does_not_split_technical_names_without_geometry() {
+    fn keeps_technical_names() {
         let text = normalize_compact_pdf_text("SpringBoot,MyBatisPlus");
         assert_eq!(text, "SpringBoot, MyBatisPlus");
     }

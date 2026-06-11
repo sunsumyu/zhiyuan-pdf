@@ -315,7 +315,7 @@ mod persisted_overlay_tests {
     /// 必须返回一个 PersistedPageCanvas overlay，draft_text 为编辑后的新文本。
     /// 这是验证"退出编辑后修改不丢失"的核心测试。
     #[wasm_bindgen_test]
-    fn persisted_patch_yields_overlay_with_new_text_after_commit() {
+    fn patch_yields_overlay() {
         clear_state();
 
         let paragraph_id = "p-test-1";
@@ -387,7 +387,7 @@ mod persisted_overlay_tests {
     /// patch.snapshot 不含 replacementTarget），验证 overlay 仍被正确发出。
     /// 这是验证"退出编辑后修改不丢失"的真实场景测试。
     #[wasm_bindgen_test]
-    fn production_commit_flow_preserves_edit_after_exit() {
+    fn commit_preserves_edit() {
         clear_state();
 
         let paragraph_id = "p-prod-1";
@@ -431,7 +431,7 @@ mod persisted_overlay_tests {
 
     /// 验证 page_index 不匹配时 overlay 被跳过（保护：不让其他页的 patch 串到当前页）
     #[wasm_bindgen_test]
-    fn persisted_patch_skipped_when_page_index_mismatches() {
+    fn skips_mismatched_page() {
         clear_state();
 
         let paragraph_id = "p-test-2";

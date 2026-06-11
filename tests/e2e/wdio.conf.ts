@@ -24,8 +24,8 @@ import type { Capabilities as Caps, Options } from '@wdio/types';
 const repoRoot = path.resolve(__dirname, '..', '..');
 const releaseBinary = path.join(repoRoot, 'target', 'release', 'pdf-viewer-standalone.exe');
 const debugBinary = path.join(repoRoot, 'target', 'debug', 'pdf-viewer-standalone.exe');
-// 优先 release，缺则用 debug。
-const appBinary = existsSync(releaseBinary) ? releaseBinary : debugBinary;
+// `npm run e2e:build` 生成 debug 产物，默认用它，避免本地旧 release 干扰回归测试。
+const appBinary = existsSync(debugBinary) ? debugBinary : releaseBinary;
 const msedgedriverPath = path.join(repoRoot, 'tools', 'msedgedriver', 'msedgedriver.exe');
 // 4444/4445 and several nearby ranges can fall inside Windows excluded TCP ranges on some machines.
 const tauriDriverPort = 5210;

@@ -219,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn matcher_resolves_native_text_with_descriptor_cache() {
+    fn uses_descriptor_cache() {
         let candidate = SystemFontCandidate {
             family_name: "Microsoft YaHei".to_string(),
             full_name: Some("Microsoft YaHei".to_string()),

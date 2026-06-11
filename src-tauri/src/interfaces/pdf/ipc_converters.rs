@@ -69,7 +69,7 @@ pub(crate) async fn execute_region_patches(
         ));
     }
 
-    execute_pdf_commands_with_app_state(app_state, path, page_index, commands).await
+    execute_commands(app_state, path, page_index, commands).await
 }
 
 pub(crate) async fn apply_highlight_annotation(
@@ -87,7 +87,7 @@ pub(crate) async fn apply_highlight_annotation(
         },
     )];
 
-    execute_pdf_commands_with_app_state(app_state, path, page_index, commands).await
+    execute_commands(app_state, path, page_index, commands).await
 }
 
 pub(crate) async fn apply_text_comment(
@@ -107,7 +107,7 @@ pub(crate) async fn apply_text_comment(
         },
     )];
 
-    execute_pdf_commands_with_app_state(app_state, path, page_index, commands).await
+    execute_commands(app_state, path, page_index, commands).await
 }
 
 pub(crate) async fn delete_annotation_internal(
@@ -123,7 +123,7 @@ pub(crate) async fn delete_annotation_internal(
         },
     )];
 
-    execute_pdf_commands_with_app_state(app_state, path, page_index, commands).await
+    execute_commands(app_state, path, page_index, commands).await
 }
 
 pub(crate) async fn update_text_comment(
@@ -141,7 +141,7 @@ pub(crate) async fn update_text_comment(
         },
     )];
 
-    execute_pdf_commands_with_app_state(app_state, path, page_index, commands).await
+    execute_commands(app_state, path, page_index, commands).await
 }
 
 pub(crate) fn truncate_for_log(value: &str, limit: usize) -> String {
@@ -161,7 +161,7 @@ pub(crate) fn truncate_for_log(value: &str, limit: usize) -> String {
 }
 
 /// Apply commands to the in-memory document, persist to disk, refresh caches.
-pub(crate) async fn execute_pdf_commands_with_app_state(
+pub(crate) async fn execute_commands(
     app_state: &crate::AppState,
     path: String,
     page_index: u16,

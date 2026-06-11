@@ -15,7 +15,7 @@ use crate::render::effective_page_plan::{
 };
 use crate::render::prepared_scene::PreparedPageScene;
 use crate::render::progressive::ProgressiveVectorRenderTask;
-use crate::utils::bbox::bbox_intersects;
+use crate::common::bbox::bbox_intersects;
 use crate::viewport_culling::{
     glyph_run_intersects_viewport, path_object_bbox, resolve_page_viewport_bbox,
 };

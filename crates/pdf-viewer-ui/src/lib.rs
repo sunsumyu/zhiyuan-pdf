@@ -18,7 +18,7 @@ pub mod review;
 pub mod runtime;
 pub mod style_mapper;
 pub mod ui_state_store;
-pub mod utils;
+pub mod common;
 pub mod viewer;
 pub mod viewport_culling;
 pub mod viewport_refresh;

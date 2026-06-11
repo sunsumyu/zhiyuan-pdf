@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::utils::sanitize::{sanitize_non_negative, sanitize_positive};
+use crate::common::sanitize::{sanitize_non_negative, sanitize_positive};
 
 pub const PREVIEW_BASE_REFRESH_RATIO: f32 = 0.035;
 

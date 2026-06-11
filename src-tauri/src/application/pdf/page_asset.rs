@@ -31,7 +31,7 @@ mod tests {
     use std::time::Duration;
 
     #[tokio::test]
-    async fn same_asset_key_waits_for_existing_inflight_work() {
+    async fn waits_for_inflight_key() {
         crate::infrastructure::pdf::log_service::clear_pdf_event_log();
         let state = Arc::new(crate::AppState::new());
         let first = PageAssetAdmissionService::acquire_inflight_lock(
@@ -95,7 +95,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn different_document_revision_uses_distinct_inflight_lock() {
+    async fn separates_revision_locks() {
         let state = crate::AppState::new();
         let _first = PageAssetAdmissionService::acquire_inflight_lock(
             &state,
@@ -127,7 +127,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invalidating_page_cache_removes_document_asset_locks() {
+    async fn clears_asset_locks() {
         let state = crate::AppState::new();
         {
             let mut cache = state.cache.pdf_page_intermediate_cache.lock().unwrap();
@@ -196,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_prefetch_uses_wider_runway_than_vector_assets() {
+    fn widens_preview_runway() {
         let state = crate::AppState::new();
         PageAssetAdmissionService::mark_current_page(
             &state,

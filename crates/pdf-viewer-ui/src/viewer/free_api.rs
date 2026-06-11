@@ -9,7 +9,7 @@ use wasm_bindgen::prelude::*;
 use crate::page::context;
 use crate::viewer::viewer_controller;
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "initPageContext")]
 pub fn init_page_context(
     vector_model_json: String,
     glyph_plan_json: String,
@@ -66,7 +66,7 @@ pub fn init_page_context(
     );
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "setCurrentPage")]
 pub fn set_current_page(page_index: u16) {
     viewer_controller::set_page(page_index);
 }
@@ -74,7 +74,7 @@ pub fn set_current_page(page_index: u16) {
 /// 把 in-memory editor debug trace 全部 console.log 出来。
 /// 在 DevTools console 里调用 `await window.__TAURI_INVOKE__... ` 太麻烦，
 /// 这个函数是 wasm 直接暴露的，TS 侧 wrapper 直接调即可。
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "dumpEditorDebugTrace")]
 pub fn dump_editor_debug_trace(filter_substr: Option<String>) -> u32 {
     let events = crate::editor::debug_trace::resolve_editor_debug_trace();
     let needle = filter_substr.unwrap_or_default();

@@ -7,7 +7,7 @@ use crate::editor::replacement_region::paragraph_replacement_region;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::text_geometry::measure_editor_layout_text_width as measure_editor_layout_text_width_shared;
 use crate::render::canvas::{draw_text_run_core, CanvasRenderer, CoordinateMode};
-use crate::utils::debug::truncate_debug_text;
+use crate::common::debug::truncate_debug_text;
 
 pub(crate) fn path_bbox_summary(
     path: &pdf_viewer_core::models::VectorPathObject,

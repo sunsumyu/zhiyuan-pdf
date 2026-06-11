@@ -13,7 +13,7 @@ use crate::edit::source_identity::{
 };
 use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{BoundingBox, GlyphPaintPlan, VectorPageModel, VectorRenderObject};
-use crate::render::path_suppression::decorative_object_should_be_suppressed_by_overlay;
+use crate::render::path_suppression::should_suppress;
 use crate::render::prepared_scene::PreparedPageScene;
 use crate::render::source_suppression::{
     glyph_paragraph_matches_overlay_source_text, glyph_run_spatially_matches_replacement_region,
@@ -272,11 +272,11 @@ pub fn build_effective_vector_render_plan(
                 dbg_field("objectIndexCount", ov.object_indices.len()),
                 dbg_field(
                     "sourceText",
-                    crate::utils::debug::truncate_debug_text(&ov.overlay.source_text, 40),
+                    crate::common::debug::truncate_debug_text(&ov.overlay.source_text, 40),
                 ),
                 dbg_field(
                     "draftText",
-                    crate::utils::debug::truncate_debug_text(&ov.overlay.draft_text, 40),
+                    crate::common::debug::truncate_debug_text(&ov.overlay.draft_text, 40),
                 ),
             ],
         );
@@ -287,7 +287,7 @@ pub fn build_effective_vector_render_plan(
             let first_run_text = text
                 .runs
                 .first()
-                .map(|r| crate::utils::debug::truncate_debug_text(&r.text, 30))
+                .map(|r| crate::common::debug::truncate_debug_text(&r.text, 30))
                 .unwrap_or_default();
             dbg_event(
                 "effective-plan",
@@ -422,7 +422,7 @@ pub fn build_effective_vector_render_plan(
                         );
                     }
                 }
-                if let Some(path_summary) = decorative_object_should_be_suppressed_by_overlay(
+                if let Some(path_summary) = should_suppress(
                     &object,
                     &overlay.replacement_region,
                     &overlay.path_suppression_bbox,
@@ -913,7 +913,7 @@ mod tests {
     }
 
     #[test]
-    fn active_editor_suppresses_zero_height_stroked_row_path() {
+    fn suppresses_zero_height_path() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -948,7 +948,7 @@ mod tests {
     }
 
     #[test]
-    fn active_editor_keeps_section_divider_path_outside_text_row() {
+    fn keeps_section_divider() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -983,7 +983,7 @@ mod tests {
     }
 
     #[test]
-    fn active_editor_keeps_nearby_divider_below_text_row() {
+    fn keeps_nearby_divider() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -1015,7 +1015,7 @@ mod tests {
     }
 
     #[test]
-    fn active_editor_suppresses_row_path_touching_text_descenders() {
+    fn suppresses_descender_path() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -1047,7 +1047,7 @@ mod tests {
     }
 
     #[test]
-    fn active_editor_suppresses_text_object_when_runs_have_no_object_id() {
+    fn suppresses_text_without_ids() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -1080,7 +1080,7 @@ mod tests {
     }
 
     #[test]
-    fn active_editor_spatially_suppresses_text_run_when_source_ids_are_missing() {
+    fn spatially_suppresses_text() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -1112,7 +1112,7 @@ mod tests {
     }
 
     #[test]
-    fn clean_active_editor_keeps_spatially_matching_text_visible() {
+    fn keeps_matching_text() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -1148,7 +1148,7 @@ mod tests {
     }
 
     #[test]
-    fn clean_active_editor_keeps_source_text_object_visible() {
+    fn keeps_source_text() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -1179,7 +1179,7 @@ mod tests {
     }
 
     #[test]
-    fn clean_active_editor_suppresses_row_path_without_hiding_text() {
+    fn suppresses_path_only() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -1228,7 +1228,7 @@ mod tests {
     }
 
     #[test]
-    fn active_editor_spatially_suppresses_glyph_run_when_source_ids_are_missing() {
+    fn spatially_suppresses_glyphs() {
         let plan = glyph_plan_without_run_ids();
         let overlay = active_overlay_for_body(BoundingBox {
             left: 90.0,
@@ -1262,7 +1262,7 @@ mod tests {
     }
 
     #[test]
-    fn clean_active_editor_keeps_spatially_matching_glyph_run_visible() {
+    fn keeps_matching_glyphs() {
         let plan = glyph_plan_without_run_ids();
         let mut overlay = active_overlay_for_body(BoundingBox {
             left: 90.0,
@@ -1294,7 +1294,7 @@ mod tests {
     }
 
     #[test]
-    fn persisted_overlay_spatially_suppresses_glyph_run_when_source_ids_are_missing() {
+    fn overlay_suppresses_glyphs() {
         let plan = glyph_plan_without_run_ids();
         let mut overlay = active_overlay_for_body(BoundingBox {
             left: 90.0,
@@ -1333,7 +1333,7 @@ mod tests {
     }
 
     #[test]
-    fn persisted_overlay_renders_after_later_page_paths() {
+    fn overlay_renders_last() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -1360,7 +1360,7 @@ mod tests {
     }
 
     #[test]
-    fn persisted_overlay_suppresses_row_path_after_commit() {
+    fn overlay_suppresses_path() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -1390,7 +1390,7 @@ mod tests {
     }
 
     #[test]
-    fn replacement_region_keeps_right_tile_row_path_suppressed() {
+    fn keeps_right_tile_suppressed() {
         let model = VectorPageModel {
             width: 595.0,
             height: 842.0,
@@ -1428,7 +1428,7 @@ mod tests {
     /// 关键回归测试：当 PDF 的 list-item 把 marker (●) 和 body 放在同一个文本对象里时，
     /// 编辑后 marker run 必须被保留（不能被 spatial suppress 干掉）。
     #[test]
-    fn list_item_marker_run_is_not_suppressed_when_body_is_replaced() {
+    fn keeps_list_marker() {
         // 模拟真实 PDF：单个文本对象，runs[0] = "●", runs[1..] = body 字符
         let body_left = 90.0;
         let body_right = 330.0;
@@ -1546,7 +1546,7 @@ mod tests {
     /// z_index 和数组位置不同，suppression 必须仍然生效。
     /// 这是 z_index vs array-position mismatch bug 的精确回归保护。
     #[test]
-    fn suppression_works_when_z_index_differs_from_array_position() {
+    fn handles_z_index_order() {
         // objects[0] = Path (z_index=0)
         // objects[1] = Text (z_index=5)  ← array pos 1, z_index 5
         let model = VectorPageModel {
