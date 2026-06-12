@@ -1,5 +1,6 @@
 import { ensureWasmInitialized, getWasmApi } from '../shared/wasm_loader';
 import { invalidateVectorPageCache, resolveVectorPageBundle } from './vector_page_bundle';
+import { updateTextLayer } from './text_layer';
 import {
     applyViewportCanvasFrame,
     clearVectorCanvasHost,
@@ -686,6 +687,8 @@ export async function renderVectorPageWithPlan(
         modelHeight: model.height,
         plan,
     });
+    updateTextLayer(path, pageIndex, model, plan.displayZoom);
+
     return {
         width: model.width,
         height: model.height,

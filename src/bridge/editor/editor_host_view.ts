@@ -22,7 +22,6 @@ const SELECTION_SOURCE_IDS = [
     VECTOR_INTERACTION_LAYER_ID,
     VECTOR_INTERACTION_ROOT_ID,
     LEGACY_INTERACTION_ROOT_ID,
-    'pdf-text-layer',
     TARGET_LAYER_ID,
 ] as const;
 const EDITOR_NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
@@ -192,7 +191,7 @@ export function ensureEditorHostView(deps: EditorHostViewDeps): EditorHostNodes 
         `#${LEGACY_INTERACTION_ROOT_ID} *`,
         `#${VECTOR_INTERACTION_ROOT_ID} *`,
         '.pdf-interaction-target-layer *',
-        ...HOST_OVERLAY_IDS.map((id) => `#${id} *`),
+        ...HOST_OVERLAY_IDS.filter((id) => id !== 'pdf-text-layer').map((id) => `#${id} *`),
     ];
     const hardSuppressionSelectors = SELECTION_SOURCE_IDS.flatMap((id) => [`#${id}`, `#${id} *`]);
     const hostSelectionCss = `
@@ -216,6 +215,21 @@ export function ensureEditorHostView(deps: EditorHostViewDeps): EditorHostNodes 
             caret-color: transparent !important;
             text-decoration: none !important;
             text-shadow: none !important;
+            -webkit-text-fill-color: transparent !important;
+        }
+        #pdf-text-layer,
+        #pdf-text-layer * {
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            color: transparent !important;
+            -webkit-text-fill-color: transparent !important;
+            background: transparent !important;
+            background-color: transparent !important;
+        }
+        #pdf-text-layer *::selection {
+            background: rgba(79, 70, 229, 0.25) !important;
+            background-color: rgba(79, 70, 229, 0.25) !important;
+            color: transparent !important;
             -webkit-text-fill-color: transparent !important;
         }
     `;
@@ -294,10 +308,12 @@ export function hideEditorShell(nodes: EditorHostNodes): void {
 export function hideInteractionTargets(nodes: EditorHostNodes): void {
     nodes.targetLayer.innerHTML = '';
     nodes.targetLayer.style.display = 'none';
+    nodes.root.style.pointerEvents = 'none';
 }
 
 function showInteractionTargets(nodes: EditorHostNodes): void {
     nodes.targetLayer.style.display = 'block';
+    nodes.root.style.pointerEvents = 'auto';
 }
 
 export function snapshotHostOverlays(nodes: EditorHostNodes): Array<Record<string, unknown>> {

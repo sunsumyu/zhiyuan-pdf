@@ -22,6 +22,8 @@ pub async fn read_page_asset_bundle(
     target_zoom: Option<f32>,
     request_role: Option<String>,
     document_revision: Option<u64>,
+    image_only: Option<bool>,
+    text_only: Option<bool>,
 ) -> Result<PageAssetBundle, String> {
     let role = PageAssetRole::from_request(request_role);
     let kind = PageAssetKind::PageBundle;
@@ -53,6 +55,8 @@ pub async fn read_page_asset_bundle(
         page_index,
         target_zoom.unwrap_or(1.0),
         document_revision,
+        image_only,
+        text_only,
     )
     .await?;
     let model = bundle.model;
@@ -77,6 +81,8 @@ pub async fn read_vector(
     target_zoom: Option<f32>,
     request_role: Option<String>,
     document_revision: Option<u64>,
+    image_only: Option<bool>,
+    text_only: Option<bool>,
 ) -> Result<NativeVectorPageModel, String> {
     let role = PageAssetRole::from_request(request_role);
     let kind = PageAssetKind::VectorModel;
@@ -93,7 +99,7 @@ pub async fn read_vector(
     PageAssetAdmissionService::admit_after_wait(&state, &path, page_index, role, kind)?;
     PageAssetAdmissionService::apply_test_delay().await;
 
-    let model = PdfPageIntermediateService::resolve_vector_page_model(
+    let mut model = PdfPageIntermediateService::resolve_vector_page_model(
         state.clone(),
         path.clone(),
         page_index,
@@ -101,6 +107,13 @@ pub async fn read_vector(
         document_revision,
     )
     .await?;
+
+    if image_only.unwrap_or(false) {
+        model.objects.retain(|obj| !matches!(obj, crate::infrastructure::pdf::models::RenderObject::Text(_)));
+    }
+    if text_only.unwrap_or(false) {
+        model.objects.retain(|obj| matches!(obj, crate::infrastructure::pdf::models::RenderObject::Text(_)));
+    }
 
     PageAssetAdmissionService::admit_after_work(&state, &path, page_index, role, kind)?;
     Ok(model)

@@ -250,8 +250,10 @@ impl PdfPageIntermediateService {
         page_index: u16,
         target_zoom: f32,
         document_revision: Option<u64>,
+        image_only: Option<bool>,
+        text_only: Option<bool>,
     ) -> Result<PageIntermediateBundle, String> {
-        let model = Self::resolve_vector_page_model(
+        let mut model = Self::resolve_vector_page_model(
             state.clone(),
             path.clone(),
             page_index,
@@ -259,8 +261,24 @@ impl PdfPageIntermediateService {
             document_revision,
         )
         .await?;
-        let paint_plan =
-            Self::resolve_glyph_paint_plan(state, path, page_index, document_revision).await?;
+
+        if image_only.unwrap_or(false) {
+            model.objects.retain(|obj| !matches!(obj, crate::infrastructure::pdf::models::RenderObject::Text(_)));
+        }
+        if text_only.unwrap_or(false) {
+            model.objects.retain(|obj| matches!(obj, crate::infrastructure::pdf::models::RenderObject::Text(_)));
+        }
+
+        let paint_plan = if image_only.unwrap_or(false) {
+            GlyphPaintPlan {
+                width: model.width,
+                height: model.height,
+                page_index,
+                ..Default::default()
+            }
+        } else {
+            Self::resolve_glyph_paint_plan(state, path, page_index, document_revision).await?
+        };
 
         Ok(PageIntermediateBundle { model, paint_plan })
     }

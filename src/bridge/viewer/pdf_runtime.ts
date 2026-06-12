@@ -1,6 +1,7 @@
 import { ensureWasmInitialized, getWasmApi, targetInvokeV3 } from '../shared/wasm_loader';
 import { clearVectorHost, invalidateVectorRenderCache } from '../render/vector_host';
-import { configureVectorPageBundleRuntime, prefetchAdjacentPages } from '../render/vector_page_bundle';
+import { configureVectorPageBundleRuntime, prefetchAdjacentPages, findCachedBundle } from '../render/vector_page_bundle';
+import { updateTextLayer } from '../render/text_layer';
 import { clearRasterImageCache, warmRasterImage } from '../render/raster_image_cache';
 import { createZoomController } from '../zoom/zoom_controller';
 import { createViewerSessionAdapter } from './viewer_session';
@@ -589,6 +590,20 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         commentController?.clear();
         reviewController?.clear();
         findController.clear();
+    }
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('pdf-text-layer-ready', ((e: CustomEvent) => {
+            const { path, pageIndex } = e.detail;
+            const session = viewerSession.read();
+            if (path === session.path && pageIndex === session.currentPage) {
+                const currentRevision = session.documentRevision;
+                const cached = findCachedBundle(path, pageIndex, currentRevision);
+                if (cached) {
+                    updateTextLayer(path, pageIndex, cached.model, session.currentZoom);
+                }
+            }
+        }) as any);
     }
 
     return {

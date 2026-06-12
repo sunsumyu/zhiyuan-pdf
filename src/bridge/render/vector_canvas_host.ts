@@ -184,6 +184,14 @@ export function ensureVectorCanvasHost(): VectorHostRefs | null {
         container.appendChild(layer);
     }
 
+    let textLayer = document.getElementById('pdf-text-layer') as HTMLElement | null;
+    if (!textLayer) {
+        textLayer = document.createElement('div');
+        textLayer.id = 'pdf-text-layer';
+        textLayer.style.cssText = 'position:absolute;inset:0;pointer-events:auto;z-index:100;user-select:text;-webkit-user-select:text;';
+        container.appendChild(textLayer);
+    }
+
     let root = document.getElementById(VECTOR_INTERACTION_ROOT_ID) as HTMLElement | null;
     if (!root) {
         root = document.createElement('div');

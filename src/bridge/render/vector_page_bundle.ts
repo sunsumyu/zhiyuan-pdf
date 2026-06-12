@@ -79,7 +79,7 @@ function admitPageAsset(pageIndex: number, role: 'current' | 'prefetch', assetKi
     return decision.accepted;
 }
 
-function findCachedBundle(path: string, pageIndex: number, currentRevision: number): VectorPageBundle | null {
+export function findCachedBundle(path: string, pageIndex: number, currentRevision: number): VectorPageBundle | null {
     const idx = pageBundleCache.findIndex(b => b.path === path && b.pageIndex === pageIndex);
     if (idx < 0) return null;
     
@@ -214,7 +214,42 @@ async function loadImageCacheMapForPage(
                         const res = await fetch(`http://pdfasset.localhost/${id}`);
                         if (res.ok) {
                             const blob = await res.blob();
-                            const bitmap = await createImageBitmap(blob);
+                            
+                            // Downsample high-resolution images based on target viewport size to optimize memory
+                            const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+                            const zoom = viewerSession.read().currentZoom || 1.0;
+                            // Add a safety multiplier of 1.5 to prevent pixelation on small zoom/panning
+                            const scaleFactor = zoom * dpr * 1.5;
+                            const targetWidth = Math.max(1, Math.round(obj.width * scaleFactor));
+                            const targetHeight = Math.max(1, Math.round(obj.height * scaleFactor));
+                            
+                            const tempBitmap = await createImageBitmap(blob);
+                            const originalWidth = tempBitmap.width;
+                            const originalHeight = tempBitmap.height;
+                            
+                            let bitmap = tempBitmap;
+                            if (originalWidth > targetWidth && originalHeight > targetHeight) {
+                                try {
+                                    const resized = await createImageBitmap(blob, {
+                                        resizeWidth: targetWidth,
+                                        resizeHeight: targetHeight,
+                                        resizeQuality: 'medium',
+                                    });
+                                    tempBitmap.close();
+                                    bitmap = resized;
+                                    logPdfLayoutTrace('page-bundle.image.downsampled', {
+                                        id,
+                                        originalWidth,
+                                        originalHeight,
+                                        targetWidth,
+                                        targetHeight,
+                                        zoom,
+                                        dpr,
+                                    });
+                                } catch (err) {
+                                    console.warn('[PDF-DOWN] Failed to downsample image, falling back to original', err);
+                                }
+                            }
                             imageCacheMap.set(id, bitmap);
                         }
                     } catch (e) {
@@ -225,6 +260,82 @@ async function loadImageCacheMapForPage(
         ),
     );
     return imageCacheMap;
+}
+function triggerAsyncFullBundleLoad(
+    path: string,
+    pageIndex: number,
+    assetRole: 'current' | 'prefetch',
+    frameToken?: number
+) {
+    setTimeout(async () => {
+        if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
+            return;
+        }
+        const currentPageIndex = getCurrentPageIndex();
+        if (currentPageIndex !== null && currentPageIndex !== pageIndex) {
+            return; // Page turned
+        }
+
+        try {
+            const fullBundle = await targetInvokeV3('read_page_asset_bundle', {
+                path,
+                pageIndex,
+                targetZoom: 1.0,
+                requestRole: assetRole,
+                documentRevision: viewerSession.read().documentRevision,
+                textOnly: true,
+            });
+
+            if (frameToken !== undefined && !isFrameCurrent(frameToken)) return;
+
+            const currentRevision = viewerSession.read().documentRevision;
+            const cached = findCachedBundle(path, pageIndex, currentRevision);
+            if (cached) {
+                const fullObjects = Array.isArray(fullBundle?.model?.objects) ? fullBundle.model.objects : [];
+                const existingTextIds = new Set(
+                    cached.model.objects
+                        .filter((o: any) => o?.type === 'text' || Array.isArray(o?.runs))
+                        .map((o: any) => o?.id)
+                );
+                for (const obj of fullObjects) {
+                    if (!existingTextIds.has(obj.id)) {
+                        cached.model.objects.push(obj);
+                    }
+                }
+                cached.paintPlan = fullBundle?.paintPlan;
+
+                const wasm: any = getWasmApi();
+                if (wasm?.init_page_context) {
+                    const dpr = typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio)
+                        ? window.devicePixelRatio
+                        : 1;
+                    wasm.init_page_context(
+                        JSON.stringify(cached.model),
+                        JSON.stringify(cached.paintPlan),
+                        1.0,
+                        dpr,
+                        0,
+                        0,
+                        cached.model.width ?? 0,
+                        cached.model.height ?? 0,
+                    );
+                }
+
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('pdf-text-layer-ready', { 
+                        detail: { path, pageIndex } 
+                    }));
+                }
+
+                logPdfLayoutTrace('page-bundle.async-text-loaded', {
+                    pageIndex,
+                    textObjectsLoaded: fullObjects.length,
+                });
+            }
+        } catch (e) {
+            console.error('[PDF-ASYNC] Failed to load full text bundle asynchronously', e);
+        }
+    }, 50);
 }
 
 export async function resolveVectorPageBundle(
@@ -254,22 +365,22 @@ export async function resolveVectorPageBundle(
 
         const assetRole = resolveAssetRole(pageIndex, frameToken, explicitRole);
 
-        // Rust owns page asset admission. TS keeps only the interrupt point.
         if (!admitPageAsset(pageIndex, assetRole, 'vectorModel', 'page-bundle.load.rejected.before-ipc')) {
             throw new Error('stale frame');
         }
 
+        const isCurrentPage = assetRole === 'current';
         const pageAssetBundle = await targetInvokeV3('read_page_asset_bundle', {
             path,
             pageIndex,
             targetZoom: 1.0,
             requestRole: assetRole,
             documentRevision: viewerSession.read().documentRevision,
+            imageOnly: isCurrentPage ? true : undefined,
         });
         const model = pageAssetBundle?.model;
         const paintPlan = pageAssetBundle?.paintPlan;
 
-        // Preemption guard after IPC returns.
         if (!admitPageAsset(pageIndex, assetRole, 'paintPlan', 'page-bundle.load.rejected.after-ipc')) {
             throw new Error('stale frame');
         }
@@ -278,11 +389,8 @@ export async function resolveVectorPageBundle(
             throw new Error('stale frame');
         }
 
-        // Skip read_images IPC if model already has inline image data
         const modelObjects = Array.isArray(model?.objects) ? model.objects : [];
 
-
-        // Preemption guard before image cache loading.
         if (!admitPageAsset(pageIndex, assetRole, 'imageCache', 'page-bundle.load.rejected.before-images')) {
             throw new Error('stale frame');
         }
@@ -325,8 +433,10 @@ export async function resolveVectorPageBundle(
         };
         insertCachedBundle(newBundle);
 
-        // Phase 3.1: eagerly hydrate WASM HOST_PAGE_STATE so click-to-edit
-        // (which reads paint_plan) works even before the first render frame.
+        if (isCurrentPage) {
+            triggerAsyncFullBundleLoad(path, pageIndex, assetRole, frameToken);
+        }
+
         try {
             const wasm: any = getWasmApi();
             if (wasm?.init_page_context) {
