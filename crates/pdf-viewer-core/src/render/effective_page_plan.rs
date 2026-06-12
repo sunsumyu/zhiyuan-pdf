@@ -306,6 +306,13 @@ pub fn build_effective_vector_render_plan(
     if prepared_overlays.is_empty() {
         return visible_indices
             .into_iter()
+            .filter(|&object_index| {
+                if let Some(VectorRenderObject::Text(text)) = vector_model.objects.get(object_index) {
+                    !text.runs.iter().all(|run| run.render_mode == 3)
+                } else {
+                    true
+                }
+            })
             .map(|object_index| EffectiveVectorRenderEntry::Object {
                 object_index,
                 suppressed_text_runs: SuppressedVectorTextRuns::default(),
@@ -319,6 +326,11 @@ pub fn build_effective_vector_render_plan(
         let Some(object) = vector_model.objects.get(object_index) else {
             continue;
         };
+        if let VectorRenderObject::Text(text) = object {
+            if text.runs.iter().all(|run| run.render_mode == 3) {
+                continue;
+            }
+        }
         let mut suppressed_text_runs = SuppressedVectorTextRuns::default();
         let mut suppress_entire_object = false;
         for overlay in &mut prepared_overlays {

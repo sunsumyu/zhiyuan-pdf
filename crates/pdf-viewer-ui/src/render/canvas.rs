@@ -520,6 +520,9 @@ impl CanvasRenderer {
                     vec![dbg_field("runCount", text_obj.runs.len())],
                 );
                 for (run_index, run) in text_obj.runs.iter().enumerate() {
+                    if run.render_mode == 3 {
+                        continue;
+                    }
                     let should_skip_run = suppressed_text_runs
                         .map(|suppressed| suppressed.suppresses_run(run_index, run))
                         .unwrap_or(false);
@@ -986,6 +989,9 @@ pub(crate) fn draw_text_run_core(
     char_origins: Option<&[f32]>,
     coordinate_mode: CoordinateMode,
 ) {
+    if render_mode == 3 {
+        return;
+    }
     let snap_to_pixel = |val: f32| -> f64 { (val * dpr).round() as f64 / dpr as f64 };
     let y_scale = match coordinate_mode {
         CoordinateMode::PageSpace => 1.0,
