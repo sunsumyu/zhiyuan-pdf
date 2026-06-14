@@ -595,19 +595,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         findController.clear();
     }
 
-    if (typeof window !== 'undefined') {
-        window.addEventListener('pdf-text-layer-ready', ((e: CustomEvent) => {
-            const { path, pageIndex } = e.detail;
-            const session = viewerSession.read();
-            if (path === session.path && pageIndex === session.currentPage) {
-                const currentRevision = session.documentRevision;
-                const cached = findCachedBundle(path, pageIndex, currentRevision);
-                if (cached) {
-                    updateTextLayer(path, pageIndex, cached.model, session.currentZoom);
-                }
-            }
-        }) as any);
-    }
+
 
     return {
         ensureWasmInitialized,

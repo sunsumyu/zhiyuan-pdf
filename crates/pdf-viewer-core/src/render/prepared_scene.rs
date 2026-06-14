@@ -29,9 +29,9 @@ impl PreparedPageScene {
             scene
                 .sorted_vector_indices
                 .sort_by_key(|index| match &vector_model.objects[*index] {
-                    VectorRenderObject::Text(text) => text.z_index,
-                    VectorRenderObject::Path(path) => path.z_index,
-                    VectorRenderObject::Image(image) => image.z_index,
+                    VectorRenderObject::Image(image) => (0, image.z_index),
+                    VectorRenderObject::Path(path) => (1, path.z_index),
+                    VectorRenderObject::Text(text) => (2, text.z_index),
                 });
 
             scene.vector_bboxes = vector_model

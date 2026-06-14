@@ -138,7 +138,7 @@ export function clearVectorCanvasHost(): void {
     const img = document.getElementById('pdf-render-target') as HTMLElement | null;
     if (img) {
         img.removeAttribute('src');
-        img.style.display = 'block';
+        img.style.display = 'none';
     }
 
     const legacyRoot = document.getElementById('pdf-interaction-root') as HTMLElement | null;

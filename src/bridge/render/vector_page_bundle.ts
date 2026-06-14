@@ -14,6 +14,7 @@ export type VectorPageBundle = {
     model: any;
     paintPlan: any;
     imageCacheMap: Map<string, ImageBitmap>;
+    modelLastConsumedVersion?: number;
 };
 
 type VectorPageBundleResolution = {
@@ -262,82 +263,6 @@ async function loadImageCacheMapForPage(
     );
     return imageCacheMap;
 }
-function triggerAsyncFullBundleLoad(
-    path: string,
-    pageIndex: number,
-    assetRole: 'current' | 'prefetch',
-    frameToken?: number
-) {
-    setTimeout(async () => {
-        if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
-            return;
-        }
-        const currentPageIndex = getCurrentPageIndex();
-        if (currentPageIndex !== null && currentPageIndex !== pageIndex) {
-            return; // Page turned
-        }
-
-        try {
-            const fullBundle = await targetInvokeV3('read_page_asset_bundle', {
-                path,
-                pageIndex,
-                targetZoom: 1.0,
-                requestRole: assetRole,
-                documentRevision: viewerSession.read().documentRevision,
-                textOnly: true,
-            });
-
-            if (frameToken !== undefined && !isFrameCurrent(frameToken)) return;
-
-            const currentRevision = viewerSession.read().documentRevision;
-            const cached = findCachedBundle(path, pageIndex, currentRevision);
-            if (cached) {
-                const fullObjects = Array.isArray(fullBundle?.model?.objects) ? fullBundle.model.objects : [];
-                const existingTextIds = new Set(
-                    cached.model.objects
-                        .filter((o: any) => o?.type === 'text' || Array.isArray(o?.runs))
-                        .map((o: any) => o?.id)
-                );
-                for (const obj of fullObjects) {
-                    if (!existingTextIds.has(obj.id)) {
-                        cached.model.objects.push(obj);
-                    }
-                }
-                cached.paintPlan = fullBundle?.paintPlan;
-
-                const wasm = getWasmApi();
-                if (wasm?.initPageContext) {
-                    const dpr = typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio)
-                        ? window.devicePixelRatio
-                        : 1;
-                    wasm.initPageContext(
-                        JSON.stringify(cached.model),
-                        JSON.stringify(cached.paintPlan),
-                        1.0,
-                        dpr,
-                        0,
-                        0,
-                        cached.model.width ?? 0,
-                        cached.model.height ?? 0,
-                    );
-                }
-
-                if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('pdf-text-layer-ready', { 
-                        detail: { path, pageIndex } 
-                    }));
-                }
-
-                logPdfLayoutTrace('page-bundle.async-text-loaded', {
-                    pageIndex,
-                    textObjectsLoaded: fullObjects.length,
-                });
-            }
-        } catch (e) {
-            console.error('[PDF-ASYNC] Failed to load full text bundle asynchronously', e);
-        }
-    }, 50);
-}
 
 export async function resolveVectorPageBundle(
     path: string,
@@ -370,14 +295,12 @@ export async function resolveVectorPageBundle(
             throw new Error('stale frame');
         }
 
-        const isCurrentPage = assetRole === 'current';
         const pageAssetBundle = await targetInvokeV3('read_page_asset_bundle', {
             path,
             pageIndex,
             targetZoom: 1.0,
             requestRole: assetRole,
             documentRevision: viewerSession.read().documentRevision,
-            imageOnly: isCurrentPage ? true : undefined,
         });
         const model = pageAssetBundle?.model;
         const paintPlan = pageAssetBundle?.paintPlan;
@@ -433,10 +356,6 @@ export async function resolveVectorPageBundle(
             imageCacheMap,
         };
         insertCachedBundle(newBundle);
-
-        if (isCurrentPage) {
-            triggerAsyncFullBundleLoad(path, pageIndex, assetRole, frameToken);
-        }
 
         try {
             const wasm = getWasmApi();

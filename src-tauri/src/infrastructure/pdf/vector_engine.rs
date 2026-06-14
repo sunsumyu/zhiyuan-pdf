@@ -339,19 +339,29 @@ pub fn build_vector_page_model_from_display_list(
             });
         }
 
-        // --- Phase 7: Parallel Style-Based Sorting ---
+        // --- Phase 7: Parallel Style-Based Sorting (Preserving Z-Index) ---
         render_objects.par_sort_by(|a, b| {
+            let z_a = match a {
+                RenderObject::Text(t) => t.z_index,
+                RenderObject::Path(p) => p.z_index,
+                RenderObject::Image(i) => i.z_index,
+            };
+            let z_b = match b {
+                RenderObject::Text(t) => t.z_index,
+                RenderObject::Path(p) => p.z_index,
+                RenderObject::Image(i) => i.z_index,
+            };
             let style_a = match a {
-                RenderObject::Text(t) => (0, t.font_index, t.color_index),
+                RenderObject::Image(_) => (0, None, None),
                 RenderObject::Path(p) => (1, p.fill_color_index, p.stroke_color_index),
-                RenderObject::Image(_) => (2, None, None),
+                RenderObject::Text(t) => (2, t.font_index, t.color_index),
             };
             let style_b = match b {
-                RenderObject::Text(t) => (0, t.font_index, t.color_index),
+                RenderObject::Image(_) => (0, None, None),
                 RenderObject::Path(p) => (1, p.fill_color_index, p.stroke_color_index),
-                RenderObject::Image(_) => (2, None, None),
+                RenderObject::Text(t) => (2, t.font_index, t.color_index),
             };
-            style_a.cmp(&style_b)
+            (style_a, z_a).cmp(&(style_b, z_b))
         });
     }
 

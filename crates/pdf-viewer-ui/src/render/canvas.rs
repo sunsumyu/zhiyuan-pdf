@@ -708,6 +708,10 @@ impl CanvasRenderer {
                 &overlays,
             );
 
+            let mut draw_text_count = 0;
+            let mut draw_path_count = 0;
+            let mut draw_image_count = 0;
+
             for entry in effective_plan {
                 match entry {
                     EffectiveVectorRenderEntry::Object {
@@ -717,6 +721,11 @@ impl CanvasRenderer {
                         let Some(obj) = vector_model.objects.get(object_index) else {
                             continue;
                         };
+                        match obj {
+                            VectorRenderObject::Text(_) => draw_text_count += 1,
+                            VectorRenderObject::Path(_) => draw_path_count += 1,
+                            VectorRenderObject::Image(_) => draw_image_count += 1,
+                        }
                         self.draw_vector_object(
                             obj,
                             Some(object_index),
@@ -771,6 +780,10 @@ impl CanvasRenderer {
                     }
                 }
             }
+            web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
+                "[CANVAS-DBG] render_page finished. Drew: paths={}, images={}, texts={}",
+                draw_path_count, draw_image_count, draw_text_count
+            )));
             return;
         }
 

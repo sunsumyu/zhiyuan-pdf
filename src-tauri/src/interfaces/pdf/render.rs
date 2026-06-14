@@ -25,6 +25,7 @@ pub async fn read_page_asset_bundle(
     image_only: Option<bool>,
     text_only: Option<bool>,
 ) -> Result<PageAssetBundle, String> {
+
     let role = PageAssetRole::from_request(request_role);
     let kind = PageAssetKind::PageBundle;
     let span = crate::infrastructure::pdf::log_service::PdfEventSpan::begin(

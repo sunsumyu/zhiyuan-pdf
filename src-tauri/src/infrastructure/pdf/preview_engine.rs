@@ -374,7 +374,15 @@ pub fn build_light_page_model(doc: &Document, page_index: u16) -> Result<LightPa
         } else {
             // For vector-like or OCR'd scanned documents, we only accept it as a preview
             // if the image is large enough to cover the page (background scan image)
-            if img_width >= 500 && img_height >= 500 {
+            let w_ratio = img_width as f32 / width;
+            let h_ratio = img_height as f32 / height;
+            let w_ratio_swapped = img_width as f32 / height;
+            let h_ratio_swapped = img_height as f32 / width;
+
+            let is_full_page = (w_ratio >= 0.85 && h_ratio >= 0.85)
+                || (w_ratio_swapped >= 0.85 && h_ratio_swapped >= 0.85);
+
+            if is_full_page {
                 preview_image_url = Some(url);
                 kind = LightPageKind::Text;
             }
@@ -412,9 +420,9 @@ mod tests {
             if page_index == 0 {
                 assert!(!xobjects.is_empty(), "Page 0 must collect at least one XObject image");
                 
-                // Assert that our preview extraction resolves a preview image URL
+                // Assert that our preview extraction does NOT resolve a preview image URL for a vector page
                 let model = build_light_page_model(&doc, page_index as u16).unwrap();
-                assert!(model.preview_image_url.is_some(), "Page 0 must successfully build a preview image URL");
+                assert!(model.preview_image_url.is_none(), "Page 0 is a vector page and must NOT resolve a template graphic as a page preview image");
                 println!("Page 0 resolved preview image URL: {:?}", model.preview_image_url);
             }
         }

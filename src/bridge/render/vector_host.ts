@@ -63,6 +63,8 @@ export { VECTOR_CANVAS_ID, VECTOR_CONTAINER_ID };
 export type VectorRenderResult = {
     width: number;
     height: number;
+    displayWidth?: number;
+    displayHeight?: number;
     aborted?: boolean;
     pendingPresents?: VectorLayerPresent[];
 };
@@ -189,6 +191,10 @@ export function commitVectorRenderResult(result: VectorRenderResult, options: Ve
     const refs = getExistingVectorCanvasHost();
     if (!refs) return;
 
+    // CRITICAL ORDER:
+    // 1. prepareVisibleFrame → syncLayoutBox: updates container CSS dimensions while still hidden (display:none)
+    // 2. presentViewportCanvasFromSource: writes new pixels to canvas + updates mainCanvas CSS box
+    // 3. presentViewportCanvas: makes container display:block with correct pixels + correct CSS dims
     prepareVisibleFrame();
     for (const pending of pendingPresents) {
         presentViewportCanvasFromSource(
@@ -708,6 +714,8 @@ export async function renderVectorPageWithPlan(
     return {
         width: model.width,
         height: model.height,
+        displayWidth,
+        displayHeight,
         pendingPresents,
     };
 }

@@ -87,6 +87,12 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
         try {
             const session = getDocumentSession(deps.getWasmApi);
             emitPdfDiagnostic('DOC', 'openTextPdfFlow', { path, session: session ? 'OK' : 'NULL' });
+            // Eagerly clear the vector host BEFORE awaiting session.open().
+            // This cancels any in-flight Rust render (cancelProgressiveRender + resetFrameCache)
+            // so the old document's Worker render cannot complete and flash old pixels
+            // during the async IPC gap of session.open().
+            deps.clearVectorHost();
+            deps.clearEditorHost();
             const openResult = session
                 ? await session.open({
                     path,
@@ -103,8 +109,6 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
                 return;
             }
             emitPdfDiagnostic('DOC', 'openSuccess', { path, pageCount });
-            deps.clearVectorHost();
-            deps.clearEditorHost();
             deps.syncZoomSelect();
             deps.syncTextEditButton();
             await renderCurrentPage();
