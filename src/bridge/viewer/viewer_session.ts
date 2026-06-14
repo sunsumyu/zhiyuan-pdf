@@ -58,7 +58,7 @@ export function createViewerSessionAdapter(deps: ViewerSessionDeps): ViewerSessi
     function read(): ViewerSessionSnapshot {
         try {
             const snap = session()?.read();
-            emitPdfDiagnostic('VIEW', 'readSnap', { snap: snap ? JSON.stringify(snap) : 'null' });
+            emitPdfDiagnostic('VIEW', 'readSnap', { snap: snap ? JSON.stringify(snap) : 'null' }, { verboseOnly: true });
             return {
                 path: snap?.path ?? null,
                 currentPage: snap?.currentPage ?? 0,

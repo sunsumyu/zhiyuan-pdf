@@ -18,6 +18,7 @@ export type RenderRequest = RenderRequestContext & {
 export type RenderSchedulerDeps = {
     executeRender: (request: RenderRequest) => Promise<void>;
     pagePresentationRuntime: PagePresentationRuntimeAdapter;
+    presentPagePreview?: (pageIndex: number) => Promise<boolean>;
 };
 
 export type RenderScheduler = {
@@ -61,6 +62,10 @@ export function createRenderScheduler(deps: RenderSchedulerDeps): RenderSchedule
         const action = resolveQueueAction(request.source);
         if (action.action === 'suppress') {
             return Promise.resolve();
+        }
+
+        if (request.source === 'navigation' && Number.isFinite(request.targetPage as number) && deps.presentPagePreview) {
+            void deps.presentPagePreview(request.targetPage as number);
         }
 
         if (action.action !== 'dispatch') {

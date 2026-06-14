@@ -26,6 +26,7 @@ type PagePresenterDeps = {
     getRasterTarget: () => HTMLCanvasElement | null;
     getEmptyState: () => HTMLElement | null;
     clearEditorOverlay: () => void;
+    isPageProgress?: (pageIndex: number) => boolean;
 };
 
 function logPresent(event: string, fields: Record<string, unknown> = {}): void {
@@ -93,6 +94,17 @@ export function createPagePresenter(deps: PagePresenterDeps) {
         surface: PreparedRasterSurface,
         options: RasterSurfaceOptions = {},
     ): boolean {
+        // Prevent committing stale pages
+        if (deps.isPageProgress && typeof surface.pageIndex === 'number') {
+            if (!deps.isPageProgress(surface.pageIndex)) {
+                logPresent('raster.commit.aborted-stale-page', {
+                    role: surface.role,
+                    pageIndex: surface.pageIndex,
+                });
+                return false;
+            }
+        }
+
         const canvas = deps.getRasterTarget();
         const wrapper = deps.getWrapper();
         const emptyState = deps.getEmptyState();
@@ -120,23 +132,6 @@ export function createPagePresenter(deps: PagePresenterDeps) {
         if (ctx) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(bitmap, 0, 0);
-        }
-
-        if (
-            surface.pageWidth &&
-            surface.pageWidth > 0 &&
-            surface.pageHeight &&
-            surface.pageHeight > 0
-        ) {
-            const zoom = surface.displayZoom && surface.displayZoom > 0
-                ? surface.displayZoom
-                : 1;
-            const cssW = Math.round(surface.pageWidth * zoom);
-            const cssH = Math.round(surface.pageHeight * zoom);
-            canvas.style.width = cssW + 'px';
-            canvas.style.height = cssH + 'px';
-            wrapper.style.width = cssW + 'px';
-            wrapper.style.height = cssH + 'px';
         }
 
         wrapper.style.display = 'block';

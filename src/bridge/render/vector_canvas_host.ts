@@ -34,7 +34,7 @@ type ViewportCanvasFrame = {
     dpr: number;
 };
 
-function hideLegacyRasterHost(): void {
+export function hideLegacyRasterHost(): void {
     const img = document.getElementById('pdf-render-target') as HTMLElement | null;
     if (img) img.style.display = 'none';
 
@@ -130,7 +130,9 @@ export function clearVectorCanvasHost(): void {
     logPdfLayoutTrace('canvas-host.clear.before');
     const container = document.getElementById(VECTOR_CONTAINER_ID);
     if (container) {
-        container.remove();
+        container.style.display = 'none';
+        container.style.visibility = 'hidden';
+        container.style.pointerEvents = 'none';
     }
 
     const img = document.getElementById('pdf-render-target') as HTMLElement | null;
@@ -149,8 +151,6 @@ export function ensureVectorCanvasHost(): VectorHostRefs | null {
     if (!wrapper) return null;
     logPdfLayoutTrace('canvas-host.ensure.before');
 
-    hideLegacyRasterHost();
-
     let container = document.getElementById(VECTOR_CONTAINER_ID) as HTMLElement | null;
     const containerCreated = !container;
     if (!container) {
@@ -160,7 +160,6 @@ export function ensureVectorCanvasHost(): VectorHostRefs | null {
             'position: relative',
             'display: block',
             'background: white',
-            'box-shadow: 0 0 20px rgba(0,0,0,0.5)',
             'overflow: hidden',
             'transform-origin: 0 0',
             'will-change: transform',
@@ -222,6 +221,7 @@ export function getExistingVectorCanvasHost(): VectorHostRefs | null {
 export function hideVectorCanvasHostForPreview(): void {
     const container = document.getElementById(VECTOR_CONTAINER_ID) as HTMLElement | null;
     if (!container) return;
+    container.style.display = 'none';
     container.style.visibility = 'hidden';
     container.style.pointerEvents = 'none';
 }
@@ -289,6 +289,8 @@ export function presentViewportCanvas(
     logPdfLayoutTrace('canvas-present.visibility.before', {
         options,
     });
+    hideLegacyRasterHost();
+    refs.container.style.display = 'block';
     refs.container.style.visibility = 'visible';
     refs.container.style.pointerEvents = '';
     refs.mainCanvas.style.visibility = 'visible';

@@ -32,7 +32,7 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
         const wrapper = getWrapper();
         const container = getVectorContainer();
         const scrollContainer = getScrollContainer();
-        if (!wrapper || !container || !scrollContainer) return;
+        if (!wrapper || !scrollContainer) return;
 
         const safeDisplayZoom = Math.max(displayZoom, MIN_ZOOM);
         const rect = scrollContainer.getBoundingClientRect();
@@ -78,13 +78,26 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
         wrapper.style.transform = '';
         wrapper.style.transformOrigin = '0 0';
 
-        container.style.position = 'absolute';
-        container.style.left = `${contentLeft}px`;
-        container.style.top = `${contentTop}px`;
-        container.style.width = `${displayWidth}px`;
-        container.style.height = `${displayHeight}px`;
-        container.style.margin = '0';
-        container.style.transformOrigin = '0 0';
+        if (container) {
+            container.style.position = 'absolute';
+            container.style.left = `${contentLeft}px`;
+            container.style.top = `${contentTop}px`;
+            container.style.width = `${displayWidth}px`;
+            container.style.height = `${displayHeight}px`;
+            container.style.margin = '0';
+            container.style.transformOrigin = '0 0';
+        }
+
+        const rasterCanvas = document.getElementById('pdf-render-target') as HTMLCanvasElement | null;
+        if (rasterCanvas) {
+            rasterCanvas.style.position = 'absolute';
+            rasterCanvas.style.left = `${contentLeft}px`;
+            rasterCanvas.style.top = `${contentTop}px`;
+            rasterCanvas.style.width = `${displayWidth}px`;
+            rasterCanvas.style.height = `${displayHeight}px`;
+            rasterCanvas.style.margin = '0';
+            rasterCanvas.style.transformOrigin = '0 0';
+        }
 
         scrollContainer.style.overflowX = 'auto';
         scrollContainer.style.overflowY = 'auto';

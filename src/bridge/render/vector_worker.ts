@@ -6,8 +6,9 @@ export type VectorWorkerRequest =
     | { 
         type: 'RENDER_PAGE'; 
         msgId: number;
-        modelJson: string; 
-        paintPlanJson: string; 
+        isSamePage: boolean;
+        modelJson?: string; 
+        paintPlanJson?: string; 
         zoom: number; 
         dpr: number; 
         viewportLeft: number; 
@@ -37,16 +38,27 @@ self.onmessage = async (e: MessageEvent<VectorWorkerRequest>) => {
             await ensureWasmInitialized();
             const wasm = createRenderWasmApi(getWasmApi);
             
-            wasm.initPageContext(
-                msg.modelJson,
-                msg.paintPlanJson,
-                msg.zoom,
-                msg.dpr,
-                msg.viewportLeft,
-                msg.viewportTop,
-                msg.viewportWidth,
-                msg.viewportHeight
-            );
+            if (msg.isSamePage) {
+                wasm.updatePageViewport(
+                    msg.zoom,
+                    msg.dpr,
+                    msg.viewportLeft,
+                    msg.viewportTop,
+                    msg.viewportWidth,
+                    msg.viewportHeight
+                );
+            } else {
+                wasm.initPageContext(
+                    msg.modelJson ?? '{}',
+                    msg.paintPlanJson ?? '{}',
+                    msg.zoom,
+                    msg.dpr,
+                    msg.viewportLeft,
+                    msg.viewportTop,
+                    msg.viewportWidth,
+                    msg.viewportHeight
+                );
+            }
             
             const canvas = new OffscreenCanvas(msg.width, msg.height);
 

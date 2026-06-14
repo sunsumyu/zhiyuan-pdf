@@ -479,6 +479,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
 
     const renderScheduler = createRenderScheduler({
         pagePresentationRuntime,
+        presentPagePreview: (pageIndex: number) => renderFlow.presentPagePreview(pageIndex),
         executeRender: async (request: RenderRequest) => {
             if (
                 request.source === 'navigation' &&

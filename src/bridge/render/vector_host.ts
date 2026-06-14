@@ -29,6 +29,10 @@ let vectorWorker: Worker | null = null;
 let msgIdCounter = 0;
 const pendingVectorTasks = new Map<number, { resolve: (bitmap: ImageBitmap) => void; reject: (err: any) => void }>();
 
+let workerLastPath: string | null = null;
+let workerLastPageIndex: number | null = null;
+let workerLastRevision: number | null = null;
+
 function ensureVectorWorker(): Worker {
     if (!vectorWorker) {
         vectorWorker = new Worker(new URL('./vector_worker.ts', import.meta.url), { type: 'module' });
@@ -143,6 +147,9 @@ export function clearVectorHost(): void {
     clearVectorCanvasHost();
     invalidateVectorPageCache();
     clearVectorFrameCache();
+    workerLastPath = null;
+    workerLastPageIndex = null;
+    workerLastRevision = null;
     logPdfLayoutTrace('vector-host.clear.after');
 }
 
@@ -155,6 +162,9 @@ export function invalidateVectorRenderCache(): void {
     }
     invalidateVectorPageCache();
     clearVectorFrameCache();
+    workerLastPath = null;
+    workerLastPageIndex = null;
+    workerLastRevision = null;
     logPdfLayoutTrace('vector-host.invalidate-cache.after');
 }
 
@@ -240,7 +250,12 @@ export async function renderVectorPageWithPlan(
     try {
         bundleResolution = await resolveVectorPageBundle(path, pageIndex, frameToken);
     } catch (e: any) {
-        if (e?.message === 'stale frame' || (frameToken !== undefined && !isFrameCurrent(frameToken))) {
+        const errMsg = typeof e === 'string' ? e : e?.message;
+        if (
+            errMsg === 'stale frame' ||
+            (typeof errMsg === 'string' && errMsg.includes('stale page asset request')) ||
+            (frameToken !== undefined && !isFrameCurrent(frameToken))
+        ) {
             return {
                 width: 0,
                 height: 0,
@@ -521,6 +536,7 @@ export async function renderVectorPageWithPlan(
             layerViewportTop,
             layerViewportWidth,
             layerViewportHeight,
+            bundle.documentRevision,
         );
 
         if (progressiveResult?.aborted) {
@@ -711,6 +727,7 @@ async function renderViewportProgressiveIfNeeded(
     viewportTop?: number,
     viewportWidth?: number,
     viewportHeight?: number,
+    revision?: number,
 ): Promise<{ aborted?: boolean } | null> {
     const isProgressivePipelineStale = (): boolean => {
         if (path === undefined || pageIndex === undefined) return false;
@@ -779,11 +796,26 @@ async function renderViewportProgressiveIfNeeded(
     
     const dpr = window.devicePixelRatio || 1;
 
+    const isSamePage =
+        path !== undefined &&
+        pageIndex !== undefined &&
+        revision !== undefined &&
+        workerLastPath === path &&
+        workerLastPageIndex === pageIndex &&
+        workerLastRevision === revision;
+
+    if (path !== undefined && pageIndex !== undefined && revision !== undefined) {
+        workerLastPath = path;
+        workerLastPageIndex = pageIndex;
+        workerLastRevision = revision;
+    }
+
     worker.postMessage({
         type: 'RENDER_PAGE',
         msgId,
-        modelJson: JSON.stringify(model ?? {}),
-        paintPlanJson: JSON.stringify(paintPlan ?? {}),
+        isSamePage,
+        modelJson: isSamePage ? undefined : JSON.stringify(model ?? {}),
+        paintPlanJson: isSamePage ? undefined : JSON.stringify(paintPlan ?? {}),
         zoom: zoom ?? 1.0,
         dpr: dpr,
         viewportLeft: viewportLeft ?? 0,
