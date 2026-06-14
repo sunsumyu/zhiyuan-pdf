@@ -1,4 +1,5 @@
 import { ensureWasmInitialized, getWasmApi, targetInvokeV3 } from '../shared/wasm_loader';
+import type { WasmModule } from '../shared/wasm_loader';
 import { clearVectorHost, invalidateVectorRenderCache } from '../render/vector_host';
 import { configureVectorPageBundleRuntime, prefetchAdjacentPages, findCachedBundle } from '../render/vector_page_bundle';
 import { updateTextLayer } from '../render/text_layer';
@@ -50,7 +51,7 @@ type ZoomStateSnapshot = {
 
 export type PdfViewerRuntime = {
     ensureWasmInitialized: typeof ensureWasmInitialized;
-    getWasmApi: () => any;
+    getWasmApi: () => WasmModule;
     viewerSession: ReturnType<typeof createViewerSessionAdapter>;
     pagePresentationRuntime: ReturnType<typeof createPagePresentationRuntimeAdapter>;
     documentEditApi: ReturnType<typeof createDocumentEditApi>;
@@ -74,18 +75,19 @@ export type PdfViewerRuntime = {
     handlePdfViewerKeydown: (event: KeyboardEvent) => void;
     defaultPageWidth: number;
     defaultPageHeight: number;
+    prefetchAdjacentPreviews: (path: string, currentPage: number, pageCount: number) => void;
 };
 
 export function createPdfViewerRuntime(): PdfViewerRuntime {
     let isNewDocument = false;
 
     const viewerSession = createViewerSessionAdapter({
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
         getFallbackPageWidth: () => DEFAULT_PAGE_WIDTH,
         getFallbackPageHeight: () => DEFAULT_PAGE_HEIGHT,
     });
     const pagePresentationRuntime = createPagePresentationRuntimeAdapter({
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
     });
     configureVectorPageBundleRuntime({
         pagePresentationRuntime,
@@ -102,8 +104,8 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
 
     function readZoomState(): ZoomStateSnapshot {
         try {
-            const wasm = getWasmApi() as any;
-            const state = wasm.get_zoom_state();
+            const wasm = getWasmApi();
+            const state = wasm.getZoomState?.();
             const session = viewerSession.read();
             return {
                 currentZoom: state?.currentZoom ?? session.currentZoom,
@@ -123,7 +125,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
     }
 
     const framePlanAdapter = createFramePlanAdapter({
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
         getScrollContainer,
         getPageWidth: () => getCurrentPageWidthValue(),
         getPageHeight: () => getCurrentPageHeightValue(),
@@ -132,7 +134,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
     });
 
     const { syncLayoutBox } = createLayoutSync({
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
         getPageWidth: () => getCurrentPageWidthValue(),
         getPageHeight: () => getCurrentPageHeightValue(),
         readZoomState,
@@ -149,7 +151,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
     let commentController: ReturnType<typeof createPdfCommentController> | null = null;
     let reviewController: ReturnType<typeof createPdfReviewController> | null = null;
     const documentEditApi = createDocumentEditApi({
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
         getCurrentPath: () => viewerSession.read().path,
         getCurrentPage: () => viewerSession.read().currentPage,
         getCurrentZoom: () => readZoomState().targetZoom,
@@ -166,7 +168,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
     });
     const findController = createPdfFindController({
         getViewerSession: () => viewerSession.read(),
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
         getScrollContainer,
         documentEdits: documentEditApi,
         goToPage: async (pageIndex) => {
@@ -187,7 +189,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
     });
     commentController = createPdfCommentController({
         getViewerSession: () => viewerSession.read(),
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
         documentEdits: documentEditApi,
         goToPage: async (pageIndex) => {
             viewerSession.setCurrentPage(pageIndex);
@@ -216,7 +218,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
     }
 
     editorHost = createEditorHost({
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
         getCurrentPath: () => viewerSession.read().path,
         getCurrentPage: () => viewerSession.read().currentPage,
         getCurrentZoom: () => readZoomState().targetZoom,
@@ -236,7 +238,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         getZoomState: readZoomState,
         resetZoomPreviewState: () => {
             try {
-                const wasm = getWasmApi() as any;
+                const wasm = getWasmApi();
                 wasm.clear_zoom_preview_host_state?.(false);
             } catch {
             }
@@ -255,12 +257,12 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         takeFramePlan: (displayZoom) => framePlanAdapter.take(displayZoom),
         getMaxZoom: getDynamicMaxZoom,
         clearPendingAnchor: () => {
-            const wasm = getWasmApi() as any;
-            wasm.clear_pending_anchor();
+            const wasm = getWasmApi();
+            wasm.clearPendingAnchor?.();
         },
         clearPreviewPresent: () => {
-            const wasm = getWasmApi() as any;
-            wasm.clear_preview_present?.();
+            const wasm = getWasmApi();
+            wasm.clearPreviewPresent?.();
         },
         resolveWheelRenderDecision: (request) => framePlanAdapter.resolveWheelRenderDecision(request),
         handleWheelZoomHost: (displayZoom, wheelRequest) =>
@@ -309,8 +311,8 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
                 const vpWidth = scrollContainer?.clientWidth || 0;
                 if (vpWidth > 0 && width > vpWidth) {
                     const fitZoom = clampZoom(vpWidth / width);
-                    const wasm = getWasmApi() as any;
-                    const res = wasm.apply_zoom_selection?.(fitZoom);
+                    const wasm = getWasmApi();
+                    const res = wasm.applyZoomSelection?.(fitZoom);
                     logPdfLayoutTrace('viewer.auto-fit.applied', {
                         viewportWidth: vpWidth,
                         pageWidth: width,
@@ -375,7 +377,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
 
     const geometryProbe = createViewerGeometryProbe({
         ensureWasmInitialized,
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
         viewerSession,
         framePlanAdapter,
         getZoomState: readZoomState,
@@ -455,7 +457,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
 
     documentRuntime = createPdfDocumentRuntime({
         ensureWasmInitialized,
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
         getTargetZoom: () => readZoomState().targetZoom,
         resolveHostScrollRefresh: (displayZoom, timestampMs) =>
             framePlanAdapter.resolveHostScrollRefresh(displayZoom, timestampMs),
@@ -608,7 +610,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
 
     return {
         ensureWasmInitialized,
-        getWasmApi: () => getWasmApi() as any,
+        getWasmApi: () => getWasmApi(),
         viewerSession,
         pagePresentationRuntime,
         documentEditApi,
@@ -632,6 +634,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         handlePdfViewerKeydown,
         defaultPageWidth: DEFAULT_PAGE_WIDTH,
         defaultPageHeight: DEFAULT_PAGE_HEIGHT,
+        prefetchAdjacentPreviews,
     };
 }
 

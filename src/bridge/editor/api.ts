@@ -1,4 +1,6 @@
 import { getWasmApi } from '../shared/wasm_loader';
+import type { WasmModule } from '../shared/wasm_loader';
+import type { EditorSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 import type {
     EditorResponse,
     HitTestResult,
@@ -22,11 +24,11 @@ import type {
 
 // ── Singleton EditorSession WASM instance ───────────────────────
 
-let _session: any = null;
+let _session: EditorSession | null = null;
 
-function getSession(): any {
+function getSession(): EditorSession | null {
     if (!_session) {
-        const api = getWasmApi() as any;
+        const api = getWasmApi();
         if (typeof api?.EditorSession === 'function') {
             _session = new api.EditorSession();
         }

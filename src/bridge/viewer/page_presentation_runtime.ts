@@ -79,15 +79,18 @@ export type PagePresentationRuntimeAdapter = {
     reset: () => void;
 };
 
+import type { WasmModule } from '../shared/wasm_loader';
+import type { PagePresentationRuntime } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
+
 type PagePresentationRuntimeDeps = {
-    getWasmApi: () => any;
+    getWasmApi: () => WasmModule;
 };
 
 const COMMIT_SUPPRESS_MS = 120;
 
-let runtimeHandle: any = null;
+let runtimeHandle: PagePresentationRuntime | null = null;
 
-function getRuntimeHandle(getWasmApi: () => any): any {
+function getRuntimeHandle(getWasmApi: () => WasmModule): PagePresentationRuntime | null {
     if (!runtimeHandle) {
         const api = getWasmApi();
         if (typeof api?.PagePresentationRuntime === 'function') {

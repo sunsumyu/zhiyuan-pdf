@@ -1,5 +1,6 @@
 import { logPdfLayoutTrace } from './layout_trace';
 import { createRenderWasmApi } from './render_wasm_api';
+import { emitPdfDiagnostic } from '../shared/diagnostics';
 
 export type RustFramePlan = {
     renderReason: string;
@@ -207,7 +208,8 @@ export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAda
     function peek(displayZoom: number, renderReason: RenderReason = 'default'): RustFramePlan | null {
         try {
             return renderApi.resolveFramePlan(buildRequest(displayZoom, renderReason)) as RustFramePlan;
-        } catch {
+        } catch (err) {
+            emitPdfDiagnostic('RENDER', 'peek.error', { error: String(err) }, { level: 'ERROR' });
             return null;
         }
     }
@@ -259,7 +261,8 @@ export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAda
     function scheduleRender(displayZoom: number, renderReason: RenderReason = 'default'): RustRenderFrame | null {
         try {
             return renderApi.scheduleRenderFrame(buildRequest(displayZoom, renderReason)) as RustRenderFrame;
-        } catch {
+        } catch (err) {
+            emitPdfDiagnostic('RENDER', 'scheduleRender.error', { error: String(err) }, { level: 'ERROR' });
             return null;
         }
     }

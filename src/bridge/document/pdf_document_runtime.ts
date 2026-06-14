@@ -1,5 +1,8 @@
 import type { RenderReason } from '../render/frame_plan';
 import type { RenderScheduler } from '../render/render_scheduler';
+import { emitPdfDiagnostic } from '../shared/diagnostics';
+import type { WasmModule } from '../shared/wasm_loader';
+import type { DocumentSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
 // ── DocumentSession bridge (P1 of session-API plan) ─────────────────────────
 //
@@ -8,11 +11,11 @@ import type { RenderScheduler } from '../render/render_scheduler';
 // `DocumentSession` API exported from `crates/pdf-viewer-ui/src/document/
 // document_api.rs`. Singleton handle — all state lives in wasm thread_locals.
 
-let _documentSession: any = null;
+let _documentSession: DocumentSession | null = null;
 
-function getDocumentSession(getWasmApi: () => any): any {
+function getDocumentSession(getWasmApi: () => WasmModule): DocumentSession | null {
     if (!_documentSession) {
-        const api = getWasmApi() as any;
+        const api = getWasmApi();
         if (typeof api?.DocumentSession === 'function') {
             _documentSession = new api.DocumentSession();
         }
@@ -22,7 +25,7 @@ function getDocumentSession(getWasmApi: () => any): any {
 
 type CreatePdfDocumentRuntimeDeps = {
     ensureWasmInitialized: () => Promise<void>;
-    getWasmApi: () => any;
+    getWasmApi: () => WasmModule;
     getTargetZoom: () => number;
     resolveHostScrollRefresh: (displayZoom: number, timestampMs?: number) => { shouldRefresh?: boolean; delayMs?: number } | null;
     getScrollContainer: () => HTMLElement | null;
@@ -83,7 +86,7 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
         await deps.ensureWasmInitialized();
         try {
             const session = getDocumentSession(deps.getWasmApi);
-            console.log('[PDF-DIAG] openTextPdfFlow: session=', session ? 'OK' : 'NULL');
+            emitPdfDiagnostic('DOC', 'openTextPdfFlow', { path, session: session ? 'OK' : 'NULL' });
             const openResult = session
                 ? await session.open({
                     path,
@@ -92,22 +95,22 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
                     defaultPageHeight: 842,
                 })
                 : null;
-            console.log('[PDF-DIAG] openResult=', JSON.stringify(openResult));
+            emitPdfDiagnostic('DOC', 'openResult', { openResult: openResult ? JSON.stringify(openResult) : 'null' });
             const pageCount: number = Number(openResult?.pageCount || 0);
             if (!openResult?.opened || pageCount <= 0) {
-                console.warn('[PDF] DocumentSession.open returned no pages for:', path, openResult);
+                emitPdfDiagnostic('DOC', 'openFailed', { path, openResult: openResult ? JSON.stringify(openResult) : 'null' }, { level: 'ERROR' });
                 resetPdfViewerState();
                 return;
             }
-            console.log('[PDF-DIAG] open succeeded, pageCount=', pageCount, '— entering render');
+            emitPdfDiagnostic('DOC', 'openSuccess', { path, pageCount });
             deps.clearVectorHost();
             deps.clearEditorHost();
             deps.syncZoomSelect();
             deps.syncTextEditButton();
             await renderCurrentPage();
-            console.log('[PDF-DIAG] renderCurrentPage completed');
+            emitPdfDiagnostic('DOC', 'renderCompleted', { path });
         } catch (err) {
-            console.error('[PDF] Failed to open document pipeline:', err);
+            emitPdfDiagnostic('DOC', 'openException', { path, error: String(err) }, { level: 'ERROR' });
             resetPdfViewerState();
         }
     }

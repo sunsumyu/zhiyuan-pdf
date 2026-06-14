@@ -108,6 +108,28 @@ pub fn read_resources(doc: &Document, page_id: lopdf::ObjectId) -> FlatResources
     flat
 }
 
+pub fn find_xobject_by_name(
+    doc: &Document,
+    flat_resources: &FlatResources,
+    name: &[u8],
+) -> Option<lopdf::ObjectId> {
+    if let Some(xobjects) = flat_resources.get(b"XObject" as &[u8]) {
+        if let Some(&id) = xobjects.get(name) {
+            return Some(id);
+        }
+    }
+    // Fallback: search all other pages' resources for this XObject name
+    for (_, page_obj_id) in doc.get_pages() {
+        let other_resources = read_resources(doc, page_obj_id);
+        if let Some(xobjects) = other_resources.get(b"XObject" as &[u8]) {
+            if let Some(&id) = xobjects.get(name) {
+                return Some(id);
+            }
+        }
+    }
+    None
+}
+
 pub fn operands_to_f32(ops: &[Object]) -> Result<Vec<f32>, String> {
     let mut res = Vec::new();
     for op in ops {
@@ -724,10 +746,9 @@ pub fn parse_content_stream(
                         "[PDF-DIAG][Do] operator name={:?}",
                         String::from_utf8_lossy(name)
                     );
-                    if let Some(xobjects) = flat_resources.get(b"XObject" as &[u8]) {
-                        if let Some(id) = xobjects.get(name) {
-                            crate::pdf_log!(3, "[PDF-DIAG][Do] found XObject id={:?}", id);
-                            if let Ok(stream) = doc.get_object(*id).and_then(|o| o.as_stream()) {
+                    if let Some(id) = find_xobject_by_name(doc, flat_resources, name) {
+                        crate::pdf_log!(3, "[PDF-DIAG][Do] found XObject id={:?}", id);
+                        if let Ok(stream) = doc.get_object(id).and_then(|o| o.as_stream()) {
                                 let subtype = stream
                                     .dict
                                     .get(b"Subtype")
@@ -752,7 +773,7 @@ pub fn parse_content_stream(
                                             String::from_utf8_lossy(name)
                                         );
                                         if let Ok(sub) = Content::decode(&data) {
-                                            let sub_res = read_resources(doc, *id);
+                                            let sub_res = read_resources(doc, id);
                                             let mut sub_state = state.clone();
                                             if let Ok(m_obj) = stream.dict.get(b"Matrix") {
                                                 if let Ok(m_arr) = m_obj.as_array() {
@@ -860,8 +881,8 @@ pub fn parse_content_stream(
                                                     .map(|p| p[1])
                                                     .fold(f32::NEG_INFINITY, f32::max);
                                                 objects.push(RenderObject::Image(NativeImageModel {
+                                                    data_url: format!("http://pdfasset.localhost/{}", asset_id),
                                                     id: asset_id,
-                                                    data_url: String::new(),
                                                     x: min_x,
                                                     y: min_y,
                                                     width: (max_x - min_x).abs(),
@@ -894,7 +915,6 @@ pub fn parse_content_stream(
                                         "[PDF-DIAG][Do] Unsupported subtype={:?}",
                                         subtype.map(|s| String::from_utf8_lossy(s).into_owned())
                                     );
-                                }
                             }
                         } else {
                             crate::pdf_log!(
@@ -903,8 +923,6 @@ pub fn parse_content_stream(
                                 String::from_utf8_lossy(name)
                             );
                         }
-                    } else {
-                        crate::pdf_log!(3, "[PDF-DIAG][Do] No XObject resources available");
                     }
                 }
             }
@@ -1171,7 +1189,7 @@ fn manual_flate_decompress(compressed: &[u8]) -> Option<Vec<u8>> {
 
 /// Extract a non-JPEG image XObject's raw samples, convert to JPEG bytes.
 /// Handles DeviceRGB, DeviceGray, CMYK, and FlateDecode with PNG/TIFF predictors.
-fn build_image_as_jpeg(
+pub(crate) fn build_image_as_jpeg(
     doc: &lopdf::Document,
     stream: &lopdf::Stream,
     w: u32,

@@ -7,17 +7,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { RustRenderFrame } from '../render/frame_plan';
+import type { WasmModule } from '../shared/wasm_loader';
+import type { DocumentSession, ReviewSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
-type GetWasmApi = () => any;
+type GetWasmApi = () => WasmModule;
 
 // ── Session singletons ─────────────────────────────────────────
 
-let _documentSession: any = null;
-let _reviewSession: any = null;
+let _documentSession: DocumentSession | null = null;
+let _reviewSession: ReviewSession | null = null;
 
-function getDocumentSession(getWasmApi: GetWasmApi): any {
+function getDocumentSession(getWasmApi: GetWasmApi): DocumentSession | null {
     if (!_documentSession) {
-        const api = getWasmApi() as any;
+        const api = getWasmApi();
         if (typeof api?.DocumentSession === 'function') {
             _documentSession = new api.DocumentSession();
         }
@@ -25,9 +27,9 @@ function getDocumentSession(getWasmApi: GetWasmApi): any {
     return _documentSession;
 }
 
-function getReviewSession(getWasmApi: GetWasmApi): any {
+function getReviewSession(getWasmApi: GetWasmApi): ReviewSession | null {
     if (!_reviewSession) {
-        const api = getWasmApi() as any;
+        const api = getWasmApi();
         if (typeof api?.ReviewSession === 'function') {
             _reviewSession = new api.ReviewSession();
         }
@@ -125,11 +127,12 @@ export type EditorWasmApi = {
     saveSession: (path: string, pageIndex: number) => Promise<unknown>;
 };
 
-function callMethod<T>(target: any, method: string, ...args: unknown[]): T | null {
-    const fn = target?.[method];
+function callMethod<T>(target: unknown, method: string, ...args: unknown[]): T | null {
+    const targetRecord = target as Record<string, unknown> | null | undefined;
+    const fn = targetRecord?.[method];
     if (typeof fn !== 'function') return null;
     try {
-        return fn.apply(target, args) as T;
+        return (fn as (...a: unknown[]) => T).apply(target, args);
     } catch {
         return null;
     }

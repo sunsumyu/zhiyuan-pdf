@@ -11,6 +11,10 @@
 // existing callers in `pdf_runtime.ts` etc. — only the implementation changed.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { emitPdfDiagnostic } from '../shared/diagnostics';
+import type { WasmModule } from '../shared/wasm_loader';
+import type { ViewerSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
+
 export type ViewerSessionSnapshot = {
     path: string | null;
     currentPage: number;
@@ -31,16 +35,16 @@ export type ViewerSessionAdapter = {
 };
 
 type ViewerSessionDeps = {
-    getWasmApi: () => any;
+    getWasmApi: () => WasmModule;
     getFallbackPageWidth: () => number;
     getFallbackPageHeight: () => number;
 };
 
-let _session: any = null;
+let _session: ViewerSession | null = null;
 
-function getViewerSession(getWasmApi: () => any): any {
+function getViewerSession(getWasmApi: () => WasmModule): ViewerSession | null {
     if (!_session) {
-        const api = getWasmApi() as any;
+        const api = getWasmApi();
         if (typeof api?.ViewerSession === 'function') {
             _session = new api.ViewerSession();
         }
@@ -54,6 +58,7 @@ export function createViewerSessionAdapter(deps: ViewerSessionDeps): ViewerSessi
     function read(): ViewerSessionSnapshot {
         try {
             const snap = session()?.read();
+            emitPdfDiagnostic('VIEW', 'readSnap', { snap: snap ? JSON.stringify(snap) : 'null' });
             return {
                 path: snap?.path ?? null,
                 currentPage: snap?.currentPage ?? 0,
@@ -63,7 +68,8 @@ export function createViewerSessionAdapter(deps: ViewerSessionDeps): ViewerSessi
                 pageWidth: snap?.pageWidth ?? deps.getFallbackPageWidth(),
                 pageHeight: snap?.pageHeight ?? deps.getFallbackPageHeight(),
             };
-        } catch {
+        } catch (err) {
+            emitPdfDiagnostic('VIEW', 'readError', { error: String(err) }, { level: 'ERROR' });
             return {
                 path: null,
                 currentPage: 0,
@@ -116,5 +122,3 @@ export function createViewerSessionAdapter(deps: ViewerSessionDeps): ViewerSessi
         setPageDimensions,
     };
 }
-
-

@@ -3,9 +3,11 @@ import { emitPdfDiagnostic } from '../shared/diagnostics';
 import type { FramePlanAdapter } from '../render/frame_plan';
 import type { ViewerSessionAdapter } from './viewer_session';
 
+import type { WasmModule } from '../shared/wasm_loader';
+
 type GeometryProbeDeps = {
     ensureWasmInitialized: () => Promise<any>;
-    getWasmApi: () => any;
+    getWasmApi: () => WasmModule;
     viewerSession: ViewerSessionAdapter;
     framePlanAdapter: FramePlanAdapter;
     getZoomState: () => { targetZoom: number; visualZoom: number; lastRenderedZoom: number };
@@ -123,7 +125,7 @@ export function createViewerGeometryProbe(deps: GeometryProbeDeps): GeometryProb
         deps.setPageDimensions(pageWidth, pageHeight);
         deps.viewerSession.setDocument('__geometry_probe__', 1, zoom);
         deps.viewerSession.setPageDimensions(pageWidth, pageHeight);
-        deps.getWasmApi().reset_zoom_state(zoom);
+        deps.getWasmApi().resetZoomState?.(zoom);
         deps.showWrapper();
         ensureVectorHost();
 
@@ -153,7 +155,7 @@ export function createViewerGeometryProbe(deps: GeometryProbeDeps): GeometryProb
         const pageWidth = deps.getPageWidth();
         const pageHeight = deps.getPageHeight();
         emitPdfDiagnostic('geometry-probe', 'wheel', { pageWidth, pageHeight, clientX, clientY, deltaY }, { verboseOnly: true });
-        const wheelPlan = deps.getWasmApi().resolve_wheel_zoom({
+        const wheelPlan = deps.getWasmApi().resolveWheelZoom?.({
             deltaY,
             viewportX: clientX - rect.left,
             viewportY: clientY - rect.top,
@@ -171,13 +173,13 @@ export function createViewerGeometryProbe(deps: GeometryProbeDeps): GeometryProb
         });
 
         const nextZoom = deps.clampZoom(Number(wheelPlan?.targetZoom || zoomState.targetZoom));
-        deps.getWasmApi().set_target_zoom(nextZoom);
+        deps.getWasmApi().setTargetZoom?.(nextZoom);
         deps.viewerSession.setCurrentZoom(nextZoom);
 
         const plan = deps.framePlanAdapter.take(nextZoom) ?? deps.framePlanAdapter.peek(nextZoom);
         const renderZoom = plan?.renderZoom ?? nextZoom;
         applyRenderPlan(deps, nextZoom, renderZoom, plan);
-        deps.getWasmApi().mark_rendered_zoom(renderZoom);
+        deps.getWasmApi().markRenderedZoom?.(renderZoom);
         deps.syncZoomSelect();
         return projectSnapshot(deps);
     }

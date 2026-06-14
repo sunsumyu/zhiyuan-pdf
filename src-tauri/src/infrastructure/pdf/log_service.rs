@@ -10,6 +10,7 @@ use std::sync::{Mutex, OnceLock};
 pub static PDF_LOG_LEVEL: AtomicU8 = AtomicU8::new(1);
 const PDF_EVENT_LOG_LIMIT: usize = 512;
 static PDF_EVENT_LOG: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
+pub static PDF_EVENT_LOG_MUTEX: Mutex<()> = Mutex::new(());
 
 pub fn set_pdf_log_level(level: u8) {
     PDF_LOG_LEVEL.store(level, Ordering::SeqCst);

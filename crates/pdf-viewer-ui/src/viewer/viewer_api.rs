@@ -30,7 +30,9 @@ impl ViewerSession {
     /// Read the current viewer-session snapshot (path / pages / zoom / page dims).
     #[wasm_bindgen(js_name = "read")]
     pub fn read(&self) -> JsValue {
-        to_value(&viewer_store::read_viewer_session()).unwrap_or(JsValue::NULL)
+        let session = viewer_store::read_viewer_session();
+        web_sys::console::log_1(&JsValue::from_str(&format!("[WASM-ViewerSession] read() is called. path={:?}, page_count={}", session.path, session.page_count)));
+        to_value(&session).unwrap_or(JsValue::NULL)
     }
 
     /// Bind a freshly opened document into the viewer session.

@@ -8,7 +8,7 @@ import init, * as wasmExports from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer
 
 let wasmInitialized = false;
 let initPromise: Promise<any> | null = null;
-let currentWasm: any = null;
+let currentWasm: WasmModule | null = null;
 const PDF_VIEWER_RUNTIME_FINGERPRINT = 'pdf-viewer-rust-single-chain-20260429';
 
 function installTargetInvokeBridge(): void {
@@ -74,13 +74,15 @@ export async function ensureWasmInitialized() {
     return initPromise;
 }
 
+export type WasmModule = typeof wasmExports;
+
 /**
  * [Sovereignty] 获取 WASM 原始导出对象
  * 注意：必须先调用 ensureWasmInitialized
  */
-export function getWasmApi(): any {
+export function getWasmApi(): WasmModule {
     if (!wasmInitialized) throw new Error('[V3-Sovereign] WASM not initialized yet.');
-    return currentWasm;
+    return currentWasm!;
 }
 
 // 代理 Tauri 侧的指令隧道

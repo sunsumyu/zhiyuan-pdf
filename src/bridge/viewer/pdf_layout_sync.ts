@@ -5,6 +5,7 @@ import {
     getWrapper,
     MIN_ZOOM,
 } from './pdf_viewer_dom';
+import type { WasmModule } from '../shared/wasm_loader';
 
 type LayoutOverride = {
     hostWidth: number;
@@ -16,7 +17,7 @@ type LayoutOverride = {
 } | null;
 
 type LayoutSyncDeps = {
-    getWasmApi: () => any;
+    getWasmApi: () => WasmModule;
     getPageWidth: () => number;
     getPageHeight: () => number;
     readZoomState: () => { currentZoom: number; targetZoom: number; visualZoom: number; lastRenderedZoom: number };
@@ -47,7 +48,7 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             layoutOverride: layoutOverride ?? null,
             zoomState: deps.readZoomState(),
         });
-        const layout = wasm.sync_host_layout?.({
+        const layout = wasm.syncHostLayout?.({
             displayZoom: safeDisplayZoom,
             pageWidth: deps.getPageWidth(),
             pageHeight: deps.getPageHeight(),

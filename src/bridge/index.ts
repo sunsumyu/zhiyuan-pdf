@@ -68,7 +68,8 @@ registerPdfViewerAPI({
     openTextPdfFlow: runtime.openTextPdfFlow,
     clearVectorHost,
     geometryProbe: runtime.geometryProbe,
+    prefetchAdjacentPreviews: (path, currentPage, pageCount) =>
+        runtime.prefetchAdjacentPreviews(path, currentPage, pageCount),
 });
 
 bindSaveFocusGuard();
-

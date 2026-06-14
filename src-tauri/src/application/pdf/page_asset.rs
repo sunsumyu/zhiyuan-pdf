@@ -32,6 +32,7 @@ mod tests {
 
     #[tokio::test]
     async fn waits_for_inflight_key() {
+        let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX.lock().unwrap();
         crate::infrastructure::pdf::log_service::clear_pdf_event_log();
         let state = Arc::new(crate::AppState::new());
         let first = PageAssetAdmissionService::acquire_inflight_lock(
@@ -45,8 +46,10 @@ mod tests {
         .await;
 
         let waiting_state = Arc::clone(&state);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let (acquired_tx, mut acquired_rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
+            let _ = started_tx.send(());
             let _second = PageAssetAdmissionService::acquire_inflight_lock(
                 &waiting_state,
                 "doc-a.pdf",
@@ -59,13 +62,19 @@ mod tests {
             let _ = acquired_tx.send(());
         });
 
+        // Wait until the spawned task has started running
+        started_rx.await.unwrap();
+        // Give the spawned task a short moment to call acquire_inflight_lock and block/log
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
         assert!(
-            tokio::time::timeout(Duration::from_millis(30), &mut acquired_rx)
+            tokio::time::timeout(Duration::from_millis(150), &mut acquired_rx)
                 .await
                 .is_err(),
             "same document/page/revision/kind should wait for the existing in-flight lock",
         );
         let waiting_events = crate::infrastructure::pdf::log_service::read_pdf_event_log();
+        eprintln!("TEST_DIAG waiting_events: {:?}", waiting_events);
         assert!(
             waiting_events
                 .iter()

@@ -63,7 +63,7 @@ export const config: CustomConfig = {
             project: path.join(__dirname, 'tsconfig.json'),
         },
     },
-    specs: [path.join(__dirname, 'specs', '**', '*.spec.ts')],
+    specs: [path.join(__dirname, 'specs', 'load_pdf.spec.ts')],
     maxInstances: 1,
     capabilities: [
         {

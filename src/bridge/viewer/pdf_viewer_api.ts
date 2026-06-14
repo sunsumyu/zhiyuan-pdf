@@ -7,9 +7,11 @@ import type { EditorFormatAction } from '../editor/types';
 import type { PageTurnDecision } from './page_presentation_runtime';
 
 
+import type { WasmModule } from '../shared/wasm_loader';
+
 export type PdfViewerApiDeps = {
     ensureWasmInitialized: () => Promise<unknown>;
-    getWasmApi: () => any;
+    getWasmApi: () => WasmModule;
     readPath: () => string | null;
     readCurrentPage: () => number;
     readPageCount: () => number;
@@ -55,6 +57,7 @@ export type PdfViewerApiDeps = {
     openTextPdfFlow: (path: string) => Promise<void>;
     clearVectorHost: () => void;
     geometryProbe: unknown;
+    prefetchAdjacentPreviews: (path: string, currentPage: number, pageCount: number) => void;
 };
 
 export class PdfViewerAPI {
@@ -73,7 +76,7 @@ export class PdfViewerAPI {
             return;
         }
         const wasm = this.deps.getWasmApi();
-        const openResult = await wasm.pick_document_pipeline({
+        const openResult = await wasm.pickDocumentPipeline({
             initialZoom: 1.0,
             defaultPageWidth: this.deps.defaultPageWidth,
             defaultPageHeight: this.deps.defaultPageHeight,
@@ -99,6 +102,11 @@ export class PdfViewerAPI {
         const decision = this.deps.requestPageTurn(Math.max(0, current - 1), 'prev', nowMs);
         if (!decision.accepted) return;
         this.deps.setCurrentPage(decision.targetPage);
+        const path = this.deps.readPath();
+        const pageCount = this.deps.readPageCount();
+        if (path && pageCount > 0) {
+            this.deps.prefetchAdjacentPreviews(path, decision.targetPage, pageCount);
+        }
         await this.deps.renderScheduler.requestRender('navigation', 'navigation', {
             pageTurnId: decision.pageTurnId,
             targetPage: decision.targetPage,
@@ -111,6 +119,11 @@ export class PdfViewerAPI {
         const decision = this.deps.requestPageTurn(current + 1, 'next', nowMs);
         if (!decision.accepted) return;
         this.deps.setCurrentPage(decision.targetPage);
+        const path = this.deps.readPath();
+        const pageCount = this.deps.readPageCount();
+        if (path && pageCount > 0) {
+            this.deps.prefetchAdjacentPreviews(path, decision.targetPage, pageCount);
+        }
         await this.deps.renderScheduler.requestRender('navigation', 'navigation', {
             pageTurnId: decision.pageTurnId,
             targetPage: decision.targetPage,
@@ -123,7 +136,7 @@ export class PdfViewerAPI {
         let zoom = parseFloat(val);
         if (val.includes('%')) zoom = zoom / 100;
         const nextZoom = this.deps.clampZoom(zoom);
-        const result = this.deps.getWasmApi().apply_zoom_selection?.(nextZoom);
+        const result = this.deps.getWasmApi().applyZoomSelection?.(nextZoom);
         this.deps.syncZoomSelect();
         if (result?.changed) {
             await this.deps.renderCurrentPage();
@@ -137,7 +150,7 @@ export class PdfViewerAPI {
             await this.deps.editorHost.commitActiveEditor();
         }
         const wasm = this.deps.getWasmApi();
-        const result = wasm.undo_document_pipeline() as { changed?: boolean } | null;
+        const result = wasm.undoDocumentPipeline?.() as { changed?: boolean } | null;
         if (result?.changed) {
             await this.deps.refreshDocument('undo');
             return;
@@ -150,7 +163,7 @@ export class PdfViewerAPI {
             await this.deps.editorHost.commitActiveEditor();
         }
         const wasm = this.deps.getWasmApi();
-        const result = wasm.redo_document_pipeline() as { changed?: boolean } | null;
+        const result = wasm.redoDocumentPipeline?.() as { changed?: boolean } | null;
         if (result?.changed) {
             await this.deps.refreshDocument('redo');
             return;
@@ -159,7 +172,7 @@ export class PdfViewerAPI {
     }
 
     async rotate(delta = 90): Promise<void> {
-        const result = await this.deps.getWasmApi().rotate_document_pipeline(delta);
+        const result = await this.deps.getWasmApi().rotateDocumentPipeline?.(delta);
         if (!result?.rotated) return;
         await this.deps.refreshDocument('rotate');
     }

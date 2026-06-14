@@ -323,6 +323,7 @@ mod tests {
 
     #[tokio::test]
     async fn uses_seeded_display_list() {
+        let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX.lock().unwrap();
         crate::infrastructure::pdf::log_service::clear_pdf_event_log();
         let state = crate::AppState::new();
         let path = "cached-doc.pdf".to_string();

@@ -23,9 +23,11 @@ type ViewerSessionSnapshot = {
 
 type FindScope = 'page' | 'document';
 
+import type { WasmModule } from '../shared/wasm_loader';
+
 type CreatePdfFindControllerDeps = {
     getViewerSession: () => ViewerSessionSnapshot;
-    getWasmApi: () => any;
+    getWasmApi: () => WasmModule;
     getScrollContainer: () => HTMLElement | null;
     goToPage: (pageIndex: number) => Promise<void>;
     documentEdits: DocumentEditApi;
@@ -93,11 +95,13 @@ type FindToolbarState = {
     canReplaceAll: boolean;
 };
 
-let _findSession: any = null;
+import type { FindSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
-function getFindSession(getWasmApi: () => any): any {
+let _findSession: FindSession | null = null;
+
+function getFindSession(getWasmApi: () => WasmModule): FindSession | null {
     if (!_findSession) {
-        const api = getWasmApi() as any;
+        const api = getWasmApi();
         if (typeof api?.FindSession === 'function') {
             _findSession = new api.FindSession();
         }

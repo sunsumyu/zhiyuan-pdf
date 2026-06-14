@@ -66,8 +66,10 @@ async function init() {
         openBtn?.click();
     });
 
-    // 消费 inline script 已经选好的文件（用户在模块加载完之前就点了 Open）
-    const pendingPath = (window as any).__pendingPdfPath;
+    // 消费 inline script 已经选好的文件，或者通过 URL 参数传入的文件
+    const urlParams = new URLSearchParams(window.location.search);
+    const fileParam = urlParams.get('file');
+    const pendingPath = fileParam || (window as any).__pendingPdfPath;
     if (pendingPath) {
         delete (window as any).__pendingPdfPath;
         handleFileOpen(pendingPath);

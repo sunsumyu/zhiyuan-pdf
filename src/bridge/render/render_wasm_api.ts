@@ -12,7 +12,9 @@ import type {
     RustWheelZoomHostResult,
 } from './frame_plan';
 
-type GetWasmApi = () => any;
+import type { WasmModule } from '../shared/wasm_loader';
+
+type GetWasmApi = () => WasmModule;
 
 type ProgressiveRenderStart = {
     started?: boolean;
@@ -124,34 +126,34 @@ export type RenderWasmApi = {
 export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
     return {
         resolveFramePlan(frameRequest) {
-            return getWasmApi().resolve_frame_plan?.(frameRequest) ?? null;
+            return getWasmApi().resolveFramePlan?.(frameRequest) ?? null;
         },
         takeFramePlan(frameRequest) {
-            return getWasmApi().take_frame_plan?.(frameRequest) ?? null;
+            return getWasmApi().takeFramePlan?.(frameRequest) ?? null;
         },
         stepZoomFramePlan(frameRequest) {
-            return getWasmApi().step_zoom_frame_plan?.(frameRequest) ?? null;
+            return getWasmApi().stepZoomFramePlan?.(frameRequest) ?? null;
         },
         resolveViewportRefresh(frameRequest) {
-            return getWasmApi().resolve_viewport_refresh?.(frameRequest) ?? null;
+            return getWasmApi().resolveViewportRefresh?.(frameRequest) ?? null;
         },
         resolveHostScrollRefresh(frameRequest) {
-            return getWasmApi().resolve_host_scroll_refresh?.(frameRequest) ?? null;
+            return getWasmApi().resolveHostScrollRefresh?.(frameRequest) ?? null;
         },
         scheduleRenderFrame(frameRequest) {
-            return getWasmApi().schedule_render_frame?.(frameRequest) ?? null;
+            return getWasmApi().scheduleRenderFrame?.(frameRequest) ?? null;
         },
         markRenderedZoom(renderedZoom) {
-            getWasmApi().mark_rendered_zoom?.(renderedZoom);
+            getWasmApi().markRenderedZoom?.(renderedZoom);
         },
         settleRenderFrame(frameToken, renderedZoom) {
-            return getWasmApi().settle_render_frame?.(frameToken, renderedZoom) ?? null;
+            return getWasmApi().settleRenderFrame?.(frameToken, renderedZoom) ?? null;
         },
         abortRenderFrame(frameToken) {
-            return getWasmApi().abort_render_frame?.(frameToken) ?? null;
+            return getWasmApi().abortRenderFrame?.(frameToken) ?? null;
         },
         commitRenderResult(frameToken, renderedZoom, pageWidth, pageHeight) {
-            return getWasmApi().commit_render_result?.(
+            return getWasmApi().commitRenderResult?.(
                 frameToken,
                 renderedZoom,
                 pageWidth,
@@ -159,61 +161,61 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
             ) ?? null;
         },
         resolveWheelRenderDecision(request) {
-            return getWasmApi().resolve_wheel_render_decision?.(request) ?? null;
+            return getWasmApi().resolveWheelRenderDecision?.(request) ?? null;
         },
         resolvePreviewTickDecision(request) {
-            return getWasmApi().resolve_preview_tick_decision?.(request) ?? null;
+            return getWasmApi().resolvePreviewTickDecision?.(request) ?? null;
         },
         scheduleRenderFollowUp(renderedDisplayZoom, frameRequest) {
-            return getWasmApi().schedule_render_follow_up?.(
+            return getWasmApi().scheduleRenderFollowUp?.(
                 renderedDisplayZoom,
                 frameRequest,
             ) ?? null;
         },
         handleWheelZoomHost(request) {
-            return getWasmApi().handle_wheel_zoom_host?.(request) ?? null;
+            return getWasmApi().handleWheelZoomHost?.(request) ?? null;
         },
         stepPreviewHost(request) {
-            return getWasmApi().step_preview_host?.(request) ?? null;
+            return getWasmApi().stepPreviewHost?.(request) ?? null;
         },
         setWheelRenderPending(pending) {
-            getWasmApi().set_wheel_render_pending?.(pending);
+            getWasmApi().setWheelRenderPending?.(pending);
         },
         getWheelRenderPending() {
-            return !!getWasmApi().get_wheel_render_pending?.();
+            return !!getWasmApi().getWheelRenderPending?.();
         },
         queueCommittedFrame(frame) {
-            getWasmApi().queue_committed_frame?.(frame);
+            getWasmApi().queueCommittedFrame?.(frame);
         },
         takeReadyCommittedFrame() {
-            return getWasmApi().take_ready_committed_frame?.() ?? null;
+            return getWasmApi().takeReadyCommittedFrame?.() ?? null;
         },
         isRenderFrameCurrent(frameToken) {
-            return getWasmApi().is_render_frame_current?.(frameToken) !== false;
+            return getWasmApi().isRenderFrameCurrent?.(frameToken) !== false;
         },
         queueRenderLoopFrame(frame) {
-            return getWasmApi().queue_render_loop_frame?.(frame) ?? frame;
+            return getWasmApi().queueRenderLoopFrame?.(frame) ?? frame;
         },
         advanceRenderLoopFrame(frame) {
-            return getWasmApi().advance_render_loop_frame?.(frame) ?? frame;
+            return getWasmApi().advanceRenderLoopFrame?.(frame) ?? frame;
         },
         resolveLayerExecutionPlan(bundleChanged, framePlan) {
-            return getWasmApi().resolve_layer_execution_plan?.(bundleChanged, framePlan) ?? null;
+            return getWasmApi().resolveLayerExecutionPlan?.(bundleChanged, framePlan) ?? null;
         },
         resolveRenderExecutionPlan(bundleChanged, framePlan) {
-            return getWasmApi().resolve_render_execution_plan?.(bundleChanged, framePlan) ?? null;
+            return getWasmApi().resolveRenderExecutionPlan?.(bundleChanged, framePlan) ?? null;
         },
         resolveLayerPresentDecision(useDetailLayer, framePlan) {
-            return getWasmApi().resolve_layer_present_decision?.(useDetailLayer, framePlan) ?? null;
+            return getWasmApi().resolveLayerPresentDecision?.(useDetailLayer, framePlan) ?? null;
         },
         cancelProgressiveRender() {
-            getWasmApi().cancel_progressive_render?.();
+            getWasmApi().cancelProgressiveRender?.();
         },
         resetFrameCache() {
-            getWasmApi().reset_frame_cache?.();
+            getWasmApi().resetFrameCache?.();
         },
         initPageContext(modelJson, paintPlanJson, zoom, dpr, viewportLeft, viewportTop, viewportWidth, viewportHeight) {
-            getWasmApi().init_page_context?.(
+            getWasmApi().initPageContext?.(
                 modelJson,
                 paintPlanJson,
                 zoom,
@@ -225,7 +227,7 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
             );
         },
         updatePageViewport(zoom, dpr, viewportLeft, viewportTop, viewportWidth, viewportHeight) {
-            getWasmApi().update_page_viewport?.(
+            getWasmApi().updatePageViewport?.(
                 zoom,
                 dpr,
                 viewportLeft,
@@ -235,25 +237,25 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
             );
         },
         touchFrameCacheEntry(useViewportTile, cacheKey) {
-            return getWasmApi().touch_frame_cache_entry?.(useViewportTile, cacheKey) ?? null;
+            return getWasmApi().touchFrameCacheEntry?.(useViewportTile, cacheKey) ?? null;
         },
         storeFrameCacheEntry(useViewportTile, cacheKey) {
-            return getWasmApi().store_frame_cache_entry?.(useViewportTile, cacheKey) ?? null;
+            return getWasmApi().storeFrameCacheEntry?.(useViewportTile, cacheKey) ?? null;
         },
         startProgressiveRender() {
-            return getWasmApi().start_progressive_render?.() ?? null;
+            return getWasmApi().startProgressiveRender?.() ?? null;
         },
         renderPage(renderTargetId, imageCacheMap) {
-            getWasmApi().render_page?.(renderTargetId, imageCacheMap);
+            getWasmApi().renderPage?.(renderTargetId, imageCacheMap);
         },
         renderPageOffscreen(canvasJs, imageCacheMap, dpr) {
-            getWasmApi().render_page_offscreen?.(canvasJs, imageCacheMap, dpr);
+            getWasmApi().renderPageOffscreen?.(canvasJs, imageCacheMap, dpr);
         },
         resolveProgressiveRenderPolicy(request) {
-            return getWasmApi().resolve_progressive_render_policy?.(request) ?? null;
+            return getWasmApi().resolveProgressiveRenderPolicy?.(request) ?? null;
         },
         stepProgressiveRender(renderTargetId, imageCacheMap, budgetMs, maxItems) {
-            return getWasmApi().step_progressive_render?.(
+            return getWasmApi().stepProgressiveRender?.(
                 renderTargetId,
                 imageCacheMap,
                 budgetMs,
@@ -261,7 +263,7 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
             ) ?? null;
         },
         stepProgressiveRenderOffscreen(canvasJs, imageCacheMap, budgetMs, maxItems, dpr) {
-            return getWasmApi().step_progressive_render_offscreen?.(
+            return getWasmApi().stepProgressiveRenderOffscreen?.(
                 canvasJs,
                 imageCacheMap,
                 budgetMs,

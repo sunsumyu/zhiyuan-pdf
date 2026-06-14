@@ -12,20 +12,22 @@ import {
     normalizeReviewSession,
     normalizeTargetOverlayDisplay,
 } from './pdf_comment_contracts';
+import type { WasmModule } from '../shared/wasm_loader';
+import type { CommentManager, ReviewSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
 type CreatePdfCommentWasmBridgeDeps = {
     getViewerSession: () => ViewerSessionSnapshot;
-    getWasmApi: () => any;
+    getWasmApi: () => WasmModule;
 };
 
 // ── Session singletons ─────────────────────────────────────────
 
-let _commentManager: any = null;
-let _reviewSession: any = null;
+let _commentManager: CommentManager | null = null;
+let _reviewSession: ReviewSession | null = null;
 
-function getCommentManager(getWasmApi: () => any): any {
+function getCommentManager(getWasmApi: () => WasmModule): CommentManager | null {
     if (!_commentManager) {
-        const api = getWasmApi() as any;
+        const api = getWasmApi();
         if (typeof api?.CommentManager === 'function') {
             _commentManager = new api.CommentManager();
         }
@@ -33,9 +35,9 @@ function getCommentManager(getWasmApi: () => any): any {
     return _commentManager;
 }
 
-function getReviewSession(getWasmApi: () => any): any {
+function getReviewSession(getWasmApi: () => WasmModule): ReviewSession | null {
     if (!_reviewSession) {
-        const api = getWasmApi() as any;
+        const api = getWasmApi();
         if (typeof api?.ReviewSession === 'function') {
             _reviewSession = new api.ReviewSession();
         }

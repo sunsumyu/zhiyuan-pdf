@@ -264,7 +264,9 @@ pub fn admit_page_asset(page_index: u16, role: String, asset_kind: String) -> Pa
                 }
             }
             "prefetch" => {
-                let anchor_page = state.visible_page_index.unwrap_or(session.current_page);
+                let anchor_page = state.latest_page_index
+                    .or(state.visible_page_index)
+                    .unwrap_or(session.current_page);
                 let prefetch_distance = anchor_page.abs_diff(page_index);
                 let fast_flip = state.fast_flip_mode;
                 let prefetch_window = prefetch_window_for_asset(&normalized_asset_kind, fast_flip);
@@ -272,7 +274,9 @@ pub fn admit_page_asset(page_index: u16, role: String, asset_kind: String) -> Pa
                     && (1..=prefetch_window).contains(&prefetch_distance);
                 if !phase_allows_prefetch(state.phase) {
                     (false, 0, Some("presentationBusy".to_string()))
-                } else if state.visible_page_index != Some(anchor_page) {
+                } else if state.visible_page_index != Some(anchor_page)
+                    && state.latest_page_index != Some(anchor_page)
+                {
                     (false, 0, Some("noVisibleAnchor".to_string()))
                 } else if !is_in_prefetch_window {
                     (false, 0, Some("notInVisiblePagePrefetchWindow".to_string()))
@@ -311,7 +315,9 @@ pub fn decide_adjacent_prefetch(anchor_page: u16, page_count: u16) -> PagePrefet
         if anchor_page >= page_count {
             return reject_prefetch(anchor_page, "pageOutOfRange", &state);
         }
-        if state.visible_page_index != Some(anchor_page) {
+        if state.visible_page_index != Some(anchor_page)
+            && state.latest_page_index != Some(anchor_page)
+        {
             return reject_prefetch(anchor_page, "stalePrefetchAnchor", &state);
         }
 
@@ -410,6 +416,7 @@ fn phase_allows_prefetch(phase: PageTurnPhase) -> bool {
     matches!(
         phase,
         PageTurnPhase::Idle
+            | PageTurnPhase::Turning
             | PageTurnPhase::PreviewVisible
             | PageTurnPhase::VectorVisible
             | PageTurnPhase::DetailVisible

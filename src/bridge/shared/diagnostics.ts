@@ -179,6 +179,26 @@ export function emitPdfDiagnostic(
     } catch {
         // Console diagnostics are best-effort only; terminal_log remains the authoritative sink.
     }
+    if (typeof window !== 'undefined') {
+        try {
+            const win = window as any;
+            win.__PDF_DIAGNOSTICS_HISTORY = win.__PDF_DIAGNOSTICS_HISTORY || [];
+            win.__PDF_DIAGNOSTICS_HISTORY.push({
+                timestamp: nowStamp(),
+                channel,
+                event,
+                fields,
+                level,
+                layer,
+                message
+            });
+            if (win.__PDF_DIAGNOSTICS_HISTORY.length > 1000) {
+                win.__PDF_DIAGNOSTICS_HISTORY.shift();
+            }
+        } catch {
+            // ignore
+        }
+    }
     void targetInvokeV3('terminal_log', {
         message: terminalMessage,
     }).catch(() => undefined);

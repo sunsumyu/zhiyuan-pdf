@@ -1,4 +1,5 @@
 import { getWasmApi, targetInvokeV3 } from '../shared/wasm_loader';
+import type { WasmModule } from '../shared/wasm_loader';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 import { logPdfLayoutTrace } from './layout_trace';
 import { createPagePresentationRuntimeAdapter } from '../viewer/page_presentation_runtime';
@@ -23,10 +24,10 @@ type VectorPageBundleResolution = {
 const PAGE_CACHE_MAX = 15;
 const pageBundleCache: VectorPageBundle[] = [];
 let pagePresentationRuntime: PagePresentationRuntimeAdapter = createPagePresentationRuntimeAdapter({
-    getWasmApi: () => getWasmApi() as any,
+    getWasmApi: () => getWasmApi(),
 });
 let viewerSession: ViewerSessionAdapter = createViewerSessionAdapter({
-    getWasmApi: () => getWasmApi() as any,
+    getWasmApi: () => getWasmApi(),
     getFallbackPageWidth: () => 595,
     getFallbackPageHeight: () => 842,
 });
@@ -42,8 +43,8 @@ export function configureVectorPageBundleRuntime(deps: {
 function isFrameCurrent(frameToken?: number): boolean {
     if (frameToken === undefined || !Number.isFinite(frameToken)) return true;
     try {
-        const wasm: any = getWasmApi();
-        return wasm?.is_render_frame_current?.(frameToken) !== false;
+        const wasm = getWasmApi();
+        return wasm?.isRenderFrameCurrent?.(frameToken) !== false;
     } catch {
         return true;
     }
@@ -304,12 +305,12 @@ function triggerAsyncFullBundleLoad(
                 }
                 cached.paintPlan = fullBundle?.paintPlan;
 
-                const wasm: any = getWasmApi();
-                if (wasm?.init_page_context) {
+                const wasm = getWasmApi();
+                if (wasm?.initPageContext) {
                     const dpr = typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio)
                         ? window.devicePixelRatio
                         : 1;
-                    wasm.init_page_context(
+                    wasm.initPageContext(
                         JSON.stringify(cached.model),
                         JSON.stringify(cached.paintPlan),
                         1.0,
@@ -397,7 +398,7 @@ export async function resolveVectorPageBundle(
 
         const hasInlineImages = modelObjects.some((o: any) => {
             const typeLower = String(o?.type).toLowerCase();
-            return typeLower === 'image' && o?.dataUrl;
+            return typeLower === 'image' && o?.dataUrl && o.dataUrl.startsWith('data:');
         });
         const imageCacheMap = hasInlineImages
             ? new Map<string, ImageBitmap>()
@@ -438,12 +439,12 @@ export async function resolveVectorPageBundle(
         }
 
         try {
-            const wasm: any = getWasmApi();
-            if (wasm?.init_page_context) {
+            const wasm = getWasmApi();
+            if (wasm?.initPageContext) {
                 const dpr = typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio)
                     ? window.devicePixelRatio
                     : 1;
-                wasm.init_page_context(
+                wasm.initPageContext(
                     JSON.stringify(model),
                     JSON.stringify(paintPlan),
                     1.0,
@@ -465,7 +466,7 @@ export async function resolveVectorPageBundle(
                     modelHeight: model?.height,
                 });
             } else {
-                console.warn('[EDITOR-DIAG] wasm.init_page_context unavailable');
+                console.warn('[EDITOR-DIAG] wasm.initPageContext unavailable');
             }
         } catch (err) {
             console.error('[EDITOR-DIAG] page-bundle.wasm-hydrate-error', { pageIndex, error: String(err) });

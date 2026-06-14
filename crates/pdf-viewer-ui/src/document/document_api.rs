@@ -19,6 +19,11 @@ use crate::document::host_pipeline::{
     rotate_document_pipeline, undo_document_pipeline, OpenDocumentPipelineRequest,
 };
 use crate::document::mutation_pipeline::request_document_refresh;
+use crate::document::patch_persistence::apply_document_patch;
+use crate::editor::editor_controller::build_region_text_patch;
+use crate::editor::orchestrator::replace_pipeline::{
+    apply_region_text_replacements_tx, RegionTextReplaceRequest,
+};
 use crate::present::plan_builder::FramePlanRequest;
 
 // ── DocumentSession ─────────────────────────────────────────────
@@ -119,6 +124,48 @@ impl DocumentSession {
     pub fn request_refresh(&self, source: &str, frame_request_js: JsValue) -> JsValue {
         let frame_request: FramePlanRequest = from_value(frame_request_js).unwrap_or_default();
         let result = request_document_refresh(source, frame_request);
+        to_value(&result).unwrap_or(JsValue::NULL)
+    }
+
+    // ── Patches ─────────────────────────────────────────────────
+
+    /// Apply a region patch to the document in memory.
+    #[wasm_bindgen(js_name = "applyPatch")]
+    pub fn apply_patch(&self, patch_js: JsValue) {
+        apply_document_patch(patch_js);
+    }
+
+    /// Build a region text patch.
+    #[wasm_bindgen(js_name = "buildRegionPatch")]
+    pub fn build_region_patch(
+        &self,
+        page_index: u16,
+        region_id: String,
+        kind: String,
+        original_text: String,
+        new_text: String,
+    ) -> JsValue {
+        let patch = build_region_text_patch(
+            page_index,
+            &region_id,
+            &kind,
+            &original_text,
+            new_text,
+        );
+        to_value(&patch).unwrap_or(JsValue::NULL)
+    }
+
+    /// Apply region text replacements.
+    #[wasm_bindgen(js_name = "applyRegionReplacements")]
+    pub fn apply_region_replacements(
+        &self,
+        replacements_js: JsValue,
+        frame_request_js: JsValue,
+    ) -> JsValue {
+        let replacements: Vec<RegionTextReplaceRequest> =
+            from_value(replacements_js).unwrap_or_default();
+        let frame_request: FramePlanRequest = from_value(frame_request_js).unwrap_or_default();
+        let result = apply_region_text_replacements_tx(replacements, frame_request);
         to_value(&result).unwrap_or(JsValue::NULL)
     }
 }

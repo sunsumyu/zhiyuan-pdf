@@ -415,6 +415,9 @@ export function createRenderFlow(deps: RenderFlowDeps) {
 
     async function executeActualRender(renderReason: RenderReason): Promise<void> {
         const session = deps.viewerSession.read();
+        const plan = session.path
+            ? deps.framePlanAdapter.peek(session.currentZoom, renderReason)
+            : null;
         const scheduled = session.path
             ? deps.framePlanAdapter.scheduleRender(session.currentZoom, renderReason)
             : null;
@@ -425,7 +428,19 @@ export function createRenderFlow(deps: RenderFlowDeps) {
             zoom: session.currentZoom,
             scheduled: !!scheduled,
             reason: renderReason,
+            planJson: JSON.stringify(plan),
+            scheduledJson: JSON.stringify(scheduled),
         });
+        if (plan) {
+            logRenderFlow('render-current-page.plan_layers', {
+                renderBaseLayer: plan.renderBaseLayer,
+                renderDetailLayer: plan.renderDetailLayer,
+                previewSettled: plan.previewSettled,
+                useViewportTile: plan.useViewportTile,
+                reuseActiveBaseLayer: plan.reuseActiveBaseLayer,
+                reuseActiveDetailTile: plan.reuseActiveDetailTile,
+            });
+        }
         lastVisibleSurface = null;
         lastRenderedPageIndex = null;
         await runRenderLoop(scheduled);

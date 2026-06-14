@@ -1,14 +1,16 @@
 // Review WASM bridge — delegates to `ReviewSession` struct API (P2 of session-API plan).
 
 import { getWasmApi } from '../shared/wasm_loader';
+import type { WasmModule } from '../shared/wasm_loader';
+import type { ReviewSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
 // ── Singleton ReviewSession instance ──────────────────────────────────
 
-let _session: any = null;
+let _session: ReviewSession | null = null;
 
-function getReviewSession(): any {
+function getReviewSession(): ReviewSession | null {
     if (!_session) {
-        const api = getWasmApi() as any;
+        const api = getWasmApi();
         if (typeof api?.ReviewSession === 'function') {
             _session = new api.ReviewSession();
         }
@@ -52,10 +54,11 @@ export type ReviewFacadeResult = {
 
 function callMethod<T>(method: string, ...args: unknown[]): T | null {
     const session = getReviewSession();
-    const fn = session?.[method];
+    const sessionRecord = session as unknown as Record<string, unknown>;
+    const fn = sessionRecord?.[method];
     if (typeof fn !== 'function') return null;
     try {
-        return fn.apply(session, args) as T;
+        return (fn as (...a: unknown[]) => T).apply(session, args);
     } catch {
         return null;
     }
@@ -63,11 +66,11 @@ function callMethod<T>(method: string, ...args: unknown[]): T | null {
 
 // `locateChange` is not yet on `ReviewSession`; fall back to the raw wasm export.
 function callRawWasm<T>(fnName: string, arg?: unknown): T | null {
-    const api = getWasmApi() as any;
+    const api = getWasmApi() as unknown as Record<string, unknown>;
     const fn = api?.[fnName];
     if (typeof fn !== 'function') return null;
     try {
-        return arg !== undefined ? fn(arg) : fn();
+        return arg !== undefined ? (fn as (a?: unknown) => T)(arg) : (fn as () => T)();
     } catch {
         return null;
     }

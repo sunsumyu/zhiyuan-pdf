@@ -53,3 +53,15 @@ pub fn apply_zoom_selection(zoom: f32) -> JsValue {
     let result = crate::host::command::apply_zoom_selection(zoom);
     to_value(&result).unwrap_or(JsValue::NULL)
 }
+
+#[wasm_bindgen(js_name = "clearPreviewPresent")]
+pub fn clear_preview_present() {
+    zoom_controller::clear_preview_present();
+}
+
+#[wasm_bindgen(js_name = "syncHostLayout")]
+pub fn sync_host_layout_wasm(request_js: JsValue) -> JsValue {
+    let request: crate::host::layout::SyncHostLayoutRequest = from_value(request_js).unwrap_or_default();
+    let result = crate::host::layout::sync_host_layout(request);
+    to_value(&result).unwrap_or(JsValue::NULL)
+}
