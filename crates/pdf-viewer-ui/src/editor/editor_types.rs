@@ -40,3 +40,13 @@ pub fn err_response(error: EditorError) -> JsValue {
     };
     response_to_js(&resp)
 }
+
+/// Deserialize a `JsValue` into `T`, or return an `err_response` JsValue for the caller to return.
+/// Eliminates the repeated `serde_wasm_bindgen::from_value` + `err_response` boilerplate across API methods.
+pub fn parse_request<T: serde::de::DeserializeOwned>(js: JsValue, method: &str) -> Result<T, JsValue> {
+    serde_wasm_bindgen::from_value(js).map_err(|e| {
+        err_response(EditorError::Internal {
+            message: format!("failed to parse {method} request: {e}"),
+        })
+    })
+}

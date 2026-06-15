@@ -96,41 +96,7 @@ impl VelloRenderer {
         for object in objects {
             match object {
                 RenderObject::Path(path) => {
-                    let mut bez_path = BezPath::new();
-                    for seg in &path.segments {
-                        match seg.command.as_str() {
-                            "move" => {
-                                if let Some(p) = seg.points.get(0) {
-                                    bez_path.move_to(Point::new(p[0] as f64, p[1] as f64));
-                                }
-                            }
-                            "line" => {
-                                if let Some(p) = seg.points.get(0) {
-                                    bez_path.line_to(Point::new(p[0] as f64, p[1] as f64));
-                                }
-                            }
-                            "bezier" => {
-                                if seg.points.len() == 3 {
-                                    bez_path.curve_to(
-                                        Point::new(
-                                            seg.points[0][0] as f64,
-                                            seg.points[0][1] as f64,
-                                        ),
-                                        Point::new(
-                                            seg.points[1][0] as f64,
-                                            seg.points[1][1] as f64,
-                                        ),
-                                        Point::new(
-                                            seg.points[2][0] as f64,
-                                            seg.points[2][1] as f64,
-                                        ),
-                                    );
-                                }
-                            }
-                            "close" => bez_path.close_path(),
-                            _ => {}
-                        }
-                    }
+                    let bez_path = path_segments_to_bez_path(&path.segments);
 
                     if path.fill {
                         let color = parse_hex_vello_color(
@@ -355,7 +321,7 @@ impl VelloRenderer {
                 }
             }
         }
-        if text.text.contains("绠€") || text.font_size > 20.0 {
+        if should_trace_text_render(text) {
             println!(
                 "[FONT-MATCH] REQ: '{}' | MATCHED: '{}' | RENDER_MODE: {} | TEXT: '{}'",
                 text.font_name,
@@ -714,6 +680,86 @@ fn text_stroke_enabled(render_mode: i32) -> bool {
 fn text_is_non_painting(render_mode: i32) -> bool {
     matches!(render_mode, 3 | 7)
 }
+
+/// Convert a swash glyph outline into a vello/kurbo `BezPath`.
+/// Shared by the embedded-font and cosmic_text-fallback render paths.
+fn outline_to_bez_path(outline: &swash::scale::outline::Outline) -> BezPath {
+    use swash::zeno::Verb;
+    let mut bez_path = BezPath::new();
+    let mut points = outline.points().iter();
+    for verb in outline.verbs() {
+        match verb {
+            Verb::MoveTo => {
+                if let Some(p) = points.next() {
+                    bez_path.move_to(Point::new(p.x as f64, p.y as f64));
+                }
+            }
+            Verb::LineTo => {
+                if let Some(p) = points.next() {
+                    bez_path.line_to(Point::new(p.x as f64, p.y as f64));
+                }
+            }
+            Verb::QuadTo => {
+                if let (Some(c), Some(p)) = (points.next(), points.next()) {
+                    bez_path.quad_to(
+                        Point::new(c.x as f64, c.y as f64),
+                        Point::new(p.x as f64, p.y as f64),
+                    );
+                }
+            }
+            Verb::CurveTo => {
+                if let (Some(c1), Some(c2), Some(p)) =
+                    (points.next(), points.next(), points.next())
+                {
+                    bez_path.curve_to(
+                        Point::new(c1.x as f64, c1.y as f64),
+                        Point::new(c2.x as f64, c2.y as f64),
+                        Point::new(p.x as f64, p.y as f64),
+                    );
+                }
+            }
+            Verb::Close => bez_path.close_path(),
+        }
+    }
+    bez_path
+}
+
+/// Convert a `NativePathModel` segment list into a vello/kurbo `BezPath`.
+fn path_segments_to_bez_path(segments: &[crate::infrastructure::pdf::models::PathSegment]) -> BezPath {
+    let mut bez_path = BezPath::new();
+    for seg in segments {
+        match seg.command.as_str() {
+            "move" => {
+                if let Some(p) = seg.points.get(0) {
+                    bez_path.move_to(Point::new(p[0] as f64, p[1] as f64));
+                }
+            }
+            "line" => {
+                if let Some(p) = seg.points.get(0) {
+                    bez_path.line_to(Point::new(p[0] as f64, p[1] as f64));
+                }
+            }
+            "bezier" => {
+                if seg.points.len() == 3 {
+                    bez_path.curve_to(
+                        Point::new(seg.points[0][0] as f64, seg.points[0][1] as f64),
+                        Point::new(seg.points[1][0] as f64, seg.points[1][1] as f64),
+                        Point::new(seg.points[2][0] as f64, seg.points[2][1] as f64),
+                    );
+                }
+            }
+            "close" => bez_path.close_path(),
+            _ => {}
+        }
+    }
+    bez_path
+}
+
+/// Whether this text run warrants verbose render-path tracing.
+/// Gate: known diagnostic marker or large font size.
+fn should_trace_text_render(text: &NativeTextModel) -> bool {
+    text.text.contains("绠€") || text.font_size > 20.0
+}
 impl VelloRenderer {
     /// Render text as sharp vector paths using swash outlines.
     /// [DEFINITIVE FIX] This implementation correctly normalizes Font Units to Pixels.
@@ -725,7 +771,7 @@ impl VelloRenderer {
         flip_y: Affine,
     ) -> bool {
         let resolved_font = self.resolve_pdf_font(text);
-        if text.text.contains("绠€") || text.font_size > 20.0 {
+        if should_trace_text_render(text) {
             crate::pdf_log!(
                 3,
                 "[PDF-TEXT-PLAN] text='{}' request='{}' resolved_family={:?} preferred={:?} can_embedded={} key={:?} render_mode={} stroke_width={} stroke_color={:?}",
@@ -741,7 +787,7 @@ impl VelloRenderer {
             );
         }
         if self.draw_embedded_text_vector(scene, scale_context, text, &resolved_font, flip_y) {
-            if text.text.contains("绠€") || text.font_size > 20.0 {
+            if should_trace_text_render(text) {
                 crate::pdf_log!(
                     3,
                     "[FONT-MATCH] REQ: '{}' | MATCHED: 'EMBEDDED({})' | RENDER_MODE: {} | TEXT: '{}'",
@@ -811,7 +857,7 @@ impl VelloRenderer {
                 break;
             }
         }
-        if text.text.contains("绠€") || text.font_size > 20.0 {
+        if should_trace_text_render(text) {
             crate::pdf_log!(
                 3,
                 "[FONT-MATCH] REQ: '{}' | MATCHED: '{}' | RENDER_MODE: {} | TEXT: '{}'",
@@ -869,43 +915,7 @@ impl VelloRenderer {
                     let mut scaler = scale_context.builder(font_ref).hint(false).build();
 
                     if let Some(outline) = scaler.scale_outline(glyph.glyph_id) {
-                        let mut bez_path = BezPath::new();
-                        let mut points = outline.points().iter();
-                        for verb in outline.verbs() {
-                            use swash::zeno::Verb;
-                            match verb {
-                                Verb::MoveTo => {
-                                    if let Some(p) = points.next() {
-                                        bez_path.move_to(Point::new(p.x as f64, p.y as f64));
-                                    }
-                                }
-                                Verb::LineTo => {
-                                    if let Some(p) = points.next() {
-                                        bez_path.line_to(Point::new(p.x as f64, p.y as f64));
-                                    }
-                                }
-                                Verb::QuadTo => {
-                                    if let (Some(c), Some(p)) = (points.next(), points.next()) {
-                                        bez_path.quad_to(
-                                            Point::new(c.x as f64, c.y as f64),
-                                            Point::new(p.x as f64, p.y as f64),
-                                        );
-                                    }
-                                }
-                                Verb::CurveTo => {
-                                    if let (Some(c1), Some(c2), Some(p)) =
-                                        (points.next(), points.next(), points.next())
-                                    {
-                                        bez_path.curve_to(
-                                            Point::new(c1.x as f64, c1.y as f64),
-                                            Point::new(c2.x as f64, c2.y as f64),
-                                            Point::new(p.x as f64, p.y as f64),
-                                        );
-                                    }
-                                }
-                                Verb::Close => bez_path.close_path(),
-                            }
-                        }
+                        let bez_path = outline_to_bez_path(&outline);
                         let final_transform = self.raw_outline_transform(
                             flip_y,
                             text.tx + glyph.x,
@@ -939,7 +949,7 @@ impl VelloRenderer {
             return true;
         }
         if !resolved_font.can_attempt_embedded_render {
-            if text.text.contains("绠€") || text.font_size > 20.0 {
+            if should_trace_text_render(text) {
                 println!(
                     "[PDF-EMBEDDED] skip can_attempt=false text='{}' font='{}' key={:?} subtype={:?}",
                     preview_text(&text.text),
@@ -1026,43 +1036,7 @@ impl VelloRenderer {
                 continue;
             };
 
-            let mut bez_path = BezPath::new();
-            let mut points = outline.points().iter();
-            for verb in outline.verbs() {
-                use swash::zeno::Verb;
-                match verb {
-                    Verb::MoveTo => {
-                        if let Some(p) = points.next() {
-                            bez_path.move_to(Point::new(p.x as f64, p.y as f64));
-                        }
-                    }
-                    Verb::LineTo => {
-                        if let Some(p) = points.next() {
-                            bez_path.line_to(Point::new(p.x as f64, p.y as f64));
-                        }
-                    }
-                    Verb::QuadTo => {
-                        if let (Some(c), Some(p)) = (points.next(), points.next()) {
-                            bez_path.quad_to(
-                                Point::new(c.x as f64, c.y as f64),
-                                Point::new(p.x as f64, p.y as f64),
-                            );
-                        }
-                    }
-                    Verb::CurveTo => {
-                        if let (Some(c1), Some(c2), Some(p)) =
-                            (points.next(), points.next(), points.next())
-                        {
-                            bez_path.curve_to(
-                                Point::new(c1.x as f64, c1.y as f64),
-                                Point::new(c2.x as f64, c2.y as f64),
-                                Point::new(p.x as f64, p.y as f64),
-                            );
-                        }
-                    }
-                    Verb::Close => bez_path.close_path(),
-                }
-            }
+                        let bez_path = outline_to_bez_path(&outline);
 
             let final_transform = self.raw_outline_transform(
                 flip_y,
@@ -1086,7 +1060,7 @@ impl VelloRenderer {
                 text.font_subtype,
                 text.pdf_char_codes
             );
-        } else if text.text.contains("绠€") || text.font_size > 20.0 {
+        } else if should_trace_text_render(text) {
             println!(
                 "[PDF-EMBEDDED] success text='{}' font='{}' key='{}' subtype={:?} codes={:?}",
                 preview_text(&text.text),

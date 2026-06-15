@@ -190,460 +190,240 @@ fn record_overlay_object_summary(overlay: &mut PreparedOverlay, summary: String)
     }
 }
 
+fn resolve_visible_indices(vector_model: &VectorPageModel, prepared_scene: Option<&PreparedPageScene>, viewport_bbox: &BoundingBox) -> Vec<usize> {
+    prepared_scene.map(|scene| scene.visible_vector_indices(viewport_bbox)).unwrap_or_else(|| {
+        vector_model.objects.iter().enumerate().filter_map(|(index, obj)| {
+            if vector_object_intersects_viewport(obj, viewport_bbox) { Some(index) } else { None }
+        }).collect()
+    })
+}
+fn prepare_overlays(overlays: &[ParagraphRenderOverlay], viewport_bbox: &BoundingBox, page_width: f32) -> Vec<PreparedOverlay> {
+    overlays.iter().filter(|o| overlay_intersects_viewport(o, viewport_bbox, page_width)).cloned().map(|overlay| {
+        let rr = paragraph_replacement_region(&overlay.target);
+        PreparedOverlay {
+            object_ids: if overlay_suppresses_text_source(&overlay) { overlay_paragraph_object_ids(&overlay) } else { HashSet::new() },
+            object_indices: if overlay_suppresses_text_source(&overlay) { overlay_paragraph_object_indices(&overlay) } else { HashSet::new() },
+            path_suppression_bbox: if overlay_suppresses_row_paths(&overlay) { rr.row_path_suppression_bbox_for_page_width(page_width) } else { BoundingBox::default() },
+            replacement_region: rr, overlay, inserted: false,
+            suppressed_text_object_count: 0, suppressed_text_run_count: 0,
+            object_intersect_count: 0, text_intersect_count: 0, path_intersect_count: 0, image_intersect_count: 0,
+            thin_horizontal_path_count: 0, suppressed_path_count: 0,
+            first_path_summary: None, object_summary_1: None, object_summary_2: None, object_summary_3: None,
+        }
+    }).collect::<Vec<_>>()
+}
+fn trace_overlay_identity(po: &[PreparedOverlay], vi: &[usize], vm: &VectorPageModel) {
+    for (i, ov) in po.iter().enumerate() {
+        dbg_event("effective-plan","overlay-identity",vec![
+            dbg_field("overlayIndex",i),dbg_field("paragraphId",ov.overlay.target.paragraph_id.as_str()),
+            dbg_field("owner",format!("{:?}",ov.overlay.owner)),dbg_field("replacesSource",ov.overlay.replaces_source),
+            dbg_field("objectIds",format!("{:?}",ov.object_ids.iter().collect::<Vec<_>>())),
+            dbg_field("objectIdCount",ov.object_ids.len()),
+            dbg_field("objectIndices",format!("{:?}",ov.object_indices)),
+            dbg_field("objectIndexCount",ov.object_indices.len()),
+            dbg_field("sourceText",crate::common::debug::truncate_debug_text(&ov.overlay.source_text,40)),
+            dbg_field("draftText",crate::common::debug::truncate_debug_text(&ov.overlay.draft_text,40))]);
+    }
+    for &idx in vi {
+        if let Some(VectorRenderObject::Text(t)) = vm.objects.get(idx) {
+            dbg_event("effective-plan","vector-text-object",vec![
+                dbg_field("objectIndex",idx),dbg_field("objectId",t.id.as_str()),
+                dbg_field("runCount",t.runs.len()),
+                dbg_field("firstRunText",t.runs.first().map(|r|crate::common::debug::truncate_debug_text(&r.text,30)).unwrap_or_default())]);
+        }
+    }
+}
+fn build_entries_without_overlays(vi: Vec<usize>, vm: &VectorPageModel) -> Vec<EffectiveVectorRenderEntry> {
+    vi.into_iter().filter(|&oi| {
+        if let Some(VectorRenderObject::Text(t)) = vm.objects.get(oi) { !t.runs.iter().all(|r|r.render_mode==3) } else { true }
+    }).map(|oi| EffectiveVectorRenderEntry::Object{object_index:oi,suppressed_text_runs:SuppressedVectorTextRuns::default()}).collect()
+}
+fn trace_overlay_summary(o: &PreparedOverlay) {
+    let sb=format!("{:.1},{:.1},{:.1},{:.1}",o.replacement_region.source_bbox.left,o.replacement_region.source_bbox.top,o.replacement_region.source_bbox.right,o.replacement_region.source_bbox.bottom);
+    let tcb=format!("{:.1},{:.1},{:.1},{:.1}",o.replacement_region.text_clear_bbox.left,o.replacement_region.text_clear_bbox.top,o.replacement_region.text_clear_bbox.right,o.replacement_region.text_clear_bbox.bottom);
+    let pb=format!("{:.1},{:.1},{:.1},{:.1}",o.path_suppression_bbox.left,o.path_suppression_bbox.top,o.path_suppression_bbox.right,o.path_suppression_bbox.bottom);
+    dbg_event("effective-plan","overlay-min",vec![dbg_field("summary",format!("owner={:?} repl={} sp={} pi={} ii={} sb={} pb={} first={}",o.overlay.owner,o.overlay.replaces_source,o.suppressed_path_count,o.path_intersect_count,o.image_intersect_count,sb,pb,o.first_path_summary.as_deref().unwrap_or("none")))]);
+    dbg_event("effective-plan","overlay-compact",vec![dbg_field("paragraphId",o.overlay.target.paragraph_id.as_str()),dbg_field("owner",format!("{:?}",o.overlay.owner)),dbg_field("replacesSource",o.overlay.replaces_source),dbg_field("sourceBBox",sb.as_str()),dbg_field("textClearBBox",tcb.as_str()),dbg_field("pathSuppressionBBox",pb.as_str()),dbg_field("pathIntersectCount",o.path_intersect_count),dbg_field("imageIntersectCount",o.image_intersect_count),dbg_field("suppressedPathCount",o.suppressed_path_count),dbg_field("firstPathSummary",o.first_path_summary.as_deref().unwrap_or("none"))]);
+    dbg_event("effective-plan","overlay-path-summary",vec![dbg_field("paragraphId",o.overlay.target.paragraph_id.as_str()),dbg_field("owner",format!("{:?}",o.overlay.owner)),dbg_field("replacesSource",o.overlay.replaces_source),dbg_field("sourceText",o.overlay.source_text.as_str()),dbg_field("draftText",o.overlay.draft_text.as_str()),dbg_field("sourceObjectIndexCount",o.object_indices.len()),dbg_field("sourceObjectIndices",format!("{:?}",o.object_indices)),dbg_field("textClearBBox",tcb.as_str()),dbg_field("sourceBBox",sb.as_str()),dbg_field("pathSuppressionBBox",pb.as_str()),dbg_field("objectIntersectCount",o.object_intersect_count),dbg_field("textIntersectCount",o.text_intersect_count),dbg_field("pathIntersectCount",o.path_intersect_count),dbg_field("imageIntersectCount",o.image_intersect_count),dbg_field("thinHorizontalPathCount",o.thin_horizontal_path_count),dbg_field("suppressedPathCount",o.suppressed_path_count),dbg_field("suppressedTextObjectCount",o.suppressed_text_object_count),dbg_field("suppressedTextRunCount",o.suppressed_text_run_count),dbg_field("sourceObjectIdCount",o.object_ids.len()),dbg_field("firstPathSummary",o.first_path_summary.as_deref().unwrap_or("none")),dbg_field("objectSummary1",o.object_summary_1.as_deref().unwrap_or("none")),dbg_field("objectSummary2",o.object_summary_2.as_deref().unwrap_or("none")),dbg_field("objectSummary3",o.object_summary_3.as_deref().unwrap_or("none"))]);
+}
+fn insert_overlay_if_needed(o: &mut PreparedOverlay, e: &mut Vec<EffectiveVectorRenderEntry>) {
+    if !o.inserted && !overlay_renders_last(&o.overlay) {
+        e.push(EffectiveVectorRenderEntry::ParagraphOverlay(o.overlay.clone()));
+        o.inserted = true;
+    }
+}
 pub fn build_effective_vector_render_plan(
     vector_model: &VectorPageModel,
     prepared_scene: Option<&PreparedPageScene>,
     viewport_bbox: &BoundingBox,
     overlays: &[ParagraphRenderOverlay],
 ) -> Vec<EffectiveVectorRenderEntry> {
-    let visible_indices = prepared_scene
-        .map(|scene| scene.visible_vector_indices(viewport_bbox))
-        .unwrap_or_else(|| {
-            vector_model
-                .objects
-                .iter()
-                .enumerate()
-                .filter_map(|(index, obj)| {
-                    if vector_object_intersects_viewport(obj, viewport_bbox) {
-                        Some(index)
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        });
-
-    let mut prepared_overlays = overlays
-        .iter()
-        .filter(|overlay| overlay_intersects_viewport(overlay, viewport_bbox, vector_model.width))
-        .cloned()
-        .map(|overlay| {
-            let replacement_region = paragraph_replacement_region(&overlay.target);
-            PreparedOverlay {
-                object_ids: if overlay_suppresses_text_source(&overlay) {
-                    overlay_paragraph_object_ids(&overlay)
-                } else {
-                    HashSet::new()
-                },
-                object_indices: if overlay_suppresses_text_source(&overlay) {
-                    overlay_paragraph_object_indices(&overlay)
-                } else {
-                    HashSet::new()
-                },
-                path_suppression_bbox: if overlay_suppresses_row_paths(&overlay) {
-                    replacement_region.row_path_suppression_bbox_for_page_width(vector_model.width)
-                } else {
-                    BoundingBox::default()
-                },
-                replacement_region,
-                overlay,
-                inserted: false,
-                suppressed_text_object_count: 0,
-                suppressed_text_run_count: 0,
-                object_intersect_count: 0,
-                text_intersect_count: 0,
-                path_intersect_count: 0,
-                image_intersect_count: 0,
-                thin_horizontal_path_count: 0,
-                suppressed_path_count: 0,
-                first_path_summary: None,
-                object_summary_1: None,
-                object_summary_2: None,
-                object_summary_3: None,
-            }
-        })
-        .collect::<Vec<_>>();
-
-    // ── diagnostic: dump overlay identity ──────────────────────────────
-    for (ov_idx, ov) in prepared_overlays.iter().enumerate() {
-        let ov_obj_ids: Vec<&str> = ov.object_ids.iter().map(|s| s.as_str()).collect();
-        let ov_obj_indices: Vec<usize> = ov.object_indices.iter().copied().collect();
-        dbg_event(
-            "effective-plan",
-            "overlay-identity",
-            vec![
-                dbg_field("overlayIndex", ov_idx),
-                dbg_field("paragraphId", ov.overlay.target.paragraph_id.as_str()),
-                dbg_field("owner", format!("{:?}", ov.overlay.owner)),
-                dbg_field("replacesSource", ov.overlay.replaces_source),
-                dbg_field("objectIds", format!("{:?}", ov_obj_ids)),
-                dbg_field("objectIdCount", ov.object_ids.len()),
-                dbg_field("objectIndices", format!("{:?}", ov_obj_indices)),
-                dbg_field("objectIndexCount", ov.object_indices.len()),
-                dbg_field(
-                    "sourceText",
-                    crate::common::debug::truncate_debug_text(&ov.overlay.source_text, 40),
-                ),
-                dbg_field(
-                    "draftText",
-                    crate::common::debug::truncate_debug_text(&ov.overlay.draft_text, 40),
-                ),
-            ],
-        );
-    }
-    // Dump all visible text objects so we can compare
-    for &vi in &visible_indices {
-        if let Some(VectorRenderObject::Text(text)) = vector_model.objects.get(vi) {
-            let first_run_text = text
-                .runs
-                .first()
-                .map(|r| crate::common::debug::truncate_debug_text(&r.text, 30))
-                .unwrap_or_default();
-            dbg_event(
-                "effective-plan",
-                "vector-text-object",
-                vec![
-                    dbg_field("objectIndex", vi),
-                    dbg_field("objectId", text.id.as_str()),
-                    dbg_field("runCount", text.runs.len()),
-                    dbg_field("firstRunText", first_run_text),
-                ],
-            );
-        }
-    }
-    // ── end diagnostic ─────────────────────────────────────────────────
+    let visible_indices = resolve_visible_indices(vector_model, prepared_scene, viewport_bbox);
+    let mut prepared_overlays = prepare_overlays(overlays, viewport_bbox, vector_model.width);
+    trace_overlay_identity(&prepared_overlays, &visible_indices, vector_model);
 
     if prepared_overlays.is_empty() {
-        return visible_indices
-            .into_iter()
-            .filter(|&object_index| {
-                if let Some(VectorRenderObject::Text(text)) = vector_model.objects.get(object_index) {
-                    !text.runs.iter().all(|run| run.render_mode == 3)
-                } else {
-                    true
-                }
-            })
-            .map(|object_index| EffectiveVectorRenderEntry::Object {
-                object_index,
-                suppressed_text_runs: SuppressedVectorTextRuns::default(),
-            })
-            .collect();
+        return build_entries_without_overlays(visible_indices, vector_model);
     }
 
-    let mut entries = Vec::with_capacity(visible_indices.len() + prepared_overlays.len());
+enum TextSuppressionOutcome {
+    RunLevel(SuppressedVectorTextRuns),
+    NonMarkerRuns,
+    NoMatch,
+}
 
-    for object_index in visible_indices {
-        let Some(object) = vector_model.objects.get(object_index) else {
-            continue;
-        };
-        if let VectorRenderObject::Text(text) = object {
-            if text.runs.iter().all(|run| run.render_mode == 3) {
-                continue;
+fn decide_text_suppression(object: &VectorRenderObject, object_index: usize, overlay: &PreparedOverlay) -> TextSuppressionOutcome {
+    let z_index_hit = matches!(object, VectorRenderObject::Text(text) if overlay.object_indices.contains(&text.z_index));
+    let array_index_hit = overlay.object_indices.contains(&object_index);
+    let index_hit = z_index_hit || array_index_hit;
+    let id_hit = matches!(object, VectorRenderObject::Text(text) if overlay.object_ids.contains(&text.id));
+    let text_object_index_match = matches!(object, VectorRenderObject::Text(_)) && (index_hit || id_hit);
+    if matches!(object, VectorRenderObject::Text(_)) {
+        let (text_id, text_z) = if let VectorRenderObject::Text(text) = object {
+            (text.id.as_str(), text.z_index)
+        } else { ("", 0) };
+        dbg_event("effective-plan", "suppress-check", vec![
+            dbg_field("objectIndex", object_index),
+            dbg_field("textZIndex", text_z),
+            dbg_field("textId", text_id),
+            dbg_field("overlayParagraphId", overlay.overlay.target.paragraph_id.as_str()),
+            dbg_field("zIndexHit", z_index_hit),
+            dbg_field("arrayIndexHit", array_index_hit),
+            dbg_field("idHit", id_hit),
+            dbg_field("matched", text_object_index_match),
+        ]);
+    }
+    if text_object_index_match {
+        let refs = matching_text_run_refs(object, &overlay.object_ids, &overlay.replacement_region);
+        return TextSuppressionOutcome::RunLevel(refs);
+    }
+    if text_object_should_be_suppressed(object, &overlay.object_ids) {
+        return TextSuppressionOutcome::NonMarkerRuns;
+    }
+    let refs = matching_text_run_refs(object, &overlay.object_ids, &overlay.replacement_region);
+    if refs.run_indices.is_empty() && refs.object_ids.is_empty() {
+        TextSuppressionOutcome::NoMatch
+    } else {
+        TextSuppressionOutcome::RunLevel(refs)
+    }
+}
+
+fn apply_text_suppression(
+    outcome: TextSuppressionOutcome,
+    object: &VectorRenderObject,
+    overlay: &mut PreparedOverlay,
+    suppressed_text_runs: &mut SuppressedVectorTextRuns,
+) -> bool {
+    match outcome {
+        TextSuppressionOutcome::RunLevel(refs) => {
+            let matched_run_count = if let VectorRenderObject::Text(text) = object {
+                refs.suppressed_count_for_text_object(text)
+            } else { 0 };
+            overlay.suppressed_text_run_count = overlay.suppressed_text_run_count.saturating_add(matched_run_count);
+            overlay.suppressed_text_object_count = overlay.suppressed_text_object_count.saturating_add(1);
+            suppressed_text_runs.run_indices.extend(refs.run_indices);
+            suppressed_text_runs.object_ids.extend(refs.object_ids);
+            true
+        }
+        TextSuppressionOutcome::NonMarkerRuns => {
+            overlay.suppressed_text_object_count = overlay.suppressed_text_object_count.saturating_add(1);
+            if let VectorRenderObject::Text(text) = object {
+                for (run_index, run) in text.runs.iter().enumerate() {
+                    if !crate::render::source_suppression::run_text_is_list_marker_only(&run.text) {
+                        suppressed_text_runs.run_indices.insert(run_index);
+                    }
+                }
             }
+            true
+        }
+        TextSuppressionOutcome::NoMatch => false,
+    }
+}
+
+fn check_path_suppression(object: &VectorRenderObject, object_index: usize, overlay: &mut PreparedOverlay) -> bool {
+    if let Some(object_bbox) = vector_object_bbox(object) {
+        if bbox_intersects(&object_bbox, &overlay.path_suppression_bbox) {
+            overlay.object_intersect_count = overlay.object_intersect_count.saturating_add(1);
+            match object {
+                VectorRenderObject::Text(_) => overlay.text_intersect_count = overlay.text_intersect_count.saturating_add(1),
+                VectorRenderObject::Path(_) => overlay.path_intersect_count = overlay.path_intersect_count.saturating_add(1),
+                VectorRenderObject::Image(_) => overlay.image_intersect_count = overlay.image_intersect_count.saturating_add(1),
+            }
+            record_overlay_object_summary(overlay, vector_object_summary(object, object_index));
+        }
+    }
+    if let Some(path_summary) = should_suppress(object, &overlay.replacement_region, &overlay.path_suppression_bbox) {
+        overlay.thin_horizontal_path_count = overlay.thin_horizontal_path_count.saturating_add(1);
+        overlay.suppressed_path_count = overlay.suppressed_path_count.saturating_add(1);
+        if overlay.first_path_summary.is_none() { overlay.first_path_summary = Some(path_summary); }
+        return true;
+    }
+    if let VectorRenderObject::Path(path) = object {
+        if let Some(path_bbox) = path_object_bbox(path) {
+            if bbox_intersects(&path_bbox, &overlay.path_suppression_bbox) {
+                if overlay.first_path_summary.is_none() {
+                    overlay.first_path_summary = Some(format!(
+                        "id={} bbox={:.1},{:.1},{:.1},{:.1} stroke={} color={}",
+                        path.id, path_bbox.left, path_bbox.top, path_bbox.right, path_bbox.bottom,
+                        path.stroke_width, path.stroke_color.as_deref().unwrap_or("none")));
+                }
+            }
+        }
+    }
+    false
+}
+
+fn process_visible_objects(
+    visible_indices: Vec<usize>,
+    vector_model: &VectorPageModel,
+    prepared_overlays: &mut [PreparedOverlay],
+) -> Vec<EffectiveVectorRenderEntry> {
+    let mut entries = Vec::with_capacity(visible_indices.len() + prepared_overlays.len());
+    for object_index in visible_indices {
+        let Some(object) = vector_model.objects.get(object_index) else { continue };
+        if let VectorRenderObject::Text(text) = object {
+            if text.runs.iter().all(|run| run.render_mode == 3) { continue }
         }
         let mut suppressed_text_runs = SuppressedVectorTextRuns::default();
         let mut suppress_entire_object = false;
-        for overlay in &mut prepared_overlays {
+        for overlay in &mut *prepared_overlays {
             let suppress_text_source = overlay_suppresses_text_source(&overlay.overlay);
             let suppress_row_paths = overlay_suppresses_row_paths(&overlay.overlay);
             if suppress_text_source {
-                // Match by object_index OR object_id. The active editor target
-                // populates source identity primarily via object_ids; falling
-                // back through object_ids ensures original PDF text under the
-                // editor is suppressed even when numeric indices were not
-                // resolved during target build.
-                // overlay.object_indices stores z_index (PDF draw order),
-                // NOT the array position in vector_model.objects[].
-                // Compare against the text object's z_index field, with
-                // array position as a fallback for legacy data.
-                let z_index_hit = matches!(object, VectorRenderObject::Text(text) if overlay.object_indices.contains(&text.z_index));
-                let array_index_hit = overlay.object_indices.contains(&object_index);
-                let index_hit = z_index_hit || array_index_hit;
-                let id_hit = matches!(object, VectorRenderObject::Text(text) if overlay.object_ids.contains(&text.id));
-                let text_object_index_match =
-                    matches!(object, VectorRenderObject::Text(_)) && (index_hit || id_hit);
-                if matches!(object, VectorRenderObject::Text(_)) {
-                    let (text_id, text_z) = if let VectorRenderObject::Text(text) = &object {
-                        (text.id.as_str(), text.z_index)
-                    } else {
-                        ("", 0)
-                    };
-                    dbg_event(
-                        "effective-plan",
-                        "suppress-check",
-                        vec![
-                            dbg_field("objectIndex", object_index),
-                            dbg_field("textZIndex", text_z),
-                            dbg_field("textId", text_id),
-                            dbg_field(
-                                "overlayParagraphId",
-                                overlay.overlay.target.paragraph_id.as_str(),
-                            ),
-                            dbg_field("zIndexHit", z_index_hit),
-                            dbg_field("arrayIndexHit", array_index_hit),
-                            dbg_field("idHit", id_hit),
-                            dbg_field("matched", text_object_index_match),
-                        ],
-                    );
-                }
-                // 只有显式的 index 匹配才整对象 suppress。
-                // source-text 启发式（同一文本对象包含 body + marker）会把 marker
-                // 一起干掉，所以这里 fall through 给下面的 matching_text_run_refs
-                // 做精细的 run 级 suppress（只 suppress 空间上落在 body 区域的 run）
-                if text_object_index_match {
-                    overlay.suppressed_text_object_count =
-                        overlay.suppressed_text_object_count.saturating_add(1);
-                    // 一个 PDF text object 可能同时包含多个逻辑段落的 run
-                    // （例如同一项目列表下多个 bullet 项被渲染到同一个 text 对象里）。
-                    // 旧版按 "非 marker run 全部 suppress" 会把其他 segment 的 run
-                    // 也误抑制，导致编辑下方 segment 时上方 segment 的文字消失。
-                    // 改为：用 overlay 的 source object_ids + replacement_region
-                    // 做精细过滤，只 suppress 真正属于当前 overlay 的 run。
-                    let refs = matching_text_run_refs(
-                        &object,
-                        &overlay.object_ids,
-                        &overlay.replacement_region,
-                    );
-                    let matched_run_count = refs.run_indices.len();
-                    suppressed_text_runs.run_indices.extend(refs.run_indices);
-                    suppressed_text_runs.object_ids.extend(refs.object_ids);
-                    overlay.suppressed_text_run_count = overlay
-                        .suppressed_text_run_count
-                        .saturating_add(matched_run_count);
-                    if !overlay.inserted && !overlay_renders_last(&overlay.overlay) {
-                        entries.push(EffectiveVectorRenderEntry::ParagraphOverlay(
-                            overlay.overlay.clone(),
-                        ));
-                        overlay.inserted = true;
-                    }
+                let outcome = decide_text_suppression(object, object_index, overlay);
+                if apply_text_suppression(outcome, object, overlay, &mut suppressed_text_runs) {
+                    insert_overlay_if_needed(overlay, &mut entries);
                     continue;
                 }
             }
             if suppress_row_paths {
-                if let Some(object_bbox) = vector_object_bbox(&object) {
-                    if bbox_intersects(&object_bbox, &overlay.path_suppression_bbox) {
-                        overlay.object_intersect_count =
-                            overlay.object_intersect_count.saturating_add(1);
-                        match object {
-                            VectorRenderObject::Text(_) => {
-                                overlay.text_intersect_count =
-                                    overlay.text_intersect_count.saturating_add(1);
-                            }
-                            VectorRenderObject::Path(_) => {
-                                overlay.path_intersect_count =
-                                    overlay.path_intersect_count.saturating_add(1);
-                            }
-                            VectorRenderObject::Image(_) => {
-                                overlay.image_intersect_count =
-                                    overlay.image_intersect_count.saturating_add(1);
-                            }
-                        }
-                        record_overlay_object_summary(
-                            overlay,
-                            vector_object_summary(&object, object_index),
-                        );
-                    }
-                }
-                if let Some(path_summary) = should_suppress(
-                    &object,
-                    &overlay.replacement_region,
-                    &overlay.path_suppression_bbox,
-                ) {
-                    overlay.thin_horizontal_path_count =
-                        overlay.thin_horizontal_path_count.saturating_add(1);
-                    overlay.suppressed_path_count = overlay.suppressed_path_count.saturating_add(1);
-                    if overlay.first_path_summary.is_none() {
-                        overlay.first_path_summary = Some(path_summary);
-                    }
+                if check_path_suppression(object, object_index, overlay) {
                     suppress_entire_object = true;
                     continue;
                 }
-                if let VectorRenderObject::Path(path) = object {
-                    if let Some(path_bbox) = path_object_bbox(&path) {
-                        if bbox_intersects(&path_bbox, &overlay.path_suppression_bbox) {
-                            if overlay.first_path_summary.is_none() {
-                                overlay.first_path_summary = Some(format!(
-                                    "id={} bbox={:.1},{:.1},{:.1},{:.1} stroke={} color={}",
-                                    path.id,
-                                    path_bbox.left,
-                                    path_bbox.top,
-                                    path_bbox.right,
-                                    path_bbox.bottom,
-                                    path.stroke_width,
-                                    path.stroke_color.as_deref().unwrap_or("none")
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-            if suppress_text_source {
-                if text_object_should_be_suppressed(&object, &overlay.object_ids) {
-                    overlay.suppressed_text_object_count =
-                        overlay.suppressed_text_object_count.saturating_add(1);
-                    // 对象 ID 命中，但同一文本对象内可能包含 list marker run（如 "●"），
-                    // 不能整对象 suppress —— 把所有非 marker run 标记为 suppress，保留 marker。
-                    if let VectorRenderObject::Text(text) = &object {
-                        for (run_index, run) in text.runs.iter().enumerate() {
-                            if !crate::render::source_suppression::run_text_is_list_marker_only(
-                                &run.text,
-                            ) {
-                                suppressed_text_runs.run_indices.insert(run_index);
-                            }
-                        }
-                    }
-                    if !overlay.inserted && !overlay_renders_last(&overlay.overlay) {
-                        entries.push(EffectiveVectorRenderEntry::ParagraphOverlay(
-                            overlay.overlay.clone(),
-                        ));
-                        overlay.inserted = true;
-                    }
-                    continue;
-                }
-                let matched_text_runs = matching_text_run_refs(
-                    &object,
-                    &overlay.object_ids,
-                    &overlay.replacement_region,
-                );
-                if matched_text_runs.is_empty() {
-                    continue;
-                }
-                let matched_run_count = if let VectorRenderObject::Text(text) = object {
-                    matched_text_runs.suppressed_count_for_text_object(&text)
-                } else {
-                    0
-                };
-                overlay.suppressed_text_run_count = overlay
-                    .suppressed_text_run_count
-                    .saturating_add(matched_run_count);
-                suppressed_text_runs.extend(matched_text_runs);
-                if !overlay.inserted && !overlay_renders_last(&overlay.overlay) {
-                    entries.push(EffectiveVectorRenderEntry::ParagraphOverlay(
-                        overlay.overlay.clone(),
-                    ));
-                    overlay.inserted = true;
-                }
             }
         }
-
         let should_skip_entire_object = match object {
             VectorRenderObject::Text(text) => {
                 suppress_entire_object
                     || (!text.runs.is_empty()
-                        && suppressed_text_runs.suppressed_count_for_text_object(&text)
-                            == text.runs.len())
+                        && suppressed_text_runs.suppressed_count_for_text_object(text) == text.runs.len())
             }
             _ => suppress_entire_object,
         };
-        if should_skip_entire_object {
-            continue;
-        }
-
+        if should_skip_entire_object { continue }
         entries.push(EffectiveVectorRenderEntry::Object {
             object_index,
             suppressed_text_runs,
         });
     }
+    entries
+}
+
+    let mut entries = process_visible_objects(visible_indices, vector_model, &mut prepared_overlays);
 
     for overlay in prepared_overlays {
-        let source_bbox = format!(
-            "{:.1},{:.1},{:.1},{:.1}",
-            overlay.replacement_region.source_bbox.left,
-            overlay.replacement_region.source_bbox.top,
-            overlay.replacement_region.source_bbox.right,
-            overlay.replacement_region.source_bbox.bottom
-        );
-        let text_clear_bbox = format!(
-            "{:.1},{:.1},{:.1},{:.1}",
-            overlay.replacement_region.text_clear_bbox.left,
-            overlay.replacement_region.text_clear_bbox.top,
-            overlay.replacement_region.text_clear_bbox.right,
-            overlay.replacement_region.text_clear_bbox.bottom
-        );
-        let path_suppression_bbox = format!(
-            "{:.1},{:.1},{:.1},{:.1}",
-            overlay.path_suppression_bbox.left,
-            overlay.path_suppression_bbox.top,
-            overlay.path_suppression_bbox.right,
-            overlay.path_suppression_bbox.bottom
-        );
-        dbg_event(
-            "effective-plan",
-            "overlay-min",
-            vec![dbg_field(
-                "summary",
-                format!(
-                    "owner={:?} repl={} sp={} pi={} ii={} sb={} pb={} first={}",
-                    overlay.overlay.owner,
-                    overlay.overlay.replaces_source,
-                    overlay.suppressed_path_count,
-                    overlay.path_intersect_count,
-                    overlay.image_intersect_count,
-                    source_bbox,
-                    path_suppression_bbox,
-                    overlay.first_path_summary.as_deref().unwrap_or("none")
-                ),
-            )],
-        );
-        dbg_event(
-            "effective-plan",
-            "overlay-compact",
-            vec![
-                dbg_field("paragraphId", overlay.overlay.target.paragraph_id.as_str()),
-                dbg_field("owner", format!("{:?}", overlay.overlay.owner)),
-                dbg_field("replacesSource", overlay.overlay.replaces_source),
-                dbg_field("sourceBBox", source_bbox.as_str()),
-                dbg_field("textClearBBox", text_clear_bbox.as_str()),
-                dbg_field("pathSuppressionBBox", path_suppression_bbox.as_str()),
-                dbg_field("pathIntersectCount", overlay.path_intersect_count),
-                dbg_field("imageIntersectCount", overlay.image_intersect_count),
-                dbg_field("suppressedPathCount", overlay.suppressed_path_count),
-                dbg_field(
-                    "firstPathSummary",
-                    overlay.first_path_summary.as_deref().unwrap_or("none"),
-                ),
-            ],
-        );
-        dbg_event(
-            "effective-plan",
-            "overlay-path-summary",
-            vec![
-                dbg_field("paragraphId", overlay.overlay.target.paragraph_id.as_str()),
-                dbg_field("owner", format!("{:?}", overlay.overlay.owner)),
-                dbg_field("replacesSource", overlay.overlay.replaces_source),
-                dbg_field("sourceText", overlay.overlay.source_text.as_str()),
-                dbg_field("draftText", overlay.overlay.draft_text.as_str()),
-                dbg_field("sourceObjectIndexCount", overlay.object_indices.len()),
-                dbg_field(
-                    "sourceObjectIndices",
-                    format!("{:?}", overlay.object_indices),
-                ),
-                dbg_field("textClearBBox", text_clear_bbox.as_str()),
-                dbg_field("sourceBBox", source_bbox.as_str()),
-                dbg_field("pathSuppressionBBox", path_suppression_bbox.as_str()),
-                dbg_field("objectIntersectCount", overlay.object_intersect_count),
-                dbg_field("textIntersectCount", overlay.text_intersect_count),
-                dbg_field("pathIntersectCount", overlay.path_intersect_count),
-                dbg_field("imageIntersectCount", overlay.image_intersect_count),
-                dbg_field(
-                    "thinHorizontalPathCount",
-                    overlay.thin_horizontal_path_count,
-                ),
-                dbg_field("suppressedPathCount", overlay.suppressed_path_count),
-                dbg_field(
-                    "suppressedTextObjectCount",
-                    overlay.suppressed_text_object_count,
-                ),
-                dbg_field("suppressedTextRunCount", overlay.suppressed_text_run_count),
-                dbg_field("sourceObjectIdCount", overlay.object_ids.len()),
-                dbg_field(
-                    "firstPathSummary",
-                    overlay.first_path_summary.as_deref().unwrap_or("none"),
-                ),
-                dbg_field(
-                    "objectSummary1",
-                    overlay.object_summary_1.as_deref().unwrap_or("none"),
-                ),
-                dbg_field(
-                    "objectSummary2",
-                    overlay.object_summary_2.as_deref().unwrap_or("none"),
-                ),
-                dbg_field(
-                    "objectSummary3",
-                    overlay.object_summary_3.as_deref().unwrap_or("none"),
-                ),
-            ],
-        );
+        trace_overlay_summary(&overlay);
         if !overlay.inserted {
             entries.push(EffectiveVectorRenderEntry::ParagraphOverlay(
                 overlay.overlay,
@@ -653,6 +433,109 @@ pub fn build_effective_vector_render_plan(
 
     entries
 }
+
+fn process_glyph_paragraph(
+    region_index: usize,
+    paragraph_index: usize,
+    paragraph: &crate::models::glyph::GlyphPaintParagraph,
+    overlays: &[ParagraphRenderOverlay],
+    viewport_bbox: &BoundingBox,
+    entries: &mut Vec<EffectiveGlyphRenderEntry>,
+) {
+    let paragraph_object_ids = paragraph
+        .runs
+        .iter()
+        .flat_map(|run| run.object_ids.iter().cloned())
+        .collect::<HashSet<_>>();
+    let paragraph_object_indices = paragraph
+        .runs
+        .iter()
+        .flat_map(|run| run.object_indices.iter().copied())
+        .collect::<HashSet<_>>();
+    let matching_overlays = overlays
+        .iter()
+        .filter(|overlay| overlay_suppresses_text_source(overlay))
+        .filter(|overlay| {
+            let overlay_ids = overlay_paragraph_object_ids(overlay);
+            let overlay_indices = overlay_paragraph_object_indices(overlay);
+            let object_id_match = !overlay_ids.is_empty()
+                && overlay_ids
+                    .iter()
+                    .any(|object_id| paragraph_object_ids.contains(object_id));
+            let object_index_match = !overlay_indices.is_empty()
+                && overlay_indices
+                    .iter()
+                    .any(|object_index| paragraph_object_indices.contains(object_index));
+            let replacement_region = paragraph_replacement_region(&overlay.target);
+            let spatial_match = paragraph.runs.iter().any(|run| {
+                glyph_run_spatially_matches_replacement_region(run, &replacement_region)
+            });
+            let source_text_match =
+                glyph_paragraph_matches_overlay_source_text(paragraph, overlay);
+            object_id_match || object_index_match || spatial_match || source_text_match
+        })
+        .collect::<Vec<_>>();
+    let mut suppressed_run_object_ids = HashSet::<String>::new();
+    let mut suppressed_run_indices = HashSet::<usize>::new();
+    for overlay in &matching_overlays {
+        let overlay_ids = overlay_paragraph_object_ids(overlay);
+        let overlay_indices = overlay_paragraph_object_indices(overlay);
+        let source_text_match =
+            glyph_paragraph_matches_overlay_source_text(paragraph, overlay);
+        suppressed_run_object_ids.extend(overlay_ids.iter().cloned());
+        let replacement_region = paragraph_replacement_region(&overlay.target);
+        for (run_index, run) in paragraph.runs.iter().enumerate() {
+            let object_id_match = !overlay_ids.is_empty()
+                && run
+                    .object_ids
+                    .iter()
+                    .any(|object_id| overlay_ids.contains(object_id));
+            let object_index_match = !overlay_indices.is_empty()
+                && run
+                    .object_indices
+                    .iter()
+                    .any(|object_index| overlay_indices.contains(object_index));
+            if source_text_match
+                || object_id_match
+                || object_index_match
+                || glyph_run_spatially_matches_replacement_region(run, &replacement_region)
+            {
+                suppressed_run_indices.insert(run_index);
+            }
+        }
+    }
+    
+    let mut deferred_overlays = Vec::new();
+    for overlay in matching_overlays {
+        if overlay_renders_last(overlay) {
+            deferred_overlays.push((*overlay).clone());
+        } else {
+            entries.push(EffectiveGlyphRenderEntry::ParagraphOverlay(
+                (*overlay).clone(),
+            ));
+        }
+    }
+    
+    if paragraph
+        .runs
+        .iter()
+        .any(|run| glyph_run_intersects_viewport(run, viewport_bbox))
+    {
+        entries.push(EffectiveGlyphRenderEntry::Paragraph(GlyphParagraphRef {
+            region_index,
+            paragraph_index,
+            suppressed_run_object_ids,
+            suppressed_run_indices,
+        }));
+    }
+    
+    entries.extend(
+        deferred_overlays
+            .into_iter()
+            .map(EffectiveGlyphRenderEntry::ParagraphOverlay),
+    );
+}
+
 
 pub fn build_effective_glyph_render_plan(
     paint_plan: &GlyphPaintPlan,
@@ -670,97 +553,13 @@ pub fn build_effective_glyph_render_plan(
                 continue;
             }
 
-            let paragraph_object_ids = paragraph
-                .runs
-                .iter()
-                .flat_map(|run| run.object_ids.iter().cloned())
-                .collect::<HashSet<_>>();
-            let paragraph_object_indices = paragraph
-                .runs
-                .iter()
-                .flat_map(|run| run.object_indices.iter().copied())
-                .collect::<HashSet<_>>();
-            let matching_overlays = overlays
-                .iter()
-                .filter(|overlay| overlay_suppresses_text_source(overlay))
-                .filter(|overlay| {
-                    let overlay_ids = overlay_paragraph_object_ids(overlay);
-                    let overlay_indices = overlay_paragraph_object_indices(overlay);
-                    let object_id_match = !overlay_ids.is_empty()
-                        && overlay_ids
-                            .iter()
-                            .any(|object_id| paragraph_object_ids.contains(object_id));
-                    let object_index_match = !overlay_indices.is_empty()
-                        && overlay_indices
-                            .iter()
-                            .any(|object_index| paragraph_object_indices.contains(object_index));
-                    let replacement_region = paragraph_replacement_region(&overlay.target);
-                    let spatial_match = paragraph.runs.iter().any(|run| {
-                        glyph_run_spatially_matches_replacement_region(run, &replacement_region)
-                    });
-                    let source_text_match =
-                        glyph_paragraph_matches_overlay_source_text(paragraph, overlay);
-                    object_id_match || object_index_match || spatial_match || source_text_match
-                })
-                .collect::<Vec<_>>();
-            let mut suppressed_run_object_ids = HashSet::<String>::new();
-            let mut suppressed_run_indices = HashSet::<usize>::new();
-            for overlay in &matching_overlays {
-                let overlay_ids = overlay_paragraph_object_ids(overlay);
-                let overlay_indices = overlay_paragraph_object_indices(overlay);
-                let source_text_match =
-                    glyph_paragraph_matches_overlay_source_text(paragraph, overlay);
-                suppressed_run_object_ids.extend(overlay_ids.iter().cloned());
-                let replacement_region = paragraph_replacement_region(&overlay.target);
-                for (run_index, run) in paragraph.runs.iter().enumerate() {
-                    let object_id_match = !overlay_ids.is_empty()
-                        && run
-                            .object_ids
-                            .iter()
-                            .any(|object_id| overlay_ids.contains(object_id));
-                    let object_index_match = !overlay_indices.is_empty()
-                        && run
-                            .object_indices
-                            .iter()
-                            .any(|object_index| overlay_indices.contains(object_index));
-                    if source_text_match
-                        || object_id_match
-                        || object_index_match
-                        || glyph_run_spatially_matches_replacement_region(run, &replacement_region)
-                    {
-                        suppressed_run_indices.insert(run_index);
-                    }
-                }
-            }
-
-            let mut deferred_overlays = Vec::new();
-            for overlay in matching_overlays {
-                if overlay_renders_last(overlay) {
-                    deferred_overlays.push((*overlay).clone());
-                } else {
-                    entries.push(EffectiveGlyphRenderEntry::ParagraphOverlay(
-                        (*overlay).clone(),
-                    ));
-                }
-            }
-
-            if paragraph
-                .runs
-                .iter()
-                .any(|run| glyph_run_intersects_viewport(run, viewport_bbox))
-            {
-                entries.push(EffectiveGlyphRenderEntry::Paragraph(GlyphParagraphRef {
-                    region_index,
-                    paragraph_index,
-                    suppressed_run_object_ids,
-                    suppressed_run_indices,
-                }));
-            }
-
-            entries.extend(
-                deferred_overlays
-                    .into_iter()
-                    .map(EffectiveGlyphRenderEntry::ParagraphOverlay),
+            process_glyph_paragraph(
+                region_index,
+                paragraph_index,
+                paragraph,
+                overlays,
+                viewport_bbox,
+                &mut entries,
             );
         }
     }

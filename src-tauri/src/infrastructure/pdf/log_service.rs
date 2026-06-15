@@ -251,3 +251,45 @@ macro_rules! prof_span {
         let _span = $crate::infrastructure::pdf::log_service::ProfileSpan::new($name);
     };
 }
+
+// --- Bridge to pdf-viewer-core unified trace system ---
+//
+// Adapter pattern: implements the core `TraceSubscriber` trait so events
+// emitted from the pure-Rust core (via `trace::emit` / `trace_span!`) are
+// routed through the existing colored terminal output + ring buffer.
+// Install once at startup via `install_core_trace_bridge()`.
+
+use pdf_viewer_core::common::trace::{TraceEvent, TraceLevel, TraceSubscriber};
+
+/// Adapter that forwards core trace events into this module's log_pdf_event.
+pub struct LogServiceSubscriber;
+
+fn level_to_u8(level: TraceLevel) -> u8 {
+    match level {
+        TraceLevel::Info => 1,
+        TraceLevel::Debug => 2,
+        TraceLevel::Trace => 3,
+    }
+}
+
+impl TraceSubscriber for LogServiceSubscriber {
+    fn on_event(&self, event: &TraceEvent) {
+        // node + action form the dotted event name (e.g. "doc.open.begin").
+        let event_name = format!("{}.{}", event.node, event.action);
+        // Borrow fields as (&str, String) for the existing log_pdf_event API.
+        // The owned Strings live in `owned` for the duration of this call.
+        let owned: Vec<String> = event.fields.iter().map(|f| f.key.to_string()).collect();
+        let pairs: Vec<(&str, String)> = owned
+            .iter()
+            .zip(event.fields.iter().map(|f| f.value.clone()))
+            .map(|(k, v)| (k.as_str(), v))
+            .collect();
+        log_pdf_event(level_to_u8(event.level), &event_name, &pairs);
+    }
+}
+
+/// Install the bridge so core trace events flow into this log service.
+/// Call once during app initialization. Idempotent.
+pub fn install_core_trace_bridge() {
+    pdf_viewer_core::common::trace::set_subscriber(Some(Box::new(LogServiceSubscriber)));
+}

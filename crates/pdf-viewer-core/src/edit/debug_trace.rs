@@ -41,6 +41,15 @@ pub fn editor_debug_field(key: &str, value: impl ToString) -> EditorDebugField {
 }
 
 pub fn record_editor_debug_event(node: &str, action: &str, details: Vec<EditorDebugField>) {
+    // Forward to unified trace system (level-filtered, pluggable subscriber).
+    crate::common::trace::emit(
+        crate::common::trace::TraceLevel::Debug,
+        node.to_string(),
+        action.to_string(),
+        details.iter().map(|f| crate::common::trace::field(f.key.clone(), f.value.clone())).collect(),
+    );
+
+    // Local ring buffer (retained for backward compatibility — consumed by dump_editor_debug_trace).
     EDITOR_DEBUG_TRACE.with(|trace| {
         let mut trace = trace.borrow_mut();
         let seq = trace.next_seq;

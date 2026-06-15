@@ -16,7 +16,7 @@ use crate::models::{
 use crate::text::glyph_layout::{
     build_editor_session_text_plan, infer_run_advance, is_decorative_text, EditorSessionTextPlan,
 };
-use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind};
+use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind, ListTextSemantic};
 use crate::typography::font_resolver::looks_like_symbolic_font;
 use serde::{Deserialize, Serialize};
 
@@ -546,6 +546,175 @@ pub fn build_editor_document_plan_for_target(
     build_plan_for_target_session(paragraph, &full_session, target, click_page_point)
 }
 
+/// Format up to `limit` codepoints of `text` as `U+XXXX(char)` for diagnostics.
+fn codepoint_preview(text: &str, limit: usize) -> String {
+    text.chars()
+        .take(limit)
+        .map(|c| format!("U+{:04X}({})", c as u32, c))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// Resolve a list-marker split for `full_session` using a three-step strategy chain:
+///   1. Text semantics (e.g. `"1. "`, `"• "`),
+///   2. Symbolic-font run detection (Wingdings/Symbol runs are usually markers),
+///   3. Geometric synthesis from sibling runs (left-of-body candidates on the same line).
+///
+/// Strategy 1 and 2 produce a char-start offset that drives `split_editor_session`;
+/// strategy 3 runs after the split to fill in a marker when the first two produced none.
+/// If no strategy yields a marker, the session is returned unsplit.
+fn resolve_marker_split(
+    paragraph: &GlyphPaintParagraph,
+    full_session: &ParagraphEditContext,
+    full_source_text: &str,
+    full_text_plan: &EditorSessionTextPlan,
+) -> SessionSplit {
+    let semantics = derive_list_text_semantics(full_source_text);
+    dbg_event(
+        "document-plan.marker-detect",
+        "start",
+        vec![
+            dbg_field("paragraphId", full_session.paragraph.id.as_str()),
+            dbg_field("hasMarker", semantics.has_marker),
+            dbg_field("bodyCharStart", semantics.body_char_start),
+            dbg_field("runCount", full_session.paragraph.runs.len()),
+            dbg_field("fullTextLen", full_source_text.len()),
+        ],
+    );
+
+    // Strategies 1 & 2: both yield (body_char_start, marker_kind); strategy 3 is post-split.
+    let strategy_result: Option<(usize, ListMarkerKind)> =
+        if semantics.has_marker && semantics.body_char_start > 0 {
+            Some((semantics.body_char_start, semantics.kind))
+        } else {
+            detect_symbolic_font_marker(full_session)
+        };
+
+    let default_split = || SessionSplit {
+        body_session: full_session.clone(),
+        marker: None,
+    };
+
+    let mut split = match strategy_result {
+        Some((body_char_start, marker_kind)) => {
+            let raw = full_text_plan.map_reconstructed_to_raw(body_char_start);
+            split_editor_session(full_session, raw, marker_kind).unwrap_or_else(default_split)
+        }
+        None => default_split(),
+    };
+
+    // Strategy 3: geometric synthesis fills a missing marker after the split.
+    if split.marker.is_none() {
+        if let Some(marker) = synthesize_marker_from_paragraph(paragraph, &split.body_session) {
+            split.marker = Some(marker);
+        }
+    }
+
+    dbg_event(
+        "document-plan.marker-split",
+        "result",
+        vec![
+            dbg_field("paragraphId", full_session.paragraph.id.as_str()),
+            dbg_field("markerPresent", split.marker.is_some()),
+            dbg_field(
+                "markerText",
+                split.marker.as_ref().map(|m| m.text.as_str()).unwrap_or(""),
+            ),
+            dbg_field("bodyRunCount", split.body_session.paragraph.runs.len()),
+        ],
+    );
+
+    split
+}
+
+/// Emit the verbose `open-caret.resolved` trace used when the editor is opened at a click point.
+/// Kept separate from `build_plan_for_target_session` so the business logic reads linearly;
+/// this is pure observability (cross-cutting concern).
+fn trace_open_caret_resolved(
+    paragraph: &GlyphPaintParagraph,
+    target_id: &str,
+    base_paragraph_id: &str,
+    full_source_text: &str,
+    body_source_text: &str,
+    full_session: &ParagraphEditContext,
+    semantics: &ListTextSemantic,
+    full_caret: usize,
+    body_initial_caret: usize,
+    shell_bbox: &BoundingBox,
+    body_bbox: &BoundingBox,
+    click_page_point: Option<(f32, f32)>,
+) {
+    dbg_event(
+        "document-plan.open-caret",
+        "resolved",
+        vec![
+            dbg_field("paragraphId", paragraph.id.as_str()),
+            dbg_field("targetId", target_id),
+            dbg_field("baseParagraphId", base_paragraph_id),
+            dbg_field("fullSourceText", full_source_text),
+            dbg_field("fullSourceTextCodepoints", codepoint_preview(full_source_text, 12)),
+            dbg_field("bodySourceText", body_source_text),
+            dbg_field("bodySourceTextCodepoints", codepoint_preview(body_source_text, 12)),
+            dbg_field(
+                "runOrder",
+                full_session
+                    .paragraph
+                    .runs
+                    .iter()
+                    .take(8)
+                    .map(|r| {
+                        format!(
+                            "[x={:.1},y={:.1},'{}']",
+                            r.origin_x,
+                            r.origin_y,
+                            r.text.chars().take(6).collect::<String>()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ),
+            dbg_field("hasMarker", semantics.has_marker),
+            dbg_field("bodyCharStart", semantics.body_char_start),
+            dbg_field("fullCaret", full_caret),
+            dbg_field("bodyCaret", body_initial_caret),
+            dbg_field(
+                "shellBBox",
+                format!(
+                    "[{:.2},{:.2},{:.2},{:.2}]",
+                    shell_bbox.left, shell_bbox.top, shell_bbox.right, shell_bbox.bottom
+                ),
+            ),
+            dbg_field("shellLeft", shell_bbox.left),
+            dbg_field("shellTop", shell_bbox.top),
+            dbg_field("shellRight", shell_bbox.right),
+            dbg_field("shellBottom", shell_bbox.bottom),
+            dbg_field(
+                "bodyBBox",
+                format!(
+                    "[{:.2},{:.2},{:.2},{:.2}]",
+                    body_bbox.left, body_bbox.top, body_bbox.right, body_bbox.bottom
+                ),
+            ),
+            dbg_field("bodyLeft", body_bbox.left),
+            dbg_field("bodyTop", body_bbox.top),
+            dbg_field("bodyRight", body_bbox.right),
+            dbg_field("bodyBottom", body_bbox.bottom),
+            dbg_field(
+                "clickPageX",
+                click_page_point
+                    .map(|(x, _)| x.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+            ),
+            dbg_field(
+                "clickPageY",
+                click_page_point
+                    .map(|(_, y)| y.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+            ),
+        ],
+    );
+}
+
 fn build_plan_for_target_session(
     paragraph: &GlyphPaintParagraph,
     _full_session: &ParagraphEditContext,
@@ -561,63 +730,9 @@ fn build_plan_for_target_session(
         return None;
     }
 
-    let semantics = derive_list_text_semantics(&full_source_text);
-    let run_count = full_session.paragraph.runs.len();
-    dbg_event(
-        "document-plan.marker-detect",
-        "start",
-        vec![
-            dbg_field("paragraphId", &target_id),
-            dbg_field("hasMarker", semantics.has_marker),
-            dbg_field("bodyCharStart", semantics.body_char_start),
-            dbg_field("runCount", run_count),
-            dbg_field("fullTextLen", full_source_text.len()),
-        ],
-    );
-    let mut split = if semantics.has_marker && semantics.body_char_start > 0 {
-        let raw_body_char_start =
-            full_text_plan.map_reconstructed_to_raw(semantics.body_char_start);
-        split_editor_session(&full_session, raw_body_char_start, semantics.kind).unwrap_or(
-            SessionSplit {
-                body_session: full_session.clone(),
-                marker: None,
-            },
-        )
-    } else if let Some((body_char_start, marker_kind)) = detect_symbolic_font_marker(&full_session)
-    {
-        let raw_body_char_start = full_text_plan.map_reconstructed_to_raw(body_char_start);
-        split_editor_session(&full_session, raw_body_char_start, marker_kind).unwrap_or(
-            SessionSplit {
-                body_session: full_session.clone(),
-                marker: None,
-            },
-        )
-    } else {
-        SessionSplit {
-            body_session: full_session.clone(),
-            marker: None,
-        }
-    };
-
-    if split.marker.is_none() {
-        if let Some(marker) = synthesize_marker_from_paragraph(paragraph, &split.body_session) {
-            split.marker = Some(marker);
-        }
-    }
-
-    dbg_event(
-        "document-plan.marker-split",
-        "result",
-        vec![
-            dbg_field("paragraphId", &target_id),
-            dbg_field("markerPresent", split.marker.is_some()),
-            dbg_field(
-                "markerText",
-                split.marker.as_ref().map(|m| m.text.as_str()).unwrap_or(""),
-            ),
-            dbg_field("bodyRunCount", split.body_session.paragraph.runs.len()),
-        ],
-    );
+    // Marker resolution is a three-step strategy chain (semantics -> symbol-font -> geometric
+    // synthesis); the chain and its trace events live in `resolve_marker_split`.
+    let split = resolve_marker_split(paragraph, &full_session, &full_source_text, &full_text_plan);
 
     let body_text_plan = build_editor_session_text_plan(&split.body_session);
     let source_body_text = session_source_text(&split.body_session);
@@ -633,93 +748,20 @@ fn build_plan_for_target_session(
     let full_caret = body_initial_caret;
 
     if click_page_point.is_some() {
-        dbg_event(
-            "document-plan.open-caret",
-            "resolved",
-            vec![
-                dbg_field("paragraphId", &paragraph.id),
-                dbg_field("targetId", &target_id),
-                dbg_field("baseParagraphId", &base_paragraph_id),
-                dbg_field("fullSourceText", &full_source_text),
-                dbg_field(
-                    "fullSourceTextCodepoints",
-                    full_source_text
-                        .chars()
-                        .take(12)
-                        .map(|c| format!("U+{:04X}({})", c as u32, c))
-                        .collect::<Vec<_>>()
-                        .join(","),
-                ),
-                dbg_field("bodySourceText", &source_body_text),
-                dbg_field(
-                    "bodySourceTextCodepoints",
-                    source_body_text
-                        .chars()
-                        .take(12)
-                        .map(|c| format!("U+{:04X}({})", c as u32, c))
-                        .collect::<Vec<_>>()
-                        .join(","),
-                ),
-                dbg_field(
-                    "runOrder",
-                    full_session
-                        .paragraph
-                        .runs
-                        .iter()
-                        .take(8)
-                        .map(|r| {
-                            format!(
-                                "[x={:.1},y={:.1},'{}']",
-                                r.origin_x,
-                                r.origin_y,
-                                r.text.chars().take(6).collect::<String>()
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                ),
-                dbg_field("hasMarker", semantics.has_marker),
-                dbg_field("bodyCharStart", semantics.body_char_start),
-                dbg_field("fullCaret", full_caret),
-                dbg_field("bodyCaret", body_initial_caret),
-                dbg_field(
-                    "shellBBox",
-                    format!(
-                        "[{:.2},{:.2},{:.2},{:.2}]",
-                        shell_bbox.left, shell_bbox.top, shell_bbox.right, shell_bbox.bottom
-                    ),
-                ),
-                dbg_field("shellLeft", shell_bbox.left),
-                dbg_field("shellTop", shell_bbox.top),
-                dbg_field("shellRight", shell_bbox.right),
-                dbg_field("shellBottom", shell_bbox.bottom),
-                dbg_field(
-                    "bodyBBox",
-                    format!(
-                        "[{:.2},{:.2},{:.2},{:.2}]",
-                        split.body_session.anchor_bbox.left,
-                        split.body_session.anchor_bbox.top,
-                        split.body_session.anchor_bbox.right,
-                        split.body_session.anchor_bbox.bottom
-                    ),
-                ),
-                dbg_field("bodyLeft", split.body_session.anchor_bbox.left),
-                dbg_field("bodyTop", split.body_session.anchor_bbox.top),
-                dbg_field("bodyRight", split.body_session.anchor_bbox.right),
-                dbg_field("bodyBottom", split.body_session.anchor_bbox.bottom),
-                dbg_field(
-                    "clickPageX",
-                    click_page_point
-                        .map(|(x, _)| x.to_string())
-                        .unwrap_or_else(|| "none".to_string()),
-                ),
-                dbg_field(
-                    "clickPageY",
-                    click_page_point
-                        .map(|(_, y)| y.to_string())
-                        .unwrap_or_else(|| "none".to_string()),
-                ),
-            ],
+        let semantics = derive_list_text_semantics(&full_source_text);
+        trace_open_caret_resolved(
+            paragraph,
+            &target_id,
+            &base_paragraph_id,
+            &full_source_text,
+            &source_body_text,
+            &full_session,
+            &semantics,
+            full_caret,
+            body_initial_caret,
+            &shell_bbox,
+            &split.body_session.anchor_bbox,
+            click_page_point,
         );
     }
 

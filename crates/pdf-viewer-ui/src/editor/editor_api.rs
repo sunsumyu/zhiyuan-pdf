@@ -100,13 +100,9 @@ impl EditorSession {
             "hit_test"
         );
 
-        let request: HitTestRequest = match serde_wasm_bindgen::from_value(request_js) {
+        let request: HitTestRequest = match parse_request(request_js, "hit_test") {
             Ok(r) => r,
-            Err(e) => {
-                return err_response(EditorError::Internal {
-                    message: format!("failed to parse hit_test request: {e}"),
-                });
-            }
+            Err(js) => return js,
         };
 
         use pdf_viewer_core::geometry::coordinate_transform::{
@@ -163,13 +159,9 @@ impl EditorSession {
             }
         }
 
-        let request: OpenBlockRequest = match serde_wasm_bindgen::from_value(request_js) {
+        let request: OpenBlockRequest = match parse_request(request_js, "open_block") {
             Ok(r) => r,
-            Err(e) => {
-                return err_response(EditorError::Internal {
-                    message: format!("failed to parse open_block request: {e}"),
-                });
-            }
+            Err(js) => return js,
         };
 
         // Delegate to existing activation logic
@@ -231,13 +223,9 @@ impl EditorSession {
     pub fn move_caret(&self, request_js: JsValue) -> JsValue {
         guard_state!(SessionState::EditingBlock, "move_caret");
 
-        let request: MoveCaretRequest = match serde_wasm_bindgen::from_value(request_js) {
+        let request: MoveCaretRequest = match parse_request(request_js, "move_caret") {
             Ok(r) => r,
-            Err(e) => {
-                return err_response(EditorError::Internal {
-                    message: format!("failed to parse move_caret request: {e}"),
-                });
-            }
+            Err(js) => return js,
         };
 
         use crate::editor::activation::MoveCaretToClientPointRequest;
@@ -300,13 +288,9 @@ impl EditorSession {
     pub fn commit(&self, request_js: JsValue) -> JsValue {
         guard_state!(SessionState::EditingBlock, "commit");
 
-        let request: CommitRequest = match serde_wasm_bindgen::from_value(request_js) {
+        let request: CommitRequest = match parse_request(request_js, "commit") {
             Ok(r) => r,
-            Err(e) => {
-                return err_response(EditorError::Internal {
-                    message: format!("failed to parse commit request: {e}"),
-                });
-            }
+            Err(js) => return js,
         };
 
         use crate::editor::host_runtime::{begin_commit, finish_commit};
@@ -449,13 +433,9 @@ impl EditorSession {
             caret_index: u32,
         }
 
-        let request: SyncInputRequest = match serde_wasm_bindgen::from_value(request_js) {
+        let request: SyncInputRequest = match parse_request(request_js, "sync_input") {
             Ok(r) => r,
-            Err(e) => {
-                return err_response(EditorError::Internal {
-                    message: format!("failed to parse sync_input request: {e}"),
-                });
-            }
+            Err(js) => return js,
         };
 
         use crate::editor::orchestrator::render_transaction::sync_input_tx;
@@ -484,13 +464,9 @@ impl EditorSession {
             inserted_text: Option<String>,
         }
 
-        let request: CommandRequest = match serde_wasm_bindgen::from_value(request_js) {
+        let request: CommandRequest = match parse_request(request_js, "apply_command") {
             Ok(r) => r,
-            Err(e) => {
-                return err_response(EditorError::Internal {
-                    message: format!("failed to parse apply_command request: {e}"),
-                });
-            }
+            Err(js) => return js,
         };
 
         use crate::editor::command::EditorInputCommand;
@@ -623,13 +599,9 @@ impl EditorSession {
             original_text: String,
         }
 
-        let request: OpenRegionRequest = match serde_wasm_bindgen::from_value(request_js) {
+        let request: OpenRegionRequest = match parse_request(request_js, "open_region") {
             Ok(r) => r,
-            Err(e) => {
-                return err_response(EditorError::Internal {
-                    message: format!("failed to parse open_region request: {e}"),
-                });
-            }
+            Err(js) => return js,
         };
 
         use crate::editor::orchestrator::render_transaction::open_region_editor_tx;

@@ -157,6 +157,72 @@ pub fn multiply_matrices(current: [f32; 6], new: [f32; 6]) -> [f32; 6] {
     ]
 }
 
+/// Apply alpha into a `#rrggbb` color, producing `#rrggbbaa` when alpha < 1.0.
+/// Fully-opaque colors are returned unchanged to preserve existing output.
+fn apply_alpha_to_color(color: &Option<String>, alpha: f32) -> Option<String> {
+    let base = color.as_ref()?;
+    if alpha >= 0.999 {
+        return Some(base.clone());
+    }
+    if base.starts_with('#') && base.len() == 7 {
+        let alpha_byte = (alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
+        Some(format!("{}{:02x}", base, alpha_byte))
+    } else {
+        Some(base.clone())
+    }
+}
+
+/// Axis-aligned bounding box of a path segment list, or `None` if empty.
+fn compute_segments_bbox(segments: &[PathSegment]) -> Option<(f32, f32, f32, f32)> {
+    let mut min_x = f32::INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    for seg in segments {
+        for pt in &seg.points {
+            if pt[0] < min_x { min_x = pt[0]; }
+            if pt[0] > max_x { max_x = pt[0]; }
+            if pt[1] < min_y { min_y = pt[1]; }
+            if pt[1] > max_y { max_y = pt[1]; }
+        }
+    }
+    if min_x.is_infinite() { None } else { Some((min_x, min_y, max_x, max_y)) }
+}
+
+/// Resolve a TJ array (mixed strings and kerning adjustments) into unified text geometry.
+/// Each string element is resolved via `resolve_glyph_geom`; numeric elements adjust the
+/// horizontal offset (negative kern). Returns (text, origins, widths, codes, total_advance).
+fn resolve_tj_array_text(
+    items: &[lopdf::Object],
+    font: &ParsedFont,
+    font_size: f32,
+    h_scale: f32,
+    char_spacing: f32,
+    word_spacing: f32,
+) -> (String, Vec<f32>, Vec<f32>, Vec<u32>, f32) {
+    let mut combined = String::new();
+    let mut all_origins = Vec::new();
+    let mut all_widths = Vec::new();
+    let mut all_codes = Vec::new();
+    let mut offset = 0.0f32;
+    for item in items {
+        if let Ok(bytes) = item.as_str() {
+            let (t, o, w, c, adv) =
+                resolve_glyph_geom(bytes, font, font_size, h_scale, char_spacing, word_spacing);
+            for ori in o {
+                all_origins.push(offset + ori);
+            }
+            all_widths.extend(w);
+            all_codes.extend(c);
+            combined.push_str(&t);
+            offset += adv;
+        } else if let Ok(kern) = item.as_float().or_else(|_| item.as_i64().map(|i| i as f32)) {
+            offset -= (kern / 1000.0) * font_size * h_scale;
+        }
+    }
+    (combined, all_origins, all_widths, all_codes, offset)
+}
+
 lazy_static::lazy_static! {
     static ref PAGE_LOCKS: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::Mutex<()>>>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
@@ -603,37 +669,19 @@ pub fn parse_content_stream(
                             state.word_spacing,
                         )
                     } else {
-                        let mut combined = String::new();
-                        let mut all_origins = Vec::new();
-                        let mut all_widths = Vec::new();
-                        let mut all_codes = Vec::new();
-                        let mut offset = 0.0;
-                        if let Ok(arr) = op.operands[0].as_array() {
-                            for item in arr {
-                                if let Ok(bytes) = item.as_str() {
-                                    let (t, o, w, c, adv) = resolve_glyph_geom(
-                                        bytes,
-                                        font,
-                                        state.font_size,
-                                        h_scale,
-                                        state.char_spacing,
-                                        state.word_spacing,
-                                    );
-                                    for ori in o {
-                                        all_origins.push(offset + ori);
-                                    }
-                                    all_widths.extend(w);
-                                    all_codes.extend(c);
-                                    combined.push_str(&t);
-                                    offset += adv;
-                                } else if let Ok(kern) =
-                                    item.as_float().or_else(|_| item.as_i64().map(|i| i as f32))
-                                {
-                                    offset -= (kern / 1000.0) * state.font_size * h_scale;
-                                }
-                            }
-                        }
-                        (combined, all_origins, all_widths, all_codes, offset)
+                        op.operands[0]
+                            .as_array()
+                            .map(|arr| {
+                                resolve_tj_array_text(
+                                    arr,
+                                    font,
+                                    state.font_size,
+                                    h_scale,
+                                    state.char_spacing,
+                                    state.word_spacing,
+                                )
+                            })
+                            .unwrap_or_default()
                     };
 
                     let trm = multiply_matrices(state.ctm, state.tm);
@@ -680,44 +728,12 @@ pub fn parse_content_stream(
                         op_str.to_lowercase().contains('s') || op_str.to_lowercase().contains('b');
 
                     // Apply alpha into the color hex (CSS supports 8-digit #rrggbbaa).
-                    // Default alpha is 1.0 - we only append the alpha byte when < 1.0
-                    // to keep existing colors unchanged for fully-opaque paths.
-                    fn with_alpha(color: &Option<String>, alpha: f32) -> Option<String> {
-                        let base = color.as_ref()?;
-                        if alpha >= 0.999 {
-                            return Some(base.clone());
-                        }
-                        if base.starts_with('#') && base.len() == 7 {
-                            let alpha_byte = (alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
-                            Some(format!("{}{:02x}", base, alpha_byte))
-                        } else {
-                            Some(base.clone())
-                        }
-                    }
-                    let final_fill_color = with_alpha(&state.fill_color, state.fill_alpha);
-                    let final_stroke_color = with_alpha(&state.stroke_color, state.stroke_alpha);
+                    let final_fill_color = apply_alpha_to_color(&state.fill_color, state.fill_alpha);
+                    let final_stroke_color = apply_alpha_to_color(&state.stroke_color, state.stroke_alpha);
 
-                    // DBG: print path bbox, color and alpha
-                    let mut min_x = f32::INFINITY;
-                    let mut min_y = f32::INFINITY;
-                    let mut max_x = f32::NEG_INFINITY;
-                    let mut max_y = f32::NEG_INFINITY;
-                    for seg in &current_segments {
-                        for pt in &seg.points {
-                            if pt[0] < min_x {
-                                min_x = pt[0];
-                            }
-                            if pt[0] > max_x {
-                                max_x = pt[0];
-                            }
-                            if pt[1] < min_y {
-                                min_y = pt[1];
-                            }
-                            if pt[1] > max_y {
-                                max_y = pt[1];
-                            }
-                        }
-                    }
+                    let bbox @ (min_x, min_y, max_x, max_y) =
+                        compute_segments_bbox(&current_segments).unwrap_or((0.0, 0.0, 0.0, 0.0));
+                    let _ = bbox;
                     crate::pdf_log!(
                         3,
                         "[PATH-DBG] op={} id=path_{} bbox=({:.1},{:.1})-({:.1},{:.1}) size={:.1}x{:.1} fill={:?} stroke={:?} fill_alpha={:.3} stroke_alpha={:.3} z={}",

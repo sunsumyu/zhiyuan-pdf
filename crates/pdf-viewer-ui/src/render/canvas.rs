@@ -20,7 +20,7 @@ use crate::viewport_culling::{
     glyph_run_intersects_viewport, path_object_bbox, resolve_page_viewport_bbox,
 };
 use js_sys;
-use pdf_viewer_core::models::{BoundingBox, PageState, VectorRenderObject};
+use pdf_viewer_core::models::{BoundingBox, PageState, VectorImageObject, VectorPathObject, VectorRenderObject, VectorTextObject};
 use pdf_viewer_core::render::renderer::{DrawCommand, PdfRenderer};
 use pdf_viewer_core::typography::font_resolver::resolve_font_face;
 use std::cell::Cell;
@@ -371,184 +371,194 @@ impl CanvasRenderer {
     ) {
         match obj {
             VectorRenderObject::Path(path) => {
-                let bbox = path_object_bbox(path);
-                debug_log_canvas_method(
-                    "method.draw-vector-object.path",
-                    "path",
-                    object_index,
-                    Some(path.id.as_str()),
-                    bbox,
-                    vec![
-                        dbg_field(
-                            "strokeColor",
-                            path.stroke_color.as_deref().unwrap_or("none"),
-                        ),
-                        dbg_field("fillColor", path.fill_color.as_deref().unwrap_or("none")),
-                        dbg_field("strokeWidth", path.stroke_width),
-                    ],
-                );
-                if let Some((path_width, path_height)) = path_bbox_summary(path) {
-                    let is_suspicious_horizontal_path = path_width >= 120.0
-                        && path_height <= (path.stroke_width.max(0.0) * 6.0).max(30.0);
-                    if is_suspicious_horizontal_path
-                        && bbox
-                            .as_ref()
-                            .map(debug_bbox_intersects_active_shell)
-                            .unwrap_or(false)
-                    {
-                        dbg_event(
-                            "canvas.draw",
-                            "vector-path",
-                            vec![
-                                dbg_field("objectId", path.id.as_str()),
-                                dbg_field(
-                                    "strokeColor",
-                                    path.stroke_color.as_deref().unwrap_or("none"),
-                                ),
-                                dbg_field(
-                                    "fillColor",
-                                    path.fill_color.as_deref().unwrap_or("none"),
-                                ),
-                                dbg_field("strokeWidth", path.stroke_width),
-                                dbg_field("pathWidth", path_width),
-                                dbg_field("pathHeight", path_height),
-                            ],
-                        );
-                    }
-                }
-                self.ctx.save();
-                self.ctx.set_line_width(path.stroke_width.max(0.4) as f64);
-                self.ctx.begin_path();
-                for seg in &path.segments {
-                    match seg.command.as_str() {
-                        "move" => {
-                            if let Some([x, y]) = seg.points.first().copied() {
-                                self.ctx.move_to(x as f64, y as f64);
-                            }
-                        }
-                        "line" => {
-                            if let Some([x, y]) = seg.points.first().copied() {
-                                self.ctx.line_to(x as f64, y as f64);
-                            }
-                        }
-                        "close" => self.ctx.close_path(),
-                        _ => {}
-                    }
-                }
-                if path.fill {
-                    if let Some(color) = &path.fill_color {
-                        self.ctx.set_fill_style_str(color);
-                        self.ctx.fill();
-                    }
-                }
-                if path.stroke {
-                    if let Some(color) = &path.stroke_color {
-                        self.ctx.set_stroke_style_str(color);
-                        self.ctx.stroke();
-                    }
-                }
-                self.ctx.restore();
+                self.draw_path_object(path, object_index);
             }
             VectorRenderObject::Image(image) => {
-                let bbox = Some(BoundingBox {
-                    left: image.x,
-                    top: image.y,
-                    right: image.x + image.width.max(0.0),
-                    bottom: image.y + image.height.max(0.0),
-                });
-                debug_log_canvas_method(
-                    "method.draw-vector-object.image",
-                    "image",
-                    object_index,
-                    Some(image.id.as_str()),
-                    bbox,
-                    vec![
-                        dbg_field("width", image.width),
-                        dbg_field("height", image.height),
-                    ],
-                );
-                let img_val = image_provider.get(&JsValue::from_str(&image.id));
-                if let Some(img_js) = img_val.clone().dyn_into::<HtmlImageElement>().ok() {
-                    self.ctx.save();
-                    let _ = self.ctx.draw_image_with_html_image_element_and_dw_and_dh(
-                        &img_js,
-                        image.x as f64,
-                        image.y as f64,
-                        image.width as f64,
-                        image.height as f64,
-                    );
-                    self.ctx.restore();
-                } else if let Some(img_js) = img_val.dyn_into::<ImageBitmap>().ok() {
-                    self.ctx.save();
-                    let _ = self.ctx.draw_image_with_image_bitmap_and_dw_and_dh(
-                        &img_js,
-                        image.x as f64,
-                        image.y as f64,
-                        image.width as f64,
-                        image.height as f64,
-                    );
-                    self.ctx.restore();
-                }
+                self.draw_image_object(image, object_index, image_provider);
             }
             VectorRenderObject::Text(text_obj) => {
-                let text_bbox = text_obj
-                    .runs
-                    .iter()
-                    .fold(None, |acc: Option<BoundingBox>, run| {
-                        let run_bbox = BoundingBox {
-                            left: run.tx,
-                            top: run.ty - run.font_size.max(0.0),
-                            right: run.tx + run.width.max(0.0),
-                            bottom: run.ty,
-                        };
-                        Some(match acc {
-                            Some(current) => BoundingBox {
-                                left: current.left.min(run_bbox.left),
-                                top: current.top.min(run_bbox.top),
-                                right: current.right.max(run_bbox.right),
-                                bottom: current.bottom.max(run_bbox.bottom),
-                            },
-                            None => run_bbox,
-                        })
-                    });
-                debug_log_canvas_method(
-                    "method.draw-vector-object.text",
-                    "text",
-                    object_index,
-                    Some(text_obj.id.as_str()),
-                    text_bbox,
-                    vec![dbg_field("runCount", text_obj.runs.len())],
-                );
-                for (run_index, run) in text_obj.runs.iter().enumerate() {
-                    if run.render_mode == 3 {
-                        continue;
-                    }
-                    let should_skip_run = suppressed_text_runs
-                        .map(|suppressed| suppressed.suppresses_run(run_index, run))
-                        .unwrap_or(false);
-                    if should_skip_run {
-                        continue;
-                    }
-                    let resolved_font = resolve_font_face(&run.font_name, run.font_hints.as_ref());
-                    draw_text_run_core(
-                        &self.ctx,
-                        self.dpr,
-                        &run.text,
-                        run.tx,
-                        run.ty,
-                        run.font_size,
-                        &run.color,
-                        &resolved_font.render_family,
-                        if run.is_bold { "bold" } else { "normal" },
-                        if run.is_italic { "italic" } else { "normal" },
-                        run.is_underline,
-                        run.a.max(0.01),
-                        run.render_mode as i32,
-                        Some(&run.char_origins),
-                        CoordinateMode::PageSpace,
-                    );
-                }
+                self.draw_text_object(text_obj, object_index, suppressed_text_runs);
             }
+        }
+    }
+
+    fn draw_path_object(&self, path: &VectorPathObject, object_index: Option<usize>) {
+        let bbox = path_object_bbox(path);
+        debug_log_canvas_method(
+            "method.draw-vector-object.path",
+            "path",
+            object_index,
+            Some(path.id.as_str()),
+            bbox,
+            vec![
+                dbg_field("strokeColor", path.stroke_color.as_deref().unwrap_or("none")),
+                dbg_field("fillColor", path.fill_color.as_deref().unwrap_or("none")),
+                dbg_field("strokeWidth", path.stroke_width),
+            ],
+        );
+        if let Some((path_width, path_height)) = path_bbox_summary(path) {
+            let is_suspicious_horizontal_path = path_width >= 120.0
+                && path_height <= (path.stroke_width.max(0.0) * 6.0).max(30.0);
+            if is_suspicious_horizontal_path
+                && bbox
+                    .as_ref()
+                    .map(debug_bbox_intersects_active_shell)
+                    .unwrap_or(false)
+            {
+                dbg_event(
+                    "canvas.draw",
+                    "vector-path",
+                    vec![
+                        dbg_field("objectId", path.id.as_str()),
+                        dbg_field("strokeColor", path.stroke_color.as_deref().unwrap_or("none")),
+                        dbg_field("fillColor", path.fill_color.as_deref().unwrap_or("none")),
+                        dbg_field("strokeWidth", path.stroke_width),
+                        dbg_field("pathWidth", path_width),
+                        dbg_field("pathHeight", path_height),
+                    ],
+                );
+            }
+        }
+        self.ctx.save();
+        self.ctx.set_line_width(path.stroke_width.max(0.4) as f64);
+        self.ctx.begin_path();
+        for seg in &path.segments {
+            match seg.command.as_str() {
+                "move" => {
+                    if let Some([x, y]) = seg.points.first().copied() {
+                        self.ctx.move_to(x as f64, y as f64);
+                    }
+                }
+                "line" => {
+                    if let Some([x, y]) = seg.points.first().copied() {
+                        self.ctx.line_to(x as f64, y as f64);
+                    }
+                }
+                "close" => self.ctx.close_path(),
+                _ => {}
+            }
+        }
+        if path.fill {
+            if let Some(color) = &path.fill_color {
+                self.ctx.set_fill_style_str(color);
+                self.ctx.fill();
+            }
+        }
+        if path.stroke {
+            if let Some(color) = &path.stroke_color {
+                self.ctx.set_stroke_style_str(color);
+                self.ctx.stroke();
+            }
+        }
+        self.ctx.restore();
+    }
+
+    fn draw_image_object(
+        &self,
+        image: &VectorImageObject,
+        object_index: Option<usize>,
+        image_provider: &js_sys::Map,
+    ) {
+        let bbox = Some(BoundingBox {
+            left: image.x,
+            top: image.y,
+            right: image.x + image.width.max(0.0),
+            bottom: image.y + image.height.max(0.0),
+        });
+        debug_log_canvas_method(
+            "method.draw-vector-object.image",
+            "image",
+            object_index,
+            Some(image.id.as_str()),
+            bbox,
+            vec![dbg_field("width", image.width), dbg_field("height", image.height)],
+        );
+        let img_val = image_provider.get(&JsValue::from_str(&image.id));
+        if let Some(img_js) = img_val.clone().dyn_into::<HtmlImageElement>().ok() {
+            self.ctx.save();
+            let _ = self.ctx.draw_image_with_html_image_element_and_dw_and_dh(
+                &img_js,
+                image.x as f64,
+                image.y as f64,
+                image.width as f64,
+                image.height as f64,
+            );
+            self.ctx.restore();
+        } else if let Some(img_js) = img_val.dyn_into::<ImageBitmap>().ok() {
+            self.ctx.save();
+            let _ = self.ctx.draw_image_with_image_bitmap_and_dw_and_dh(
+                &img_js,
+                image.x as f64,
+                image.y as f64,
+                image.width as f64,
+                image.height as f64,
+            );
+            self.ctx.restore();
+        }
+    }
+
+    fn draw_text_object(
+        &self,
+        text_obj: &VectorTextObject,
+        object_index: Option<usize>,
+        suppressed_text_runs: Option<&SuppressedVectorTextRuns>,
+    ) {
+        let text_bbox = text_obj
+            .runs
+            .iter()
+            .fold(None, |acc: Option<BoundingBox>, run| {
+                let run_bbox = BoundingBox {
+                    left: run.tx,
+                    top: run.ty - run.font_size.max(0.0),
+                    right: run.tx + run.width.max(0.0),
+                    bottom: run.ty,
+                };
+                Some(match acc {
+                    Some(current) => BoundingBox {
+                        left: current.left.min(run_bbox.left),
+                        top: current.top.min(run_bbox.top),
+                        right: current.right.max(run_bbox.right),
+                        bottom: current.bottom.max(run_bbox.bottom),
+                    },
+                    None => run_bbox,
+                })
+            });
+        debug_log_canvas_method(
+            "method.draw-vector-object.text",
+            "text",
+            object_index,
+            Some(text_obj.id.as_str()),
+            text_bbox,
+            vec![dbg_field("runCount", text_obj.runs.len())],
+        );
+        for (run_index, run) in text_obj.runs.iter().enumerate() {
+            if run.render_mode == 3 {
+                continue;
+            }
+            let should_skip_run = suppressed_text_runs
+                .map(|suppressed| suppressed.suppresses_run(run_index, run))
+                .unwrap_or(false);
+            if should_skip_run {
+                continue;
+            }
+            let resolved_font = resolve_font_face(&run.font_name, run.font_hints.as_ref());
+            draw_text_run_core(
+                &self.ctx,
+                self.dpr,
+                &run.text,
+                run.tx,
+                run.ty,
+                run.font_size,
+                &run.color,
+                &resolved_font.render_family,
+                if run.is_bold { "bold" } else { "normal" },
+                if run.is_italic { "italic" } else { "normal" },
+                run.is_underline,
+                run.a.max(0.01),
+                run.render_mode as i32,
+                Some(&run.char_origins),
+                CoordinateMode::PageSpace,
+            );
         }
     }
 
@@ -873,6 +883,87 @@ impl CanvasRenderer {
             }
         }
     }
+    fn draw_text_command(
+        &mut self,
+        text: &str,
+        x: f32,
+        y: f32,
+        font_size: f32,
+        color: &str,
+        font_name: &str,
+    ) {
+        self.ctx.set_fill_style_str(color);
+        self.ctx.set_font(&format!("{}px {}", font_size, font_name));
+        let _ = self.ctx.fill_text(text, x as f64, y as f64);
+    }
+
+    fn draw_rect_command(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        color: &str,
+        is_fill: bool,
+    ) {
+        // Suspicious horizontal rules (wide + very short) are logged for diagnostics;
+        // the threshold is specific to filled/stroked rects.
+        let is_suspicious_horizontal_rect = width >= 120.0 && height <= 6.0;
+        if is_suspicious_horizontal_rect {
+            dbg_event(
+                "canvas.draw",
+                if is_fill { "draw-command-fill-rect" } else { "draw-command-stroke-rect" },
+                vec![
+                    dbg_field("x1", x),
+                    dbg_field("y1", y),
+                    dbg_field("width", width),
+                    dbg_field("height", height),
+                    dbg_field("color", color),
+                ],
+            );
+        }
+        if is_fill {
+            self.ctx.set_fill_style_str(color);
+            self.ctx.fill_rect(x as f64, y as f64, width as f64, height as f64);
+        } else {
+            self.ctx.set_stroke_style_str(color);
+            self.ctx.stroke_rect(x as f64, y as f64, width as f64, height as f64);
+        }
+    }
+
+    fn draw_line_command(
+        &mut self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        color: &str,
+        width: f32,
+    ) {
+        let line_width = (x2 - x1).abs();
+        let line_height = (y2 - y1).abs();
+        let is_suspicious_horizontal_line = line_width >= 120.0 && line_height <= 6.0;
+        if is_suspicious_horizontal_line {
+            dbg_event(
+                "canvas.draw",
+                "draw-command-line",
+                vec![
+                    dbg_field("x1", x1),
+                    dbg_field("y1", y1),
+                    dbg_field("x2", x2),
+                    dbg_field("y2", y2),
+                    dbg_field("strokeWidth", width),
+                    dbg_field("color", color),
+                ],
+            );
+        }
+        self.ctx.begin_path();
+        self.ctx.set_stroke_style_str(color);
+        self.ctx.set_line_width(width as f64);
+        self.ctx.move_to(x1 as f64, y1 as f64);
+        self.ctx.line_to(x2 as f64, y2 as f64);
+        self.ctx.stroke();
+    }
 }
 
 impl PdfRenderer for CanvasRenderer {
@@ -886,11 +977,7 @@ impl PdfRenderer for CanvasRenderer {
                     font_size,
                     color,
                     font_name,
-                } => {
-                    self.ctx.set_fill_style_str(color);
-                    self.ctx.set_font(&format!("{}px {}", font_size, font_name));
-                    let _ = self.ctx.fill_text(text, *x as f64, *y as f64);
-                }
+                } => self.draw_text_command(text, *x, *y, *font_size, color, font_name),
                 DrawCommand::Rect {
                     x,
                     y,
@@ -898,35 +985,7 @@ impl PdfRenderer for CanvasRenderer {
                     height,
                     color,
                     is_fill,
-                } => {
-                    let is_suspicious_horizontal_rect = *width >= 120.0 && *height <= 6.0;
-                    if is_suspicious_horizontal_rect {
-                        dbg_event(
-                            "canvas.draw",
-                            if *is_fill {
-                                "draw-command-fill-rect"
-                            } else {
-                                "draw-command-stroke-rect"
-                            },
-                            vec![
-                                dbg_field("x1", *x),
-                                dbg_field("y1", *y),
-                                dbg_field("width", *width),
-                                dbg_field("height", *height),
-                                dbg_field("color", color),
-                            ],
-                        );
-                    }
-                    if *is_fill {
-                        self.ctx.set_fill_style_str(color);
-                        self.ctx
-                            .fill_rect(*x as f64, *y as f64, *width as f64, *height as f64);
-                    } else {
-                        self.ctx.set_stroke_style_str(color);
-                        self.ctx
-                            .stroke_rect(*x as f64, *y as f64, *width as f64, *height as f64);
-                    }
-                }
+                } => self.draw_rect_command(*x, *y, *width, *height, color, *is_fill),
                 DrawCommand::Line {
                     x1,
                     y1,
@@ -934,34 +993,11 @@ impl PdfRenderer for CanvasRenderer {
                     y2,
                     color,
                     width,
-                } => {
-                    let line_width = (*x2 - *x1).abs();
-                    let line_height = (*y2 - *y1).abs();
-                    let is_suspicious_horizontal_line = line_width >= 120.0 && line_height <= 6.0;
-                    if is_suspicious_horizontal_line {
-                        dbg_event(
-                            "canvas.draw",
-                            "draw-command-line",
-                            vec![
-                                dbg_field("x1", *x1),
-                                dbg_field("y1", *y1),
-                                dbg_field("x2", *x2),
-                                dbg_field("y2", *y2),
-                                dbg_field("strokeWidth", *width),
-                                dbg_field("color", color),
-                            ],
-                        );
-                    }
-                    self.ctx.begin_path();
-                    self.ctx.set_stroke_style_str(color);
-                    self.ctx.set_line_width(*width as f64);
-                    self.ctx.move_to(*x1 as f64, *y1 as f64);
-                    self.ctx.line_to(*x2 as f64, *y2 as f64);
-                    self.ctx.stroke();
-                }
+                } => self.draw_line_command(*x1, *y1, *x2, *y2, color, *width),
             }
         }
     }
+
 
     fn clear(&mut self) {
         if self.is_hijacked {

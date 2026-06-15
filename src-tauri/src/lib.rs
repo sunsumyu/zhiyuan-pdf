@@ -58,6 +58,8 @@ pub fn run() {
         })
         // Debug 构建下自动打开 DevTools，方便从控制台调用 window.verifyEditorBugs()。
         .setup(move |app| {
+            // Route pure-core trace events (dbg_event / trace_span!) into the Tauri log service.
+            crate::infrastructure::pdf::log_service::install_core_trace_bridge();
             eprintln!(
                 "[BOOT] tauri::Builder setup() entered at {:.2?}",
                 boot_start.elapsed()

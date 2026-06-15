@@ -484,6 +484,53 @@ fn slice_runs_by_char_range(runs: &[LayoutRun], start: usize, end: usize) -> Vec
     output
 }
 
+/// Result of comparing source text against draft text.
+/// Identifies the unchanged prefix and suffix so only the
+/// genuinely edited middle segment needs re-measurement.
+struct TextDiff {
+    prefix_len: usize,
+    suffix_len: usize,
+    source_len: usize,
+    draft_len: usize,
+}
+
+impl TextDiff {
+    /// Start of the inserted/edited segment in draft char space.
+    fn inserted_start(&self) -> usize { self.prefix_len }
+    /// End of the inserted/edited segment in draft char space.
+    fn inserted_end(&self) -> usize { self.draft_len.saturating_sub(self.suffix_len) }
+    /// True if there is an edited middle segment.
+    fn has_inserted(&self) -> bool { self.inserted_start() < self.inserted_end() }
+}
+
+/// Compute the common prefix and suffix lengths between source and draft.
+fn compute_text_diff(source_text: &str, draft_text: &str) -> TextDiff {
+    let source_chars: Vec<char> = source_text.chars().collect();
+    let draft_chars: Vec<char> = draft_text.chars().collect();
+    let mut prefix_len = 0usize;
+    while prefix_len < source_chars.len()
+        && prefix_len < draft_chars.len()
+        && source_chars[prefix_len] == draft_chars[prefix_len]
+    {
+        prefix_len += 1;
+    }
+    let mut suffix_len = 0usize;
+    while suffix_len < source_chars.len().saturating_sub(prefix_len)
+        && suffix_len < draft_chars.len().saturating_sub(prefix_len)
+        && source_chars[source_chars.len() - 1 - suffix_len]
+            == draft_chars[draft_chars.len() - 1 - suffix_len]
+    {
+        suffix_len += 1;
+    }
+    TextDiff {
+        prefix_len,
+        suffix_len,
+        source_len: source_chars.len(),
+        draft_len: draft_chars.len(),
+    }
+}
+
+
 fn build_styles(
     document_plan: &EditorDocumentPlan,
     draft_text: &str,
@@ -506,29 +553,13 @@ fn build_styles(
     //   (c) `draft!=source && !runs_match`：reconstructed-fallback
     // 这些都会让 PDF char_origins 丢失，导致字体/字距与编辑前/原 PDF 出现可见漂移。
 
-    let source_chars: Vec<char> = source_text.chars().collect();
-    let draft_chars: Vec<char> = draft_text.chars().collect();
-    let mut prefix_len = 0usize;
-    while prefix_len < source_chars.len()
-        && prefix_len < draft_chars.len()
-        && source_chars[prefix_len] == draft_chars[prefix_len]
-    {
-        prefix_len += 1;
-    }
-
-    let mut suffix_len = 0usize;
-    while suffix_len < source_chars.len().saturating_sub(prefix_len)
-        && suffix_len < draft_chars.len().saturating_sub(prefix_len)
-        && source_chars[source_chars.len() - 1 - suffix_len]
-            == draft_chars[draft_chars.len() - 1 - suffix_len]
-    {
-        suffix_len += 1;
-    }
-
-    let source_len = source_chars.len();
-    let draft_len = draft_chars.len();
-    let inserted_start = prefix_len;
-    let inserted_end = draft_len.saturating_sub(suffix_len);
+    let diff = compute_text_diff(source_text, draft_text);
+    let source_len = diff.source_len;
+    let draft_len = diff.draft_len;
+    let prefix_len = diff.prefix_len;
+    let suffix_len = diff.suffix_len;
+    let inserted_start = diff.inserted_start();
+    let inserted_end = diff.inserted_end();
 
     // 架构关键点：切片索引必须基于 raw runs 的字符空间，而非 `source_body_text` 的可视空间。
     // `session_source_text` 注入的合成空格在 runs 中并不存在；若直接用 source_text 的索引切片
@@ -563,7 +594,7 @@ fn build_styles(
     let mut runs = Vec::new();
     runs.extend(slice_runs_by_char_range(source_runs, 0, prefix_runs_end));
 
-    if inserted_start < inserted_end {
+    if diff.has_inserted() {
         let anchor_source_index = prefix_len
             .saturating_sub(1)
             .min(source_len.saturating_sub(1));
@@ -574,7 +605,7 @@ fn build_styles(
             anchor_runs_index,
             preserve_underline,
         );
-        template.text = draft_chars[inserted_start..inserted_end].iter().collect();
+        template.text = draft_text.chars().skip(inserted_start).take(inserted_end - inserted_start).collect();
         runs.push(normalize_style_run(&template, preserve_underline));
     }
 
@@ -884,6 +915,29 @@ where
     lines
 }
 
+fn rebuild_layout_pipeline<F>(paragraph: LayoutParagraph, document_plan: &EditorDocumentPlan, draft_text: &str, measure_width: &F) -> EditorDraftRenderPlan
+where F: Fn(&str, &LayoutRun) -> f32,
+{
+    let mut layout = layout_paragraph(&paragraph, paragraph.wrap_width, measure_width);
+    align_layout_baseline(&mut layout, source_baseline_y(document_plan));
+    let mut caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
+    remap_caret_indices_to_draft_space(&mut caret_lines, document_plan, draft_text);
+    EditorDraftRenderPlan { layout, caret_lines }
+}
+
+fn trace_render_plan(action: &str, paragraph_id: &str, draft_text: &str, body_text: &str, plan: &EditorDraftRenderPlan) {
+    dbg_event("render-plan", action, vec![
+        dbg_field("paragraphId", paragraph_id),
+        dbg_field("draftText", draft_text),
+        dbg_field("bodyText", body_text),
+        dbg_field("lineSummary", summarize_render_plan_lines(plan)),
+        dbg_field("visualLineCount", plan.layout.lines.len()),
+        dbg_field("caretLineCount", plan.caret_lines.len()),
+        dbg_field("caretStopCount", plan.caret_lines.iter().map(|l| l.stops.len()).sum::<usize>()),
+    ]);
+}
+
+
 pub fn build_draft_render_plan<F>(
     document_plan: &EditorDocumentPlan,
     draft_text: &str,
@@ -995,34 +1049,14 @@ where
 
     let paragraph =
         build_draft_paragraph_with_policy(document_plan, draft_text, &measure_width, false);
-    let mut layout = layout_paragraph(&paragraph, paragraph.wrap_width, &measure_width);
-    align_layout_baseline(&mut layout, source_baseline_y(document_plan));
-    let mut caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
-    remap_caret_indices_to_draft_space(&mut caret_lines, document_plan, draft_text);
-    let plan = EditorDraftRenderPlan {
-        layout,
-        caret_lines,
-    };
-
-    dbg_event(
-        "render-plan",
+        build_draft_paragraph_with_policy(document_plan, draft_text, &measure_width, false);
+    let plan = rebuild_layout_pipeline(paragraph, document_plan, draft_text, &measure_width);
+    trace_render_plan(
         "persisted-overlay-uniform-layout",
-        vec![
-            dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
-            dbg_field("draftText", draft_text),
-            dbg_field("bodyText", document_plan.source_body_text()),
-            dbg_field("lineSummary", summarize_render_plan_lines(&plan)),
-            dbg_field("visualLineCount", plan.layout.lines.len()),
-            dbg_field("caretLineCount", plan.caret_lines.len()),
-            dbg_field(
-                "caretStopCount",
-                plan.caret_lines
-                    .iter()
-                    .map(|line| line.stops.len())
-                    .sum::<usize>(),
-            ),
-            dbg_field("preserveUnderline", false),
-        ],
+        &document_plan.body_session.paragraph.id,
+        draft_text,
+        &document_plan.source_body_text(),
+        &plan,
     );
 
     plan
