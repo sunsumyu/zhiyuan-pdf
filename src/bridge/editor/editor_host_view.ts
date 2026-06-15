@@ -109,6 +109,11 @@ type EditorHostViewDeps = {
         event: MouseEvent,
     ) => void;
     onRootPointerDown: (event: MouseEvent) => void;
+    onSelectionChanged: (
+        start: number,
+        end: number,
+        textarea: HTMLTextAreaElement,
+    ) => void;
     logNode: (name: string, payload: Record<string, unknown>) => void;
 };
 
@@ -385,9 +390,9 @@ export function renderInteractionTargets(
             'position:absolute',
             `left:${target.left}px`,
             `top:${target.top}px`,
-            `width:${target.width}px`,
-            `height:${target.height}px`,
-            'pointer-events:none',
+            'width:' + target.width + 'px',
+            'height:' + target.height + 'px',
+            'pointer-events:auto',
             'cursor:text',
             'background:transparent',
             'border:none',
@@ -512,5 +517,11 @@ function bindTextareaEvents(textarea: HTMLTextAreaElement, deps: EditorHostViewD
         if (deps.shouldSuppressNativeInput()) return;
         if (!composing) return;
         deps.onCompositionSyncRequested(textarea);
+    });
+
+    document.addEventListener('selectionchange', () => {
+        if (document.activeElement === textarea && !composing) {
+            deps.onSelectionChanged(textarea.selectionStart, textarea.selectionEnd, textarea);
+        }
     });
 }

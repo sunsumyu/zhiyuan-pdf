@@ -65,7 +65,7 @@ type EditorHost = {
 // ── Implementation ──────────────────────────────────────────────
 
 export function createEditorHost(deps: EditorHostDeps): EditorHost {
-    let suppressNativeInput = false;
+    let suppressNativeInputCount = 0;
     let lastRustCaretIndex: number | null = null;
     let suppressBlurCommitForSave = false;
     let suppressBlurCommitForOpen = false;
@@ -79,11 +79,13 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
     // ── Textarea helpers (must stay in TS — DOM-only) ───────────
 
     function withSuppressedNativeInput<T>(fn: () => T): T {
-        suppressNativeInput = true;
+        suppressNativeInputCount++;
         try {
             return fn();
         } finally {
-            suppressNativeInput = false;
+            setTimeout(() => {
+                suppressNativeInputCount = Math.max(0, suppressNativeInputCount - 1);
+            }, 0);
         }
     }
 
@@ -185,11 +187,21 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
                     // for the duration and refocus afterward so the user can
                     // keep typing without the editor closing each keystroke.
                     suppressBlurCommitForRender = true;
+                    const savedStart = textarea.selectionStart;
+                    const savedEnd = textarea.selectionEnd;
                     void deps.renderCurrentPage('editorVisibility').finally(() => {
                         try {
                             const ta = textarea;
-                            if (ta && document.activeElement !== ta) {
-                                ta.focus({ preventScroll: true });
+                            if (ta) {
+                                withSuppressedNativeInput(() => {
+                                    if (document.activeElement !== ta) {
+                                        ta.focus({ preventScroll: true });
+                                    }
+                                    if (savedStart !== null && savedEnd !== null) {
+                                        ta.selectionStart = savedStart;
+                                        ta.selectionEnd = savedEnd;
+                                    }
+                                });
                             }
                         } finally {
                             suppressBlurCommitForRender = false;
@@ -202,7 +214,7 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
                 api.syncInput({ text: textarea.value, caretIndex: Math.max(0, caretIndex) });
                 renderActiveEditor(getLastDisplayZoom());
             },
-            shouldSuppressNativeInput: () => suppressNativeInput,
+            shouldSuppressNativeInput: () => suppressNativeInputCount > 0,
             shouldSuppressBlurCommit: () =>
                 suppressBlurCommitForSave
                 || suppressBlurCommitForOpen
@@ -245,10 +257,14 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
                 }
 
                 const nextCaret = result.data.caretIndex;
-                textarea.focus();
+                withSuppressedNativeInput(() => {
+                    textarea.focus();
+                });
                 if (Number.isFinite(nextCaret) && nextCaret >= 0) {
                     rememberRustCaret(nextCaret);
-                    writeTextareaCaret(textarea, nextCaret);
+                    withSuppressedNativeInput(() => {
+                        writeTextareaCaret(textarea, nextCaret);
+                    });
                     renderActiveEditor(getLastDisplayZoom());
                 }
             },
@@ -321,6 +337,24 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
 
                 setupActiveEditor(nodes, activeTarget, openResult.data.draftText, openResult.data.caretIndex);
             },
+            onSelectionChanged: (start, end, textarea) => {
+                if (
+                    suppressNativeInputCount > 0
+                    || suppressBlurCommitForOpen
+                    || suppressBlurCommitForRender
+                ) {
+                    return;
+                }
+                const charStart = api.utf16ToCharIndex(textarea.value, start);
+                const charEnd = api.utf16ToCharIndex(textarea.value, end);
+                if (charStart != null && charEnd != null) {
+                    api.setSelection(charStart, charEnd);
+                    if (lastRustCaretIndex !== charEnd) {
+                        rememberRustCaret(charEnd);
+                        renderActiveEditor(getLastDisplayZoom());
+                    }
+                }
+            },
             logNode: () => {
                 // Diagnostics removed — Rust structured logging handles this
             },
@@ -340,6 +374,7 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
             draftLen: draftText.length,
             draftCharCount: [...draftText].length,
         });
+        suppressBlurCommitForOpen = true;
         positionEditorShell(nodes, target);
         withSuppressedNativeInput(() => {
             nodes.textarea.value = draftText;
@@ -348,7 +383,9 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
         suspendHostOverlays(nodes);
         clearDomSelection();
         nodes.shell.style.display = 'block';
-        nodes.textarea.focus();
+        withSuppressedNativeInput(() => {
+            nodes.textarea.focus();
+        });
         clearDomSelection();
         rememberRustCaret(caretIndex);
         withSuppressedNativeInput(() => {
@@ -364,7 +401,9 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
             window.setTimeout(() => {
                 if (document.activeElement !== nodes.textarea) {
                     try {
-                        nodes.textarea.focus();
+                        withSuppressedNativeInput(() => {
+                            nodes.textarea.focus();
+                        });
                     } catch {
                         // Ignore
                     }

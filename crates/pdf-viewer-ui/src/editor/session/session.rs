@@ -4,6 +4,7 @@ use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::engine_state::LiveEditorParagraphState;
+use crate::editor::session::history::LocalEditHistory;
 use crate::style_mapper::StyleMapper;
 use crate::ui_state_store::{
     current_paragraph_patch, current_paragraph_patch_text, current_patch_revision,
@@ -20,6 +21,8 @@ pub struct EditorModeState {
     pub text_edit_enabled: bool,
     pub active_paragraph_id: Option<String>,
     pub live_state: Option<LiveEditorParagraphState>,
+    #[serde(skip)]
+    pub history: LocalEditHistory,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -39,6 +42,7 @@ impl Default for EditorModeState {
             text_edit_enabled: false,
             active_paragraph_id: None,
             live_state: None,
+            history: LocalEditHistory::new(),
         }
     }
 }
@@ -74,6 +78,7 @@ pub fn set_text_edit_enabled(enabled: bool) {
             }
             mode.active_paragraph_id = None;
             mode.live_state = None;
+            mode.history.clear();
         }
     });
 }
@@ -155,6 +160,7 @@ pub fn open_paragraph_editor(paragraph_id: String, target: ActiveEditorTarget) -
             }
         }
         live_state.mark_session_clean();
+        mode.history.clear();
         mode.active_paragraph_id = Some(paragraph_id);
         mode.live_state = Some(live_state);
         dbg_event(
@@ -203,6 +209,7 @@ pub fn close_active_editor() {
         let mut mode = mode.borrow_mut();
         mode.active_paragraph_id = None;
         mode.live_state = None;
+        mode.history.clear();
     });
 }
 
@@ -255,13 +262,44 @@ pub fn set_active_editor_caret_index(caret_index: usize) -> bool {
     })
 }
 
+pub fn set_active_editor_selection(start: usize, end: usize) -> bool {
+    EDITOR_MODE_STATE.with(|mode| {
+        let mut mode = mode.borrow_mut();
+        let Some(live_state) = mode.live_state.as_mut() else {
+            return false;
+        };
+        live_state.set_selection_range(start, end)
+    })
+}
+
+pub fn clear_active_editor_selection() -> bool {
+    EDITOR_MODE_STATE.with(|mode| {
+        let mut mode = mode.borrow_mut();
+        let Some(live_state) = mode.live_state.as_mut() else {
+            return false;
+        };
+        live_state.clear_selection()
+    })
+}
+
+pub fn active_editor_selection() -> Option<(usize, usize, String)> {
+    EDITOR_MODE_STATE.with(|mode| {
+        let mode = mode.borrow();
+        let live_state = mode.live_state.as_ref()?;
+        let range = live_state.selection_range()?;
+        let text = live_state.selection_text().unwrap_or_default();
+        Some((range.0, range.1, text))
+    })
+}
+
 pub fn sync_active_editor_input(
     new_text: String,
     caret_index: usize,
 ) -> ActiveEditorInputSyncResult {
     EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
-        let Some(live_state) = mode.live_state.as_mut() else {
+        let mode_ref = &mut *mode;
+        let Some(live_state) = mode_ref.live_state.as_mut() else {
             dbg_event(
                 "session.sync",
                 "missed-no-live-state",
@@ -275,6 +313,9 @@ pub fn sync_active_editor_input(
 
         let before_text = live_state.current_text().to_string();
         let before_caret = live_state.caret_index;
+        if new_text != before_text {
+            mode_ref.history.push_snapshot(live_state);
+        }
         let text_changed = live_state.set_draft_text(new_text.clone());
 
         let normalized_caret = caret_index.min(live_state.text_char_count());
@@ -305,6 +346,54 @@ pub fn sync_active_editor_input(
             request_visibility_render: text_changed,
         }
     })
+}
+
+pub fn undo_active_editor() -> Option<ActiveEditorInputSyncResult> {
+    EDITOR_MODE_STATE.with(|mode| {
+        let mut mode = mode.borrow_mut();
+        let mode_ref = &mut *mode;
+        let Some(live_state) = mode_ref.live_state.as_mut() else {
+            return None;
+        };
+        let prev = mode_ref.history.undo(live_state)?;
+        *live_state = prev;
+        
+        Some(ActiveEditorInputSyncResult {
+            text_changed: true,
+            caret_changed: true,
+            scene_changed: true,
+            caret_index: live_state.normalized_caret_index(),
+            request_visibility_render: true,
+        })
+    })
+}
+
+pub fn redo_active_editor() -> Option<ActiveEditorInputSyncResult> {
+    EDITOR_MODE_STATE.with(|mode| {
+        let mut mode = mode.borrow_mut();
+        let mode_ref = &mut *mode;
+        let Some(live_state) = mode_ref.live_state.as_mut() else {
+            return None;
+        };
+        let next = mode_ref.history.redo(live_state)?;
+        *live_state = next;
+        
+        Some(ActiveEditorInputSyncResult {
+            text_changed: true,
+            caret_changed: true,
+            scene_changed: true,
+            caret_index: live_state.normalized_caret_index(),
+            request_visibility_render: true,
+        })
+    })
+}
+
+pub fn can_undo() -> bool {
+    EDITOR_MODE_STATE.with(|mode| mode.borrow().history.can_undo())
+}
+
+pub fn can_redo() -> bool {
+    EDITOR_MODE_STATE.with(|mode| mode.borrow().history.can_redo())
 }
 
 pub fn render_scene_key() -> String {

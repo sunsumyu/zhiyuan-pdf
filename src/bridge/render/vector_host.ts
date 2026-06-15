@@ -108,6 +108,7 @@ export type RenderZoomPlan = {
     tileWidth?: number;
     tileHeight?: number;
     prepareVisibleLayout?: boolean;
+    renderReason?: string;
 };
 
 function logRenderChain(node: string, details: Record<string, unknown>): void {
@@ -543,6 +544,7 @@ export async function renderVectorPageWithPlan(
             layerViewportWidth,
             layerViewportHeight,
             bundle.documentRevision,
+            isOverlayRender,
         );
 
         if (progressiveResult?.aborted) {
@@ -736,6 +738,7 @@ async function renderViewportProgressiveIfNeeded(
     viewportWidth?: number,
     viewportHeight?: number,
     revision?: number,
+    isOverlayRender?: boolean,
 ): Promise<{ aborted?: boolean } | null> {
     const isProgressivePipelineStale = (): boolean => {
         if (path === undefined || pageIndex === undefined) return false;
@@ -770,6 +773,20 @@ async function renderViewportProgressiveIfNeeded(
     ) {
         renderApi.cancelProgressiveRender();
         return { aborted: true };
+    }
+
+    if (isOverlayRender) {
+        logRenderChain('ts.layer.main-thread-render', { pageIndex, useViewportTile });
+        renderApi.cancelProgressiveRender();
+        const canvas = new OffscreenCanvas(renderTarget.width, renderTarget.height);
+        const dpr = window.devicePixelRatio || 1;
+        renderApi.renderPageOffscreen(canvas, imageCacheMap, dpr);
+        const ctx = renderTarget.getContext('2d');
+        if (ctx) {
+            ctx.clearRect(0, 0, renderTarget.width, renderTarget.height);
+            ctx.drawImage(canvas, 0, 0);
+        }
+        return null;
     }
 
     const totalItems = Number.isFinite(start?.totalItems) ? Number(start?.totalItems) : 0;

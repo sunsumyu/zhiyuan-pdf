@@ -24,6 +24,10 @@ pub struct LiveEditorParagraphState {
     pub source_line_height: f32,
     pub caret_index: usize,
     #[serde(default)]
+    pub selection_start: Option<usize>,
+    #[serde(default)]
+    pub selection_end: Option<usize>,
+    #[serde(default)]
     pub scene_revision: u64,
     #[serde(default)]
     pub session_dirty: bool,
@@ -110,6 +114,8 @@ impl LiveEditorParagraphState {
                 .line_height
                 .max(1.0),
             caret_index: target.initial_body_caret_index(),
+            selection_start: None,
+            selection_end: None,
             target,
             scene_revision: 0,
             session_dirty: false,
@@ -130,11 +136,59 @@ impl LiveEditorParagraphState {
 
     pub fn set_caret_index(&mut self, caret_index: usize) -> bool {
         let normalized = caret_index.min(self.text_char_count());
-        let changed = self.caret_index != normalized;
+        let changed = self.caret_index != normalized || self.selection_start.is_some() || self.selection_end.is_some();
         if changed {
             self.caret_index = normalized;
+            self.selection_start = None;
+            self.selection_end = None;
         }
         changed
+    }
+
+    pub fn set_selection_range(&mut self, start: usize, end: usize) -> bool {
+        let char_count = self.text_char_count();
+        let s = start.min(char_count);
+        let e = end.min(char_count);
+        if s == e {
+            return self.set_caret_index(s);
+        }
+        let changed = self.selection_start != Some(s) || self.selection_end != Some(e);
+        if changed {
+            self.selection_start = Some(s);
+            self.selection_end = Some(e);
+            self.caret_index = e;
+            self.scene_revision = self.scene_revision.saturating_add(1);
+            self.session_dirty = true;
+        }
+        changed
+    }
+
+    pub fn clear_selection(&mut self) -> bool {
+        let changed = self.selection_start.is_some() || self.selection_end.is_some();
+        if changed {
+            self.selection_start = None;
+            self.selection_end = None;
+            self.scene_revision = self.scene_revision.saturating_add(1);
+            self.session_dirty = true;
+        }
+        changed
+    }
+
+    pub fn selection_range(&self) -> Option<(usize, usize)> {
+        match (self.selection_start, self.selection_end) {
+            (Some(s), Some(e)) => Some((s.min(e), s.max(e))),
+            _ => None,
+        }
+    }
+
+    pub fn selection_text(&self) -> Option<String> {
+        let range = self.selection_range()?;
+        let chars: Vec<char> = self.current_text().chars().collect();
+        if range.0 <= chars.len() && range.1 <= chars.len() {
+            Some(chars[range.0..range.1].iter().collect())
+        } else {
+            None
+        }
     }
 
     pub fn set_draft_text(&mut self, new_text: String) -> bool {
@@ -144,6 +198,8 @@ impl LiveEditorParagraphState {
                 .update_with_text(self.text_model.current_text());
             self.normalize_caret();
             self.sync_target_control_style();
+            self.selection_start = None;
+            self.selection_end = None;
             self.scene_revision = self.scene_revision.saturating_add(1);
             self.session_dirty = true;
         }

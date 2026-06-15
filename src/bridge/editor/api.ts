@@ -20,6 +20,11 @@ import type {
     SetEditModeResult,
     LegacySnapshot,
     EditorFormatAction,
+    BoundingBox,
+    TextSelection,
+    TextLine,
+    PagePoint,
+    ClientPoint,
 } from './types';
 
 // ── Singleton EditorSession WASM instance ───────────────────────
@@ -162,4 +167,130 @@ export function readDiagnostics(): unknown {
 
 export async function saveSession(path: string, pageIndex: number): Promise<unknown> {
     return (await getSession()?.saveSession(path, pageIndex)) ?? null;
+}
+
+// ── Stubs for future features ───────────────────────────────────
+
+export function setCaret(charIndex: number): EditorResponse | null {
+    return getSession()?.setCaret(charIndex) ?? null;
+}
+
+export function setSelection(start: number, end: number): EditorResponse | null {
+    return getSession()?.setSelection(start, end) ?? null;
+}
+
+export function selectAll(): EditorResponse | null {
+    return getSession()?.selectAll() ?? null;
+}
+
+export function getSelection(): EditorResponse<TextSelection> | null {
+    return getSession()?.getSelection() ?? null;
+}
+
+export function cut(): EditorResponse<string> | null {
+    return getSession()?.cut() ?? null;
+}
+
+export function copy(): EditorResponse<string> | null {
+    return getSession()?.copy() ?? null;
+}
+
+export function paste(text: string): EditorResponse | null {
+    return getSession()?.paste(text) ?? null;
+}
+
+export function undo(): EditorResponse | null {
+    return getSession()?.undo() ?? null;
+}
+
+export function redo(): EditorResponse | null {
+    return getSession()?.redo() ?? null;
+}
+
+export function canUndo(): boolean {
+    return !!getSession()?.canUndo();
+}
+
+export function canRedo(): boolean {
+    return !!getSession()?.canRedo();
+}
+
+export function getTextContent(): EditorResponse<string> | null {
+    return getSession()?.getTextContent() ?? null;
+}
+
+export function getTextLines(): EditorResponse<TextLine[]> | null {
+    return getSession()?.getTextLines() ?? null;
+}
+
+export function getCharRects(start: number, end: number): EditorResponse<BoundingBox[]> | null {
+    return getSession()?.getCharRects(start, end) ?? null;
+}
+
+export function clientToPage(
+    clientX: number,
+    clientY: number,
+    referenceLeft: number,
+    referenceTop: number,
+    referenceWidth: number,
+    referenceHeight: number,
+    pageWidth: number,
+    pageHeight: number,
+): EditorResponse<PagePoint> | null {
+    return getSession()?.clientToPage(
+        clientX,
+        clientY,
+        referenceLeft,
+        referenceTop,
+        referenceWidth,
+        referenceHeight,
+        pageWidth,
+        pageHeight,
+    ) ?? null;
+}
+
+export function pageToClient(
+    pageX: number,
+    pageY: number,
+    referenceLeft: number,
+    referenceTop: number,
+    referenceWidth: number,
+    referenceHeight: number,
+    pageWidth: number,
+    pageHeight: number,
+): EditorResponse<ClientPoint> | null {
+    return getSession()?.pageToClient(
+        pageX,
+        pageY,
+        referenceLeft,
+        referenceTop,
+        referenceWidth,
+        referenceHeight,
+        pageWidth,
+        pageHeight,
+    ) ?? null;
+}
+
+export function addTextBlock(x: number, y: number, maxWidth: number, text: string): EditorResponse<TextBlockInfo> | null {
+    return getSession()?.addTextBlock(x, y, maxWidth, text) ?? null;
+}
+
+export function deleteTextBlock(blockId: string): EditorResponse | null {
+    return getSession()?.deleteTextBlock(blockId) ?? null;
+}
+
+export function resizeTextBlock(blockId: string, maxWidth: number): EditorResponse | null {
+    return getSession()?.resizeTextBlock(blockId, maxWidth) ?? null;
+}
+
+export function moveTextBlock(blockId: string, x: number, y: number): EditorResponse | null {
+    return getSession()?.moveTextBlock(blockId, x, y) ?? null;
+}
+
+export function exportPatch(): EditorResponse<string> | null {
+    return getSession()?.exportPatch() ?? null;
+}
+
+export function importPatch(patchJs: unknown): EditorResponse | null {
+    return getSession()?.importPatch(patchJs) ?? null;
 }

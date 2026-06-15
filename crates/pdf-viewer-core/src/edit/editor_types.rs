@@ -137,3 +137,34 @@ pub struct SetEditModeResult {
     pub enabled: bool,
     pub changed: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PagePointDto {
+    pub page_x: f32,
+    pub page_y: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientPointDto {
+    pub client_x: f32,
+    pub client_y: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextSelection {
+    pub start: u32,
+    pub end: u32,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextLineDto {
+    pub text: String,
+    pub bbox: crate::models::BoundingBox,
+    pub char_count: u32,
+}
+

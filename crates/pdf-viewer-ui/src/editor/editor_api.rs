@@ -783,6 +783,64 @@ impl EditorSession {
         )
     }
 
+    /// Undo the last text edit in the active block.
+    #[wasm_bindgen(js_name = "undo")]
+    pub fn undo(&self) -> JsValue {
+        guard_state!(SessionState::EditingBlock, "undo");
+
+        use crate::editor::orchestrator::render_transaction::undo_active_editor_tx;
+        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+
+        let frame_request = build_frame_request();
+        let result = undo_active_editor_tx(frame_request);
+        let snapshot = resolve_editor_host_snapshot(1.0);
+
+        ok_response(
+            ApplyCommandResult {
+                changed: result.text_changed || result.caret_changed || result.scene_changed,
+                caret_index: result.caret_index as u32,
+                draft_text: snapshot.draft_text,
+            },
+            result.render_frame.is_some(),
+        )
+    }
+
+    /// Redo the last undone text edit in the active block.
+    #[wasm_bindgen(js_name = "redo")]
+    pub fn redo(&self) -> JsValue {
+        guard_state!(SessionState::EditingBlock, "redo");
+
+        use crate::editor::orchestrator::render_transaction::redo_active_editor_tx;
+        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+
+        let frame_request = build_frame_request();
+        let result = redo_active_editor_tx(frame_request);
+        let snapshot = resolve_editor_host_snapshot(1.0);
+
+        ok_response(
+            ApplyCommandResult {
+                changed: result.text_changed || result.caret_changed || result.scene_changed,
+                caret_index: result.caret_index as u32,
+                draft_text: snapshot.draft_text,
+            },
+            result.render_frame.is_some(),
+        )
+    }
+
+    /// Check if undo is available.
+    #[wasm_bindgen(js_name = "canUndo")]
+    pub fn can_undo(&self) -> bool {
+        use crate::editor::session::can_undo;
+        can_undo()
+    }
+
+    /// Check if redo is available.
+    #[wasm_bindgen(js_name = "canRedo")]
+    pub fn can_redo(&self) -> bool {
+        use crate::editor::session::can_redo;
+        can_redo()
+    }
+
     /// Get the list of editable text blocks on the given page.
     ///
     /// Currently only the active page's blocks are kept in memory by the
@@ -877,6 +935,171 @@ impl EditorSession {
         };
         editor_store::set_change_callback(Some(func));
         ok_empty(false)
+    }
+
+    // ── Stubs for future features ────────────────────────────────
+
+    #[wasm_bindgen(js_name = "setCaret")]
+    pub fn set_caret(&self, char_index: u32) -> JsValue {
+        guard_state!(SessionState::EditingBlock, "setCaret");
+        use crate::editor::session::set_active_editor_caret_index;
+        let changed = set_active_editor_caret_index(char_index as usize);
+        ok_empty(changed)
+    }
+
+    #[wasm_bindgen(js_name = "setSelection")]
+    pub fn set_selection(&self, start: u32, end: u32) -> JsValue {
+        guard_state!(SessionState::EditingBlock, "setSelection");
+        use crate::editor::session::set_active_editor_selection;
+        let changed = set_active_editor_selection(start as usize, end as usize);
+        ok_empty(changed)
+    }
+
+    #[wasm_bindgen(js_name = "selectAll")]
+    pub fn select_all(&self) -> JsValue {
+        guard_state!(SessionState::EditingBlock, "selectAll");
+        use crate::editor::session::{active_editor_state, set_active_editor_selection};
+        let len = active_editor_state()
+            .map(|state| state.text_char_count())
+            .unwrap_or(0);
+        let changed = set_active_editor_selection(0, len);
+        ok_empty(changed)
+    }
+
+    #[wasm_bindgen(js_name = "getSelection")]
+    pub fn read_selection(&self) -> JsValue {
+        guard_state!(SessionState::EditingBlock, "getSelection");
+        use crate::editor::session::active_editor_selection;
+        match active_editor_selection() {
+            Some((start, end, text)) => ok_response(
+                TextSelection {
+                    start: start as u32,
+                    end: end as u32,
+                    text,
+                },
+                false,
+            ),
+            None => ok_empty(false),
+        }
+    }
+
+    #[wasm_bindgen(js_name = "cut")]
+    pub fn cut(&self) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "cut".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "copy")]
+    pub fn copy(&self) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "copy".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "paste")]
+    pub fn paste(&self, _text: &str) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "paste".to_string(),
+        })
+    }
+
+
+    #[wasm_bindgen(js_name = "getTextContent")]
+    pub fn read_text_content(&self) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "getTextContent".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "getTextLines")]
+    pub fn read_text_lines(&self) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "getTextLines".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "getCharRects")]
+    pub fn read_char_rects(&self, _start: u32, _end: u32) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "getCharRects".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "clientToPage")]
+    pub fn client_to_page(
+        &self,
+        _client_x: f32,
+        _client_y: f32,
+        _reference_left: f32,
+        _reference_top: f32,
+        _reference_width: f32,
+        _reference_height: f32,
+        _page_width: f32,
+        _page_height: f32,
+    ) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "clientToPage".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "pageToClient")]
+    pub fn page_to_client(
+        &self,
+        _page_x: f32,
+        _page_y: f32,
+        _reference_left: f32,
+        _reference_top: f32,
+        _reference_width: f32,
+        _reference_height: f32,
+        _page_width: f32,
+        _page_height: f32,
+    ) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "pageToClient".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "addTextBlock")]
+    pub fn add_text_block(&self, _x: f32, _y: f32, _max_width: f32, _text: &str) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "addTextBlock".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "deleteTextBlock")]
+    pub fn delete_text_block(&self, _block_id: &str) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "deleteTextBlock".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "resizeTextBlock")]
+    pub fn resize_text_block(&self, _block_id: &str, _max_width: f32) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "resizeTextBlock".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "moveTextBlock")]
+    pub fn move_text_block(&self, _block_id: &str, _x: f32, _y: f32) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "moveTextBlock".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "exportPatch")]
+    pub fn export_patch(&self) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "exportPatch".to_string(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = "importPatch")]
+    pub fn import_patch(&self, _patch_js: JsValue) -> JsValue {
+        err_response(EditorError::NotImplemented {
+            method: "importPatch".to_string(),
+        })
     }
 }
 

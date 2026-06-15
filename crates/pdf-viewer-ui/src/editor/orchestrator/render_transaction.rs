@@ -246,3 +246,35 @@ pub fn apply_format_action_tx(
         apply_active_editor_format_action(action).changed,
     )
 }
+
+pub fn undo_active_editor_tx(
+    _frame_request: FramePlanRequest,
+) -> EditorInputRenderTransactionResult {
+    use crate::editor::session::undo_active_editor;
+    match undo_active_editor() {
+        Some(result) => EditorInputRenderTransactionResult {
+            text_changed: result.text_changed,
+            caret_changed: result.caret_changed,
+            scene_changed: result.scene_changed,
+            caret_index: result.caret_index,
+            render_frame: None,
+        },
+        None => EditorInputRenderTransactionResult::default(),
+    }
+}
+
+pub fn redo_active_editor_tx(
+    _frame_request: FramePlanRequest,
+) -> EditorInputRenderTransactionResult {
+    use crate::editor::session::redo_active_editor;
+    match redo_active_editor() {
+        Some(result) => EditorInputRenderTransactionResult {
+            text_changed: result.text_changed,
+            caret_changed: result.caret_changed,
+            scene_changed: result.scene_changed,
+            caret_index: result.caret_index,
+            render_frame: None,
+        },
+        None => EditorInputRenderTransactionResult::default(),
+    }
+}

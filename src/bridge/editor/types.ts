@@ -189,3 +189,32 @@ export type EditorFormatAction =
     | { type: 'setLineHeight'; lineHeight: number }
     | { type: 'setAlignment'; alignment: string }
     | { type: 'setListKind'; listKind: string };
+
+export type BoundingBox = {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+};
+
+export type TextSelection = {
+    start: number;
+    end: number;
+    text: string;
+};
+
+export type TextLine = {
+    text: string;
+    bbox: BoundingBox;
+    charCount: number;
+};
+
+export type PagePoint = {
+    pageX: number;
+    pageY: number;
+};
+
+export type ClientPoint = {
+    clientX: number;
+    clientY: number;
+};

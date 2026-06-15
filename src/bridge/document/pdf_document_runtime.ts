@@ -13,7 +13,7 @@ import type { DocumentSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_view
 
 let _documentSession: DocumentSession | null = null;
 
-function getDocumentSession(getWasmApi: () => WasmModule): DocumentSession | null {
+function resolveDocumentSession(getWasmApi: () => WasmModule): DocumentSession | null {
     if (!_documentSession) {
         const api = getWasmApi();
         if (typeof api?.DocumentSession === 'function') {
@@ -85,7 +85,7 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
     async function openTextPdfFlow(path: string): Promise<void> {
         await deps.ensureWasmInitialized();
         try {
-            const session = getDocumentSession(deps.getWasmApi);
+            const session = resolveDocumentSession(deps.getWasmApi);
             emitPdfDiagnostic('DOC', 'openTextPdfFlow', { path, session: session ? 'OK' : 'NULL' });
             // Eagerly clear the vector host BEFORE awaiting session.open().
             // This cancels any in-flight Rust render (cancelProgressiveRender + resetFrameCache)
@@ -121,7 +121,7 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
 
     function resetPdfViewerState(): void {
         try {
-            const session = getDocumentSession(deps.getWasmApi);
+            const session = resolveDocumentSession(deps.getWasmApi);
             session?.close?.(deps.defaultPageWidth, deps.defaultPageHeight);
         } catch {
         }
