@@ -1,72 +1,8 @@
 use crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE;
 use crate::infrastructure::pdf::models::{LightPageKind, LightPageModel};
 use lopdf::{Document, ObjectId};
+use crate::infrastructure::pdf::pdf_utils;
 use std::sync::Arc;
-fn page_dimensions(doc: &Document, page_id: ObjectId) -> Result<(f32, f32), String> {
-    let page_dict = doc.get_dictionary(page_id).map_err(|e| e.to_string())?;
-    let media_box = page_dict
-        .get(b"MediaBox")
-        .and_then(|o| o.as_array())
-        .map_err(|e| e.to_string())?;
-    if media_box.len() < 4 {
-        return Ok((595.0, 842.0));
-    }
-
-    let x0 = media_box[0]
-        .as_float()
-        .ok()
-        .or_else(|| media_box[0].as_i64().ok().map(|v| v as f32))
-        .unwrap_or(0.0);
-    let y0 = media_box[1]
-        .as_float()
-        .ok()
-        .or_else(|| media_box[1].as_i64().ok().map(|v| v as f32))
-        .unwrap_or(0.0);
-    let x1 = media_box[2]
-        .as_float()
-        .ok()
-        .or_else(|| media_box[2].as_i64().ok().map(|v| v as f32))
-        .unwrap_or(595.0);
-    let y1 = media_box[3]
-        .as_float()
-        .ok()
-        .or_else(|| media_box[3].as_i64().ok().map(|v| v as f32))
-        .unwrap_or(842.0);
-
-    let mut w = (x1 - x0).abs();
-    let mut h = (y1 - y0).abs();
-
-    // Support inherited /Rotate attribute in page dictionary tree
-    let mut rotation = 0i64;
-    let mut current_id = page_id;
-    while let Ok(dict) = doc.get_dictionary(current_id) {
-        if let Ok(rotate_obj) = dict.get(b"Rotate") {
-            if let Ok(r) = rotate_obj.as_i64() {
-                rotation = r;
-                break;
-            }
-        }
-        if let Ok(parent_id) = dict.get(b"Parent").and_then(|o| o.as_reference()) {
-            current_id = parent_id;
-        } else {
-            break;
-        }
-    }
-
-    // Normalize rotation to 0, 90, 180, 270
-    let normalized_rotation = ((rotation % 360) + 360) % 360;
-    if normalized_rotation == 90 || normalized_rotation == 270 {
-        std::mem::swap(&mut w, &mut h);
-        crate::log_step!(
-            "[PDF][preview] swapped page size due to {} deg rotation. final={}x{}",
-            normalized_rotation,
-            w,
-            h
-        );
-    }
-
-    Ok((w, h))
-}
 fn collect_page_xobjects(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
     let mut result = Vec::new();
     let mut current_id = page_id;
@@ -299,7 +235,9 @@ pub fn build_light_page_model(doc: &Document, page_index: u16) -> Result<LightPa
         .get(&(page_index as u32 + 1))
         .ok_or_else(|| format!("Page not found: {}", page_index))?;
 
-    let (width, height) = page_dimensions(doc, page_id)?;
+    let page_size = pdf_utils::read_page_size(doc, page_id);
+    let rotation = pdf_utils::read_page_rotation(doc, page_id);
+    let (width, height) = pdf_utils::apply_rotation(page_size.width, page_size.effective_height(), rotation);
     let has_text_content = page_has_text_operators(doc, page_id);
     let has_font_resources = page_has_font_resources(doc, page_id);
     let has_text = has_text_content || has_font_resources;

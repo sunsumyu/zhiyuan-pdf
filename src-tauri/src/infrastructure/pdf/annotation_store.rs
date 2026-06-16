@@ -1,4 +1,5 @@
 use lopdf::{Document, Object};
+use crate::infrastructure::pdf::pdf_utils::obj_to_f32;
 
 #[derive(Debug, Clone)]
 pub struct StoredPdfHighlight {
@@ -157,8 +158,8 @@ fn read_page_height(doc: &Document, page_id: lopdf::ObjectId) -> Result<f32, Str
     if media_box.len() < 4 {
         return Err("Invalid MediaBox".to_string());
     }
-    let y0 = object_to_f32(&media_box[1])?;
-    let y1 = object_to_f32(&media_box[3])?;
+    let y0 = obj_to_f32(&media_box[1]).map_err(|e| e.to_string())?;
+    let y1 = obj_to_f32(&media_box[3]).map_err(|e| e.to_string())?;
     Ok((y1 - y0).abs())
 }
 fn parse_rect_array(items: &[Object]) -> Option<[f32; 4]> {
@@ -166,10 +167,10 @@ fn parse_rect_array(items: &[Object]) -> Option<[f32; 4]> {
         return None;
     }
     Some([
-        object_to_f32(&items[0]).ok()?,
-        object_to_f32(&items[1]).ok()?,
-        object_to_f32(&items[2]).ok()?,
-        object_to_f32(&items[3]).ok()?,
+        obj_to_f32(&items[0]).ok()?,
+        obj_to_f32(&items[1]).ok()?,
+        obj_to_f32(&items[2]).ok()?,
+        obj_to_f32(&items[3]).ok()?,
     ])
 }
 fn parse_color_array(items: &[Object]) -> Option<[f32; 3]> {
@@ -177,16 +178,10 @@ fn parse_color_array(items: &[Object]) -> Option<[f32; 3]> {
         return None;
     }
     Some([
-        object_to_f32(&items[0]).ok()?,
-        object_to_f32(&items[1]).ok()?,
-        object_to_f32(&items[2]).ok()?,
+        obj_to_f32(&items[0]).ok()?,
+        obj_to_f32(&items[1]).ok()?,
+        obj_to_f32(&items[2]).ok()?,
     ])
-}
-fn object_to_f32(value: &Object) -> Result<f32, String> {
-    value
-        .as_float()
-        .or_else(|_| value.as_i64().map(|number| number as f32))
-        .map_err(|err| err.to_string())
 }
 fn pdf_rect_to_top_down_box(rect: [f32; 4], page_height: f32) -> [f32; 4] {
     let left = rect[0].min(rect[2]);
@@ -198,3 +193,4 @@ fn pdf_rect_to_top_down_box(rect: [f32; 4], page_height: f32) -> [f32; 4] {
 
     [left, page_height - top, width, height]
 }
+

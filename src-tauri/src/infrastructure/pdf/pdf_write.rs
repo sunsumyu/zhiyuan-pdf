@@ -8,6 +8,7 @@ use crate::infrastructure::pdf::pdf_read::{
 use crate::infrastructure::pdf::pdf_write_font_resolver::resolve_text_write_font;
 use crate::infrastructure::pdf::save_text_write_plan::PersistedTextLinePlan;
 use lopdf::{content::Content, Dictionary, Document, Object, Stream, StringFormat};
+use crate::infrastructure::pdf::pdf_utils;
 use pdf_viewer_core::geometry::coordinate_transform::PdfCoordinateSpace;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -163,25 +164,9 @@ impl PdfDocExt for Document {
         let flat_resources = read_resources(self, page_id);
         let mut res_cache = ResourceCache::new();
 
-        let page_dict = self.get_dictionary(page_id).map_err(|e| e.to_string())?;
-        let (page_height, _page_y0) = if let Ok(box_obj) = page_dict.get(b"MediaBox") {
-            let arr = box_obj.as_array().map_err(|e| e.to_string())?;
-            if arr.len() >= 4 {
-                let h = arr[3]
-                    .as_float()
-                    .or_else(|_| arr[3].as_i64().map(|v| v as f32))
-                    .unwrap_or(842.0);
-                let y0 = arr[1]
-                    .as_float()
-                    .or_else(|_| arr[1].as_i64().map(|v| v as f32))
-                    .unwrap_or(0.0);
-                ((h - y0).abs(), y0)
-            } else {
-                (842.0, 0.0)
-            }
-        } else {
-            (842.0, 0.0)
-        };
+        let _page_dict = self.get_dictionary(page_id).map_err(|e| e.to_string())?;
+        let page_size = pdf_utils::read_page_size(self, page_id);
+        let page_height = page_size.effective_height();
 
         let content_data = self
             .get_page_content(page_id)
@@ -1132,21 +1117,8 @@ fn break_text_into_lines(
 }
 
 fn read_page_height(doc: &Document, id: lopdf::ObjectId) -> Result<f32, String> {
-    let dict = doc.get_dictionary(id).map_err(|e| e.to_string())?;
-    let box_arr = dict
-        .get(b"MediaBox")
-        .map_err(|e| e.to_string())?
-        .as_array()
-        .map_err(|e| e.to_string())?;
-    let y0 = box_arr[1]
-        .as_float()
-        .or_else(|_| box_arr[1].as_i64().map(|i| i as f32))
-        .map_err(|_| "Invalid MediaBox Y0".to_string())?;
-    let y1 = box_arr[3]
-        .as_float()
-        .or_else(|_| box_arr[3].as_i64().map(|i| i as f32))
-        .map_err(|_| "Invalid MediaBox Y1".to_string())?;
-    Ok((y1 - y0).abs())
+    let page_size = pdf_utils::read_page_size(doc, id);
+    Ok(page_size.effective_height())
 }
 
 fn append_page_annotation(
