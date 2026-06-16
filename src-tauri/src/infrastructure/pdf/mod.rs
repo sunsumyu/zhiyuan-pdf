@@ -32,3 +32,6 @@ pub mod vello_renderer;
 
 #[cfg(test)]
 pub mod tests_reflow;
+pub mod color_utils;
+pub mod path_utils;
+

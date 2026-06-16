@@ -697,7 +697,7 @@ fn emit_text_line_ops(run: &PersistedTextLinePlan, user_unit: f32) -> (Vec<lopdf
     let adj_width = run.width / user_unit;
     let adj_font_size = run.font_size / user_unit;
 
-    if let Some([red, green, blue]) = parse_pdf_hex_color(&run.color) {
+    if let Some([red, green, blue]) = crate::infrastructure::pdf::color_utils::parse_pdf_hex_color(&run.color) {
         ops.push(lopdf::content::Operation::new(
             "rg",
             vec![Object::Real(red), Object::Real(green), Object::Real(blue)],
@@ -752,7 +752,7 @@ fn emit_text_line_ops(run: &PersistedTextLinePlan, user_unit: f32) -> (Vec<lopdf
 /// Emit the PDF path operators for one underline stroke: color, width, move, line, stroke.
 fn emit_underline_ops(spec: &UnderlineSpec) -> Vec<lopdf::content::Operation> {
     let mut ops = Vec::new();
-    if let Some([r, g, b]) = parse_pdf_hex_color(&spec.color) {
+    if let Some([r, g, b]) = crate::infrastructure::pdf::color_utils::parse_pdf_hex_color(&spec.color) {
         ops.push(lopdf::content::Operation::new(
             "RG",
             vec![Object::Real(r), Object::Real(g), Object::Real(b)],
@@ -1230,14 +1230,4 @@ fn resolve_line_color(line: &pdf_viewer_core::geometry::layout_engine::VisualLin
 }
 fn resolve_line_underline(line: &pdf_viewer_core::geometry::layout_engine::VisualLine) -> bool {
     line.runs.iter().any(|r| r.style.is_underline)
-}
-fn parse_pdf_hex_color(color: &str) -> Option<[f32; 3]> {
-    let hex = color.trim().trim_start_matches('#');
-    if hex.len() != 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some([r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0])
 }
