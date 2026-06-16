@@ -8,7 +8,6 @@
 //! in `interfaces/pdf/mod.rs`.
 
 use crate::infrastructure::pdf::commands::PdfEditCommand;
-use crate::infrastructure::pdf::engine::PdfDocumentService;
 use crate::log_step;
 use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 
@@ -23,7 +22,7 @@ pub(crate) async fn ensure_document_loaded(
         }
     }
 
-    let working_path = PdfDocumentService::resolve_working_path(path);
+    let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(path);
     let path_for_load = path.to_string();
     let loaded_doc = tokio::task::spawn_blocking(move || {
         crate::infrastructure::pdf::document_service::load_pdf_public(&working_path)
@@ -239,3 +238,5 @@ pub(crate) async fn execute_commands(
 
     Ok(())
 }
+
+

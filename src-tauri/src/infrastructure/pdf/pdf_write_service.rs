@@ -35,7 +35,7 @@ impl PdfWriteService {
 
             // 保存到工作路径
             let working_path =
-                crate::infrastructure::pdf::pdf_read_service::PdfReadService::resolve_working_path(
+                crate::infrastructure::pdf::working_copy::resolve_working_path(
                     &path,
                 );
             modified_doc
@@ -93,7 +93,7 @@ impl PdfWriteService {
         if let Some(previous_doc) = previous_doc {
             // 保存到磁盘
             let working_path =
-                crate::infrastructure::pdf::pdf_read_service::PdfReadService::resolve_working_path(
+                crate::infrastructure::pdf::working_copy::resolve_working_path(
                     path,
                 );
             let mut doc_clone = (*previous_doc).clone();
@@ -158,7 +158,7 @@ impl PdfWriteService {
 
             // 应用重做版本
             let working_path =
-                crate::infrastructure::pdf::pdf_read_service::PdfReadService::resolve_working_path(
+                crate::infrastructure::pdf::working_copy::resolve_working_path(
                     path,
                 );
             let mut doc_clone = redo_doc.clone();
@@ -260,3 +260,4 @@ startxref
         }
     }
 }
+

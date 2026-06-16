@@ -6,7 +6,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use swash::proxy::MetricsProxy;
 use swash::scale::ScaleContext;
-use vello::kurbo::{Affine, BezPath, Point, Stroke, Vec2};
+use vello::kurbo::{Affine, BezPath, Stroke, Vec2};
+use crate::infrastructure::pdf::{color_utils, path_utils};
 use vello::peniko::{Color, Fill};
 use vello::{Renderer, RendererOptions, Scene};
 use wgpu::{
@@ -23,6 +24,23 @@ pub struct VelloRenderer {
     font_file_cache: HashMap<std::path::PathBuf, Arc<Vec<u8>>>,
     font_matcher: crate::infrastructure::pdf::font::matching::PdfSystemFontMatcher,
 }
+
+fn text_fill_enabled(render_mode: i32) -> bool {
+    matches!(render_mode, 0 | 2 | 4 | 6)
+}
+fn text_stroke_enabled(render_mode: i32) -> bool {
+    matches!(render_mode, 1 | 2 | 5 | 6)
+}
+fn text_is_non_painting(render_mode: i32) -> bool {
+    matches!(render_mode, 3 | 7)
+}
+
+/// Whether this text run warrants verbose render-path tracing.
+/// Gate: known diagnostic marker or large font size.
+fn should_trace_text_render(text: &NativeTextModel) -> bool {
+    text.text.contains("绠€") || text.font_size > 20.0
+}
+
 impl VelloRenderer {
     pub async fn new() -> Result<Self, String> {
         let instance = Instance::new(InstanceDescriptor {
@@ -96,17 +114,17 @@ impl VelloRenderer {
         for object in objects {
             match object {
                 RenderObject::Path(path) => {
-                    let bez_path = path_segments_to_bez_path(&path.segments);
+                    let bez_path = path_utils::path_segments_to_bez_path(&path.segments);
 
                     if path.fill {
-                        let color = parse_hex_vello_color(
+                        let color = color_utils::parse_hex_vello_color(
                             path.fill_color.as_deref().unwrap_or("#000000"),
                             path.alpha,
                         );
                         scene.fill(Fill::NonZero, flip_y, color, None, &bez_path);
                     }
                     if path.stroke {
-                        let color = parse_hex_vello_color(
+                        let color = color_utils::parse_hex_vello_color(
                             path.stroke_color.as_deref().unwrap_or("#000000"),
                             path.alpha,
                         );
@@ -239,9 +257,9 @@ impl VelloRenderer {
                     let alpha = src_pixel[3] as f32 / 255.0;
 
                     dst_pixel.0 = [
-                        blend(dst_pixel[0], src_pixel[0], alpha),
-                        blend(dst_pixel[1], src_pixel[1], alpha),
-                        blend(dst_pixel[2], src_pixel[2], alpha),
+                        color_utils::blend(dst_pixel[0], src_pixel[0], alpha),
+                        color_utils::blend(dst_pixel[1], src_pixel[1], alpha),
+                        color_utils::blend(dst_pixel[2], src_pixel[2], alpha),
                         255,
                     ];
                 }
@@ -300,7 +318,7 @@ impl VelloRenderer {
         attrs = attrs.family(self.resolve_cosmic_family(text, &resolved_font));
 
         // 2. Parse text color
-        let (cr, cg, cb) = parse_hex_color_rgb(if text.color.is_empty() {
+        let (cr, cg, cb) = color_utils::parse_hex_color_rgb(if text.color.is_empty() {
             "#000000"
         } else {
             &text.color
@@ -390,9 +408,9 @@ impl VelloRenderer {
                             let bg = pixel.0;
                             // Solid composite (avoid multiple passes if possible, but keep alpha for antialiasing)
                             pixel.0 = [
-                                blend(bg[0], cr, alpha),
-                                blend(bg[1], cg, alpha),
-                                blend(bg[2], cb, alpha),
+                                color_utils::blend(bg[0], cr, alpha),
+                                color_utils::blend(bg[1], cg, alpha),
+                                color_utils::blend(bg[2], cb, alpha),
                                 255,
                             ];
                         }
@@ -419,9 +437,9 @@ impl VelloRenderer {
                             let pixel = img.get_pixel_mut(fx as u32, fy as u32);
                             let bg = pixel.0;
                             pixel.0 = [
-                                blend(bg[0], sr, sa),
-                                blend(bg[1], sg, sa),
-                                blend(bg[2], sb, sa),
+                                color_utils::blend(bg[0], sr, sa),
+                                color_utils::blend(bg[1], sg, sa),
+                                color_utils::blend(bg[2], sb, sa),
                                 255,
                             ];
                         }
@@ -445,9 +463,9 @@ impl VelloRenderer {
                             let pixel = img.get_pixel_mut(fx as u32, fy as u32);
                             let bg = pixel.0;
                             pixel.0 = [
-                                blend(bg[0], cr, alpha),
-                                blend(bg[1], cg, alpha),
-                                blend(bg[2], cb, alpha),
+                                color_utils::blend(bg[0], cr, alpha),
+                                color_utils::blend(bg[1], cg, alpha),
+                                color_utils::blend(bg[2], cb, alpha),
                                 255,
                             ];
                         }
@@ -457,7 +475,7 @@ impl VelloRenderer {
         }
     }
     fn text_fill_color(&self, text: &NativeTextModel) -> Color {
-        parse_hex_vello_color(
+        color_utils::parse_hex_vello_color(
             if text.color.is_empty() {
                 "#000000"
             } else {
@@ -472,7 +490,7 @@ impl VelloRenderer {
         } else {
             &text.color
         };
-        parse_hex_vello_color(text.stroke_color.as_deref().unwrap_or(fallback), text.alpha)
+        color_utils::parse_hex_vello_color(text.stroke_color.as_deref().unwrap_or(fallback), text.alpha)
     }
     fn text_stroke_width(&self, text: &NativeTextModel) -> f64 {
         let width = if text.stroke_width > 0.0 {
@@ -653,113 +671,6 @@ impl VelloRenderer {
     }
 }
 
-/// Alpha blend: result = bg * (1 - alpha) + fg * alpha
-#[inline]
-fn blend(bg: u8, fg: u8, alpha: f32) -> u8 {
-    ((bg as f32 * (1.0 - alpha)) + (fg as f32 * alpha)) as u8
-}
-fn parse_hex_color_rgb(hex: &str) -> (u8, u8, u8) {
-    if hex.len() < 7 {
-        return (0, 0, 0);
-    }
-    let r = u8::from_str_radix(&hex[1..3], 16).unwrap_or(0);
-    let g = u8::from_str_radix(&hex[3..5], 16).unwrap_or(0);
-    let b = u8::from_str_radix(&hex[5..7], 16).unwrap_or(0);
-    (r, g, b)
-}
-fn parse_hex_vello_color(hex: &str, alpha: f32) -> Color {
-    let (r, g, b) = parse_hex_color_rgb(hex);
-    Color::rgba8(r, g, b, (alpha * 255.0) as u8)
-}
-fn text_fill_enabled(render_mode: i32) -> bool {
-    matches!(render_mode, 0 | 2 | 4 | 6)
-}
-fn text_stroke_enabled(render_mode: i32) -> bool {
-    matches!(render_mode, 1 | 2 | 5 | 6)
-}
-fn text_is_non_painting(render_mode: i32) -> bool {
-    matches!(render_mode, 3 | 7)
-}
-
-/// Convert a swash glyph outline into a vello/kurbo `BezPath`.
-/// Shared by the embedded-font and cosmic_text-fallback render paths.
-fn outline_to_bez_path(outline: &swash::scale::outline::Outline) -> BezPath {
-    use swash::zeno::Verb;
-    let mut bez_path = BezPath::new();
-    let mut points = outline.points().iter();
-    for verb in outline.verbs() {
-        match verb {
-            Verb::MoveTo => {
-                if let Some(p) = points.next() {
-                    bez_path.move_to(Point::new(p.x as f64, p.y as f64));
-                }
-            }
-            Verb::LineTo => {
-                if let Some(p) = points.next() {
-                    bez_path.line_to(Point::new(p.x as f64, p.y as f64));
-                }
-            }
-            Verb::QuadTo => {
-                if let (Some(c), Some(p)) = (points.next(), points.next()) {
-                    bez_path.quad_to(
-                        Point::new(c.x as f64, c.y as f64),
-                        Point::new(p.x as f64, p.y as f64),
-                    );
-                }
-            }
-            Verb::CurveTo => {
-                if let (Some(c1), Some(c2), Some(p)) =
-                    (points.next(), points.next(), points.next())
-                {
-                    bez_path.curve_to(
-                        Point::new(c1.x as f64, c1.y as f64),
-                        Point::new(c2.x as f64, c2.y as f64),
-                        Point::new(p.x as f64, p.y as f64),
-                    );
-                }
-            }
-            Verb::Close => bez_path.close_path(),
-        }
-    }
-    bez_path
-}
-
-/// Convert a `NativePathModel` segment list into a vello/kurbo `BezPath`.
-fn path_segments_to_bez_path(segments: &[crate::infrastructure::pdf::models::PathSegment]) -> BezPath {
-    let mut bez_path = BezPath::new();
-    for seg in segments {
-        match seg.command.as_str() {
-            "move" => {
-                if let Some(p) = seg.points.get(0) {
-                    bez_path.move_to(Point::new(p[0] as f64, p[1] as f64));
-                }
-            }
-            "line" => {
-                if let Some(p) = seg.points.get(0) {
-                    bez_path.line_to(Point::new(p[0] as f64, p[1] as f64));
-                }
-            }
-            "bezier" => {
-                if seg.points.len() == 3 {
-                    bez_path.curve_to(
-                        Point::new(seg.points[0][0] as f64, seg.points[0][1] as f64),
-                        Point::new(seg.points[1][0] as f64, seg.points[1][1] as f64),
-                        Point::new(seg.points[2][0] as f64, seg.points[2][1] as f64),
-                    );
-                }
-            }
-            "close" => bez_path.close_path(),
-            _ => {}
-        }
-    }
-    bez_path
-}
-
-/// Whether this text run warrants verbose render-path tracing.
-/// Gate: known diagnostic marker or large font size.
-fn should_trace_text_render(text: &NativeTextModel) -> bool {
-    text.text.contains("绠€") || text.font_size > 20.0
-}
 impl VelloRenderer {
     /// Render text as sharp vector paths using swash outlines.
     /// [DEFINITIVE FIX] This implementation correctly normalizes Font Units to Pixels.
@@ -915,7 +826,7 @@ impl VelloRenderer {
                     let mut scaler = scale_context.builder(font_ref).hint(false).build();
 
                     if let Some(outline) = scaler.scale_outline(glyph.glyph_id) {
-                        let bez_path = outline_to_bez_path(&outline);
+                        let bez_path = path_utils::outline_to_bez_path(&outline);
                         let final_transform = self.raw_outline_transform(
                             flip_y,
                             text.tx + glyph.x,
@@ -1036,7 +947,7 @@ impl VelloRenderer {
                 continue;
             };
 
-                        let bez_path = outline_to_bez_path(&outline);
+                        let bez_path = path_utils::outline_to_bez_path(&outline);
 
             let final_transform = self.raw_outline_transform(
                 flip_y,

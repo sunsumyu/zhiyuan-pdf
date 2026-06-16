@@ -1,49 +1,25 @@
 use crate::infrastructure::pdf::models::PdfModifications;
-use crate::infrastructure::pdf::pdf_read_service::PdfReadService;
 use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan;
 use crate::infrastructure::pdf_read::backend::PdfReadBackend;
 use crate::infrastructure::pdf_read::scanned_backend::ScannedReadBackend;
-use lazy_static::lazy_static;
 use lopdf::Document;
+use tokio::sync::Mutex as AsyncMutex;
+use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::fs;
-use std::sync::Mutex;
-use tokio::sync::Mutex as AsyncMutex;
 
 use super::cache::{
     invalidate_pdf_layout_cache, invalidate_pdf_light_page_cache, invalidate_pdf_page_cache,
 };
 
 lazy_static! {
-    static ref WORKING_COPIES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
-    static ref COPY_LOCKS: Mutex<HashMap<String, std::sync::Arc<Mutex<()>>>> =
-        Mutex::new(HashMap::new());
     static ref PDF_OPS_LOCK: AsyncMutex<()> = AsyncMutex::new(());
 }
 
-fn release_working_copy(path: &str) {
-    let working_path = {
-        let mut copies = WORKING_COPIES.lock().unwrap();
-        copies.remove(path)
-    };
-
-    {
-        let mut locks = COPY_LOCKS.lock().unwrap();
-        locks.remove(path);
-    }
-
-    if let Some(working_path) = working_path {
-        let _ = fs::remove_file(&working_path);
-        crate::log_step!("[PDF][Release] Removed working copy for {}", path);
-    }
-}
 
 pub struct PdfDocumentService;
 
 impl PdfDocumentService {
-    pub(crate) fn resolve_working_path(original_path: &str) -> String {
-        PdfReadService::resolve_working_path(original_path)
-    }
 
     pub fn release_pdf_resources(state: &crate::AppState, path: &str) {
         {
@@ -80,7 +56,7 @@ impl PdfDocumentService {
             reports.remove(path);
         }
 
-        release_working_copy(path);
+        crate::infrastructure::pdf::working_copy::release_working_copy(path);
         crate::log_step!("[PDF][Release] Released PDF resources for {}", path);
     }
 
@@ -127,14 +103,6 @@ impl PdfDocumentService {
             loading.clear();
         }
         {
-            let mut copies = WORKING_COPIES.lock().unwrap();
-            copies.clear();
-        }
-        {
-            let mut locks = COPY_LOCKS.lock().unwrap();
-            locks.clear();
-        }
-        {
             let mut image_cache = crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE
                 .lock()
                 .unwrap();
@@ -143,6 +111,7 @@ impl PdfDocumentService {
         {
             let mut reports = state.cache.pdf_materialization_reports.lock().unwrap();
             reports.clear();
+        crate::infrastructure::pdf::working_copy::clear_working_copies();
         }
 
         crate::log_step!("[PDF][Release] Released all PDF resources");
@@ -306,7 +275,7 @@ impl PdfDocumentService {
             );
         }
 
-        let working_path = Self::resolve_working_path(path);
+        let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(path);
         let doc = {
             let mut cache = state.docs.pdf_documents.lock().unwrap();
             if let Some(d) = cache.get(path) {

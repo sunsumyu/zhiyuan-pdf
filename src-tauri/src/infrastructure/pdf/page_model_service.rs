@@ -1,7 +1,6 @@
 use crate::infrastructure::pdf::models::{LightPageKind, LightPageModel, NativeVectorPageModel};
 
 use super::cache::light_page_cache_key;
-use super::document_service::PdfDocumentService;
 use super::page_intermediate_service::PdfPageIntermediateService;
 
 pub struct PdfPageModelService;
@@ -18,7 +17,7 @@ impl PdfPageModelService {
             let doc = if let Some(d) = cache.get(path) {
                 d.clone()
             } else {
-                let wp = PdfDocumentService::resolve_working_path(path);
+                let wp = crate::infrastructure::pdf::working_copy::resolve_working_path(path);
                 let d = crate::infrastructure::pdf::document_service::load_pdf_public(&wp)
                     .map_err(|e| format!("Lopdf Load Error: {}", e))?;
                 let d_arc = std::sync::Arc::new(d);
@@ -214,3 +213,4 @@ impl PdfPageModelService {
         Ok(model)
     }
 }
+
