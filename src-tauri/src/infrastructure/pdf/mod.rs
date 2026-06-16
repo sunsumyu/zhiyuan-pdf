@@ -34,4 +34,5 @@ pub mod vello_renderer;
 pub mod tests_reflow;
 pub mod color_utils;
 pub mod path_utils;
+pub mod working_copy;
 
