@@ -15,11 +15,11 @@
 //! |------|------------------|
 //! | `commit.rs` | `document::patch_persistence::apply_document_patch_direct`；`state_manager::remember_paragraph_replacement_target` |
 //! | `render_transaction.rs` | `present::present_store::schedule_render_frame_request`（9 个 *_tx 函数都会 schedule 渲染帧）|
-//! | `replace_pipeline.rs` | `state_manager::apply_patch_with_history`；`document::mutation_pipeline::request_document_refresh` |
+//! | `replace_pipeline.rs` | `state_manager::record_patch`；`document::mutation_pipeline::request_document_refresh` |
 //!
 //! 已知例外（未完全迁入 orchestrator）：
 //!
-//! * `editor/overlay/paragraph_overlay.rs` 仍有 4 处 `apply_patch_with_history`
+//! * `editor/overlay/paragraph_overlay.rs` 仍有 4 处 `record_patch`
 //!   调用嵌在 overlay 构造代码里。这些调用与绘制几何耦合紧密，拆出来会破坏
 //!   几何/副作用的局部性。保留在原地，但文档化。
 //!

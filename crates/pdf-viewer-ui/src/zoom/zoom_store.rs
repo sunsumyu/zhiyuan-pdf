@@ -36,7 +36,7 @@ impl ZoomSessionState {
 }
 
 /// Snapshot of the current zoom state.
-pub fn read_zoom_session_state() -> ZoomSessionState {
+pub fn read_session_state() -> ZoomSessionState {
     ZOOM_STATE.with(|state| {
         let s = state.borrow();
         if s.preview_transform.is_some() {

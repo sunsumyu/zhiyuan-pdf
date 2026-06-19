@@ -4,7 +4,7 @@ use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContex
 use crate::text::list_semantics::derive_list_text_semantics;
 use crate::typography::font_resolver::looks_like_symbolic_font;
 
-use crate::geometry::source_geometry::{source_run_visual_bbox, source_visual_bbox_from_runs};
+use crate::geometry::source_geometry::{compute_run_bbox, compute_bbox_from_runs};
 
 const EDIT_SEGMENT_DELIMITER: &str = "::edit-segment::";
 
@@ -17,18 +17,18 @@ pub struct EditorEditTarget {
     pub source_object_ids: BTreeSet<String>,
 }
 
-pub fn make_edit_segment_target_id(base_paragraph_id: &str, segment_key: &str) -> String {
+pub fn build_segment_id(base_paragraph_id: &str, segment_key: &str) -> String {
     format!("{base_paragraph_id}{EDIT_SEGMENT_DELIMITER}{segment_key}")
 }
 
-pub fn edit_target_base_paragraph_id(target_id: &str) -> &str {
+pub fn get_base_paragraph_id(target_id: &str) -> &str {
     target_id
         .split_once(EDIT_SEGMENT_DELIMITER)
         .map(|(base, _)| base)
         .unwrap_or(target_id)
 }
 
-pub fn edit_target_segment_key(target_id: &str) -> Option<&str> {
+pub fn get_segment_key(target_id: &str) -> Option<&str> {
     target_id
         .split_once(EDIT_SEGMENT_DELIMITER)
         .map(|(_, segment_key)| segment_key)
@@ -40,7 +40,7 @@ pub fn collect_edit_targets_from_session(
 ) -> Vec<EditorEditTarget> {
     let segments = build_visual_segments(session);
     if segments.is_empty() {
-        return vec![whole_session_target(base_paragraph_id, session)];
+        return vec![create_from_session(base_paragraph_id, session)];
     }
 
     let full_run_count = session
@@ -50,7 +50,7 @@ pub fn collect_edit_targets_from_session(
         .filter(|run| !run.text.is_empty())
         .count();
     if segments.len() == 1 && segments[0].run_indices.len() == full_run_count {
-        return vec![whole_session_target(base_paragraph_id, session)];
+        return vec![create_from_session(base_paragraph_id, session)];
     }
 
     segments
@@ -67,7 +67,7 @@ pub fn resolve_edit_target_from_session(
 ) -> EditorEditTarget {
     let targets = collect_edit_targets_from_session(base_paragraph_id, session);
     if targets.is_empty() {
-        return whole_session_target(base_paragraph_id, session);
+        return create_from_session(base_paragraph_id, session);
     }
 
     // 调用者是否显式指定了某个 segment（带 ::edit-segment::xxx 后缀）。
@@ -75,19 +75,19 @@ pub fn resolve_edit_target_from_session(
     // 否则当点击落在两个 segment 的视觉间隙时，会被打分到错误的 segment，
     // 导致 shell 错位、后续点击全部下沉到 root → openBlock 而不是 shell → moveCaret，
     // 表现为"必须点击两次"。
-    let explicit_segment_key = edit_target_segment_key(requested_target_id);
+    let explicit_segment_key = get_segment_key(requested_target_id);
 
     if let Some(segment_key) = explicit_segment_key {
         if let Some(target) = targets
             .iter()
-            .find(|target| edit_target_segment_key(&target.target_id) == Some(segment_key))
+            .find(|target| get_segment_key(&target.target_id) == Some(segment_key))
         {
             return target.clone();
         }
         // 显式 segment_key 未命中（通常是 segment 编号在两次计算间漂移）：
         // 退化为"按 click 选最接近的 segment"也不安全，故直接落到 whole_session
         // 以保证 shell 至少覆盖完整段落，让用户的二次点击能进 shell 路径。
-        return whole_session_target(base_paragraph_id, session);
+        return create_from_session(base_paragraph_id, session);
     }
 
     if requested_target_id == base_paragraph_id && targets.len() == 1 {
@@ -110,7 +110,7 @@ pub fn resolve_edit_target_from_session(
     targets
         .into_iter()
         .find(|target| target.target_id == requested_target_id)
-        .unwrap_or_else(|| whole_session_target(base_paragraph_id, session))
+        .unwrap_or_else(|| create_from_session(base_paragraph_id, session))
 }
 
 #[derive(Debug, Clone)]
@@ -161,7 +161,7 @@ fn build_visual_segments(session: &ParagraphEditContext) -> Vec<VisualSegment> {
         let mut previous_run: Option<&LayoutRun> = None;
 
         for (run_index, run) in line_runs {
-            let run_bbox = source_run_visual_bbox(run).unwrap_or(run.bbox);
+            let run_bbox = compute_run_bbox(run).unwrap_or(run.bbox);
             let gap = current_right
                 .map(|right| run_bbox.left - right)
                 .unwrap_or(0.0);
@@ -265,7 +265,7 @@ fn build_segment_target(
 
     let anchor_bbox = bbox_from_layout_runs(&runs)?;
     let mut paragraph = session.paragraph.clone();
-    paragraph.id = make_edit_segment_target_id(base_paragraph_id, &segment.key);
+    paragraph.id = build_segment_id(base_paragraph_id, &segment.key);
     paragraph.runs = runs;
     normalize_paragraph_to_bbox(&mut paragraph, anchor_bbox);
 
@@ -287,7 +287,7 @@ fn build_segment_target(
     })
 }
 
-fn whole_session_target(
+fn create_from_session(
     base_paragraph_id: &str,
     session: &ParagraphEditContext,
 ) -> EditorEditTarget {
@@ -316,7 +316,7 @@ fn normalize_paragraph_to_bbox(paragraph: &mut LayoutParagraph, bbox: BoundingBo
 }
 
 fn bbox_from_layout_runs(runs: &[LayoutRun]) -> Option<BoundingBox> {
-    if let Some(source_bbox) = source_visual_bbox_from_runs(runs) {
+    if let Some(source_bbox) = compute_bbox_from_runs(runs) {
         return Some(source_bbox);
     }
     let first = runs.first()?;
@@ -342,7 +342,7 @@ fn same_visual_line(reference_origin_y: f32, run: &LayoutRun) -> bool {
 
 fn segment_break_gap(previous: &LayoutRun, next: &LayoutRun) -> f32 {
     let previous_char_count = previous.text.chars().count().max(1) as f32;
-    let previous_bbox = source_run_visual_bbox(previous).unwrap_or(previous.bbox);
+    let previous_bbox = compute_run_bbox(previous).unwrap_or(previous.bbox);
     let previous_width = (previous_bbox.right - previous_bbox.left).max(0.0);
     let previous_avg = (previous_width / previous_char_count).max(1.0);
     let font_size = previous.style.font_size.max(next.style.font_size).max(1.0);

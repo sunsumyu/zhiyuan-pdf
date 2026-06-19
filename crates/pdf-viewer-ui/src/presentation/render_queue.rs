@@ -14,7 +14,7 @@ pub struct RenderQueueAction {
     pub reject_reason: Option<String>,
 }
 
-pub fn resolve_render_queue_action(
+pub fn resolve_queue_action(
     source: String,
     executing: bool,
     now_ms: f64,
@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn suppresses_scroll_immediately_after_commit() {
-        let action = resolve_render_queue_action("scroll".to_string(), false, 150.0, 100.0);
+        let action = resolve_queue_action("scroll".to_string(), false, 150.0, 100.0);
         assert_eq!(action.action, "suppress");
         assert!(action.suppress);
         assert_eq!(action.scroll_debounce_ms, 56.0);
@@ -95,21 +95,21 @@ mod tests {
 
     #[test]
     fn dispatches_when_idle() {
-        let action = resolve_render_queue_action("zoom".to_string(), false, 500.0, 0.0);
+        let action = resolve_queue_action("zoom".to_string(), false, 500.0, 0.0);
         assert_eq!(action.action, "dispatch");
         assert!(!action.suppress);
     }
 
     #[test]
     fn replaces_navigation_while_executing() {
-        let action = resolve_render_queue_action("navigation".to_string(), true, 500.0, 0.0);
+        let action = resolve_queue_action("navigation".to_string(), true, 500.0, 0.0);
         assert_eq!(action.action, "replacePendingNavigation");
         assert_eq!(action.pending_queue_effect, "replaceAll");
     }
 
     #[test]
     fn replaces_non_navigation_while_executing() {
-        let action = resolve_render_queue_action("scroll".to_string(), true, 500.0, 0.0);
+        let action = resolve_queue_action("scroll".to_string(), true, 500.0, 0.0);
         assert_eq!(action.action, "replacePendingNonNavigation");
         assert_eq!(action.pending_queue_effect, "replaceNonNavigation");
     }

@@ -2,7 +2,7 @@ use crate::models::PageState;
 
 use crate::edit::bridge::{collect_paragraph_interaction_targets, ParagraphInteractionTarget};
 
-pub fn resolve_region_target_from_page_state(
+pub fn resolve_region_target(
     page_state: &PageState,
     page_index: u16,
     region_id: &str,

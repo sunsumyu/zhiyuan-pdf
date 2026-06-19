@@ -84,12 +84,12 @@ impl PdfReadService {
     }
 
     /// 从应用状态获取矢量页面模型
-    pub(crate) async fn resolve_vector_page_model_from_app_state(
+    pub(crate) async fn resolve_vector_page_model(
         app_state: &crate::AppState,
         path: &str,
         page_index: u16,
     ) -> Result<NativeVectorPageModel, String> {
-        PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+        PdfPageIntermediateService::resolve_vector_page_model(
             app_state,
             path.to_string(),
             page_index,
@@ -99,22 +99,13 @@ impl PdfReadService {
         .await
     }
 
-    /// 获取矢量页面模型
-    pub async fn resolve_vector_page_model(
-        state: tauri::State<'_, crate::AppState>,
-        path: String,
-        page_index: u16,
-    ) -> Result<NativeVectorPageModel, String> {
-        Self::resolve_vector_page_model_from_app_state(&state, &path, page_index).await
-    }
-
     /// 获取布局推断结果
     pub async fn resolve_layout_inference(
         state: tauri::State<'_, crate::AppState>,
         path: String,
         page_index: u16,
     ) -> Result<LayoutInferenceResult, String> {
-        PdfPageIntermediateService::resolve_layout_inference_from_app_state(
+        PdfPageIntermediateService::resolve_layout_inference(
             &state, path, page_index, None,
         )
         .await
@@ -126,7 +117,7 @@ impl PdfReadService {
         path: String,
         page_index: u16,
     ) -> Result<GlyphPaintPlan, String> {
-        PdfPageIntermediateService::resolve_glyph_paint_plan_from_app_state(
+        PdfPageIntermediateService::resolve_glyph_paint_plan(
             &state, path, page_index, None,
         )
         .await

@@ -2,7 +2,7 @@ use crate::infrastructure::pdf::models::NativeTextModel;
 use pdf_viewer_core::models::FontHints;
 use pdf_viewer_core::typography::engine::TypographyEngine;
 use pdf_viewer_core::typography::matcher::{
-    build_match_request_with_descriptor, choose_top_matches, resolve_system_or_fallback_font,
+    build_descriptor_request, choose_top_matches, resolve_system_or_fallback_font,
 };
 use pdf_viewer_core::typography::models::{
     PdfEmbeddedFontKind, PdfFontDescriptor, PdfFontMatchRequest, PdfFontSourceKind,
@@ -83,7 +83,7 @@ impl PdfSystemFontMatcher {
             family_hint: text.font_family_hint.clone(),
         };
 
-        let request = build_match_request_with_descriptor(
+        let request = build_descriptor_request(
             &text.font_name,
             text.font_hints.as_ref(),
             descriptor,

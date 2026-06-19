@@ -1,13 +1,13 @@
 use crate::models::{BoundingBox, LayoutRun, ParagraphEditContext};
 
-pub fn source_session_visual_bbox(session: &ParagraphEditContext) -> Option<BoundingBox> {
-    source_visual_bbox_from_runs(&session.paragraph.runs)
+pub fn compute_session_bbox(session: &ParagraphEditContext) -> Option<BoundingBox> {
+    compute_bbox_from_runs(&session.paragraph.runs)
 }
 
-pub fn source_visual_bbox_from_runs(runs: &[LayoutRun]) -> Option<BoundingBox> {
+pub fn compute_bbox_from_runs(runs: &[LayoutRun]) -> Option<BoundingBox> {
     let mut combined: Option<BoundingBox> = None;
     for run in runs.iter().filter(|run| !run.text.is_empty()) {
-        let Some(run_bbox) = source_run_visual_bbox(run) else {
+        let Some(run_bbox) = compute_run_bbox(run) else {
             continue;
         };
         combined = Some(match combined {
@@ -18,7 +18,7 @@ pub fn source_visual_bbox_from_runs(runs: &[LayoutRun]) -> Option<BoundingBox> {
     combined
 }
 
-pub fn source_line_visual_bbox_for_caret(
+pub fn compute_caret_line_bbox(
     session: &ParagraphEditContext,
     caret_baseline_y: f32,
 ) -> Option<BoundingBox> {
@@ -35,7 +35,7 @@ pub fn source_line_visual_bbox_for_caret(
         if (run_baseline_y - caret_baseline_y).abs() > tolerance {
             continue;
         }
-        let Some(run_bbox) = source_run_visual_bbox(run) else {
+        let Some(run_bbox) = compute_run_bbox(run) else {
             continue;
         };
         combined = Some(match combined {
@@ -46,7 +46,7 @@ pub fn source_line_visual_bbox_for_caret(
     combined
 }
 
-pub fn source_run_visual_bbox(run: &LayoutRun) -> Option<BoundingBox> {
+pub fn compute_run_bbox(run: &LayoutRun) -> Option<BoundingBox> {
     if run.text.is_empty() {
         return None;
     }
@@ -150,7 +150,7 @@ fn union_bbox(left: BoundingBox, right: BoundingBox) -> BoundingBox {
 
 #[cfg(test)]
 mod tests {
-    use super::{source_line_visual_bbox_for_caret, source_visual_bbox_from_runs};
+    use super::{compute_caret_line_bbox, compute_bbox_from_runs};
     use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
 
     fn test_run(id: &str, left: f32, baseline_y: f32, font_size: f32) -> LayoutRun {
@@ -186,7 +186,7 @@ mod tests {
     fn uses_baseline_bbox() {
         let run = test_run("r1", 70.0, 112.0, 12.0);
 
-        let bbox = source_visual_bbox_from_runs(&[run]).expect("source bbox");
+        let bbox = compute_bbox_from_runs(&[run]).expect("source bbox");
 
         assert_eq!(bbox.left, 70.0);
         assert_eq!(bbox.right, 130.0);
@@ -210,7 +210,7 @@ mod tests {
             },
         };
 
-        let line_bbox = source_line_visual_bbox_for_caret(&session, 12.0).expect("line bbox");
+        let line_bbox = compute_caret_line_bbox(&session, 12.0).expect("line bbox");
 
         assert_eq!(line_bbox.top, 100.0);
         assert_eq!(line_bbox.bottom, 112.0);

@@ -636,7 +636,7 @@ fn emit_text_line_ops(run: &PersistedTextLinePlan, user_unit: f32) -> (Vec<lopdf
     let adj_width = run.width / user_unit;
     let adj_font_size = run.font_size / user_unit;
 
-    if let Some([red, green, blue]) = crate::infrastructure::pdf::color_utils::parse_pdf_hex_color(&run.color) {
+    if let Some([red, green, blue]) = crate::infrastructure::pdf::color_utils::parse_hex_color(&run.color) {
         ops.push(lopdf::content::Operation::new(
             "rg",
             vec![Object::Real(red), Object::Real(green), Object::Real(blue)],
@@ -691,7 +691,7 @@ fn emit_text_line_ops(run: &PersistedTextLinePlan, user_unit: f32) -> (Vec<lopdf
 /// Emit the PDF path operators for one underline stroke: color, width, move, line, stroke.
 fn emit_underline_ops(spec: &UnderlineSpec) -> Vec<lopdf::content::Operation> {
     let mut ops = Vec::new();
-    if let Some([r, g, b]) = crate::infrastructure::pdf::color_utils::parse_pdf_hex_color(&spec.color) {
+    if let Some([r, g, b]) = crate::infrastructure::pdf::color_utils::parse_hex_color(&spec.color) {
         ops.push(lopdf::content::Operation::new(
             "RG",
             vec![Object::Real(r), Object::Real(g), Object::Real(b)],
@@ -817,7 +817,7 @@ fn patch_atomic_reflow_recursive(
                             (trm[2].powi(2) + trm[3].powi(2)).sqrt(),
                         );
                         let (ax, ay) =
-                            (trm[4], PdfCoordinateSpace::normalize_y(trm[5], page_height));
+                            (trm[4], PdfCoordinateSpace::to_y_down(trm[5], page_height));
 
                         let first_base = layout
                             .lines

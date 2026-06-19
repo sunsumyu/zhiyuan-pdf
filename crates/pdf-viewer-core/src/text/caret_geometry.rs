@@ -82,16 +82,16 @@ pub fn resolve_index(
     resolve_caret_index_from_lines(&lines, local_click_x, local_click_y)
 }
 
-pub fn caret_visual_for_session(
+pub fn session_caret_visual(
     session: &ParagraphEditContext,
     caret_index: usize,
     fallback_height: f32,
 ) -> EditorCaretVisualPosition {
     let text_plan = build_editor_session_text_plan(session);
-    caret_visual_for_session_plan(session, &text_plan, caret_index, fallback_height)
+    session_plan_caret_visual(session, &text_plan, caret_index, fallback_height)
 }
 
-pub fn caret_visual_for_session_plan(
+pub fn session_plan_caret_visual(
     session: &ParagraphEditContext,
     text_plan: &EditorSessionTextPlan,
     caret_index: usize,

@@ -13,7 +13,7 @@ pub(crate) struct PageIntermediateBundle {
 pub struct PdfPageIntermediateService;
 
 impl PdfPageIntermediateService {
-    pub(crate) async fn resolve_page_display_list_from_app_state(
+    pub(crate) async fn resolve_page_display_list(
         app_state: &crate::AppState,
         path: String,
         page_index: u16,
@@ -24,7 +24,7 @@ impl PdfPageIntermediateService {
             let cache = app_state.cache.pdf_page_intermediate_cache.lock().unwrap();
             cache.get(&cache_key).cloned()
         } {
-            crate::infrastructure::pdf::log_service::log_pdf_event(
+            crate::infrastructure::pdf::log_service::log_event(
                 2,
                 "pageIntermediate.displayListCache",
                 &[
@@ -61,7 +61,7 @@ impl PdfPageIntermediateService {
             let path_for_load = path.clone();
             let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(&path);
             let loaded_doc = tokio::task::spawn_blocking(move || {
-                crate::infrastructure::pdf::document_service::load_pdf_public(&working_path)
+                crate::infrastructure::pdf::document_service::load_public(&working_path)
                     .map(Arc::new)
                     .map_err(|e| {
                         format!(
@@ -98,7 +98,7 @@ impl PdfPageIntermediateService {
             let mut cache = app_state.cache.pdf_page_intermediate_cache.lock().unwrap();
             cache.insert(cache_key, display_list.clone());
         }
-        crate::infrastructure::pdf::log_service::log_pdf_event(
+        crate::infrastructure::pdf::log_service::log_event(
             2,
             "pageIntermediate.displayListCache",
             &[
@@ -113,23 +113,6 @@ impl PdfPageIntermediateService {
     }
 
     pub(crate) async fn resolve_vector_page_model(
-        state: tauri::State<'_, crate::AppState>,
-        path: String,
-        page_index: u16,
-        _target_zoom: f32,
-        document_revision: Option<u64>,
-    ) -> Result<NativeVectorPageModel, String> {
-        Self::resolve_vector_page_model_from_app_state(
-            &state,
-            path,
-            page_index,
-            _target_zoom,
-            document_revision,
-        )
-        .await
-    }
-
-    pub(crate) async fn resolve_vector_page_model_from_app_state(
         app_state: &crate::AppState,
         path: String,
         page_index: u16,
@@ -145,7 +128,7 @@ impl PdfPageIntermediateService {
             return Ok((*model).clone());
         }
 
-        let display_list = Self::resolve_page_display_list_from_app_state(
+        let display_list = Self::resolve_page_display_list(
             app_state,
             path,
             page_index,
@@ -168,7 +151,7 @@ impl PdfPageIntermediateService {
         Ok(model)
     }
 
-    pub(crate) async fn resolve_layout_inference_from_app_state(
+    pub(crate) async fn resolve_layout_inference(
         app_state: &crate::AppState,
         path: String,
         page_index: u16,
@@ -183,7 +166,7 @@ impl PdfPageIntermediateService {
             return Ok((*result).clone());
         }
 
-        let display_list = Self::resolve_page_display_list_from_app_state(
+        let display_list = Self::resolve_page_display_list(
             app_state,
             path,
             page_index,
@@ -207,22 +190,12 @@ impl PdfPageIntermediateService {
     }
 
     pub(crate) async fn resolve_glyph_paint_plan(
-        state: tauri::State<'_, crate::AppState>,
-        path: String,
-        page_index: u16,
-        document_revision: Option<u64>,
-    ) -> Result<GlyphPaintPlan, String> {
-        Self::resolve_glyph_paint_plan_from_app_state(&state, path, page_index, document_revision)
-            .await
-    }
-
-    pub(crate) async fn resolve_glyph_paint_plan_from_app_state(
         app_state: &crate::AppState,
         path: String,
         page_index: u16,
         document_revision: Option<u64>,
     ) -> Result<GlyphPaintPlan, String> {
-        let layout = Self::resolve_layout_inference_from_app_state(
+        let layout = Self::resolve_layout_inference(
             app_state,
             path,
             page_index,
@@ -254,7 +227,7 @@ impl PdfPageIntermediateService {
         text_only: Option<bool>,
     ) -> Result<PageIntermediateBundle, String> {
         let mut model = Self::resolve_vector_page_model(
-            state.clone(),
+            &*state,
             path.clone(),
             page_index,
             target_zoom,
@@ -277,7 +250,7 @@ impl PdfPageIntermediateService {
                 ..Default::default()
             }
         } else {
-            Self::resolve_glyph_paint_plan(state, path, page_index, document_revision).await?
+            Self::resolve_glyph_paint_plan(&*state, path, page_index, document_revision).await?
         };
 
         Ok(PageIntermediateBundle { model, paint_plan })
@@ -324,7 +297,7 @@ mod tests {
     #[tokio::test]
     async fn uses_seeded_display_list() {
         let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX.lock().unwrap();
-        crate::infrastructure::pdf::log_service::clear_pdf_event_log();
+        crate::infrastructure::pdf::log_service::clear_event_log();
         let state = crate::AppState::new();
         let path = "cached-doc.pdf".to_string();
         let page_index = 0;
@@ -336,7 +309,7 @@ mod tests {
             cache.insert(cache_key.clone(), seeded_display_list.clone());
         }
 
-        let model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+        let model = PdfPageIntermediateService::resolve_vector_page_model(
             &state,
             path.clone(),
             page_index,
@@ -364,7 +337,7 @@ mod tests {
             "vector derivation should backfill the legacy page model cache",
         );
 
-        let layout = PdfPageIntermediateService::resolve_layout_inference_from_app_state(
+        let layout = PdfPageIntermediateService::resolve_layout_inference(
             &state,
             path.clone(),
             page_index,
@@ -436,7 +409,7 @@ mod tests {
             "annotation target labels should be built from the display-list-derived page model",
         );
 
-        let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+        let page_model = PdfPageIntermediateService::resolve_vector_page_model(
             &state,
             path.clone(),
             page_index,

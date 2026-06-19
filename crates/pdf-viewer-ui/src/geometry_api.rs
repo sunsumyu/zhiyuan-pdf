@@ -76,10 +76,10 @@ impl GeometryApi {
         let point: DomPointLike = unwrap_or_null!(from_value(point_js));
         let ctx: TransformContext = unwrap_or_null!(from_value(ctx_js));
         let transform = build_transform(&ctx);
-        let page = transform.client_to_page(ClientPoint {
+        let page = transform.to_page(ClientPoint {
             x: point.client_x,
             y: point.client_y,
-        });
+        }, None);
         to_value(&PointResult {
             x: page.x,
             y: page.y,
@@ -111,7 +111,7 @@ impl GeometryApi {
         let point: PointResult = unwrap_or_null!(from_value(point_js));
         let raw = PointResult {
             x: point.x,
-            y: PdfCoordinateSpace::denormalize_y(point.y, page_height),
+            y: PdfCoordinateSpace::to_y_up(point.y, page_height),
         };
         to_value(&raw).unwrap_or(JsValue::NULL)
     }
@@ -122,7 +122,7 @@ impl GeometryApi {
         let point: PointResult = unwrap_or_null!(from_value(point_js));
         let page = PointResult {
             x: point.x,
-            y: PdfCoordinateSpace::normalize_y(point.y, page_height),
+            y: PdfCoordinateSpace::to_y_down(point.y, page_height),
         };
         to_value(&page).unwrap_or(JsValue::NULL)
     }
@@ -137,13 +137,13 @@ impl GeometryApi {
         let point: DomPointLike = unwrap_or_null!(from_value(point_js));
         let ctx: TransformContext = unwrap_or_null!(from_value(ctx_js));
         let transform = build_transform(&ctx);
-        let page = transform.client_to_page(ClientPoint {
+        let page = transform.to_page(ClientPoint {
             x: point.client_x,
             y: point.client_y,
-        });
+        }, None);
         let raw = PointResult {
             x: page.x,
-            y: PdfCoordinateSpace::denormalize_y(page.y, ctx.page_height),
+            y: PdfCoordinateSpace::to_y_up(page.y, ctx.page_height),
         };
         to_value(&raw).unwrap_or(JsValue::NULL)
     }

@@ -21,7 +21,7 @@ pub struct PdfDocumentService;
 
 impl PdfDocumentService {
 
-    pub fn release_pdf_resources(state: &crate::AppState, path: &str) {
+    pub fn release_resources(state: &crate::AppState, path: &str) {
         {
             let mut docs = state.docs.pdf_documents.lock().unwrap();
             docs.remove(path);
@@ -60,14 +60,14 @@ impl PdfDocumentService {
         crate::log_step!("[PDF][Release] Released PDF resources for {}", path);
     }
 
-    pub fn release_all_pdf_resources(state: &crate::AppState) {
+    pub fn release_all_resources(state: &crate::AppState) {
         let paths: Vec<String> = {
             let docs = state.docs.pdf_documents.lock().unwrap();
             docs.keys().cloned().collect()
         };
 
         for path in paths {
-            Self::release_pdf_resources(state, &path);
+            Self::release_resources(state, &path);
         }
 
         {
@@ -332,7 +332,7 @@ impl PdfDocumentService {
         Ok(())
     }
 
-    pub fn read_last_pdf_materialization_report(
+    pub fn read_materialization_report(
         state: tauri::State<'_, crate::AppState>,
         path: &str,
     ) -> Result<Option<crate::infrastructure::pdf::models::PdfMaterializationReport>, String> {
@@ -412,7 +412,7 @@ impl PdfDocumentService {
         Err("No redo transaction history".to_string())
     }
 
-    pub fn generate_demo_pdf(path: &str) -> Result<String, String> {
+    pub fn generate_demo(path: &str) -> Result<String, String> {
         let pdf = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n5 0 obj\n<< /Length 59 >>\nstream\nBT\n/F1 24 Tf\n100 700 Td\n(Demo) Tj\nET\nendstream\nendobj\nxref\n0 6\n0000000000 65535 f\n0000000010 00000 n\ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n415\n%%EOF\n";
         fs::write(path, pdf).map_err(|_| "IO".to_string())?;
         Ok(path.to_string())
@@ -420,7 +420,7 @@ impl PdfDocumentService {
 }
 
 /// Public wrapper for lenient PDF loading (used from other modules).
-pub fn load_pdf_public(path: &str) -> Result<Document, String> {
+pub fn load_public(path: &str) -> Result<Document, String> {
     load_pdf_lenient(path)
 }
 

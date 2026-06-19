@@ -3,9 +3,9 @@ use crate::editor::debug_trace::{
 };
 use crate::editor::draft_layout::build_persisted_overlay_render_plan;
 use crate::editor::paragraph_overlay::ParagraphRenderOverlay;
-use crate::editor::replacement_region::paragraph_replacement_region;
+use crate::editor::replacement_region::build_region;
 use crate::editor::session::ActiveEditorTarget;
-use crate::editor::text_geometry::measure_editor_layout_text_width as measure_editor_layout_text_width_shared;
+use crate::editor::text_geometry::measure_text_width as measure_text_width_shared;
 use crate::render::canvas::{draw_text_run_core, CanvasRenderer, CoordinateMode};
 use crate::common::debug::truncate_debug_text;
 
@@ -202,7 +202,7 @@ pub(crate) fn draw_active_editor_shell_overlay_page(
     }
 
     let shell_bbox = active_target.scene.shell_bbox;
-    let replacement_region = paragraph_replacement_region(active_target);
+    let replacement_region = build_region(active_target);
     let occlusion_bbox = replacement_region.text_clear_bbox;
     let shell_width = (shell_bbox.right - shell_bbox.left).max(1.0);
     let shell_height = (shell_bbox.bottom - shell_bbox.top).max(1.0);
@@ -269,7 +269,7 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
     let shell_bbox = active_target.scene.shell_bbox;
     let shell_width = (shell_bbox.right - shell_bbox.left).max(1.0);
     let shell_height = (shell_bbox.bottom - shell_bbox.top).max(1.0);
-    let replacement_region = paragraph_replacement_region(active_target);
+    let replacement_region = build_region(active_target);
     let source_replacement_bbox = replacement_region.text_clear_bbox;
     let replacement_width = (source_replacement_bbox.right - source_replacement_bbox.left).max(1.0);
     let replacement_height =
@@ -326,7 +326,7 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
     let session = &document_plan.body_session;
     let render_plan =
         build_persisted_overlay_render_plan(document_plan, draft_text, |text, run| {
-            measure_editor_layout_text_width_shared(&renderer.ctx, text, run)
+            measure_text_width_shared(&renderer.ctx, text, run)
         });
 
     dbg_event(

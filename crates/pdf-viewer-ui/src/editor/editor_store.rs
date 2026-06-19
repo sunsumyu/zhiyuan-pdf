@@ -36,11 +36,11 @@ pub fn set_state(state: SessionState) {
     notify_change();
 }
 
-pub fn read_active_block_id() -> Option<String> {
+pub fn read_block_id() -> Option<String> {
     ACTIVE_BLOCK_ID.with(|id| id.borrow().clone())
 }
 
-pub fn set_active_block_id(block_id: Option<String>) {
+pub fn set_block_id(block_id: Option<String>) {
     let changed = ACTIVE_BLOCK_ID.with(|id| {
         let mut slot = id.borrow_mut();
         let differs = *slot != block_id;
@@ -63,7 +63,7 @@ pub fn set_state_change_callback(cb: Option<js_sys::Function>) {
 }
 
 /// Install a callback fired on any session mutation (state OR active block).
-/// Arity-0; JS reads fresh state via `EditorSession.getSnapshot()` if needed.
+/// Arity-0; JS reads fresh state via `EditorSession.readSnapshot()` if needed.
 #[cfg(target_arch = "wasm32")]
 pub fn set_change_callback(cb: Option<js_sys::Function>) {
     CHANGE_CB.with(|slot| *slot.borrow_mut() = cb);
@@ -121,20 +121,20 @@ pub fn transition_to_editing() {
 }
 
 /// Editing → EditingBlock
-pub fn transition_to_editing_block(block_id: String) {
-    set_active_block_id(Some(block_id));
+pub fn transition_editing(block_id: String) {
+    set_block_id(Some(block_id));
     set_state(SessionState::EditingBlock);
 }
 
 /// EditingBlock → Viewing (close / commit / discard)
 pub fn transition_to_viewing() {
-    set_active_block_id(None);
+    set_block_id(None);
     set_state(SessionState::Viewing);
 }
 
 /// EditingBlock(A) → EditingBlock(B) (block switch)
 pub fn transition_switch_block(new_block_id: String) {
-    set_active_block_id(Some(new_block_id));
+    set_block_id(Some(new_block_id));
     // state stays EditingBlock
 }
 
@@ -145,7 +145,7 @@ pub fn transition_to_saving() {
 
 /// Saving → Viewing (save complete)
 pub fn transition_save_complete() {
-    set_active_block_id(None);
+    set_block_id(None);
     set_state(SessionState::Viewing);
 }
 

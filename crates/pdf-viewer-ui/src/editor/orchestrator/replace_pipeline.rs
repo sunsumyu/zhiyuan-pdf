@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::document::mutation_pipeline::request_document_refresh;
-use crate::editor::editor_controller::build_region_text_patch;
+use crate::editor::editor_controller::build_text_patch;
 use crate::present::plan_builder::FramePlanRequest;
 use crate::render::workflow::RenderFrameEnvelope;
-use crate::ui_state_store::apply_patch_with_history;
+use crate::ui_state_store::record_patch;
 use pdf_viewer_core::text::search_replace::{replace_query_matches, SearchReplaceOptions};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -28,7 +28,7 @@ pub struct RegionTextReplaceResult {
     pub render_frame: Option<RenderFrameEnvelope>,
 }
 
-pub fn apply_region_text_replacements_tx(
+pub fn apply_replacements_tx(
     requests: Vec<RegionTextReplaceRequest>,
     frame_request: FramePlanRequest,
 ) -> RegionTextReplaceResult {
@@ -49,7 +49,7 @@ pub fn apply_region_text_replacements_tx(
             continue;
         };
 
-        let Some(patch) = build_region_text_patch(
+        let Some(patch) = build_text_patch(
             request.page_index,
             &request.region_id,
             &request.kind,
@@ -60,7 +60,7 @@ pub fn apply_region_text_replacements_tx(
             continue;
         };
 
-        apply_patch_with_history(patch);
+        record_patch(patch);
         applied_count += 1;
     }
 

@@ -24,7 +24,7 @@ pub fn parse_hex_vello_color(hex: &str, alpha: f32) -> Color {
 }
 
 /// Parse a `#rrggbb` or `rrggbb` hex string into normalized [0..1] float RGB.
-pub fn parse_pdf_hex_color(color: &str) -> Option<[f32; 3]> {
+pub fn parse_hex_color(color: &str) -> Option<[f32; 3]> {
     let hex = color.trim().trim_start_matches('#');
     if hex.len() != 6 {
         return None;

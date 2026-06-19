@@ -1,7 +1,7 @@
 use wasm_bindgen::{JsCast, JsValue};
 
 use crate::bridge::on_debug;
-use crate::editor::paragraph_overlay::collect_paragraph_render_overlays;
+use crate::editor::paragraph_overlay::collect_overlays;
 use crate::page::page_store::{
     set_progressive_task, with_page_and_scene, with_page_state, with_progressive_task_mut,
 };
@@ -25,7 +25,7 @@ pub fn start_progressive_render() -> ProgressiveRenderStartResult {
         let Some(paint_plan) = state.paint_plan.as_ref() else {
             return ProgressiveRenderStart::default();
         };
-        let overlays = collect_paragraph_render_overlays(paint_plan, Some(vector_model));
+        let overlays = collect_overlays(paint_plan, Some(vector_model));
         crate::chain_trace!("progressive.start", "overlayCount" => overlays.len());
         for (ov_idx, ov) in overlays.iter().enumerate() {
             crate::chain_trace!(
@@ -158,7 +158,7 @@ pub fn render_page_offscreen(canvas_js: JsValue, image_cache: JsValue, dpr: f32)
     });
 }
 
-pub fn step_progressive_render_offscreen(
+pub fn step_offscreen(
     canvas_js: JsValue,
     image_cache: JsValue,
     budget_ms: f64,

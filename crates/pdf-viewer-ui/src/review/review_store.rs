@@ -17,57 +17,57 @@ thread_local! {
         RefCell::new(HostCommentReviewSession::default());
 }
 
-pub fn clear_comment_review_session() {
-    replace_comment_review_session(HostCommentReviewSession::default());
+pub fn clear_review_session() {
+    replace_review_session(HostCommentReviewSession::default());
 }
 
-pub fn read_comment_review_session() -> HostCommentReviewSession {
+pub fn read_review_session() -> HostCommentReviewSession {
     COMMENT_REVIEW_SESSION.with(|session| session.borrow().clone())
 }
 
-fn replace_comment_review_session(next: HostCommentReviewSession) -> HostCommentReviewSession {
+fn replace_review_session(next: HostCommentReviewSession) -> HostCommentReviewSession {
     COMMENT_REVIEW_SESSION.with(|session| {
         *session.borrow_mut() = next.clone();
     });
     next
 }
 
-fn update_comment_review_session(
+fn update_review_session(
     update: impl FnOnce(&mut HostCommentReviewSession),
 ) -> HostCommentReviewSession {
-    let mut next = read_comment_review_session();
+    let mut next = read_review_session();
     update(&mut next);
-    replace_comment_review_session(next)
+    replace_review_session(next)
 }
 
-pub fn set_comment_review_panel_open(panel_open: bool) -> HostCommentReviewSession {
-    update_comment_review_session(|session| {
+pub fn set_panel_open(panel_open: bool) -> HostCommentReviewSession {
+    update_review_session(|session| {
         session.panel_open = panel_open;
     })
 }
 
-pub fn toggle_comment_review_panel() -> HostCommentReviewSession {
-    update_comment_review_session(|session| {
+pub fn toggle_panel() -> HostCommentReviewSession {
+    update_review_session(|session| {
         session.panel_open = !session.panel_open;
     })
 }
 
-pub fn set_comment_review_scope(scope: HostCommentReviewScope) -> HostCommentReviewSession {
-    update_comment_review_session(|session| {
+pub fn set_scope(scope: HostCommentReviewScope) -> HostCommentReviewSession {
+    update_review_session(|session| {
         session.scope = scope;
     })
 }
 
-pub fn set_comment_review_query(query: String) -> HostCommentReviewSession {
-    update_comment_review_session(|session| {
+pub fn set_query(query: String) -> HostCommentReviewSession {
+    update_review_session(|session| {
         session.query = query;
     })
 }
 
-pub fn select_comment_review_comment(
+pub fn select_comment(
     selected_comment_id: Option<String>,
 ) -> HostCommentReviewSession {
-    update_comment_review_session(|session| {
+    update_review_session(|session| {
         session.selected_comment_id = selected_comment_id;
     })
 }

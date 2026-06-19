@@ -19,7 +19,7 @@ pub fn current_patch_revision() -> u64 {
         .unwrap_or(0)
 }
 
-pub fn current_paragraph_patch_text(paragraph_id: &str) -> Option<String> {
+pub fn patch_text(paragraph_id: &str) -> Option<String> {
     read_patch_state()
         .read()
         .ok()
@@ -33,14 +33,14 @@ pub fn current_paragraph_patch(paragraph_id: &str) -> Option<PersistableRegionPa
         .and_then(|state| state.paragraph_patches.get(paragraph_id).cloned())
 }
 
-pub fn remember_paragraph_replacement_target(paragraph_id: &str, target: ActiveEditorTarget) {
+pub fn remember_target(paragraph_id: &str, target: ActiveEditorTarget) {
     let mut state = read_patch_state().write().unwrap();
     state
         .paragraph_replacement_targets
         .insert(paragraph_id.to_string(), target);
 }
 
-pub fn apply_patch_with_history(patch: PersistableRegionPatch) {
+pub fn record_patch(patch: PersistableRegionPatch) {
     let mut state = read_patch_state().write().unwrap();
     let old_patch = capture_existing_patch(&state, &patch);
     state.accepted_patch_keys.remove(&patch.patch_key);
@@ -252,7 +252,7 @@ pub fn accept_review_change(patch_key: &str) -> bool {
     false
 }
 
-pub fn accept_all_review_changes() -> ReviewBulkChangeResult {
+pub fn accept_all_changes() -> ReviewBulkChangeResult {
     let mut state = read_patch_state().write().unwrap();
     let patch_keys = state
         .paragraph_patches
@@ -276,7 +276,7 @@ pub fn accept_all_review_changes() -> ReviewBulkChangeResult {
     }
 }
 
-pub fn reject_all_review_changes() -> ReviewBulkChangeResult {
+pub fn reject_all_changes() -> ReviewBulkChangeResult {
     let mut state = read_patch_state().write().unwrap();
     let paragraph_region_ids = state.paragraph_patches.keys().cloned().collect::<Vec<_>>();
     let field_region_ids = state

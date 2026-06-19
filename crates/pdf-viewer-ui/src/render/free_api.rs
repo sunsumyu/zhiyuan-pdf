@@ -22,21 +22,21 @@ use crate::present::present_store::{
 use crate::render::commit::commit_render_result as inner_commit_render_result;
 use crate::render::facade::resolve_progressive_render_policy_request;
 use crate::render::host_runtime::{
-    advance_render_loop_frame as inner_advance_render_loop_frame,
-    queue_render_loop_frame as inner_queue_render_loop_frame,
+    advance_frame as inner_advance_render_loop_frame,
+    queue_frame as inner_queue_render_loop_frame,
 };
 use crate::render::layer::{
     resolve_layer_execution_plan as inner_resolve_layer_execution_plan,
     resolve_layer_present_decision as inner_resolve_layer_present_decision,
     resolve_render_execution_plan as inner_resolve_render_execution_plan,
 };
-use crate::render::loop_workflow::schedule_render_follow_up_runtime;
+use crate::render::loop_workflow::schedule_follow_up as schedule_render_follow_up_runtime;
 use crate::render::progressive_workflow::{
     cancel_progressive_render as inner_cancel_progressive_render, render_page as inner_render_page,
     render_page_offscreen as inner_render_page_offscreen,
     start_progressive_render as inner_start_progressive_render,
     step_progressive_render as inner_step_progressive_render,
-    step_progressive_render_offscreen as inner_step_progressive_render_offscreen,
+    step_offscreen as inner_step_progressive_render_offscreen,
 };
 use crate::render::workflow::RenderFrameEnvelope;
 use crate::zoom::event::{
@@ -49,13 +49,13 @@ use crate::zoom::host::{
     PreviewTickDecisionRequest, WheelRenderDecisionRequest,
 };
 use crate::zoom::preview_host::{
-    clear_zoom_preview_host_state as inner_clear_zoom_preview_host_state,
-    is_wheel_render_pending as inner_get_wheel_render_pending,
+    clear_preview_state as inner_clear_zoom_preview_host_state,
+    is_pending as inner_get_wheel_render_pending,
     queue_committed_frame as inner_queue_committed_frame,
-    set_wheel_render_pending as inner_set_wheel_render_pending,
-    take_ready_committed_frame as inner_take_ready_committed_frame,
+    set_pending as inner_set_wheel_render_pending,
+    take_frame as inner_take_ready_committed_frame,
 };
-use crate::zoom::zoom_controller::step_zoom_frame_plan as inner_step_zoom_frame_plan;
+use crate::zoom::zoom_controller::step_frame_plan as inner_step_zoom_frame_plan;
 use crate::zoom::zoom_store::PendingCommittedFrame;
 
 // ─── Frame plan ─────────────────────────────────────────────────────────────

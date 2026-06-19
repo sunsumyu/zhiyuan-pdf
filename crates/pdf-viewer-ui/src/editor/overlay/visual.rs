@@ -5,8 +5,8 @@ use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::host_runtime::read_state as get_editor_host_state;
-use crate::editor::mode::read_active_editor_state;
-use crate::editor::source_geometry::source_line_visual_bbox_for_caret;
+use crate::editor::mode::read_state;
+use crate::editor::source_geometry::compute_caret_line_bbox;
 use crate::editor::text_geometry::active_caret_visual;
 use crate::render::canvas::CanvasRenderer;
 use crate::zoom::zoom_controller::read_zoom_state;
@@ -57,7 +57,7 @@ fn source_line_bbox_for_caret(
     active_target: &crate::editor::session::ActiveEditorTarget,
     caret: crate::editor::text_geometry::EditorCaretVisualPosition,
 ) -> Option<pdf_viewer_core::models::BoundingBox> {
-    source_line_visual_bbox_for_caret(&active_target.scene.body_session, caret.baseline_y)
+    compute_caret_line_bbox(&active_target.scene.body_session, caret.baseline_y)
 }
 
 fn resolve_caret_rect(
@@ -77,13 +77,13 @@ fn resolve_caret_rect(
     )
 }
 
-pub fn render_active_editor_canvas(
+pub fn render_canvas(
     canvas_js: wasm_bindgen::JsValue,
     display_zoom: f32,
     _draft_text: String,
     _caret_index: u32,
 ) -> bool {
-    let Some(active_state) = read_active_editor_state() else {
+    let Some(active_state) = read_state() else {
         return false;
     };
     let caret_index = active_state.normalized_caret_index();

@@ -9,7 +9,7 @@ lazy_static! {
     static ref METRIC_CACHE: Mutex<HashMap<String, HashMap<char, f32>>> =
         Mutex::new(HashMap::new());
 }
-pub fn get_character_width_pdf_units(family_name: &str, ch: char) -> Option<f32> {
+pub fn get_character_width(family_name: &str, ch: char) -> Option<f32> {
     // 1. Check cache
     if let Ok(cache) = METRIC_CACHE.lock() {
         if let Some(family_cache) = cache.get(family_name) {

@@ -1,4 +1,4 @@
-use pdf_viewer_core::document::page_region_context::build_page_region_context as core_build_page_region_context;
+use pdf_viewer_core::document::page_region_context::build_page_region_context as core_build_region_context;
 use pdf_viewer_core::geometry::coordinate_transform::{
     ClientPoint, HostPageTransform, HostReferenceRect, PageSize,
 };
@@ -58,9 +58,9 @@ pub fn build_pagination_commands(
     .unwrap_or(JsValue::NULL)
 }
 
-pub fn build_page_region_context(page_model: JsValue) -> JsValue {
+pub fn build_region_context(page_model: JsValue) -> JsValue {
     let parsed: NativePageModel = from_value(page_model).unwrap_or_default();
-    to_value(&core_build_page_region_context(&parsed)).unwrap_or(JsValue::NULL)
+    to_value(&core_build_region_context(&parsed)).unwrap_or(JsValue::NULL)
 }
 
 pub fn project_page_rect(rect: JsValue, zoom: f32) -> JsValue {
@@ -79,7 +79,7 @@ pub fn project_page_rect(rect: JsValue, zoom: f32) -> JsValue {
     to_value(&projected).unwrap_or(JsValue::NULL)
 }
 
-pub fn measure_dom_to_page_scale(
+pub fn measure_page_scale(
     reference_rect: JsValue,
     page_width: f32,
     page_height: f32,
@@ -109,10 +109,10 @@ pub fn resolve_page_point(
             height: page_height,
         },
     );
-    let page_point = transform.client_to_page(ClientPoint {
+    let page_point = transform.to_page(ClientPoint {
         x: point.client_x,
         y: point.client_y,
-    });
+    }, None);
     let result = serde_json::json!({
         "x": page_point.x,
         "y": page_point.y,

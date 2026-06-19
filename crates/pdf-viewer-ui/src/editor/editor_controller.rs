@@ -1,20 +1,20 @@
 use wasm_bindgen::prelude::JsValue;
 
-use super::target_resolution::{is_supported_region_kind, resolve_region_target_from_page_state};
+use super::target_resolution::{is_supported_region_kind, resolve_region_target};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::list_format::resolve_active_marker_text;
-use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
+use crate::editor::list_format::resolve_marker_text;
+use crate::editor::orchestrator::commit::commit_pending;
 use crate::editor::replacement_snapshot::build_edit_replacement_snapshot;
 use crate::editor::session::{
-    active_edit_paragraph_id, is_text_edit_enabled, open_paragraph_editor,
-    set_active_editor_caret_index, sync_active_editor_input, ActiveEditorInputSyncResult,
+    paragraph_id, is_edit_enabled, open_paragraph_editor,
+    set_caret, sync_input, ActiveEditorInputSyncResult,
 };
 use crate::editor::workflow::{
-    build_paragraph_interaction_targets,
-    build_region_text_patch as workflow_build_region_text_patch,
-    open_paragraph_editor as workflow_open_paragraph_editor, resolve_paragraph_shell_bbox,
+    build_interaction_targets,
+    build_text_patch as workflow_build_text_patch,
+    open_paragraph_editor as workflow_open_paragraph_editor, resolve_shell_bbox,
 };
 use crate::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
@@ -40,43 +40,43 @@ pub struct EditorVisibilityAction {
 }
 
 pub use crate::editor::editor_format::{
-    active_editor_format_state, apply_active_editor_format_action, ActiveEditorFormatState,
+    format_state, apply_format, ActiveEditorFormatState,
     EditorFormatAction,
 };
 
 pub fn collect_paragraph_targets() -> JsValue {
-    let editing_enabled = is_text_edit_enabled();
-    with_page_state(|state| build_paragraph_interaction_targets(state, editing_enabled))
+    let editing_enabled = is_edit_enabled();
+    with_page_state(|state| build_interaction_targets(state, editing_enabled))
 }
 
-pub fn open_editor_at_page_point(
-    paragraph_id: &str,
+pub fn open_at_point(
+    target_paragraph_id: &str,
     click_page_x: f32,
     click_page_y: f32,
 ) -> EditorVisibilityAction {
     // 切换段落 / 同段落点击重新定位光标 — 都会替换 live_state。
     // 替换前必须 commit 旧的 dirty edit，避免编辑丢失。
     // 见 docs/edit-save-architecture.md §4.1。
-    let prev_paragraph_id = active_edit_paragraph_id();
-    if prev_paragraph_id.as_deref() != Some(paragraph_id) {
-        let committed = commit_pending_edit_if_any();
+    let prev_paragraph_id = paragraph_id();
+    if prev_paragraph_id.as_deref() != Some(target_paragraph_id) {
+        let committed = commit_pending();
         crate::chain_trace!(
             "open.flush-prev",
             "prev" => prev_paragraph_id.as_deref().unwrap_or(""),
-            "next" => paragraph_id,
+            "next" => target_paragraph_id,
             "committed" => committed,
         );
     }
     let zoom = zoom_store::with_zoom_state(|state| sanitize_positive(state.visual_zoom, 1.0));
     let active_target = with_page_state(|state| {
-        workflow_open_paragraph_editor(state, paragraph_id, click_page_x, click_page_y, zoom)
+        workflow_open_paragraph_editor(state, target_paragraph_id, click_page_x, click_page_y, zoom)
     });
     let Some(mut active_target) = active_target else {
         dbg_event(
             "open.runtime",
             "target-not-found",
             vec![
-                dbg_field("paragraphId", paragraph_id),
+                dbg_field("paragraphId", target_paragraph_id),
                 dbg_field("clickPageX", click_page_x),
                 dbg_field("clickPageY", click_page_y),
             ],
@@ -85,12 +85,12 @@ pub fn open_editor_at_page_point(
     };
 
     // 统一首次点击 (Open) 与后续点击 (Move) 的光标解析路径：
-    // 用 Move 路径同款的 `active_caret_index_at_page_point` 重新计算 body_initial_caret，
+    // 用 Move 路径同款的 `caret_at_page_point` 重新计算 body_initial_caret，
     // 确保 caret stop 构造算法一致（均基于 build_unified_draft_caret_lines），
     // 修复首次点击位置偏差、后续点击位置准确的不对称问题。
     {
         let source_text = active_target.source_body_text().to_string();
-        let unified_caret = crate::editor::text_geometry::active_caret_index_at_page_point(
+        let unified_caret = crate::editor::text_geometry::caret_at_page_point(
             &active_target,
             &source_text,
             click_page_x,
@@ -134,7 +134,7 @@ pub fn open_editor_at_page_point(
         "open.runtime",
         "target-built",
         vec![
-            dbg_field("paragraphId", paragraph_id),
+            dbg_field("paragraphId", target_paragraph_id),
             dbg_field("targetId", active_target.paragraph_id.as_str()),
             dbg_field("clickPageX", click_page_x),
             dbg_field("clickPageY", click_page_y),
@@ -208,7 +208,7 @@ pub fn open_editor_at_page_point(
     }
 }
 
-pub fn build_region_text_patch(
+pub fn build_text_patch(
     page_index: u16,
     region_id: &str,
     kind: &str,
@@ -216,7 +216,7 @@ pub fn build_region_text_patch(
     new_text: String,
 ) -> Option<PersistableRegionPatch> {
     with_page_state(|state| {
-        workflow_build_region_text_patch(
+        workflow_build_text_patch(
             state,
             page_index,
             region_id,
@@ -237,10 +237,10 @@ pub fn open_region_editor(
         return EditorVisibilityAction::default();
     }
 
-    // 与 open_editor_at_page_point 同样的不变量：替换 live_state 前先 commit 旧 dirty。
-    let prev_paragraph_id = active_edit_paragraph_id();
+    // 与 open_at_point 同样的不变量：替换 live_state 前先 commit 旧 dirty。
+    let prev_paragraph_id = paragraph_id();
     if prev_paragraph_id.as_deref() != Some(region_id) {
-        let committed = commit_pending_edit_if_any();
+        let committed = commit_pending();
         crate::chain_trace!(
             "open-region.flush-prev",
             "prev" => prev_paragraph_id.as_deref().unwrap_or(""),
@@ -251,7 +251,7 @@ pub fn open_region_editor(
 
     let zoom = zoom_store::with_zoom_state(|state| sanitize_positive(state.visual_zoom, 1.0));
     let active_target = with_page_state(|state| {
-        let target = resolve_region_target_from_page_state(
+        let target = resolve_region_target(
             state,
             page_index,
             region_id,
@@ -278,7 +278,7 @@ pub fn open_region_editor(
     }
 }
 
-pub fn build_active_editor_patch(new_text: String) -> Option<PersistableRegionPatch> {
+pub fn build_patch(new_text: String) -> Option<PersistableRegionPatch> {
     let active_state = crate::editor::session::active_editor_state()?;
     let new_runs = if active_state.has_style_changes() {
         Some(active_state.draft_runs())
@@ -286,8 +286,8 @@ pub fn build_active_editor_patch(new_text: String) -> Option<PersistableRegionPa
         None
     };
     with_page_state(|page_state| {
-        let paragraph_id = active_edit_paragraph_id()?;
-        let mut patch = crate::editor::bridge::build_paragraph_patch_with_runs(
+        let paragraph_id = paragraph_id()?;
+        let mut patch = crate::editor::bridge::build_rich_patch(
             page_state.paint_plan.as_ref()?,
             page_state.vector_model.as_ref(),
             &paragraph_id,
@@ -302,7 +302,7 @@ pub fn build_active_editor_patch(new_text: String) -> Option<PersistableRegionPa
             } else {
                 None
             };
-        patch.new_marker_text = resolve_active_marker_text(&active_state, &page_state);
+        patch.new_marker_text = resolve_marker_text(&active_state, &page_state);
         crate::chain_trace!(
             "commit.marker",
             "resolved" => patch.new_marker_text.as_deref().unwrap_or(""),
@@ -347,7 +347,7 @@ pub fn build_active_editor_patch(new_text: String) -> Option<PersistableRegionPa
                     ),
                     dbg_field(
                         "sourceMarker",
-                        active_state.source_marker_text_for_patch().unwrap_or(""),
+                        active_state.source_marker_text().unwrap_or(""),
                     ),
                     dbg_field("newMarker", patch.new_marker_text.as_deref().unwrap_or("")),
                 ],
@@ -370,7 +370,7 @@ fn patch_is_noop(
         .map(|line_height| (line_height - active_state.source_line_height()).abs() <= 0.01)
         .unwrap_or(true);
     let source_marker = active_state
-        .source_marker_text_for_patch()
+        .source_marker_text()
         .unwrap_or("")
         .trim();
     let next_marker = patch
@@ -395,14 +395,14 @@ fn patch_is_noop(
     noop
 }
 
-pub fn find_paragraph_shell_bbox(paragraph_id: &str) -> Option<BoundingBox> {
-    with_page_state(|state| resolve_paragraph_shell_bbox(state, paragraph_id))
+pub fn find_shell_bbox(paragraph_id: &str) -> Option<BoundingBox> {
+    with_page_state(|state| resolve_shell_bbox(state, paragraph_id))
 }
 
 pub fn set_editor_caret(caret_index: usize) -> bool {
-    set_active_editor_caret_index(caret_index)
+    set_caret(caret_index)
 }
 
 pub fn sync_editor_input(new_text: String, caret_index: usize) -> ActiveEditorInputSyncResult {
-    sync_active_editor_input(new_text, caret_index)
+    sync_input(new_text, caret_index)
 }

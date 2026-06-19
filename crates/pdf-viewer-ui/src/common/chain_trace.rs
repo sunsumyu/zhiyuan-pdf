@@ -10,10 +10,10 @@
 //!   open                   ─ 编辑器打开
 //!   input                  ─ 文本输入到 live state
 //!   exit                   ─ 任何"退出编辑"入口（close / toggle / setMode）
-//!   commit.start           ─ commit_active_editor_text 进入
-//!   commit.build           ─ build_active_editor_patch 结果
-//!   commit.persist         ─ apply_patch_with_history 完成
-//!   render.collect         ─ collect_paragraph_render_overlays 完成
+//!   commit.start           ─ commit_text 进入
+//!   commit.build           ─ build_patch 结果
+//!   commit.persist         ─ record_patch 完成
+//!   render.collect         ─ collect_overlays 完成
 //!   render.suppress        ─ source-text suppress 决策
 //!   render.draw            ─ overlay 绘制完成
 //!

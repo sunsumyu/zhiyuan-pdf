@@ -81,8 +81,8 @@ impl EditorSession {
         guard_state!(SessionState::Viewing, "begin");
 
         // Enable edit mode in existing infrastructure
-        use crate::editor::host_mode::set_text_edit_mode;
-        let _mode_result = set_text_edit_mode(true);
+        use crate::editor::host_mode::set_edit_mode;
+        let _mode_result = set_edit_mode(true);
 
         editor_store::transition_to_editing();
 
@@ -121,10 +121,10 @@ impl EditorSession {
                 height: request.page_height,
             },
         );
-        let page_point = transform.client_to_page(ClientPoint {
+        let page_point = transform.to_page(ClientPoint {
             x: request.client_x,
             y: request.client_y,
-        });
+        }, None);
 
         // Delegate to existing hit-test logic
         let target = resolve_target_at_page_point(page_point.x, page_point.y);
@@ -193,8 +193,8 @@ impl EditorSession {
         }
 
         // Read snapshot to get caret + draft text
-        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
-        let snapshot = resolve_editor_host_snapshot(1.0);
+        use crate::editor::host_snapshot::resolve_snapshot;
+        let snapshot = resolve_snapshot(1.0);
         let caret_index = if snapshot.caret_index > 0 {
             snapshot.caret_index
         } else {
@@ -205,7 +205,7 @@ impl EditorSession {
                 .unwrap_or(0)
         };
 
-        editor_store::transition_to_editing_block(request.block_id.clone());
+        editor_store::transition_editing(request.block_id.clone());
 
         ok_response(
             OpenBlockResult {
@@ -229,7 +229,7 @@ impl EditorSession {
         };
 
         use crate::editor::activation::MoveCaretToClientPointRequest;
-        use crate::editor::host_workflow::move_caret_to_client_point;
+        use crate::editor::host_workflow::move_caret_to_client;
 
         let move_request = MoveCaretToClientPointRequest {
             client_x: request.client_x,
@@ -242,7 +242,7 @@ impl EditorSession {
             page_height: request.page_height,
         };
 
-        let caret = move_caret_to_client_point(move_request);
+        let caret = move_caret_to_client(move_request);
 
         match caret {
             Some(index) => ok_response(
@@ -272,8 +272,8 @@ impl EditorSession {
         editor_store::transition_to_viewing();
 
         // Also disable edit mode in old infrastructure
-        use crate::editor::host_mode::set_text_edit_mode;
-        let _ = set_text_edit_mode(false);
+        use crate::editor::host_mode::set_edit_mode;
+        let _ = set_edit_mode(false);
 
         ok_response(
             CommitResult {
@@ -314,8 +314,8 @@ impl EditorSession {
         // commit = done = back to Viewing
         editor_store::transition_to_viewing();
 
-        use crate::editor::host_mode::set_text_edit_mode;
-        let _ = set_text_edit_mode(false);
+        use crate::editor::host_mode::set_edit_mode;
+        let _ = set_edit_mode(false);
 
         ok_response(
             CommitResult {
@@ -341,8 +341,8 @@ impl EditorSession {
         }
         editor_store::transition_to_viewing();
 
-        use crate::editor::host_mode::set_text_edit_mode;
-        let _ = set_text_edit_mode(false);
+        use crate::editor::host_mode::set_edit_mode;
+        let _ = set_edit_mode(false);
 
         ok_empty(true)
     }
@@ -370,8 +370,8 @@ impl EditorSession {
 
         editor_store::transition_to_viewing();
 
-        use crate::editor::host_mode::set_text_edit_mode;
-        let _ = set_text_edit_mode(false);
+        use crate::editor::host_mode::set_edit_mode;
+        let _ = set_edit_mode(false);
 
         ok_empty(true)
     }
@@ -382,14 +382,14 @@ impl EditorSession {
     #[wasm_bindgen(js_name = "readSnapshot")]
     pub fn read_snapshot(&self, display_zoom: f32) -> JsValue {
         use crate::document::patch_persistence::has_persistable_patches;
-        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::host_snapshot::resolve_snapshot;
 
-        let snapshot = resolve_editor_host_snapshot(display_zoom);
+        let snapshot = resolve_snapshot(display_zoom);
 
         ok_response(
             SnapshotResult {
                 state: editor_store::read_state(),
-                block_id: editor_store::read_active_block_id(),
+                block_id: editor_store::read_block_id(),
                 draft_text: snapshot.draft_text,
                 caret_index: snapshot.caret_index as u32,
                 has_unsaved_changes: has_persistable_patches(),
@@ -470,7 +470,7 @@ impl EditorSession {
         };
 
         use crate::editor::command::EditorInputCommand;
-        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::host_snapshot::resolve_snapshot;
         use crate::editor::orchestrator::render_transaction::apply_input_tx;
 
         let command = match request.command.as_str() {
@@ -490,8 +490,8 @@ impl EditorSession {
         };
 
         let frame_request = build_frame_request();
-        let result = apply_input_tx(command, frame_request);
-        let snapshot = resolve_editor_host_snapshot(1.0);
+        let result = apply_input_tx(command, None, None, frame_request);
+        let snapshot = resolve_snapshot(1.0);
 
         ok_response(
             ApplyCommandResult {
@@ -506,8 +506,8 @@ impl EditorSession {
     /// Enable or disable text edit mode.
     #[wasm_bindgen(js_name = "setEditMode")]
     pub fn set_edit_mode(&self, enabled: bool) -> JsValue {
-        use crate::editor::host_mode::set_text_edit_mode;
-        let result = set_text_edit_mode(enabled);
+        use crate::editor::host_mode::set_edit_mode;
+        let result = set_edit_mode(enabled);
 
         // Sync our state machine
         if enabled {
@@ -532,8 +532,8 @@ impl EditorSession {
     /// This is needed by TS for positioning the editor shell.
     #[wasm_bindgen(js_name = "readLegacySnapshot")]
     pub fn read_legacy_snapshot(&self, display_zoom: f32) -> JsValue {
-        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
-        let snapshot = resolve_editor_host_snapshot(display_zoom);
+        use crate::editor::host_snapshot::resolve_snapshot;
+        let snapshot = resolve_snapshot(display_zoom);
         to_value(&snapshot).unwrap_or(JsValue::NULL)
     }
 
@@ -547,29 +547,29 @@ impl EditorSession {
         draft_text: String,
         caret_index: u32,
     ) -> bool {
-        use crate::editor::visual::render_active_editor_canvas;
-        render_active_editor_canvas(canvas_js, display_zoom, draft_text, caret_index)
+        use crate::editor::visual::render_canvas;
+        render_canvas(canvas_js, display_zoom, draft_text, caret_index)
     }
 
     /// Convert a UTF-16 offset to a Rust char index.
     #[wasm_bindgen(js_name = "utf16ToCharIndex")]
     pub fn utf16_to_char_index(&self, text: &str, utf16_offset: u32) -> u32 {
-        use crate::editor::text_index::utf16_offset_to_char_index;
-        utf16_offset_to_char_index(text, utf16_offset as usize) as u32
+        use crate::editor::text_index::Utf16Offset;
+        Utf16Offset(utf16_offset as usize).to_char(text).0 as u32
     }
 
     /// Convert a Rust char index to a UTF-16 offset.
     #[wasm_bindgen(js_name = "charToUtf16Offset")]
     pub fn char_to_utf16_offset(&self, text: &str, char_index: u32) -> u32 {
-        use crate::editor::text_index::char_index_to_utf16_offset;
-        char_index_to_utf16_offset(text, char_index as usize) as u32
+        use crate::editor::text_index::CharIndex;
+        CharIndex(char_index as usize).to_utf16(text).0 as u32
     }
 
     /// Check if there are uncommitted session changes in the active editor.
     #[wasm_bindgen(js_name = "hasSessionChanges")]
     pub fn has_session_changes(&self) -> bool {
-        use crate::editor::session::active_editor_has_session_changes;
-        active_editor_has_session_changes()
+        use crate::editor::session::has_changes;
+        has_changes()
     }
 
     /// Open a region-based editor (used by document review flows).
@@ -604,9 +604,9 @@ impl EditorSession {
             Err(js) => return js,
         };
 
-        use crate::editor::orchestrator::render_transaction::open_region_editor_tx;
+        use crate::editor::orchestrator::render_transaction::open_region_tx;
         let frame_request = build_frame_request();
-        let result = open_region_editor_tx(
+        let result = open_region_tx(
             request.page_index,
             request.region_id.clone(),
             request.kind,
@@ -621,8 +621,8 @@ impl EditorSession {
             });
         }
 
-        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
-        let snapshot = resolve_editor_host_snapshot(1.0);
+        use crate::editor::host_snapshot::resolve_snapshot;
+        let snapshot = resolve_snapshot(1.0);
         let caret_index = if snapshot.caret_index > 0 {
             snapshot.caret_index
         } else {
@@ -634,9 +634,9 @@ impl EditorSession {
         };
 
         // Ensure edit mode is on
-        use crate::editor::host_mode::set_text_edit_mode;
-        let _ = set_text_edit_mode(true);
-        editor_store::transition_to_editing_block(request.region_id);
+        use crate::editor::host_mode::set_edit_mode;
+        let _ = set_edit_mode(true);
+        editor_store::transition_editing(request.region_id);
 
         ok_response(
             OpenBlockResult {
@@ -658,8 +658,8 @@ impl EditorSession {
     /// Read active editor diagnostics (debug info).
     #[wasm_bindgen(js_name = "readDiagnostics")]
     pub fn read_diagnostics(&self) -> JsValue {
-        use crate::editor::host_snapshot::resolve_active_editor_diagnostics;
-        to_value(&resolve_active_editor_diagnostics()).unwrap_or(JsValue::NULL)
+        use crate::editor::host_snapshot::resolve_diagnostics;
+        to_value(&resolve_diagnostics()).unwrap_or(JsValue::NULL)
     }
 
     /// Save the editor session to disk.
@@ -677,12 +677,12 @@ impl EditorSession {
         guard_state!(SessionState::EditingBlock, "insert_text");
 
         use crate::editor::command::EditorInputCommand;
-        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::host_snapshot::resolve_snapshot;
         use crate::editor::orchestrator::render_transaction::apply_input_tx;
 
         let frame_request = build_frame_request();
-        let result = apply_input_tx(EditorInputCommand::InsertText(text), frame_request);
-        let snapshot = resolve_editor_host_snapshot(1.0);
+        let result = apply_input_tx(EditorInputCommand::InsertText(text), None, None, frame_request);
+        let snapshot = resolve_snapshot(1.0);
 
         ok_response(
             ApplyCommandResult {
@@ -700,7 +700,7 @@ impl EditorSession {
         guard_state!(SessionState::EditingBlock, "delete_text");
 
         use crate::editor::command::EditorInputCommand;
-        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::host_snapshot::resolve_snapshot;
         use crate::editor::orchestrator::render_transaction::apply_input_tx;
 
         let command = match direction {
@@ -714,8 +714,8 @@ impl EditorSession {
         };
 
         let frame_request = build_frame_request();
-        let result = apply_input_tx(command, frame_request);
-        let snapshot = resolve_editor_host_snapshot(1.0);
+        let result = apply_input_tx(command, None, None, frame_request);
+        let snapshot = resolve_snapshot(1.0);
 
         ok_response(
             ApplyCommandResult {
@@ -733,7 +733,7 @@ impl EditorSession {
         guard_state!(SessionState::EditingBlock, "apply_format");
 
         use crate::editor::editor_controller::EditorFormatAction;
-        use crate::editor::orchestrator::render_transaction::apply_format_action_tx;
+        use crate::editor::orchestrator::render_transaction::apply_format_tx;
 
         let action: EditorFormatAction = match serde_wasm_bindgen::from_value(action_js) {
             Ok(a) => a,
@@ -745,7 +745,7 @@ impl EditorSession {
         };
 
         let frame_request = build_frame_request();
-        let result = apply_format_action_tx(action, frame_request);
+        let result = apply_format_tx(action, frame_request);
 
         ok_response(
             CommitResult {
@@ -760,12 +760,12 @@ impl EditorSession {
     pub fn undo(&self) -> JsValue {
         guard_state!(SessionState::EditingBlock, "undo");
 
-        use crate::editor::orchestrator::render_transaction::undo_active_editor_tx;
-        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::orchestrator::render_transaction::undo_tx;
+        use crate::editor::host_snapshot::resolve_snapshot;
 
         let frame_request = build_frame_request();
-        let result = undo_active_editor_tx(frame_request);
-        let snapshot = resolve_editor_host_snapshot(1.0);
+        let result = undo_tx(frame_request);
+        let snapshot = resolve_snapshot(1.0);
 
         ok_response(
             ApplyCommandResult {
@@ -782,12 +782,12 @@ impl EditorSession {
     pub fn redo(&self) -> JsValue {
         guard_state!(SessionState::EditingBlock, "redo");
 
-        use crate::editor::orchestrator::render_transaction::redo_active_editor_tx;
-        use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::orchestrator::render_transaction::redo_tx;
+        use crate::editor::host_snapshot::resolve_snapshot;
 
         let frame_request = build_frame_request();
-        let result = redo_active_editor_tx(frame_request);
-        let snapshot = resolve_editor_host_snapshot(1.0);
+        let result = redo_tx(frame_request);
+        let snapshot = resolve_snapshot(1.0);
 
         ok_response(
             ApplyCommandResult {
@@ -854,8 +854,8 @@ impl EditorSession {
     pub fn read_format_state(&self) -> JsValue {
         guard_state!(SessionState::EditingBlock, "read_format_state");
 
-        use crate::editor::editor_controller::active_editor_format_state;
-        let state = active_editor_format_state();
+        use crate::editor::editor_controller::format_state;
+        let state = format_state();
         to_value(&state).unwrap_or(JsValue::NULL)
     }
 
@@ -873,7 +873,7 @@ impl EditorSession {
     #[wasm_bindgen(js_name = "onStateChange")]
     pub fn on_state_change(&self, callback: JsValue) -> JsValue {
         if callback.is_null() || callback.is_undefined() {
-            editor_store::set_state_change_callback(None);
+            editor_store::set_change_callback(None);
             return ok_empty(false);
         }
         let func: js_sys::Function = match callback.dyn_into() {
@@ -884,7 +884,7 @@ impl EditorSession {
                 });
             }
         };
-        editor_store::set_state_change_callback(Some(func));
+        editor_store::set_change_callback(Some(func));
         ok_empty(false)
     }
 
@@ -914,27 +914,27 @@ impl EditorSession {
     #[wasm_bindgen(js_name = "setCaret")]
     pub fn set_caret(&self, char_index: u32) -> JsValue {
         guard_state!(SessionState::EditingBlock, "setCaret");
-        use crate::editor::session::set_active_editor_caret_index;
-        let changed = set_active_editor_caret_index(char_index as usize);
+        use crate::editor::session::set_caret;
+        let changed = set_caret(char_index as usize);
         ok_empty(changed)
     }
 
     #[wasm_bindgen(js_name = "setSelection")]
     pub fn set_selection(&self, start: u32, end: u32) -> JsValue {
         guard_state!(SessionState::EditingBlock, "setSelection");
-        use crate::editor::session::set_active_editor_selection;
-        let changed = set_active_editor_selection(start as usize, end as usize);
+        use crate::editor::session::set_selection;
+        let changed = set_selection(start as usize, end as usize);
         ok_empty(changed)
     }
 
     #[wasm_bindgen(js_name = "selectAll")]
     pub fn select_all(&self) -> JsValue {
         guard_state!(SessionState::EditingBlock, "selectAll");
-        use crate::editor::session::{active_editor_state, set_active_editor_selection};
+        use crate::editor::session::{active_editor_state, set_selection};
         let len = active_editor_state()
             .map(|state| state.text_char_count())
             .unwrap_or(0);
-        let changed = set_active_editor_selection(0, len);
+        let changed = set_selection(0, len);
         ok_empty(changed)
     }
 
@@ -1079,8 +1079,8 @@ impl EditorSession {
 
 impl EditorSession {
     fn commit_draft_internal(&self) {
-        use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
-        commit_pending_edit_if_any();
+        use crate::editor::orchestrator::commit::commit_pending;
+        commit_pending();
     }
 }
 

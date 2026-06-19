@@ -49,7 +49,7 @@ pub fn step_zoom_animation() -> crate::zoom::zoom_store::ZoomAnimationStep {
     })
 }
 
-pub fn step_zoom_frame_plan(request: &FramePlanRequest) -> ZoomPreviewFrame {
+pub fn step_frame_plan(request: &FramePlanRequest) -> ZoomPreviewFrame {
     let viewer_session = viewer_store::read_viewer_session();
     present_store::with_present_state(|present_state| {
         ZOOM_STATE.with(|state| {
@@ -68,7 +68,7 @@ pub fn step_zoom_frame_plan(request: &FramePlanRequest) -> ZoomPreviewFrame {
     })
 }
 
-pub fn take_pending_anchor_scroll(
+pub fn take_anchor_scroll(
     display_width: f32,
     display_height: f32,
     viewport_width: f32,
@@ -92,7 +92,7 @@ pub fn take_pending_anchor_scroll(
     })
 }
 
-pub fn peek_pending_anchor_scroll(
+pub fn peek_anchor_scroll(
     display_width: f32,
     display_height: f32,
     viewport_width: f32,
@@ -116,7 +116,7 @@ pub fn peek_pending_anchor_scroll(
     })
 }
 
-pub fn peek_pending_anchor_layout(
+pub fn peek_anchor_layout(
     display_width: f32,
     display_height: f32,
     viewport_width: f32,
@@ -140,7 +140,7 @@ pub fn peek_pending_anchor_layout(
     })
 }
 
-pub fn take_pending_anchor_layout(
+pub fn take_anchor_layout(
     display_width: f32,
     display_height: f32,
     viewport_width: f32,

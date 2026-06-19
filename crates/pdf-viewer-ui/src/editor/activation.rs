@@ -11,12 +11,12 @@ use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::editor_controller::{
-    find_paragraph_shell_bbox, open_editor_at_page_point, open_region_editor, set_editor_caret,
+    find_shell_bbox, open_at_point, open_region_editor, set_editor_caret,
     EditorVisibilityAction,
 };
-use crate::editor::mode::{close_active_editor, read_active_editor_state};
-use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
-use crate::editor::text_geometry::active_caret_index_at_shell_point;
+use crate::editor::mode::{close_active_editor, read_state};
+use crate::editor::orchestrator::commit::commit_pending;
+use crate::editor::text_geometry::caret_at_shell_point;
 use crate::page::page_store::with_page_state;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -99,10 +99,10 @@ fn resolve_page_point_from_client(
             height: page_height,
         },
     );
-    let page_point = transform.client_to_page(ClientPoint {
+    let page_point = transform.to_page(ClientPoint {
         x: client_x,
         y: client_y,
-    });
+    }, None);
     // Clamp to the paragraph shell bbox so the caret stays within the target.
     let x = page_point.x.clamp(shell_bbox.left, shell_bbox.right);
     let y = page_point.y.clamp(shell_bbox.top, shell_bbox.bottom);
@@ -160,7 +160,7 @@ fn resolve_target_at_page_point(page_x: f32, page_y: f32) -> Option<ParagraphInt
     None
 }
 
-pub fn activate_editor_from_client_point(
+pub fn activate_from_client(
     request: OpenEditorAtClientPointRequest,
 ) -> EditorVisibilityAction {
     let resolved_paragraph_id = if request.paragraph_id.trim().is_empty() {
@@ -176,15 +176,15 @@ pub fn activate_editor_from_client_point(
                 height: request.page_height,
             },
         );
-        let page_point = transform.client_to_page(ClientPoint {
+        let page_point = transform.to_page(ClientPoint {
             x: request.client_x,
             y: request.client_y,
-        });
+        }, None);
         let Some(target) = resolve_target_at_page_point(page_point.x, page_point.y) else {
             // 点空白 = 退出编辑：先 commit pending edit 持久化当前编辑，
             // 再 close 当前 active editor，让 UI 回到 idle。
-            let committed = commit_pending_edit_if_any();
-            let had_active = read_active_editor_state().is_some();
+            let committed = commit_pending();
+            let had_active = read_state().is_some();
             close_active_editor();
             crate::chain_trace!(
                 "activate.hit-miss-exit",
@@ -213,7 +213,7 @@ pub fn activate_editor_from_client_point(
         request.paragraph_id.clone()
     };
 
-    let Some(shell_bbox) = find_paragraph_shell_bbox(&resolved_paragraph_id) else {
+    let Some(shell_bbox) = find_shell_bbox(&resolved_paragraph_id) else {
         dbg_event(
             "activation.client",
             "missing-shell-bbox",
@@ -279,12 +279,12 @@ pub fn activate_editor_from_client_point(
         "shellB" => format!("{:.2}", shell_bbox.bottom),
     );
 
-    let primary = open_editor_at_page_point(&resolved_paragraph_id, click_page_x, click_page_y);
+    let primary = open_at_point(&resolved_paragraph_id, click_page_x, click_page_y);
     if primary.changed {
         return primary;
     }
 
-    let fallback = open_editor_at_page_point(
+    let fallback = open_at_point(
         &resolved_paragraph_id,
         fallback_page_point.0,
         fallback_page_point.1,
@@ -301,8 +301,8 @@ pub fn activate_region_editor(
     open_region_editor(page_index, region_id, kind, original_text)
 }
 
-pub fn move_caret_to_client_point(request: MoveCaretToClientPointRequest) -> Option<usize> {
-    let active_state = read_active_editor_state()?;
+pub fn move_caret_to_client(request: MoveCaretToClientPointRequest) -> Option<usize> {
+    let active_state = read_state()?;
     let draft_text = active_state.current_text().to_string();
     let active_target = active_state.target;
     let shell_bbox = BoundingBox {
@@ -324,10 +324,10 @@ pub fn move_caret_to_client_point(request: MoveCaretToClientPointRequest) -> Opt
         },
     );
     // Convert client → page coordinates using full-page transform, then to local.
-    let page_point = transform.client_to_page(ClientPoint {
+    let page_point = transform.to_page(ClientPoint {
         x: request.client_x,
         y: request.client_y,
-    });
+    }, None);
     let shell_x =
         (page_point.x - shell_bbox.left).clamp(0.0, (shell_bbox.right - shell_bbox.left).max(0.0));
     let shell_y =
@@ -344,7 +344,7 @@ pub fn move_caret_to_client_point(request: MoveCaretToClientPointRequest) -> Opt
     // positions by snapping to the nearest caret stop.
 
     let caret_index =
-        active_caret_index_at_shell_point(&active_target, &draft_text, shell_x, shell_y);
+        caret_at_shell_point(&active_target, &draft_text, shell_x, shell_y);
     crate::chain_trace!(
         "caret.diag.move",
         "clientX" => format!("{:.2}", request.client_x),

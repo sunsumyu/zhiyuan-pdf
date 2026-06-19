@@ -81,7 +81,7 @@
 |---:|---|---|---|---|---|
 | 32 | rust_fn |  | `collect_paragraph_interaction_targets` | yes |  |
 | 64 | rust_fn |  | `build_paragraph_patch` | yes |  |
-| 73 | rust_fn |  | `build_paragraph_patch_with_runs` | yes |  |
+| 73 | rust_fn |  | `build_rich_patch` | yes |  |
 | 178 | rust_fn |  | `active_editor_target_from_scene` |  |  |
 | 204 | rust_fn |  | `build_active_editor_target` | yes |  |
 | 247 | rust_fn |  | `build_paragraph_render_target` | yes |  |
@@ -272,8 +272,8 @@
 | 340 | rust_method | LiveEditorParagraphState | `set_alignment` | yes |  |
 | 351 | rust_method | LiveEditorParagraphState | `set_list_kind` | yes |  |
 | 366 | rust_method | LiveEditorParagraphState | `restore_list_kind_from_marker_text` | yes |  |
-| 371 | rust_method | LiveEditorParagraphState | `resolved_marker_text_for_patch` | yes |  |
-| 390 | rust_method | LiveEditorParagraphState | `source_marker_text_for_patch` | yes |  |
+| 371 | rust_method | LiveEditorParagraphState | `resolved_marker_text` | yes |  |
+| 390 | rust_method | LiveEditorParagraphState | `source_marker_text` | yes |  |
 | 398 | rust_method | LiveEditorParagraphState | `set_color_all` | yes |  |
 | 413 | rust_method | LiveEditorParagraphState | `set_font_family_all` | yes |  |
 | 428 | rust_method | LiveEditorParagraphState | `set_font_size_all` | yes |  |
@@ -288,15 +288,15 @@
 | 33 | rust_method | Default for ParagraphEditorScene | `default` |  |  |
 | 52 | rust_fn |  | `paragraph_editor_scene_from_plan` | yes |  |
 | 68 | rust_fn |  | `build_paragraph_editor_scene` | yes |  |
-| 78 | rust_fn |  | `build_paragraph_editor_scene_for_target` | yes |  |
+| 78 | rust_fn |  | `build_target_scene` | yes |  |
 
 ### `crates/pdf-viewer-core/src/edit/replacement_region.rs`
 
 | 行 | 类型 | 上下文 | 名称 | 是否导出 | Command / js_name |
 |---:|---|---|---|---|---|
-| 20 | rust_method | ParagraphReplacementRegion | `row_path_suppression_bbox_for_page_width` | yes |  |
-| 34 | rust_method | ParagraphReplacementRegion | `viewport_cull_bbox_for_page_width` | yes |  |
-| 41 | rust_method | ParagraphReplacementRegion | `cache_invalidation_bbox_for_page_width` | yes |  |
+| 20 | rust_method | ParagraphReplacementRegion | `row_suppression_bbox` | yes |  |
+| 34 | rust_method | ParagraphReplacementRegion | `viewport_cull_bbox` | yes |  |
+| 41 | rust_method | ParagraphReplacementRegion | `cache_invalidation_bbox` | yes |  |
 | 46 | rust_fn |  | `paragraph_replacement_region` | yes |  |
 | 84 | rust_fn |  | `preferred_source_bbox` |  |  |
 | 105 | rust_fn |  | `bbox_has_area` |  |  |
@@ -329,7 +329,7 @@
 
 | 行 | 类型 | 上下文 | 名称 | 是否导出 | Command / js_name |
 |---:|---|---|---|---|---|
-| 13 | rust_fn |  | `original_paint_runs_for_target` | yes |  |
+| 13 | rust_fn |  | `target_paint_runs` | yes |  |
 | 90 | rust_fn |  | `summarize_layout_runs` |  |  |
 | 119 | rust_fn |  | `resolve_preferred_editor_session` | yes |  |
 | 214 | rust_fn |  | `resolve_vector_model_source_runs` |  |  |
@@ -368,7 +368,7 @@
 
 | 行 | 类型 | 上下文 | 名称 | 是否导出 | Command / js_name |
 |---:|---|---|---|---|---|
-| 5 | rust_fn |  | `resolve_region_target_from_page_state` | yes |  |
+| 5 | rust_fn |  | `resolve_region_target` | yes |  |
 | 22 | rust_fn |  | `is_supported_region_kind` | yes |  |
 | 26 | rust_fn |  | `resolve_region_text_target` | yes |  |
 | 62 | rust_fn |  | `normalize_target_text` |  |  |
@@ -1023,7 +1023,7 @@
 | 行 | 类型 | 上下文 | 名称 | 是否导出 | Command / js_name |
 |---:|---|---|---|---|---|
 | 8 | rust_fn |  | `build_match_request` | yes |  |
-| 35 | rust_fn |  | `build_match_request_with_descriptor` | yes |  |
+| 35 | rust_fn |  | `build_descriptor_request` | yes |  |
 | 47 | rust_fn |  | `normalize_pdf_font_identity` | yes |  |
 | 66 | rust_fn |  | `score_system_font_candidate` | yes |  |
 | 276 | rust_fn |  | `choose_best_match` | yes |  |
@@ -1282,7 +1282,7 @@
 | 21 | rust_fn |  | `command_name` |  |  |
 | 30 | rust_fn |  | `effective_editor_state` |  |  |
 | 64 | rust_fn |  | `apply_editor_input_command` | yes |  |
-| 68 | rust_fn |  | `apply_input_with_host` | yes |  |
+| 68 | rust_fn |  | `apply_host_input` | yes |  |
 
 ### `crates/pdf-viewer-ui/src/editor/editor_api.rs`
 
@@ -2024,7 +2024,7 @@
 | 22 | rust_fn |  | `current_paragraph_patch_text` | yes |  |
 | 29 | rust_fn |  | `current_paragraph_patch` | yes |  |
 | 36 | rust_fn |  | `remember_paragraph_replacement_target` | yes |  |
-| 43 | rust_fn |  | `apply_patch_with_history` | yes |  |
+| 43 | rust_fn |  | `record_patch` | yes |  |
 | 70 | rust_fn |  | `collect_persistable_patches` | yes |  |
 | 81 | rust_fn |  | `clear_persistable_patches` | yes |  |
 | 100 | rust_fn |  | `can_undo` | yes |  |
@@ -2489,7 +2489,7 @@
 | 行 | 类型 | 上下文 | 名称 | 是否导出 | Command / js_name |
 |---:|---|---|---|---|---|
 | 9 | rust_method | PdfEditorGeometryService | `resolve_layout_inference` | yes |  |
-| 17 | rust_method | PdfEditorGeometryService | `resolve_layout_inference_with_revision` | yes |  |
+| 17 | rust_method | PdfEditorGeometryService | `resolve_layout_inference_revisioned` | yes |  |
 | 32 | rust_method | PdfEditorGeometryService | `resolve_glyph_paint_plan` | yes |  |
 | 40 | rust_method | PdfEditorGeometryService | `resolve_plan` | yes |  |
 | 55 | rust_method | PdfEditorGeometryService | `read_image_cache` | yes |  |

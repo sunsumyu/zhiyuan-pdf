@@ -1,11 +1,11 @@
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::mode::read_active_editor_state;
+use crate::editor::mode::read_state;
 use crate::editor::paragraph_overlay::{
-    collect_paragraph_render_overlays, ParagraphRenderOverlayOwner,
+    collect_overlays, ParagraphRenderOverlayOwner,
 };
-use crate::editor::replacement_region::paragraph_replacement_region;
+use crate::editor::replacement_region::build_region;
 use crate::render::canvas_overlay::{
     draw_active_editor_shell_overlay_page, draw_persisted_paragraph_overlay_page, path_bbox_summary,
 };
@@ -17,7 +17,7 @@ use crate::render::prepared_scene::PreparedPageScene;
 use crate::render::progressive::ProgressiveVectorRenderTask;
 use crate::common::bbox::bbox_intersects;
 use crate::viewport_culling::{
-    glyph_run_intersects_viewport, path_object_bbox, resolve_page_viewport_bbox,
+    glyph_run_intersects_viewport, path_bbox, resolve_page_viewport_bbox,
 };
 use js_sys;
 use pdf_viewer_core::models::{BoundingBox, PageState, VectorImageObject, VectorPathObject, VectorRenderObject, VectorTextObject};
@@ -89,8 +89,8 @@ fn current_time_ms() -> f64 {
 }
 
 fn active_shell_bbox_for_debug() -> Option<BoundingBox> {
-    read_active_editor_state()
-        .map(|state| paragraph_replacement_region(&state.target).text_clear_bbox)
+    read_state()
+        .map(|state| build_region(&state.target).text_clear_bbox)
 }
 
 fn debug_bbox_intersects_active_shell(bbox: &BoundingBox) -> bool {
@@ -383,7 +383,7 @@ impl CanvasRenderer {
     }
 
     fn draw_path_object(&self, path: &VectorPathObject, object_index: Option<usize>) {
-        let bbox = path_object_bbox(path);
+        let bbox = path_bbox(path);
         debug_log_canvas_method(
             "method.draw-vector-object.path",
             "path",
@@ -685,7 +685,7 @@ impl CanvasRenderer {
             ],
         );
         self.prepare_page_surface(state, plan.width, plan.height);
-        let overlays = collect_paragraph_render_overlays(plan, state.vector_model.as_ref());
+        let overlays = collect_overlays(plan, state.vector_model.as_ref());
         dbg_event(
             "canvas.render",
             "overlay-summary",
@@ -744,9 +744,9 @@ impl CanvasRenderer {
                         );
                     }
                     EffectiveVectorRenderEntry::ParagraphOverlay(overlay) => {
-                        let replacement_region = paragraph_replacement_region(&overlay.target);
+                        let replacement_region = build_region(&overlay.target);
                         let overlay_cull_bbox =
-                            replacement_region.viewport_cull_bbox_for_page_width(plan.width);
+                            replacement_region.viewport_cull_bbox(plan.width);
                         let intersects = bbox_intersects(&overlay_cull_bbox, &viewport_bbox);
                         if intersects {
                             dbg_event(

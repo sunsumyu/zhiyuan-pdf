@@ -20,9 +20,9 @@ use crate::document::host_pipeline::{
 };
 use crate::document::mutation_pipeline::request_document_refresh;
 use crate::document::patch_persistence::apply_document_patch;
-use crate::editor::editor_controller::build_region_text_patch;
+use crate::editor::editor_controller::build_text_patch;
 use crate::editor::orchestrator::replace_pipeline::{
-    apply_region_text_replacements_tx, RegionTextReplaceRequest,
+    apply_replacements_tx, RegionTextReplaceRequest,
 };
 use crate::present::plan_builder::FramePlanRequest;
 
@@ -145,7 +145,7 @@ impl DocumentSession {
         original_text: String,
         new_text: String,
     ) -> JsValue {
-        let patch = build_region_text_patch(
+        let patch = build_text_patch(
             page_index,
             &region_id,
             &kind,
@@ -165,7 +165,7 @@ impl DocumentSession {
         let replacements: Vec<RegionTextReplaceRequest> =
             from_value(replacements_js).unwrap_or_default();
         let frame_request: FramePlanRequest = from_value(frame_request_js).unwrap_or_default();
-        let result = apply_region_text_replacements_tx(replacements, frame_request);
+        let result = apply_replacements_tx(replacements, frame_request);
         to_value(&result).unwrap_or(JsValue::NULL)
     }
 }

@@ -14,7 +14,7 @@ pub fn reset_render_state() {
     });
 }
 
-pub fn is_render_frame_current(frame_token: u32) -> bool {
+pub fn is_frame_current(frame_token: u32) -> bool {
     if frame_token == 0 {
         return false;
     }

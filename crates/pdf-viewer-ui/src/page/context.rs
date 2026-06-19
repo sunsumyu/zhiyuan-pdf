@@ -3,7 +3,7 @@ use pdf_viewer_core::models::{GlyphPaintPlan, VectorPageModel};
 use crate::page::page_store::{init_page_context, update_page_viewport};
 use crate::viewer::viewer_store;
 
-pub fn init_page_context_from_models(
+pub fn init_context(
     vector_model: VectorPageModel,
     paint_plan: GlyphPaintPlan,
     zoom: f32,
@@ -30,7 +30,21 @@ pub fn init_page_context_from_models(
     viewer_store::set_zoom_and_page_dimensions(zoom, pw, ph);
 }
 
-pub fn update_page_viewport_workflow(
+/// Alias for compatibility with free_api callers that expect `init_page_context_from_models`.
+pub fn init_page_context_from_models(
+    vector_model: VectorPageModel,
+    paint_plan: GlyphPaintPlan,
+    zoom: f32,
+    dpr: f32,
+    viewport_left: Option<f32>,
+    viewport_top: Option<f32>,
+    viewport_width: Option<f32>,
+    viewport_height: Option<f32>,
+) {
+    init_context(vector_model, paint_plan, zoom, dpr, viewport_left, viewport_top, viewport_width, viewport_height);
+}
+
+pub fn update_viewport(
     zoom: f32,
     dpr: f32,
     viewport_left: Option<f32>,

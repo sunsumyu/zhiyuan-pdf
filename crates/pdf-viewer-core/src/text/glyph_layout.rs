@@ -64,7 +64,7 @@ pub struct EditorGlyphSlot {
 }
 
 impl EditorSessionTextPlan {
-    pub fn map_raw_to_reconstructed(&self, raw_index: usize) -> usize {
+    pub fn to_reconstructed(&self, raw_index: usize) -> usize {
         self.raw_to_reconstructed
             .get(raw_index)
             .copied()
@@ -72,11 +72,11 @@ impl EditorSessionTextPlan {
             .unwrap_or(0)
     }
 
-    pub fn reconstructed_char_count(&self) -> usize {
+    pub fn char_count(&self) -> usize {
         self.text.chars().count()
     }
 
-    pub fn map_reconstructed_to_raw(&self, reconstructed_index: usize) -> usize {
+    pub fn to_raw(&self, reconstructed_index: usize) -> usize {
         self.reconstructed_to_raw
             .get(reconstructed_index)
             .copied()
@@ -261,7 +261,7 @@ pub fn compute_run_aware_caret_left(session: &ParagraphEditContext, caret_index:
 /// # 算法策略
 /// 使用 `O(N)` 穷举所有游程及其包含的字元槽，维护最近距离 (Nearest Neighbor Euclidean Distance)。
 /// 由于 PDF 单段通常字符不超过 100~200，此处不引入基于二分查找或者 Quad-Tree 的过早优化。
-pub fn resolve_caret_index_for_click(
+pub fn resolve_click_caret(
     session: &ParagraphEditContext,
     click_x_from_anchor_left: f32,
 ) -> usize {
@@ -311,7 +311,7 @@ pub fn resolve_caret_index_for_click(
     best_index
 }
 
-pub fn resolve_field_hit_for_click(request: &FieldHitRequest) -> FieldHitResolution {
+pub fn resolve_click_hit(request: &FieldHitRequest) -> FieldHitResolution {
     let hit_in_label = request.click_page_x < request.projection.value_box.left;
     let active_part = if hit_in_label {
         FieldPartKind::Key
@@ -339,7 +339,7 @@ pub fn resolve_field_hit_for_click(request: &FieldHitRequest) -> FieldHitResolut
         (request.click_page_x - active_box.left).clamp(0.0, active_box.width.max(0.0));
 
     let initial_caret_index = active_session
-        .map(|session| resolve_caret_index_for_click(session, click_x_from_anchor_left))
+        .map(|session| resolve_click_caret(session, click_x_from_anchor_left))
         .unwrap_or_else(|| active_text.chars().count());
 
     let measured_key_width = request
@@ -377,7 +377,7 @@ fn rect_contains_point(
         && y <= top + height + tolerance
 }
 
-pub fn resolve_field_hit_target_for_click(request: &FieldHitBatchRequest) -> Option<FieldHitMatch> {
+pub fn resolve_click_target(request: &FieldHitBatchRequest) -> Option<FieldHitMatch> {
     const HIT_TOLERANCE: f32 = 5.0;
 
     request
@@ -397,7 +397,7 @@ pub fn resolve_field_hit_target_for_click(request: &FieldHitBatchRequest) -> Opt
                 return None;
             }
 
-            let resolution = resolve_field_hit_for_click(&FieldHitRequest {
+            let resolution = resolve_click_hit(&FieldHitRequest {
                 projection: target.projection.clone(),
                 editable_key_text: target.editable_key_text.clone(),
                 editable_value_text: target.editable_value_text.clone(),

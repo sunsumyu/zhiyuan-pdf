@@ -3,10 +3,10 @@ use crate::editor::debug_trace::{
 };
 use crate::editor::document_edit_ops::{delete_backward, delete_forward, insert_text};
 use crate::editor::engine_state::LiveEditorParagraphState;
-use crate::editor::mode::read_active_editor_state;
-use crate::editor::navigation::execute_editor_navigation_key;
+use crate::editor::mode::read_state;
+use crate::editor::navigation::execute_navigation;
 use crate::editor::session::{
-    active_editor_caret_index, set_active_editor_caret_index, sync_active_editor_input,
+    caret_index, set_caret, sync_input,
     ActiveEditorInputSyncResult,
 };
 
@@ -31,7 +31,7 @@ fn effective_editor_state(
     host_text: Option<String>,
     host_caret_index: Option<usize>,
 ) -> Option<LiveEditorParagraphState> {
-    let state = read_active_editor_state()?;
+    let state = read_state()?;
     let before_caret = state.caret_index;
     let before_text = state.current_text().to_string();
     // The host textarea is an IME/event adapter, not the source of truth. Keeping
@@ -62,10 +62,10 @@ fn effective_editor_state(
 }
 
 pub fn apply_editor_input_command(command: EditorInputCommand<'_>) -> ActiveEditorInputSyncResult {
-    apply_input_with_host(command, None, None)
+    apply_host_input(command, None, None)
 }
 
-pub fn apply_input_with_host(
+pub fn apply_host_input(
     command: EditorInputCommand<'_>,
     host_text: Option<String>,
     host_caret_index: Option<usize>,
@@ -90,15 +90,15 @@ pub fn apply_input_with_host(
     match command {
         EditorInputCommand::Navigation(key) => {
             if let Some(state) = effective_editor_state(host_text.clone(), host_caret_index) {
-                let _ = sync_active_editor_input(
+                let _ = sync_input(
                     state.current_text().to_string(),
                     state.normalized_caret_index(),
                 );
             }
-            let next_caret = execute_editor_navigation_key(key);
+            let next_caret = execute_navigation(key);
             ActiveEditorInputSyncResult {
                 caret_changed: next_caret.is_some(),
-                caret_index: next_caret.unwrap_or_else(active_editor_caret_index),
+                caret_index: next_caret.unwrap_or_else(caret_index),
                 ..Default::default()
             }
         }
@@ -107,7 +107,7 @@ pub fn apply_input_with_host(
                 return ActiveEditorInputSyncResult::default();
             };
             let mutation = insert_text(&active_state, inserted_text);
-            sync_active_editor_input(mutation.text, mutation.caret_index)
+            sync_input(mutation.text, mutation.caret_index)
         }
         EditorInputCommand::DeleteBackward => {
             let Some(active_state) = effective_editor_state(host_text, host_caret_index) else {
@@ -129,7 +129,7 @@ pub fn apply_input_with_host(
                 "afterCaret" => mutation.caret_index,
                 "afterLen" => mutation.text.chars().count()
             );
-            sync_active_editor_input(mutation.text, mutation.caret_index)
+            sync_input(mutation.text, mutation.caret_index)
         }
         EditorInputCommand::DeleteForward => {
             let Some(active_state) = effective_editor_state(host_text, host_caret_index) else {
@@ -140,13 +140,13 @@ pub fn apply_input_with_host(
             if mutation.caret_index == active_state.normalized_caret_index()
                 && mutation.text == active_state.current_text()
             {
-                let _ = set_active_editor_caret_index(current_caret);
+                let _ = set_caret(current_caret);
                 return ActiveEditorInputSyncResult {
                     caret_index: mutation.caret_index,
                     ..Default::default()
                 };
             }
-            sync_active_editor_input(mutation.text, mutation.caret_index)
+            sync_input(mutation.text, mutation.caret_index)
         }
     }
 }

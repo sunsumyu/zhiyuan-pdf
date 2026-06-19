@@ -5,8 +5,8 @@ use pdf_viewer_core::text::list_semantics::{
     derive_list_text_semantics, format_numbering_marker, parse_numbering_value, ListMarkerKind,
 };
 
-use crate::editor::bridge::build_paragraph_patch_with_runs;
-use crate::editor::edit_target::edit_target_base_paragraph_id;
+use crate::editor::bridge::build_rich_patch;
+use crate::editor::edit_target::get_base_paragraph_id;
 use crate::editor::engine_state::LiveEditorParagraphState;
 use crate::models::PersistableRegionPatch;
 use crate::ui_state_store::{read_patch_state, GlobalPatchState};
@@ -25,13 +25,13 @@ struct ParagraphListContext<'a> {
     _paragraph: &'a GlyphPaintParagraph,
 }
 
-pub fn resolve_active_marker_text(
+pub fn resolve_marker_text(
     active_state: &LiveEditorParagraphState,
     page_state: &PageState,
 ) -> Option<String> {
     let overrides = collect_marker_overrides(page_state.paint_plan.as_ref(), Some(active_state));
     overrides
-        .get(edit_target_base_paragraph_id(active_state.paragraph_id()))
+        .get(get_base_paragraph_id(active_state.paragraph_id()))
         .cloned()
         .flatten()
 }
@@ -71,7 +71,7 @@ pub fn reconcile_numbering_patches(
             patch.source.as_str(),
             "paragraph-region" | "list-item-region"
         ) {
-            let base_paragraph_id = edit_target_base_paragraph_id(&patch.region_id).to_string();
+            let base_paragraph_id = get_base_paragraph_id(&patch.region_id).to_string();
             patch_index_by_base.insert(base_paragraph_id, paragraph_patches.len());
             paragraph_patches.push(patch);
         } else {
@@ -80,7 +80,7 @@ pub fn reconcile_numbering_patches(
     }
 
     for paragraph in ordered_paragraphs {
-        let base_paragraph_id = edit_target_base_paragraph_id(&paragraph.id).to_string();
+        let base_paragraph_id = get_base_paragraph_id(&paragraph.id).to_string();
         let Some(desired_marker_text) = overrides.get(&base_paragraph_id).cloned().flatten() else {
             continue;
         };
@@ -107,7 +107,7 @@ pub fn reconcile_numbering_patches(
             continue;
         }
 
-        let Some(mut derived_patch) = build_paragraph_patch_with_runs(
+        let Some(mut derived_patch) = build_rich_patch(
             plan,
             vector_model,
             &paragraph.id,
@@ -182,9 +182,9 @@ fn build_paragraph_list_context<'a>(
     paragraph: &'a GlyphPaintParagraph,
     active_state: Option<&LiveEditorParagraphState>,
 ) -> ParagraphListContext<'a> {
-    let base_paragraph_id = edit_target_base_paragraph_id(&paragraph.id).to_string();
+    let base_paragraph_id = get_base_paragraph_id(&paragraph.id).to_string();
     let active_marker = active_state
-        .filter(|active| edit_target_base_paragraph_id(active.paragraph_id()) == base_paragraph_id);
+        .filter(|active| get_base_paragraph_id(active.paragraph_id()) == base_paragraph_id);
 
     let source_semantics = derive_list_text_semantics(
         &paragraph
@@ -275,6 +275,6 @@ fn resolve_patch_for_base_paragraph<'a>(
         state
             .paragraph_patches
             .values()
-            .find(|patch| edit_target_base_paragraph_id(&patch.region_id) == base_paragraph_id)
+            .find(|patch| get_base_paragraph_id(&patch.region_id) == base_paragraph_id)
     })
 }

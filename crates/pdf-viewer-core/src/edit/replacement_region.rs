@@ -3,7 +3,7 @@
 
 use crate::edit::active_target::ActiveEditorTarget;
 use crate::geometry::bbox_ops::{bbox_height, bbox_width, union_bbox};
-use crate::geometry::source_geometry::source_session_visual_bbox;
+use crate::geometry::source_geometry::compute_session_bbox;
 use crate::models::BoundingBox;
 
 #[derive(Debug, Clone, Copy)]
@@ -17,7 +17,7 @@ pub struct ParagraphReplacementRegion {
 }
 
 impl ParagraphReplacementRegion {
-    pub fn row_path_suppression_bbox_for_page_width(&self, page_width: f32) -> BoundingBox {
+    pub fn row_suppression_bbox(&self, page_width: f32) -> BoundingBox {
         let right = page_width
             .max(self.shell_bbox.right)
             .max(self.text_clear_bbox.right)
@@ -31,21 +31,21 @@ impl ParagraphReplacementRegion {
         }
     }
 
-    pub fn viewport_cull_bbox_for_page_width(&self, page_width: f32) -> BoundingBox {
+    pub fn viewport_cull_bbox(&self, page_width: f32) -> BoundingBox {
         union_bbox(
             &union_bbox(&self.shell_bbox, &self.text_clear_bbox),
-            &self.row_path_suppression_bbox_for_page_width(page_width),
+            &self.row_suppression_bbox(page_width),
         )
     }
 
-    pub fn cache_invalidation_bbox_for_page_width(&self, page_width: f32) -> BoundingBox {
-        self.viewport_cull_bbox_for_page_width(page_width)
+    pub fn cache_invalidation_bbox(&self, page_width: f32) -> BoundingBox {
+        self.viewport_cull_bbox(page_width)
     }
 }
 
-pub fn paragraph_replacement_region(target: &ActiveEditorTarget) -> ParagraphReplacementRegion {
+pub fn build_region(target: &ActiveEditorTarget) -> ParagraphReplacementRegion {
     let shell_bbox = target.scene.shell_bbox;
-    let source_bbox = preferred_source_bbox(target);
+    let source_bbox = resolve_preferred_bbox(target);
     let row_height = bbox_height(&source_bbox).max(1.0);
 
     let text_x_pad = 4.0;
@@ -81,8 +81,8 @@ pub fn paragraph_replacement_region(target: &ActiveEditorTarget) -> ParagraphRep
     }
 }
 
-fn preferred_source_bbox(target: &ActiveEditorTarget) -> BoundingBox {
-    if let Some(source_bbox) = source_session_visual_bbox(&target.scene.body_session) {
+fn resolve_preferred_bbox(target: &ActiveEditorTarget) -> BoundingBox {
+    if let Some(source_bbox) = compute_session_bbox(&target.scene.body_session) {
         if bbox_has_area(&source_bbox) {
             return source_bbox;
         }
@@ -108,7 +108,7 @@ fn bbox_has_area(bbox: &BoundingBox) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::paragraph_replacement_region;
+    use super::build_region;
     use crate::edit::active_target::ActiveEditorTarget;
     use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
 
@@ -172,7 +172,7 @@ mod tests {
             bottom: 112.0,
         });
 
-        let region = paragraph_replacement_region(&target);
+        let region = build_region(&target);
 
         assert!(region.text_clear_bbox.left > target.scene.shell_bbox.left);
         assert!(region.text_clear_bbox.right < target.scene.shell_bbox.right);
@@ -189,7 +189,7 @@ mod tests {
             bottom: 112.0,
         });
 
-        let region = paragraph_replacement_region(&target);
+        let region = build_region(&target);
 
         assert!(region.path_suppression_bbox.left >= region.text_clear_bbox.left);
         assert!(region.path_suppression_bbox.right <= region.text_clear_bbox.right);
@@ -206,8 +206,8 @@ mod tests {
             bottom: 112.0,
         });
 
-        let region = paragraph_replacement_region(&target);
-        let cull_bbox = region.viewport_cull_bbox_for_page_width(595.0);
+        let region = build_region(&target);
+        let cull_bbox = region.viewport_cull_bbox(595.0);
 
         assert_eq!(cull_bbox.left, 0.0);
         assert!(cull_bbox.right >= 595.0);
@@ -219,7 +219,7 @@ mod tests {
     fn uses_baseline_geometry() {
         let target = find_target();
 
-        let region = paragraph_replacement_region(&target);
+        let region = build_region(&target);
 
         assert_eq!(region.source_bbox.top, 100.0);
         assert_eq!(region.source_bbox.bottom, 112.0);

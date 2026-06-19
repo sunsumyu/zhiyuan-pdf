@@ -1,17 +1,17 @@
 use pdf_viewer_core::models::PageState;
 use wasm_bindgen::JsValue;
 
-use super::target_resolution::{is_supported_region_kind, resolve_region_target_from_page_state};
+use super::target_resolution::{is_supported_region_kind, resolve_region_target};
 use crate::editor::bridge::{
-    build_active_editor_target, build_paragraph_patch as core_build_paragraph_patch,
+    build_editor_target, build_paragraph_patch as core_build_paragraph_patch,
     collect_paragraph_interaction_targets,
-    resolve_paragraph_shell_bbox as bridge_resolve_paragraph_shell_bbox,
+    resolve_paragraph_shell_bbox as bridge_resolve_shell_bbox,
 };
-use crate::editor::session::{is_text_edit_enabled, ActiveEditorTarget};
+use crate::editor::session::{is_edit_enabled, ActiveEditorTarget};
 use crate::models::PersistableRegionPatch;
 use pdf_viewer_core::models::BoundingBox;
 
-pub fn build_paragraph_interaction_targets(
+pub fn build_interaction_targets(
     page_state: &PageState,
     editing_enabled: bool,
 ) -> JsValue {
@@ -37,11 +37,11 @@ pub fn open_paragraph_editor(
     click_page_y: f32,
     _visual_zoom: f32,
 ) -> Option<ActiveEditorTarget> {
-    if !is_text_edit_enabled() {
+    if !is_edit_enabled() {
         return None;
     }
     page_state.paint_plan.as_ref().and_then(|plan| {
-        build_active_editor_target(
+        build_editor_target(
             plan,
             page_state.vector_model.as_ref(),
             paragraph_id,
@@ -51,14 +51,14 @@ pub fn open_paragraph_editor(
     })
 }
 
-pub fn resolve_paragraph_shell_bbox(
+pub fn resolve_shell_bbox(
     page_state: &PageState,
     paragraph_id: &str,
 ) -> Option<BoundingBox> {
     page_state
         .paint_plan
         .as_ref()
-        .and_then(|plan| bridge_resolve_paragraph_shell_bbox(plan, paragraph_id))
+        .and_then(|plan| bridge_resolve_shell_bbox(plan, paragraph_id))
 }
 
 pub fn build_paragraph_patch(
@@ -77,7 +77,7 @@ pub fn build_paragraph_patch(
     }
 }
 
-pub fn build_region_text_patch(
+pub fn build_text_patch(
     page_state: &PageState,
     page_index: u16,
     region_id: &str,
@@ -88,7 +88,7 @@ pub fn build_region_text_patch(
     if !is_supported_region_kind(kind) {
         return None;
     }
-    let target = resolve_region_target_from_page_state(
+    let target = resolve_region_target(
         page_state,
         page_index,
         region_id,
@@ -102,7 +102,7 @@ pub fn build_region_text_patch(
     Some(patch)
 }
 
-pub fn build_active_editor_patch(
+pub fn build_editor_patch(
     page_state: &PageState,
     active_paragraph_id: Option<&str>,
     new_text: String,

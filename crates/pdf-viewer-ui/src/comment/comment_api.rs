@@ -15,7 +15,8 @@ use crate::document::comment::{
     PdfDeleteAnnotationRequest, PdfRegionCommentRequest, PdfUpdateCommentRequest,
 };
 use crate::review::review_store::{
-    clear_comment_review_session, read_comment_review_session, HostCommentReviewScope,
+    clear_review_session as clear_comment_review_session,
+    read_review_session as read_comment_review_session, HostCommentReviewScope,
 };
 
 fn parse_scope(scope: &str) -> HostCommentReviewScope {

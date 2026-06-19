@@ -4,6 +4,7 @@ use crate::models::{
     LayoutParagraph, LayoutRun, PaintMode, ParagraphEditContext, ResolvedFontFace,
 };
 use crate::typography::font_resolver::resolve_font_face;
+use crate::text::glyph_layout::is_decorative_text;
 
 fn paint_mode_from_render_mode(render_mode: i64) -> PaintMode {
     match render_mode {
@@ -89,14 +90,6 @@ fn build_editor_session(paragraph: &crate::models::LayoutParagraph) -> Paragraph
         anchor_bbox,
         paragraph: normalized_paragraph,
     }
-}
-
-fn is_decorative_text(text: &str) -> bool {
-    let trimmed = text.trim();
-    !trimmed.is_empty()
-        && trimmed
-            .chars()
-            .all(|ch| matches!(ch, '•' | '●' | '▪' | '◦' | '·' | '○' | '-' | '▶' | '➤'))
 }
 
 fn build_control_style(paragraph: &crate::models::LayoutParagraph) -> EditorControlStyle {

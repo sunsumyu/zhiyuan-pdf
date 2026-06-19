@@ -6,9 +6,9 @@ use crate::edit::debug_trace::{
 use crate::edit::edit_target::{
     collect_edit_targets_from_session, resolve_edit_target_from_session, EditorEditTarget,
 };
-use crate::edit::source_runs::{original_paint_runs_for_target, resolve_preferred_editor_session};
+use crate::edit::source_runs::{target_paint_runs, resolve_preferred_editor_session};
 use crate::edit::source_text::session_source_text;
-use crate::geometry::source_geometry::source_visual_bbox_from_runs;
+use crate::geometry::source_geometry::compute_bbox_from_runs;
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, LayoutRun,
     ParagraphEditContext, VectorPageModel,
@@ -32,7 +32,7 @@ pub struct ParagraphEditorMarker {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EditorDocumentPlan {
+pub struct EditContext {
     #[serde(default)]
     pub target_id: String,
     #[serde(default)]
@@ -53,7 +53,7 @@ pub struct EditorDocumentPlan {
     pub original_runs: Vec<GlyphPaintRun>,
 }
 
-impl Default for EditorDocumentPlan {
+impl Default for EditContext {
     fn default() -> Self {
         Self {
             target_id: String::new(),
@@ -85,7 +85,7 @@ pub struct EditorDocumentLinePlan {
     pub reconstructed_char_count: usize,
 }
 
-impl EditorDocumentPlan {
+impl EditContext {
     pub fn source_body_text(&self) -> &str {
         &self.source_body_text
     }
@@ -114,11 +114,11 @@ fn resolve_shell_bbox(target_session: &ParagraphEditContext, split: &SessionSpli
 
 pub fn build_editor_document_plan_from_session(
     session: &ParagraphEditContext,
-) -> EditorDocumentPlan {
+) -> EditContext {
     let body_text_plan = build_editor_session_text_plan(session);
     let body_lines = build_body_line_plans(session, &body_text_plan);
     let draft_template_run = select_draft_template_run(session, &body_lines);
-    EditorDocumentPlan {
+    EditContext {
         target_id: session.paragraph.id.clone(),
         base_paragraph_id: session.paragraph.id.clone(),
         shell_bbox: session.anchor_bbox,
@@ -184,7 +184,7 @@ fn split_run_at_char_index(
 }
 
 fn bbox_from_runs(runs: &[LayoutRun]) -> Option<BoundingBox> {
-    if let Some(source_bbox) = source_visual_bbox_from_runs(runs) {
+    if let Some(source_bbox) = compute_bbox_from_runs(runs) {
         return Some(source_bbox);
     }
     let first = runs.first()?;
@@ -196,18 +196,6 @@ fn bbox_from_runs(runs: &[LayoutRun]) -> Option<BoundingBox> {
         bbox.bottom = bbox.bottom.max(run.bbox.bottom);
     }
     Some(bbox)
-}
-
-fn normalize_draft_template_run(run: &LayoutRun) -> LayoutRun {
-    let mut normalized = run.clone();
-    normalized.char_origins.clear();
-    normalized.char_widths.clear();
-    normalized.object_ids.clear();
-    normalized.object_indices.clear();
-    normalized.origin_x = 0.0;
-    normalized.origin_y = 0.0;
-    normalized.bbox = BoundingBox::default();
-    normalized
 }
 
 fn select_draft_template_run(
@@ -223,7 +211,7 @@ fn select_draft_template_run(
                 && !looks_like_symbolic_font(&run.style.font_name)
         });
     if let Some(run) = source_candidate {
-        return normalize_draft_template_run(run);
+        return run.cleared_style(false, false, false);
     }
 
     let template_candidate = body_lines
@@ -235,7 +223,7 @@ fn select_draft_template_run(
                 && !looks_like_symbolic_font(&run.style.font_name)
         });
     if let Some(run) = template_candidate {
-        return normalize_draft_template_run(run);
+        return run.cleared_style(false, false, false);
     }
 
     if let Some(run) = session
@@ -244,7 +232,7 @@ fn select_draft_template_run(
         .iter()
         .find(|run| !run.text.trim().is_empty())
     {
-        return normalize_draft_template_run(run);
+        return run.cleared_style(false, false, false);
     }
 
     let mut run = LayoutRun::default();
@@ -458,18 +446,6 @@ fn synthesize_marker_from_paragraph(
     })
 }
 
-fn normalize_template_run_for_draft(run: &LayoutRun) -> LayoutRun {
-    let mut normalized = run.clone();
-    normalized.char_origins.clear();
-    normalized.char_widths.clear();
-    normalized.object_ids.clear();
-    normalized.object_indices.clear();
-    normalized.origin_x = 0.0;
-    normalized.origin_y = 0.0;
-    normalized.bbox = BoundingBox::default();
-    normalized
-}
-
 fn build_body_line_plans(
     session: &ParagraphEditContext,
     _text_plan: &EditorSessionTextPlan,
@@ -498,7 +474,7 @@ fn build_body_line_plans(
             }
         }
         current_origin_y = Some(run.origin_y);
-        current_runs.push(normalize_template_run_for_draft(run));
+        current_runs.push(run.cleared_style(false, true, false));
         current_source_runs.push(run.clone());
         raw_consumed_again += glyph_count;
     }
@@ -512,38 +488,41 @@ fn build_body_line_plans(
     rebuilt_lines
 }
 
-pub fn build_editor_document_plan(
+/// 从段落创建编辑上下文（默认入口）。
+pub fn from_paragraph(
     paragraph: &GlyphPaintParagraph,
     vector_model: Option<&VectorPageModel>,
     click_page_point: Option<(f32, f32)>,
-) -> Option<EditorDocumentPlan> {
-    build_editor_document_plan_for_target(paragraph, vector_model, &paragraph.id, click_page_point)
+) -> Option<EditContext> {
+    from_target_id(paragraph, vector_model, &paragraph.id, click_page_point)
 }
 
-pub fn collect_editor_document_target_plans(
+/// 收集段落所有可编辑区域的上下文。
+pub fn collect_all(
     paragraph: &GlyphPaintParagraph,
     vector_model: Option<&VectorPageModel>,
-) -> Vec<EditorDocumentPlan> {
+) -> Vec<EditContext> {
     let full_session = resolve_preferred_editor_session(paragraph, vector_model)
         .unwrap_or_else(|| paragraph.editor_session.clone());
     collect_edit_targets_from_session(&paragraph.id, &full_session)
         .into_iter()
-        .filter_map(|target| build_plan_for_target_session(paragraph, &full_session, target, None))
+        .filter_map(|target| resolve_from_target(paragraph, &full_session, target, None))
         .collect()
 }
 
-pub fn build_editor_document_plan_for_target(
+/// 按 target_id 创建编辑上下文。
+pub fn from_target_id(
     paragraph: &GlyphPaintParagraph,
     vector_model: Option<&VectorPageModel>,
     target_id: &str,
     click_page_point: Option<(f32, f32)>,
-) -> Option<EditorDocumentPlan> {
+) -> Option<EditContext> {
     let full_session = resolve_preferred_editor_session(paragraph, vector_model)
         .unwrap_or_else(|| paragraph.editor_session.clone());
     let target =
         resolve_edit_target_from_session(&paragraph.id, target_id, &full_session, click_page_point);
 
-    build_plan_for_target_session(paragraph, &full_session, target, click_page_point)
+    resolve_from_target(paragraph, &full_session, target, click_page_point)
 }
 
 /// Format up to `limit` codepoints of `text` as `U+XXXX(char)` for diagnostics.
@@ -597,7 +576,7 @@ fn resolve_marker_split(
 
     let mut split = match strategy_result {
         Some((body_char_start, marker_kind)) => {
-            let raw = full_text_plan.map_reconstructed_to_raw(body_char_start);
+            let raw = full_text_plan.to_raw(body_char_start);
             split_editor_session(full_session, raw, marker_kind).unwrap_or_else(default_split)
         }
         None => default_split(),
@@ -715,12 +694,12 @@ fn trace_open_caret_resolved(
     );
 }
 
-fn build_plan_for_target_session(
+fn resolve_from_target(
     paragraph: &GlyphPaintParagraph,
     _full_session: &ParagraphEditContext,
     target: EditorEditTarget,
     click_page_point: Option<(f32, f32)>,
-) -> Option<EditorDocumentPlan> {
+) -> Option<EditContext> {
     let target_id = target.target_id.clone();
     let base_paragraph_id = target.base_paragraph_id.clone();
     let full_session = target.session.clone();
@@ -740,8 +719,8 @@ fn build_plan_for_target_session(
 
     let body_lines = build_body_line_plans(&split.body_session, &body_text_plan);
     let draft_template_run = select_draft_template_run(&split.body_session, &body_lines);
-    // Caret 解析的唯一权威路径在 UI 层 `editor_controller::open_editor_at_page_point`
-    // 通过 `active_caret_index_at_page_point`（与 Move 路径共用 `build_unified_draft_caret_lines`）
+    // Caret 解析的唯一权威路径在 UI 层 `editor_controller::open_at_point`
+    // 通过 `caret_at_page_point`（与 Move 路径共用 `build_unified_draft_caret_lines`）
     // 计算并覆盖此处的初始值。这里保留为 0，避免出现"core 用旧算法算一遍 + UI 再覆盖"
     // 的双轨制，根除首次点击 caret 偏差。click_page_point 仍用于 segment 选择。
     let body_initial_caret = 0usize;
@@ -765,9 +744,9 @@ fn build_plan_for_target_session(
         );
     }
 
-    let original_runs = original_paint_runs_for_target(paragraph, &split.body_session, &target);
+    let original_runs = target_paint_runs(paragraph, &split.body_session, &target);
 
-    Some(EditorDocumentPlan {
+    Some(EditContext {
         target_id,
         base_paragraph_id,
         shell_bbox,
@@ -785,6 +764,43 @@ fn build_plan_for_target_session(
         }),
         original_runs,
     })
+}
+
+// --- 兼容别名（deprecated）---
+// 保留一个周期后删除
+
+/// Deprecated: use [`EditContext`] instead.
+#[deprecated(since = "2026.6", note = "Use EditContext instead")]
+pub type EditorDocumentPlan = EditContext;
+
+/// Deprecated: use [`from_paragraph`] instead.
+#[deprecated(since = "2026.6", note = "Use from_paragraph instead")]
+pub fn build_editor_document_plan(
+    paragraph: &GlyphPaintParagraph,
+    vector_model: Option<&VectorPageModel>,
+    click_page_point: Option<(f32, f32)>,
+) -> Option<EditContext> {
+    from_paragraph(paragraph, vector_model, click_page_point)
+}
+
+/// Deprecated: use [`from_target_id`] instead.
+#[deprecated(since = "2026.6", note = "Use from_target_id instead")]
+pub fn build_editor_document_plan_for_target(
+    paragraph: &GlyphPaintParagraph,
+    vector_model: Option<&VectorPageModel>,
+    target_id: &str,
+    click_page_point: Option<(f32, f32)>,
+) -> Option<EditContext> {
+    from_target_id(paragraph, vector_model, target_id, click_page_point)
+}
+
+/// Deprecated: use [`collect_all`] instead.
+#[deprecated(since = "2026.6", note = "Use collect_all instead")]
+pub fn collect_editor_document_target_plans(
+    paragraph: &GlyphPaintParagraph,
+    vector_model: Option<&VectorPageModel>,
+) -> Vec<EditContext> {
+    collect_all(paragraph, vector_model)
 }
 
 #[cfg(test)]

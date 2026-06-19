@@ -31,7 +31,7 @@ facade_commit_editor (facade.rs:243)
         │   └─ build_edit_replacement_snapshot  (replacement_snapshot.rs)
         ├─ remember_paragraph_replacement_target  # ★ 写 GLOBAL_PATCH_STATE.paragraph_replacement_targets
         ├─ apply_document_patch_direct (patch_persistence.rs:14)
-        │   └─ apply_patch_with_history (state_manager.rs:174)
+        │   └─ record_patch (state_manager.rs:174)
         │       └─ apply_patch_maps   # ★ 写 paragraph_texts/snapshots/patches
         └─ close_active_editor        # 清 live state
 ```

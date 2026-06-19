@@ -2,13 +2,13 @@ use std::cell::RefCell;
 
 use crate::editor::session::render_scene_key;
 use crate::present::plan_builder::{
-    build_frame_plan_result as inner_build_frame_plan_result, FramePlanRequest, FramePlanResult,
+    build_frame_plan_result as inner_build_plan_result, FramePlanRequest, FramePlanResult,
 };
 use crate::render::frame_cache::{
     reset_frame_cache as inner_reset_frame_cache,
     resolve_viewport_refresh as inner_resolve_viewport_refresh,
-    store_frame_cache_entry as inner_store_frame_cache_entry,
-    touch_frame_cache_entry as inner_touch_frame_cache_entry,
+    store_frame_cache_entry as inner_store_cache_entry,
+    touch_frame_cache_entry as inner_touch_cache_entry,
 };
 use crate::render::render_store::{
     schedule_render_frame, RenderFrameEnvelope as HostRenderFrameEnvelope,
@@ -35,14 +35,14 @@ pub fn with_present_state<R>(f: impl FnOnce(&HostPresentState) -> R) -> R {
     PRESENT_STATE.with(|state| f(&state.borrow()))
 }
 
-pub fn build_frame_plan_result(
+pub fn build_plan_result(
     request: &FramePlanRequest,
     consume_anchor: bool,
 ) -> FramePlanResult {
     zoom_store::with_zoom_state_mut(|zoom_state| {
         let viewer_session = viewer_store::read_viewer_session();
         PRESENT_STATE.with(|present_state| {
-            inner_build_frame_plan_result(
+            inner_build_plan_result(
                 request,
                 zoom_state,
                 &viewer_session,
@@ -55,20 +55,20 @@ pub fn build_frame_plan_result(
 }
 
 pub fn resolve_viewport_refresh(request: &FramePlanRequest) -> ViewportRefreshDecision {
-    let frame_plan = build_frame_plan_result(request, false);
+    let frame_plan = build_plan_result(request, false);
     VIEWPORT_REFRESH_STATE.with(|state| {
         inner_resolve_viewport_refresh(&state.borrow(), &frame_plan, request.timestamp_ms)
     })
 }
 
-pub fn touch_frame_cache_entry(is_detail: bool, key: &str) -> bool {
+pub fn touch_cache_entry(is_detail: bool, key: &str) -> bool {
     FRAME_CACHE_STATE
-        .with(|state| inner_touch_frame_cache_entry(&mut state.borrow_mut(), is_detail, key))
+        .with(|state| inner_touch_cache_entry(&mut state.borrow_mut(), is_detail, key))
 }
 
-pub fn store_frame_cache_entry(is_detail: bool, key: String) -> FrameCacheStoreResult {
+pub fn store_cache_entry(is_detail: bool, key: String) -> FrameCacheStoreResult {
     FRAME_CACHE_STATE
-        .with(|state| inner_store_frame_cache_entry(&mut state.borrow_mut(), is_detail, key))
+        .with(|state| inner_store_cache_entry(&mut state.borrow_mut(), is_detail, key))
 }
 
 pub fn reset_frame_cache() {
@@ -93,10 +93,10 @@ pub fn reset_present_runtime(reset_cache: bool, reset_refresh: bool) {
     }
 }
 
-pub fn schedule_render_frame_request(request: &FramePlanRequest) -> Option<RenderFrameEnvelope> {
-    let frame_plan = build_frame_plan_result(request, false);
+pub fn schedule_request(request: &FramePlanRequest) -> Option<RenderFrameEnvelope> {
+    let frame_plan = build_plan_result(request, false);
     eprintln!(
-        "[DEBUG-RENDER] schedule_render_frame_request: render_reason={}, render_base_layer={}, render_detail_layer={}, display_zoom={}, base_cache_key={}",
+        "[DEBUG-RENDER] schedule_request: render_reason={}, render_base_layer={}, render_detail_layer={}, display_zoom={}, base_cache_key={}",
         frame_plan.render_reason,
         frame_plan.render_base_layer,
         frame_plan.render_detail_layer,
@@ -172,4 +172,23 @@ pub fn settle_render_frame(
     })
 }
 
-pub use crate::render::render_store::is_render_frame_current;
+pub use crate::render::render_store::is_frame_current as is_render_frame_current;
+
+// Frame cache entry helpers (re-exported with different names for free_api compatibility)
+pub fn touch_frame_cache_entry(is_detail: bool, key: &str) -> bool {
+    touch_cache_entry(is_detail, key)
+}
+
+pub fn store_frame_cache_entry(is_detail: bool, key: String) -> FrameCacheStoreResult {
+    store_cache_entry(is_detail, key)
+}
+
+/// Alias used by render_transaction and other callers that imported `schedule_render_frame_request`.
+pub fn schedule_render_frame_request(request: &FramePlanRequest) -> Option<RenderFrameEnvelope> {
+    schedule_request(request)
+}
+
+/// Alias used by free_api that imported `build_frame_plan_result`.
+pub fn build_frame_plan_result(request: &FramePlanRequest, consume_anchor: bool) -> FramePlanResult {
+    build_plan_result(request, consume_anchor)
+}

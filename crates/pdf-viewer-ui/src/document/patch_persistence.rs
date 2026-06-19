@@ -5,7 +5,7 @@ use crate::editor::list_format::reconcile_numbering_patches;
 use crate::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
 use crate::ui_state_store::{
-    apply_patch_with_history, clear_persistable_patches as core_clear_persistable_patches,
+    record_patch, clear_persistable_patches as core_clear_persistable_patches,
     collect_persistable_patches,
 };
 
@@ -20,7 +20,7 @@ pub fn apply_document_patch_direct(patch: PersistableRegionPatch) {
         "pageIndex" => patch.page_index,
         "newLen" => patch.new_text.chars().count(),
     );
-    apply_patch_with_history(patch);
+    record_patch(patch);
 }
 
 pub fn apply_document_patch(patch_js: JsValue) {
@@ -33,7 +33,7 @@ pub fn apply_document_patch(patch_js: JsValue) {
                 "pageIndex" => patch.page_index,
                 "newLen" => patch.new_text.chars().count(),
             );
-            apply_patch_with_history(patch);
+            record_patch(patch);
         }
         Err(err) => {
             crate::chain_trace!(

@@ -11,16 +11,16 @@ impl PdfEditorGeometryService {
         path: String,
         page_index: u16,
     ) -> Result<LayoutInferenceResult, String> {
-        Self::resolve_layout_inference_with_revision(state, path, page_index, None).await
+        Self::resolve_layout_inference_revisioned(state, path, page_index, None).await
     }
 
-    pub async fn resolve_layout_inference_with_revision(
+    pub async fn resolve_layout_inference_revisioned(
         state: tauri::State<'_, crate::AppState>,
         path: String,
         page_index: u16,
         document_revision: Option<u64>,
     ) -> Result<LayoutInferenceResult, String> {
-        PdfPageIntermediateService::resolve_layout_inference_from_app_state(
+        PdfPageIntermediateService::resolve_layout_inference(
             &state,
             path,
             page_index,
@@ -43,7 +43,7 @@ impl PdfEditorGeometryService {
         page_index: u16,
         document_revision: Option<u64>,
     ) -> Result<GlyphPaintPlan, String> {
-        PdfPageIntermediateService::resolve_glyph_paint_plan_from_app_state(
+        PdfPageIntermediateService::resolve_glyph_paint_plan(
             &state,
             path,
             page_index,
@@ -79,7 +79,7 @@ impl PdfEditorGeometryService {
         click_x_from_anchor_left: f32,
     ) -> Result<usize, String> {
         Ok(
-            pdf_viewer_core::text::glyph_layout::resolve_caret_index_for_click(
+            pdf_viewer_core::text::glyph_layout::resolve_click_caret(
                 &session,
                 click_x_from_anchor_left,
             ),
@@ -89,13 +89,13 @@ impl PdfEditorGeometryService {
     pub fn resolve_field_hit(
         request: pdf_viewer_core::models::FieldHitRequest,
     ) -> Result<pdf_viewer_core::models::FieldHitResolution, String> {
-        Ok(pdf_viewer_core::text::glyph_layout::resolve_field_hit_for_click(&request))
+        Ok(pdf_viewer_core::text::glyph_layout::resolve_click_hit(&request))
     }
 
     pub fn resolve_field_hit_target(
         request: pdf_viewer_core::models::FieldHitBatchRequest,
     ) -> Result<Option<pdf_viewer_core::models::FieldHitMatch>, String> {
-        Ok(pdf_viewer_core::text::glyph_layout::resolve_field_hit_target_for_click(&request))
+        Ok(pdf_viewer_core::text::glyph_layout::resolve_click_target(&request))
     }
 
     pub fn resolve_field_projection(

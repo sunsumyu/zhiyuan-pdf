@@ -1,10 +1,10 @@
 use crate::edit::active_target::ActiveEditorTarget;
-use crate::edit::document_plan::collect_editor_document_target_plans;
-use crate::edit::edit_target::edit_target_base_paragraph_id;
-use crate::edit::paragraph_scene::build_paragraph_editor_scene_for_target;
+use crate::edit::document_plan::collect_all;
+use crate::edit::edit_target::get_base_paragraph_id;
+use crate::edit::paragraph_scene::build_target_scene;
 use crate::edit::paragraph_scene::ParagraphEditorScene;
 use crate::edit::replacement_snapshot::build_edit_replacement_snapshot;
-use crate::edit::source_identity::collect_object_indices_from_runs;
+use crate::edit::source_identity::collect_run_indices;
 use crate::models::{GlyphPaintParagraph, GlyphPaintPlan, VectorPageModel};
 use crate::persistence::models::PersistableRegionPatch;
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,7 @@ pub fn collect_paragraph_interaction_targets(
         for paragraph in &region.paragraphs {
             let control_style = &paragraph.control_style;
 
-            for document_plan in collect_editor_document_target_plans(paragraph, vector_model) {
+            for document_plan in collect_all(paragraph, vector_model) {
                 let target_indices =
                     resolve_target_indices_from_runs(&document_plan.original_runs, vector_model);
                 targets.push(ParagraphInteractionTarget {
@@ -67,23 +67,23 @@ pub fn build_paragraph_patch(
     paragraph_id: &str,
     new_text: String,
 ) -> Option<PersistableRegionPatch> {
-    build_paragraph_patch_with_runs(plan, vector_model, paragraph_id, new_text, None)
+    build_rich_patch(plan, vector_model, paragraph_id, new_text, None)
 }
 
-pub fn build_paragraph_patch_with_runs(
+pub fn build_rich_patch(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
     paragraph_id: &str,
     new_text: String,
     new_runs: Option<Vec<crate::models::LayoutRun>>,
 ) -> Option<PersistableRegionPatch> {
-    let base_paragraph_id = edit_target_base_paragraph_id(paragraph_id);
+    let base_paragraph_id = get_base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
             if paragraph.id != base_paragraph_id {
                 continue;
             }
-            let scene = build_paragraph_editor_scene_for_target(
+            let scene = build_target_scene(
                 paragraph,
                 vector_model,
                 paragraph_id,
@@ -201,20 +201,20 @@ fn active_editor_target_from_scene(
     }
 }
 
-pub fn build_active_editor_target(
+pub fn build_editor_target(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
     paragraph_id: &str,
     click_page_x: f32,
     click_page_y: f32,
 ) -> Option<ActiveEditorTarget> {
-    let base_paragraph_id = edit_target_base_paragraph_id(paragraph_id);
+    let base_paragraph_id = get_base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
             if paragraph.id != base_paragraph_id {
                 continue;
             }
-            let scene = build_paragraph_editor_scene_for_target(
+            let scene = build_target_scene(
                 paragraph,
                 vector_model,
                 paragraph_id,
@@ -249,13 +249,13 @@ pub fn build_paragraph_render_target(
     vector_model: Option<&VectorPageModel>,
     paragraph_id: &str,
 ) -> Option<ActiveEditorTarget> {
-    let base_paragraph_id = edit_target_base_paragraph_id(paragraph_id);
+    let base_paragraph_id = get_base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
             if paragraph.id != base_paragraph_id {
                 continue;
             }
-            let scene = build_paragraph_editor_scene_for_target(
+            let scene = build_target_scene(
                 paragraph,
                 vector_model,
                 paragraph_id,
@@ -289,14 +289,14 @@ pub fn resolve_paragraph_shell_bbox(
     plan: &GlyphPaintPlan,
     paragraph_id: &str,
 ) -> Option<crate::models::BoundingBox> {
-    let base_paragraph_id = edit_target_base_paragraph_id(paragraph_id);
+    let base_paragraph_id = get_base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
             if paragraph.id != base_paragraph_id {
                 continue;
             }
             let scene =
-                build_paragraph_editor_scene_for_target(paragraph, None, paragraph_id, None)?;
+                build_target_scene(paragraph, None, paragraph_id, None)?;
             return Some(scene.shell_bbox);
         }
     }
@@ -307,5 +307,5 @@ fn resolve_target_indices_from_runs(
     runs: &[crate::models::GlyphPaintRun],
     vector_model: Option<&VectorPageModel>,
 ) -> Vec<usize> {
-    collect_object_indices_from_runs(runs, vector_model)
+    collect_run_indices(runs, vector_model)
 }

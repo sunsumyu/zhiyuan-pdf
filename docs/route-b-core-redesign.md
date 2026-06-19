@@ -1125,7 +1125,7 @@ editor_api.rs::commit() 调用链:
             ├→ get_active_editor_state()   ← 读状态机 B (live_state)
             ├→ build_active_editor_patch() ← 读状态机 B (live_state)
             ├→ apply_document_patch_direct()
-            │   └→ apply_patch_with_history() ← 写 GLOBAL_PATCH_STATE (OnceLock)
+            │   └→ record_patch() ← 写 GLOBAL_PATCH_STATE (OnceLock)
             └→ close_active_editor()       ← 写状态机 B
     ④ finish_commit()                     ← 写状态机 C
     ⑤ transition_to_viewing()             ← 写状态机 A
@@ -1155,7 +1155,7 @@ editor_api.rs::commit() 调用链:
     │                                   (状态机 B)
     │
     ├─ apply_document_patch_direct() ─→ 写 GLOBAL_PATCH_STATE    ④
-    │   └─ apply_patch_with_history()   (patch state)
+    │   └─ record_patch()   (patch state)
     │
     ├─ remember_replacement_target() ──→ 写 GLOBAL_PATCH_STATE    ④
     │                                   (.paragraph_replacement_targets)
@@ -1438,7 +1438,7 @@ spawn_blocking 使用分布 (src-tauri/):
  │
  ├─ commit() ──────────────────────── 同步！
  │   ├─ build_active_editor_patch()   同步
- │   ├─ apply_patch_with_history()    同步
+ │   ├─ record_patch()    同步
  │   └─ schedule_render_frame()       同步（仅调度，但计划生成是同步的）
  │
  ├─ start_progressive_render() ────── 同步！

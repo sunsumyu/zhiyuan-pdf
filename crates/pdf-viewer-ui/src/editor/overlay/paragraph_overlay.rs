@@ -6,10 +6,10 @@ use crate::editor::bridge::build_paragraph_render_target;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::edit_target::edit_target_base_paragraph_id;
-use crate::editor::list_format::{collect_marker_overrides, resolve_active_marker_text};
-use crate::editor::mode::read_active_editor_state;
-use crate::editor::replacement_snapshot::replacement_target_from_patch_snapshot;
+use crate::editor::edit_target::get_base_paragraph_id;
+use crate::editor::list_format::{collect_marker_overrides, resolve_marker_text};
+use crate::editor::mode::read_state;
+use crate::editor::replacement_snapshot::find_target;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::source_identity::collect_target_source_object_indices;
 use crate::page::page_store::PAGE_STATE;
@@ -38,12 +38,12 @@ fn persisted_patch_source_indices(
     target_source_object_indices(target)
 }
 
-pub fn collect_paragraph_render_overlays(
+pub fn collect_overlays(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
 ) -> Vec<ParagraphRenderOverlay> {
     let mut overlays = BTreeMap::<String, ParagraphRenderOverlay>::new();
-    let active_state = read_active_editor_state();
+    let active_state = read_state();
     let marker_overrides = collect_marker_overrides(Some(plan), active_state.as_ref());
 
     if let Ok(state) = read_patch_state().read() {
@@ -73,7 +73,7 @@ pub fn collect_paragraph_render_overlays(
                 .paragraph_replacement_targets
                 .get(paragraph_id)
                 .cloned()
-                .or_else(|| replacement_target_from_patch_snapshot(patch))
+                .or_else(|| find_target(patch))
                 .or_else(|| build_paragraph_render_target(plan, vector_model, paragraph_id))
             else {
                 dbg_event(
@@ -88,7 +88,7 @@ pub fn collect_paragraph_render_overlays(
                 "target-resolved",
                 vec![dbg_field("paragraphId", paragraph_id)],
             );
-            let base_paragraph_id = edit_target_base_paragraph_id(&target.paragraph_id).to_string();
+            let base_paragraph_id = get_base_paragraph_id(&target.paragraph_id).to_string();
             let source_object_indices = persisted_patch_source_indices(
                 &patch.target_indices,
                 &patch.full_target_indices,
@@ -127,12 +127,12 @@ pub fn collect_paragraph_render_overlays(
 
     if let Some(active_state) = active_state {
         let marker_text_override = marker_overrides
-            .get(edit_target_base_paragraph_id(active_state.paragraph_id()))
+            .get(get_base_paragraph_id(active_state.paragraph_id()))
             .cloned()
             .flatten()
             .or_else(|| {
                 PAGE_STATE.with(|page_state: &crate::page::page_store::HostPageState| {
-                    resolve_active_marker_text(&active_state, &page_state.borrow())
+                    resolve_marker_text(&active_state, &page_state.borrow())
                 })
             });
         let source_object_indices = target_source_object_indices(&active_state.target);
@@ -143,10 +143,10 @@ pub fn collect_paragraph_render_overlays(
         // ── diagnostic: active overlay identity ──
         {
             use pdf_viewer_core::edit::source_identity::{
-                collect_target_source_object_ids, collect_target_source_object_indices_set,
+                collect_target_source_object_ids, collect_object_index_set,
             };
             let obj_ids = collect_target_source_object_ids(&active_state.target);
-            let obj_indices = collect_target_source_object_indices_set(&active_state.target);
+            let obj_indices = collect_object_index_set(&active_state.target);
             let orig_run_count = active_state.target.scene.original_runs.len();
             let body_run_count = active_state.target.scene.body_session.paragraph.runs.len();
             let orig_obj_ids: Vec<String> = active_state
@@ -246,7 +246,7 @@ pub fn collect_paragraph_render_overlays(
 mod persisted_overlay_tests {
     use super::*;
     use crate::models::PersistableRegionPatch;
-    use crate::ui_state_store::{apply_patch_with_history, read_patch_state};
+    use crate::ui_state_store::{record_patch, read_patch_state};
     use pdf_viewer_core::models::{
         BoundingBox, GlyphPaintPlan, GlyphPaintRegion, LayoutMode, LayoutParagraph, LayoutRole,
         ParagraphEditContext,
@@ -311,7 +311,7 @@ mod persisted_overlay_tests {
         s.accepted_patch_keys.clear();
     }
 
-    /// 端到端：apply_patch_with_history 后，collect_paragraph_render_overlays
+    /// 端到端：record_patch 后，collect_overlays
     /// 必须返回一个 PersistedPageCanvas overlay，draft_text 为编辑后的新文本。
     /// 这是验证"退出编辑后修改不丢失"的核心测试。
     #[wasm_bindgen_test]
@@ -334,7 +334,7 @@ mod persisted_overlay_tests {
             ..Default::default()
         };
 
-        apply_patch_with_history(patch);
+        record_patch(patch);
 
         // 确认 patch 入了 state
         {
@@ -352,9 +352,9 @@ mod persisted_overlay_tests {
             );
         }
 
-        // 模拟"退出编辑后渲染"：collect_paragraph_render_overlays
+        // 模拟"退出编辑后渲染"：collect_overlays
         let plan = make_glyph_plan(0);
-        let overlays = collect_paragraph_render_overlays(&plan, None);
+        let overlays = collect_overlays(&plan, None);
 
         let persisted: Vec<&ParagraphRenderOverlay> = overlays
             .iter()
@@ -411,10 +411,10 @@ mod persisted_overlay_tests {
             kind: Some("text".to_string()),
             ..Default::default()
         };
-        apply_patch_with_history(patch);
+        record_patch(patch);
 
         let plan = make_glyph_plan(0);
-        let overlays = collect_paragraph_render_overlays(&plan, None);
+        let overlays = collect_overlays(&plan, None);
 
         let persisted: Vec<&ParagraphRenderOverlay> = overlays
             .iter()
@@ -448,10 +448,10 @@ mod persisted_overlay_tests {
             snapshot: Some(json!({ "replacementTarget": target_json })),
             ..Default::default()
         };
-        apply_patch_with_history(patch);
+        record_patch(patch);
 
         let plan = make_glyph_plan(0); // 当前渲染 page 0
-        let overlays = collect_paragraph_render_overlays(&plan, None);
+        let overlays = collect_overlays(&plan, None);
         assert_eq!(
             overlays
                 .iter()

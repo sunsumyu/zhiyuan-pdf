@@ -35,10 +35,10 @@ use crate::editor::editor_store;
 use crate::editor::editor_types::SessionState as EditorSessionState;
 use crate::find::find_store;
 use crate::find::find_store::FindSessionState;
-use crate::presentation::page_turn::{read_page_turn_snapshot, PageTurnSnapshot};
+use crate::presentation::page_turn::{read_snapshot as read_page_turn_snapshot, PageTurnSnapshot};
 use crate::review::review_api::{read_review_state, ReviewSessionState};
 use crate::viewer::viewer_store::{read_viewer_state, ViewerSessionState};
-use crate::zoom::zoom_store::{read_zoom_session_state, ZoomSessionState};
+use crate::zoom::zoom_store::{read_session_state as read_zoom_session_state, ZoomSessionState};
 
 // ── Aggregated state snapshot ───────────────────────────────────
 

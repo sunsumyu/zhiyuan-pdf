@@ -183,6 +183,31 @@ impl LayoutRun {
             object_indices: vec![run.z_index],
         }
     }
+    /// Clone and clear geometry/metadata fields for use as a style template.
+    /// - preserve_char_geometry: keep char_origins and char_widths (for preserved runs).
+    /// - preserve_underline: keep the underline flag (otherwise clear it).
+    /// - sanitize_style: normalize scale_x to 1.0 if invalid.
+    pub fn cleared_style(&self, preserve_char_geometry: bool, preserve_underline: bool, sanitize_style: bool) -> Self {
+        let mut c = self.clone();
+        if !preserve_char_geometry {
+            c.char_origins.clear();
+            c.char_widths.clear();
+        }
+        if !preserve_underline {
+            c.style.is_underline = false;
+        }
+        c.object_ids.clear();
+        c.object_indices.clear();
+        c.origin_x = 0.0;
+        c.origin_y = 0.0;
+        c.bbox = BoundingBox::default();
+        if sanitize_style {
+            if !c.style.scale_x.is_finite() || c.style.scale_x < 0.5 || c.style.scale_x > 2.0 {
+                c.style.scale_x = 1.0;
+            }
+        }
+        c
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]

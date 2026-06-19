@@ -4,8 +4,8 @@
 use pdf_viewer_core::models::LayoutRun;
 // 重新导出 core 提供的纯计算 API，保持 ui 内的旧调用路径不变。
 pub use pdf_viewer_core::text::caret_geometry::{
-    caret_index_at_page_point, resolve_index, caret_visual_for_session,
-    caret_visual_for_session_plan, resolve_caret_index_from_lines, resolve_navigation_from_lines,
+    caret_index_at_page_point, resolve_index, session_caret_visual,
+    session_plan_caret_visual, resolve_caret_index_from_lines, resolve_navigation_from_lines,
     CaretLine, CaretStop, EditorCaretVisualPosition,
 };
 
@@ -18,7 +18,7 @@ use crate::editor::debug_trace::{
 use crate::editor::draft_layout::build_draft_render_plan;
 use crate::editor::session::ActiveEditorTarget;
 
-pub fn measure_editor_layout_text_width(
+pub fn measure_text_width(
     ctx: &CanvasRenderingContext2d,
     text: &str,
     run: &LayoutRun,
@@ -149,7 +149,7 @@ fn build_unified_draft_caret_lines(
     let document_plan = &active_target.scene.document_plan;
     let ctx = create_measure_context()?;
     let render_plan = build_draft_render_plan(document_plan, draft_text, |text, run| {
-        measure_editor_layout_text_width(&ctx, text, run)
+        measure_text_width(&ctx, text, run)
     });
     Some(convert_render_plan_caret_lines(render_plan))
 }
@@ -248,7 +248,7 @@ fn resolve_caret_visual_from_draft(
     caret_index: usize,
 ) -> EditorCaretVisualPosition {
     let Some(lines) = build_draft_caret_lines(active_target, draft_text) else {
-        return caret_visual_for_session_plan(
+        return session_plan_caret_visual(
             &active_target.scene.body_session,
             &active_target.scene.document_plan.body_text_plan,
             caret_index,
@@ -305,7 +305,7 @@ pub fn move_caret_by_key(
     }
 }
 
-pub fn active_caret_index_at_page_point(
+pub fn caret_at_page_point(
     active_target: &ActiveEditorTarget,
     draft_text: &str,
     page_x: f32,
@@ -330,7 +330,7 @@ pub fn active_caret_index_at_page_point(
     resolve_caret_index_for_draft_point(active_target, draft_text, page_x, page_y)
 }
 
-pub fn active_caret_index_at_shell_point(
+pub fn caret_at_shell_point(
     active_target: &ActiveEditorTarget,
     draft_text: &str,
     shell_x: f32,
@@ -357,5 +357,5 @@ pub fn active_caret_index_at_shell_point(
             dbg_field("pageY", page_y),
         ],
     );
-    active_caret_index_at_page_point(active_target, draft_text, page_x, page_y)
+    caret_at_page_point(active_target, draft_text, page_x, page_y)
 }

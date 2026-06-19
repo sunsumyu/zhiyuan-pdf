@@ -101,7 +101,7 @@ pub async fn read_vector(
     PageAssetAdmissionService::apply_test_delay().await;
 
     let mut model = PdfPageIntermediateService::resolve_vector_page_model(
-        state.clone(),
+        &state,
         path.clone(),
         page_index,
         target_zoom.unwrap_or(1.0),
@@ -144,7 +144,7 @@ pub async fn read_glyph_plan(
     PageAssetAdmissionService::apply_test_delay().await;
 
     let plan = PdfPageIntermediateService::resolve_glyph_paint_plan(
-        state.clone(),
+        &state,
         path.clone(),
         page_index,
         document_revision,
@@ -242,7 +242,7 @@ pub async fn diagnose_page(
     };
 
     let (objects_count, text_runs_count, page_w, page_h, resolve_err) =
-        match PdfPageIntermediateService::resolve_page_display_list_from_app_state(
+        match PdfPageIntermediateService::resolve_page_display_list(
             &state,
             path.clone(),
             page_index,

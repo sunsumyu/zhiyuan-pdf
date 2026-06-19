@@ -1,7 +1,7 @@
 //! 段落编辑器场景 — 数据结构与构建函数。
 
 use crate::edit::document_plan::{
-    build_editor_document_plan, build_editor_document_plan_for_target, EditorDocumentPlan,
+    from_paragraph, from_target_id, EditContext,
     ParagraphEditorMarker,
 };
 use crate::models::{
@@ -18,7 +18,7 @@ pub struct ParagraphEditorScene {
     #[serde(default)]
     pub base_paragraph_id: String,
     pub shell_bbox: BoundingBox,
-    pub document_plan: EditorDocumentPlan,
+    pub document_plan: EditContext,
     pub body_text: String,
     pub body_session: ParagraphEditContext,
     #[serde(default)]
@@ -35,7 +35,7 @@ impl Default for ParagraphEditorScene {
             target_id: String::new(),
             base_paragraph_id: String::new(),
             shell_bbox: BoundingBox::default(),
-            document_plan: EditorDocumentPlan::default(),
+            document_plan: EditContext::default(),
             body_text: String::new(),
             body_session: ParagraphEditContext {
                 anchor_bbox: BoundingBox::default(),
@@ -48,9 +48,9 @@ impl Default for ParagraphEditorScene {
     }
 }
 
-/// 从 EditorDocumentPlan 构造 ParagraphEditorScene（纯数据组装，无副作用）。
+/// 从 EditContext 构造 ParagraphEditorScene（纯数据组装，无副作用）。
 pub fn paragraph_editor_scene_from_plan(
-    document_plan: EditorDocumentPlan,
+    document_plan: EditContext,
 ) -> Option<ParagraphEditorScene> {
     Some(ParagraphEditorScene {
         target_id: document_plan.target_id.clone(),
@@ -70,18 +70,18 @@ pub fn build_paragraph_editor_scene(
     vector_model: Option<&VectorPageModel>,
     click_page_point: Option<(f32, f32)>,
 ) -> Option<ParagraphEditorScene> {
-    let document_plan: EditorDocumentPlan =
-        build_editor_document_plan(paragraph, vector_model, click_page_point)?;
+    let document_plan: EditContext =
+        from_paragraph(paragraph, vector_model, click_page_point)?;
     paragraph_editor_scene_from_plan(document_plan)
 }
 
-pub fn build_paragraph_editor_scene_for_target(
+pub fn build_target_scene(
     paragraph: &GlyphPaintParagraph,
     vector_model: Option<&VectorPageModel>,
     target_id: &str,
     click_page_point: Option<(f32, f32)>,
 ) -> Option<ParagraphEditorScene> {
-    let document_plan: EditorDocumentPlan = build_editor_document_plan_for_target(
+    let document_plan: EditContext = from_target_id(
         paragraph,
         vector_model,
         target_id,

@@ -3,7 +3,7 @@ use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
 use crate::editor::orchestrator::replace_pipeline::{
-    apply_region_text_replacements_tx, RegionTextReplaceRequest,
+    apply_replacements_tx, RegionTextReplaceRequest,
 };
 use crate::find::host_find_store::{
     clear_find_session, move_find_match, read_find_session, set_find_session, HostFindScope,
@@ -127,7 +127,7 @@ pub fn facade_replace(request_js: JsValue) -> JsValue {
         Ok(r) => r,
         Err(_) => return JsValue::NULL,
     };
-    let replace_result = apply_region_text_replacements_tx(
+    let replace_result = apply_replacements_tx(
         vec![RegionTextReplaceRequest {
             page_index: request.page_index,
             region_id: request.region_id,

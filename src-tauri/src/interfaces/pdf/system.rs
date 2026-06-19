@@ -4,23 +4,23 @@ use crate::infrastructure::pdf::engine::PdfDocumentService;
 use tauri::command;
 
 #[command]
-pub fn create_demo_pdf(path: String) -> Result<String, String> {
-    PdfDocumentService::generate_demo_pdf(&path)
+pub fn create_demo(path: String) -> Result<String, String> {
+    PdfDocumentService::generate_demo(&path)
 }
 
 #[command]
 pub fn set_log_level(level: u8) {
-    crate::infrastructure::pdf::log_service::set_pdf_log_level(level);
+    crate::infrastructure::pdf::log_service::set_log_level(level);
 }
 
 #[command]
-pub fn clear_pdf_event_log() {
-    crate::infrastructure::pdf::log_service::clear_pdf_event_log();
+pub fn clear_event_log() {
+    crate::infrastructure::pdf::log_service::clear_event_log();
 }
 
 #[command]
-pub fn read_pdf_event_log() -> Vec<String> {
-    crate::infrastructure::pdf::log_service::read_pdf_event_log()
+pub fn read_event_log() -> Vec<String> {
+    crate::infrastructure::pdf::log_service::read_event_log()
 }
 
 #[command]

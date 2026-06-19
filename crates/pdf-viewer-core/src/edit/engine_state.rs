@@ -91,7 +91,7 @@ fn derive_next_marker_text(
 impl LiveEditorParagraphState {
     pub fn new(target: ActiveEditorTarget) -> Self {
         let source_text = target.source_body_text().to_string();
-        let style_mapper = StyleMapper::new_from_paragraph_for_text(
+        let style_mapper = StyleMapper::from_paragraph_text(
             &target.scene.body_session.paragraph,
             &source_text,
         );
@@ -195,7 +195,7 @@ impl LiveEditorParagraphState {
         let changed = self.text_model.set_current_text(new_text);
         if changed {
             self.style_mapper
-                .update_with_text(self.text_model.current_text());
+                .update_text(self.text_model.current_text());
             self.normalize_caret();
             self.sync_target_control_style();
             self.selection_start = None;
@@ -419,12 +419,12 @@ impl LiveEditorParagraphState {
         true
     }
 
-    pub fn restore_list_kind_from_marker_text(&mut self, marker_text: &str) {
+    pub fn restore_list_kind(&mut self, marker_text: &str) {
         let restored_kind = derive_list_text_semantics(marker_text).kind;
         self.list_kind = restored_kind;
     }
 
-    pub fn resolved_marker_text_for_patch(&self) -> Option<String> {
+    pub fn resolved_marker_text(&self) -> Option<String> {
         let source_marker_text = self
             .target
             .scene
@@ -443,7 +443,7 @@ impl LiveEditorParagraphState {
         }
     }
 
-    pub fn source_marker_text_for_patch(&self) -> Option<&str> {
+    pub fn source_marker_text(&self) -> Option<&str> {
         self.target
             .scene
             .marker

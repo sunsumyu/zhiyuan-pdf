@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{BoundingBox, GlyphPaintPlan, VectorPageModel, VectorRenderObject};
-use crate::render::viewport_culling::{path_object_bbox, styled_run_bbox};
+use crate::render::viewport_culling::{path_bbox, run_bbox};
 
 const DEFAULT_BUCKET_SIZE_POINTS: f32 = 96.0;
 
@@ -118,7 +118,7 @@ fn vector_object_bbox(object: &VectorRenderObject) -> Option<BoundingBox> {
         VectorRenderObject::Text(text) => {
             let mut merged: Option<BoundingBox> = None;
             for run in &text.runs {
-                let bbox = styled_run_bbox(run);
+                let bbox = run_bbox(run);
                 merged = Some(match merged {
                     Some(current) => BoundingBox {
                         left: current.left.min(bbox.left),
@@ -131,7 +131,7 @@ fn vector_object_bbox(object: &VectorRenderObject) -> Option<BoundingBox> {
             }
             merged
         }
-        VectorRenderObject::Path(path) => path_object_bbox(path),
+        VectorRenderObject::Path(path) => path_bbox(path),
         VectorRenderObject::Image(image) => Some(BoundingBox {
             left: image.x,
             top: image.y,

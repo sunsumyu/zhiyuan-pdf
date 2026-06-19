@@ -87,31 +87,26 @@ persistence/ patch, history, write_plan
 
 ## 4. 命名规范
 
-源自 `origin/pdf-engine-naming-guide.md`：
+详见 [naming-conventions.md](naming-conventions.md)。
 
-### Rust 函数前缀
+### 核心要点
 
 | 前缀 | 含义 |
 |------|------|
-| `build_*` | 创建无副作用的值 |
+| `from_xxx` | 从 xxx 输入构造（Rust API Guidelines） |
+| `with_xxx` | 非 builder 类型带配置 |
+| `read_*` | 查询状态或 IO 数据 |
 | `find_*` | 返回 `Option<T>` |
 | `resolve_*` | 由输入 + 回退规则导出决定 |
-| `sync_*` | 跨边界拷贝状态 |
-| `set_*` | 单字段变更 |
-| `open_*` / `close_*` / `save_*` / `commit_*` / `undo_*` / `redo_*` | 用例动作 |
+| `build_*` | 无副作用纯值构造 |
+| `is_*` / `has_*` / `should_*` | 返回 bool |
 
 ### 禁止模式
 
+- 介词后缀：`xxx_for_yyy` ❌ → `from_yyy` ✅
 - 边界词堆叠：`runtime_workflow_action_host` ❌
-- 历史标签污染：`v19`、`audit`、`sovereign`（除临时日志 tag）❌
-- 描述重构过程而非用途：`migrated_open_editor` ❌
-- 仅以 `runtime`/`workflow`/`host` 区分的一次性包装函数 ❌
-- `utils`/`helper`/`manager`/`misc` 模块（除明确临时）❌
-
-### TS 命名
-
-- 文件名按宿主能力（`dom_*`、`canvas_*`、`wasm_client`、`panel_*`），不按历史补丁
-- TS 中**不出现** `layout engine`、`glyph`、`font resolver` 等领域词
+- 历史标签污染：`v19`、`audit`、`sovereign` ❌
+- `utils`/`helper`/`manager`/`misc` 模块 ❌
 
 ---
 

@@ -3,12 +3,12 @@ use crate::zoom::zoom_controller::{
 };
 use crate::zoom::zoom_store::{self, PendingCommittedFrame};
 
-pub fn reset_zoom_preview_host(target_zoom: f32) {
+pub fn reset_preview(target_zoom: f32) {
     mark_rendered_zoom(target_zoom);
-    clear_zoom_preview_host_state(false);
+    clear_preview_state(false);
 }
 
-pub fn clear_zoom_preview_host_state(clear_pending_anchor: bool) {
+pub fn clear_preview_state(clear_pending_anchor: bool) {
     zoom_store::with_zoom_state_mut(|state| {
         state.preview_transform = None;
         state.preview_host = Default::default();
@@ -18,7 +18,7 @@ pub fn clear_zoom_preview_host_state(clear_pending_anchor: bool) {
     }
 }
 
-pub fn settle_zoom_preview_at_target() {
+pub fn settle_at_target() {
     zoom_store::with_zoom_state_mut(|state| {
         let target_zoom = if state.target_zoom.is_finite() && state.target_zoom > 0.0 {
             state.target_zoom
@@ -36,7 +36,7 @@ pub fn settle_zoom_preview_at_target() {
     });
 }
 
-pub fn set_wheel_render_pending(pending: bool) {
+pub fn set_pending(pending: bool) {
     zoom_store::with_zoom_state_mut(|state| {
         state.preview_host.wheel_render_pending = pending;
     });
@@ -52,7 +52,7 @@ pub fn is_preview_active() -> bool {
     zoom_store::with_zoom_state(|state| state.preview_host.preview_active)
 }
 
-pub fn is_wheel_render_pending() -> bool {
+pub fn is_pending() -> bool {
     zoom_store::with_zoom_state(|state| state.preview_host.wheel_render_pending)
 }
 
@@ -62,7 +62,7 @@ pub fn queue_committed_frame(frame_plan: &PendingCommittedFrame) {
     });
 }
 
-pub fn take_ready_committed_frame() -> Option<PendingCommittedFrame> {
+pub fn take_frame() -> Option<PendingCommittedFrame> {
     let zoom_state = read_zoom_state();
     if (zoom_state.target_zoom - zoom_state.visual_zoom).abs() >= 0.001 {
         return None;

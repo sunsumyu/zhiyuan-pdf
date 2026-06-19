@@ -37,7 +37,7 @@ pub enum EditorFormatAction {
     SetListKind { list_kind: String },
 }
 
-fn build_active_editor_format_state(
+fn build_format_state(
     live_state: &crate::editor::engine_state::LiveEditorParagraphState,
     changed: bool,
 ) -> ActiveEditorFormatState {
@@ -97,73 +97,73 @@ fn parse_list_kind(value: &str) -> Option<ListMarkerKind> {
     }
 }
 
-pub fn toggle_active_editor_bold() -> ActiveEditorFormatState {
+pub fn toggle_bold() -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let changed = live_state.toggle_bold_all();
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn toggle_active_editor_italic() -> ActiveEditorFormatState {
+pub fn toggle_italic() -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let changed = live_state.toggle_italic_all();
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn toggle_active_editor_underline() -> ActiveEditorFormatState {
+pub fn toggle_underline() -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let changed = live_state.toggle_underline_all();
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn set_active_editor_color(color: &str) -> ActiveEditorFormatState {
+pub fn set_color(color: &str) -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let changed = live_state.set_color_all(color);
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn set_active_editor_font_family(font_family: &str) -> ActiveEditorFormatState {
+pub fn set_font_family(font_family: &str) -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let changed = live_state.set_font_family_all(font_family);
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn set_active_editor_font_size(font_size: f32) -> ActiveEditorFormatState {
+pub fn set_font_size(font_size: f32) -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let changed = live_state.set_font_size_all(font_size);
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn step_active_editor_font_size(increase: bool) -> ActiveEditorFormatState {
+pub fn step_font_size(increase: bool) -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
@@ -171,101 +171,101 @@ pub fn step_active_editor_font_size(increase: bool) -> ActiveEditorFormatState {
         };
         let next_size = resolve_font_size_step(live_state.active_font_size(), increase);
         let changed = live_state.set_font_size_all(next_size);
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn set_active_editor_char_spacing(char_spacing: f32) -> ActiveEditorFormatState {
+pub fn set_char_spacing(char_spacing: f32) -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let changed = live_state.set_char_spacing_all(char_spacing);
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn set_active_editor_line_height(line_height: f32) -> ActiveEditorFormatState {
+pub fn set_line_height(line_height: f32) -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let changed = live_state.set_line_height(line_height);
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn set_active_editor_paragraph_mode(mode: &str) -> ActiveEditorFormatState {
+pub fn set_paragraph_mode(mode: &str) -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|editor_mode| {
         let mut editor_mode = editor_mode.borrow_mut();
         let Some(live_state) = editor_mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let changed = live_state.set_paragraph_mode(mode);
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn set_active_editor_alignment(alignment: &str) -> ActiveEditorFormatState {
+pub fn set_alignment(alignment: &str) -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let Some(next_alignment) = parse_alignment(alignment) else {
-            return build_active_editor_format_state(live_state, false);
+            return build_format_state(live_state, false);
         };
         let changed = live_state.set_alignment(next_alignment);
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn set_active_editor_list_kind(list_kind: &str) -> ActiveEditorFormatState {
+pub fn set_list_kind(list_kind: &str) -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
             return ActiveEditorFormatState::default();
         };
         let Some(next_list_kind) = parse_list_kind(list_kind) else {
-            return build_active_editor_format_state(live_state, false);
+            return build_format_state(live_state, false);
         };
         let changed = live_state.set_list_kind(next_list_kind);
-        build_active_editor_format_state(live_state, changed)
+        build_format_state(live_state, changed)
     })
 }
 
-pub fn active_editor_format_state() -> ActiveEditorFormatState {
+pub fn format_state() -> ActiveEditorFormatState {
     crate::editor::session::EDITOR_MODE_STATE.with(|mode| {
         let mode = mode.borrow();
         let Some(live_state) = mode.live_state.as_ref() else {
             return ActiveEditorFormatState::default();
         };
-        build_active_editor_format_state(live_state, false)
+        build_format_state(live_state, false)
     })
 }
 
-pub fn apply_active_editor_format_action(action: EditorFormatAction) -> ActiveEditorFormatState {
+pub fn apply_format(action: EditorFormatAction) -> ActiveEditorFormatState {
     match action {
-        EditorFormatAction::ToggleBold => toggle_active_editor_bold(),
-        EditorFormatAction::ToggleItalic => toggle_active_editor_italic(),
-        EditorFormatAction::ToggleUnderline => toggle_active_editor_underline(),
-        EditorFormatAction::IncreaseFontSize => step_active_editor_font_size(true),
-        EditorFormatAction::DecreaseFontSize => step_active_editor_font_size(false),
-        EditorFormatAction::SetParagraphMode { mode } => set_active_editor_paragraph_mode(&mode),
-        EditorFormatAction::SetColor { color } => set_active_editor_color(&color),
+        EditorFormatAction::ToggleBold => toggle_bold(),
+        EditorFormatAction::ToggleItalic => toggle_italic(),
+        EditorFormatAction::ToggleUnderline => toggle_underline(),
+        EditorFormatAction::IncreaseFontSize => step_font_size(true),
+        EditorFormatAction::DecreaseFontSize => step_font_size(false),
+        EditorFormatAction::SetParagraphMode { mode } => set_paragraph_mode(&mode),
+        EditorFormatAction::SetColor { color } => set_color(&color),
         EditorFormatAction::SetFontFamily { font_family } => {
-            set_active_editor_font_family(&font_family)
+            set_font_family(&font_family)
         }
-        EditorFormatAction::SetFontSize { font_size } => set_active_editor_font_size(font_size),
+        EditorFormatAction::SetFontSize { font_size } => set_font_size(font_size),
         EditorFormatAction::SetCharSpacing { char_spacing } => {
-            set_active_editor_char_spacing(char_spacing)
+            set_char_spacing(char_spacing)
         }
         EditorFormatAction::SetLineHeight { line_height } => {
-            set_active_editor_line_height(line_height)
+            set_line_height(line_height)
         }
-        EditorFormatAction::SetAlignment { alignment } => set_active_editor_alignment(&alignment),
-        EditorFormatAction::SetListKind { list_kind } => set_active_editor_list_kind(&list_kind),
+        EditorFormatAction::SetAlignment { alignment } => set_alignment(&alignment),
+        EditorFormatAction::SetListKind { list_kind } => set_list_kind(&list_kind),
     }
 }

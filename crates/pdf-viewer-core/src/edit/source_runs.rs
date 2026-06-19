@@ -7,10 +7,10 @@ use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::geometry::bbox_ops::{bbox_height, bbox_width};
-use crate::geometry::source_geometry::{source_run_visual_bbox, source_visual_bbox_from_runs};
+use crate::geometry::source_geometry::{compute_run_bbox, compute_bbox_from_runs};
 use crate::common::debug::truncate_debug_text;
 
-pub fn original_paint_runs_for_target(
+pub fn target_paint_runs(
     paragraph: &GlyphPaintParagraph,
     body_session: &ParagraphEditContext,
     target: &crate::edit::edit_target::EditorEditTarget,
@@ -143,7 +143,7 @@ pub fn resolve_preferred_editor_session(
         }
     };
 
-    let anchor_bbox = source_visual_bbox_from_runs(&exact_runs).unwrap_or_else(|| {
+    let anchor_bbox = compute_bbox_from_runs(&exact_runs).unwrap_or_else(|| {
         exact_runs.iter().fold(
             BoundingBox {
                 left: f32::INFINITY,
@@ -292,7 +292,7 @@ fn expand_bbox(bbox: BoundingBox, x_pad: f32, y_pad: f32) -> BoundingBox {
 }
 
 fn vector_run_matches_paragraph_geometry(run: &LayoutRun, target_bbox: BoundingBox) -> bool {
-    let run_bbox = source_run_visual_bbox(run).unwrap_or(run.bbox);
+    let run_bbox = compute_run_bbox(run).unwrap_or(run.bbox);
     let run_height = bbox_height(&run_bbox).max(run.style.font_size.max(1.0));
     let vertical_overlap = bbox_intersection_height(run_bbox, target_bbox);
     if vertical_overlap < (run_height.min(bbox_height(&target_bbox).max(1.0)) * 0.25).max(0.8) {

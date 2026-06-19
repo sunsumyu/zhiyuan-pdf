@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 use crate::document::patch_persistence::has_persistable_patches;
 use crate::editor::debug_trace::{resolve_editor_debug_trace, EditorDebugTraceEvent};
 use crate::editor::host_runtime::read_state as get_editor_host_state;
-use crate::editor::mode::is_text_edit_mode_enabled;
-use crate::editor::mode::read_active_editor_state;
+use crate::editor::mode::is_edit_enabled;
+use crate::editor::mode::read_state;
 use crate::editor::projection::{
-    project_active_editor_shell, project_paragraph_interaction_targets, ProjectedEditorShell,
+    project_shell, project_targets, ProjectedEditorShell,
     ProjectedParagraphInteractionTarget,
 };
 use crate::zoom::zoom_controller::read_zoom_state;
@@ -85,10 +85,10 @@ fn resolve_editor_projection_zoom(requested_display_zoom: f32) -> f32 {
     sanitize_projection_zoom(requested_display_zoom, runtime_zoom)
 }
 
-pub fn resolve_editor_host_snapshot(display_zoom: f32) -> EditorHostSnapshot {
+pub fn resolve_snapshot(display_zoom: f32) -> EditorHostSnapshot {
     let projection_zoom = resolve_editor_projection_zoom(display_zoom);
-    let enabled = is_text_edit_mode_enabled();
-    let active_state = read_active_editor_state();
+    let enabled = is_edit_enabled();
+    let active_state = read_state();
     let page_height = crate::page::page_store::with_page_state(|state| {
         state
             .vector_model
@@ -99,12 +99,12 @@ pub fn resolve_editor_host_snapshot(display_zoom: f32) -> EditorHostSnapshot {
     });
 
     let active_target = if enabled {
-        project_active_editor_shell(projection_zoom, page_height)
+        project_shell(projection_zoom, page_height)
     } else {
         None
     };
     let targets = if enabled {
-        project_paragraph_interaction_targets(projection_zoom, page_height)
+        project_targets(projection_zoom, page_height)
     } else {
         Vec::new()
     };
@@ -116,14 +116,14 @@ pub fn resolve_editor_host_snapshot(display_zoom: f32) -> EditorHostSnapshot {
             .as_ref()
             .map(|state| state.current_text().to_string()),
         caret_index: active_state.map(|state| state.caret_index).unwrap_or(0),
-        diagnostics: resolve_active_editor_diagnostics(),
+        diagnostics: resolve_diagnostics(),
         targets,
         has_persistable_patches: has_persistable_patches(),
     }
 }
 
-pub fn resolve_active_editor_diagnostics() -> Option<ActiveEditorDiagnostics> {
-    let active_state = read_active_editor_state()?;
+pub fn resolve_diagnostics() -> Option<ActiveEditorDiagnostics> {
+    let active_state = read_state()?;
     let target = active_state.target.clone();
     let text_plan = target.scene.document_plan.body_text_plan.clone();
     let initial_caret_index = target.initial_body_caret_index();

@@ -7,7 +7,7 @@ use crate::editor::engine_state::LiveEditorParagraphState;
 use crate::editor::session::history::LocalEditHistory;
 use crate::style_mapper::StyleMapper;
 use crate::ui_state_store::{
-    current_paragraph_patch, current_paragraph_patch_text, current_patch_revision,
+    current_paragraph_patch, patch_text as current_paragraph_patch_text, current_patch_revision,
 };
 use crate::viewer::viewer_store::current_document_revision;
 use serde::{Deserialize, Serialize};
@@ -58,17 +58,17 @@ pub fn reset_editor_mode() {
     });
 }
 
-pub fn is_text_edit_enabled() -> bool {
+pub fn is_edit_enabled() -> bool {
     EDITOR_MODE_STATE.with(|mode| mode.borrow().text_edit_enabled)
 }
 
-pub fn set_text_edit_enabled(enabled: bool) {
+pub fn set_edit_enabled(enabled: bool) {
     EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         mode.text_edit_enabled = enabled;
         if !enabled {
             // 不变量保护：到这一步 live_state 必须已经被上层 commit 过了
-            // （见 host_mode.rs 的 set_text_edit_mode / toggle_text_edit_mode）。
+            // （见 host_mode.rs 的 set_edit_mode / toggle_edit_mode）。
             // 若仍有 live_state，说明有路径绕过了 commit，记录 warning 便于定位。
             if mode.live_state.is_some() {
                 crate::chain_trace!(
@@ -83,11 +83,11 @@ pub fn set_text_edit_enabled(enabled: bool) {
     });
 }
 
-pub fn active_edit_paragraph_id() -> Option<String> {
+pub fn paragraph_id() -> Option<String> {
     EDITOR_MODE_STATE.with(|mode| mode.borrow().active_paragraph_id.clone())
 }
 
-pub fn set_active_edit_paragraph(paragraph_id: Option<String>) {
+pub fn set_paragraph(paragraph_id: Option<String>) {
     EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         mode.active_paragraph_id = paragraph_id;
@@ -108,10 +108,10 @@ mod tests {
     #[test]
     fn starts_disabled() {
         reset_editor_mode();
-        assert!(!is_text_edit_enabled());
+        assert!(!is_edit_enabled());
 
-        set_text_edit_enabled(true);
-        assert!(is_text_edit_enabled());
+        set_edit_enabled(true);
+        assert!(is_edit_enabled());
     }
 }
 
@@ -132,11 +132,11 @@ pub fn open_paragraph_editor(paragraph_id: String, target: ActiveEditorTarget) -
         }
         let initial_caret = target.initial_body_caret_index();
         let source_text = target.source_body_text().to_string();
-        let current_text = current_paragraph_patch_text(&paragraph_id);
+        let maybe_text = current_paragraph_patch_text(&paragraph_id);
         let current_patch = current_paragraph_patch(&paragraph_id);
         let mut live_state = LiveEditorParagraphState::new(target);
-        if let Some(current_text) = current_text.as_ref() {
-            let _ = live_state.set_draft_text(current_text.clone());
+        if let Some(text) = maybe_text.as_ref() {
+            let _ = live_state.set_draft_text(text.clone());
         }
         if let Some(patch) = current_patch.as_ref() {
             if let Some(new_runs) = patch.new_runs.as_ref() {
@@ -156,7 +156,7 @@ pub fn open_paragraph_editor(paragraph_id: String, target: ActiveEditorTarget) -
                 let _ = live_state.set_alignment(align);
             }
             if let Some(new_marker_text) = patch.new_marker_text.as_deref() {
-                live_state.restore_list_kind_from_marker_text(new_marker_text);
+                live_state.restore_list_kind(new_marker_text);
             }
         }
         live_state.mark_session_clean();
@@ -175,7 +175,7 @@ pub fn open_paragraph_editor(paragraph_id: String, target: ActiveEditorTarget) -
                 dbg_field("sourceText", source_text),
                 dbg_field(
                     "currentText",
-                    current_text.unwrap_or_else(|| "source".to_string()),
+                    maybe_text.clone().unwrap_or_default(),
                 ),
                 dbg_field(
                     "liveColor",
@@ -213,11 +213,11 @@ pub fn close_active_editor() {
     });
 }
 
-pub fn active_editor_draft_text() -> Option<String> {
+pub fn draft_text() -> Option<String> {
     active_editor_state().map(|state| state.current_text().to_string())
 }
 
-pub fn active_editor_has_session_changes() -> bool {
+pub fn has_changes() -> bool {
     EDITOR_MODE_STATE.with(|mode| {
         mode.borrow()
             .live_state
@@ -227,13 +227,13 @@ pub fn active_editor_has_session_changes() -> bool {
     })
 }
 
-pub fn active_editor_caret_index() -> usize {
+pub fn caret_index() -> usize {
     active_editor_state()
         .map(|state| state.caret_index)
         .unwrap_or(0)
 }
 
-pub fn set_active_editor_caret_index(caret_index: usize) -> bool {
+pub fn set_caret(caret_index: usize) -> bool {
     EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
@@ -262,7 +262,7 @@ pub fn set_active_editor_caret_index(caret_index: usize) -> bool {
     })
 }
 
-pub fn set_active_editor_selection(start: usize, end: usize) -> bool {
+pub fn set_selection(start: usize, end: usize) -> bool {
     EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
@@ -272,7 +272,7 @@ pub fn set_active_editor_selection(start: usize, end: usize) -> bool {
     })
 }
 
-pub fn clear_active_editor_selection() -> bool {
+pub fn clear_selection() -> bool {
     EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let Some(live_state) = mode.live_state.as_mut() else {
@@ -292,7 +292,7 @@ pub fn active_editor_selection() -> Option<(usize, usize, String)> {
     })
 }
 
-pub fn sync_active_editor_input(
+pub fn sync_input(
     new_text: String,
     caret_index: usize,
 ) -> ActiveEditorInputSyncResult {
@@ -417,4 +417,60 @@ pub fn render_scene_key() -> String {
             ),
         }
     })
+}
+
+// ───────────────────────── deprecated aliases for P1 migration ──────────────────
+#[deprecated(note = "renamed to `is_edit_enabled`")]
+pub fn is_text_edit_enabled() -> bool {
+    is_edit_enabled()
+}
+
+#[deprecated(note = "renamed to `set_edit_enabled`")]
+pub fn set_text_edit_enabled(enabled: bool) {
+    set_edit_enabled(enabled)
+}
+
+#[deprecated(note = "renamed to `paragraph_id`")]
+pub fn active_edit_paragraph_id() -> Option<String> {
+    paragraph_id()
+}
+
+#[deprecated(note = "renamed to `set_paragraph`")]
+pub fn set_active_edit_paragraph(paragraph_id: Option<String>) {
+    set_paragraph(paragraph_id)
+}
+
+#[deprecated(note = "renamed to `draft_text`")]
+pub fn active_editor_draft_text() -> Option<String> {
+    draft_text()
+}
+
+#[deprecated(note = "renamed to `has_changes`")]
+pub fn active_editor_has_session_changes() -> bool {
+    has_changes()
+}
+
+#[deprecated(note = "renamed to `caret_index`")]
+pub fn active_editor_caret_index() -> usize {
+    caret_index()
+}
+
+#[deprecated(note = "renamed to `set_caret`")]
+pub fn set_active_editor_caret_index(caret_index: usize) -> bool {
+    set_caret(caret_index)
+}
+
+#[deprecated(note = "renamed to `set_selection`")]
+pub fn set_active_editor_selection(start: usize, end: usize) -> bool {
+    set_selection(start, end)
+}
+
+#[deprecated(note = "renamed to `clear_selection`")]
+pub fn clear_active_editor_selection() -> bool {
+    clear_selection()
+}
+
+#[deprecated(note = "renamed to `sync_input`")]
+pub fn sync_active_editor_input(new_text: String, caret_index: usize) -> ActiveEditorInputSyncResult {
+    sync_input(new_text, caret_index)
 }

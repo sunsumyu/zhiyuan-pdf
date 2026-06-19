@@ -3,7 +3,7 @@
 use crate::edit::replacement_region::ParagraphReplacementRegion;
 use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{BoundingBox, VectorImageObject, VectorRenderObject};
-use crate::render::viewport_culling::path_object_bbox;
+use crate::render::viewport_culling::path_bbox;
 
 pub fn should_suppress(
     object: &VectorRenderObject,
@@ -12,7 +12,7 @@ pub fn should_suppress(
 ) -> Option<String> {
     match object {
         VectorRenderObject::Path(path) => {
-            let path_bbox = path_object_bbox(path)?;
+            let path_bbox = path_bbox(path)?;
             let stroke_pad = if path.stroke {
                 (path.stroke_width.max(0.0) * 0.5).max(0.5)
             } else {
@@ -173,7 +173,7 @@ fn row_overlap_height(
 mod tests {
     use super::should_suppress;
     use crate::edit::active_target::ActiveEditorTarget;
-    use crate::edit::replacement_region::paragraph_replacement_region;
+    use crate::edit::replacement_region::build_region;
     use crate::models::{
         BoundingBox, LayoutParagraph, ParagraphEditContext, VectorImageObject, VectorRenderObject,
     };
@@ -212,8 +212,8 @@ mod tests {
     #[test]
     fn suppresses_thin_decoration() {
         let target = replacement_target();
-        let region = paragraph_replacement_region(&target);
-        let suppression_bbox = region.row_path_suppression_bbox_for_page_width(420.0);
+        let region = build_region(&target);
+        let suppression_bbox = region.row_suppression_bbox(420.0);
         let object = row_image("blue-image-row", 101.0, 8.0);
 
         assert!(should_suppress(
@@ -227,8 +227,8 @@ mod tests {
     #[test]
     fn keeps_normal_image() {
         let target = replacement_target();
-        let region = paragraph_replacement_region(&target);
-        let suppression_bbox = region.row_path_suppression_bbox_for_page_width(420.0);
+        let region = build_region(&target);
+        let suppression_bbox = region.row_suppression_bbox(420.0);
         let object = row_image("normal-image", 96.0, 42.0);
 
         assert!(should_suppress(

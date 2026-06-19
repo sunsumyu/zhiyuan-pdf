@@ -82,35 +82,28 @@ impl HostPageTransform {
         }
     }
 
-    pub fn client_to_page(&self, point: ClientPoint) -> PageViewPoint {
+    /// 将 client 坐标转换为 page 坐标。
+    /// `clamp_box` 可选，提供时将结果限制在指定边界框内。
+    pub fn to_page(&self, point: ClientPoint, clamp_box: Option<BoundingBox>) -> PageViewPoint {
         let scale = self.scale();
-        PageViewPoint {
+        let mut result = PageViewPoint {
             x: (point.x - self.reference.left) / scale.x,
             y: (point.y - self.reference.top) / scale.y,
+        };
+        if let Some(bbox) = clamp_box {
+            let box_width = (bbox.right - bbox.left).max(1.0);
+            let box_height = (bbox.bottom - bbox.top).max(1.0);
+            let scale_x = positive_ratio(self.reference.width, box_width);
+            let scale_y = positive_ratio(self.reference.height, box_height);
+            result.x = bbox.left + ((point.x - self.reference.left) / scale_x).clamp(0.0, box_width);
+            result.y = bbox.top + ((point.y - self.reference.top) / scale_y).clamp(0.0, box_height);
         }
+        result
     }
 
-    pub fn client_to_page_in_box(
-        &self,
-        point: ClientPoint,
-        page_box: BoundingBox,
-    ) -> PageViewPoint {
-        let box_width = (page_box.right - page_box.left).max(1.0);
-        let box_height = (page_box.bottom - page_box.top).max(1.0);
-        let scale_x = positive_ratio(self.reference.width, box_width);
-        let scale_y = positive_ratio(self.reference.height, box_height);
-        PageViewPoint {
-            x: page_box.left + ((point.x - self.reference.left) / scale_x).clamp(0.0, box_width),
-            y: page_box.top + ((point.y - self.reference.top) / scale_y).clamp(0.0, box_height),
-        }
-    }
-
-    pub fn client_to_local_in_box(
-        &self,
-        point: ClientPoint,
-        page_box: BoundingBox,
-    ) -> EditorLocalPoint {
-        let page_point = self.client_to_page_in_box(point, page_box);
+    /// 将 client 坐标转换为编辑器局部坐标（相对于边界框左上角）。
+    pub fn to_local(&self, point: ClientPoint, page_box: BoundingBox) -> EditorLocalPoint {
+        let page_point = self.to_page(point, Some(page_box));
         EditorLocalPoint {
             x: page_point.x - page_box.left,
             y: page_point.y - page_box.top,
@@ -175,20 +168,16 @@ impl PdfToPageViewTransform {
 pub struct PdfCoordinateSpace;
 
 impl PdfCoordinateSpace {
-    /// 将 PDF 原始 Y-Up 坐标归一化为标准的 Y-Down 坐标。
-    ///
-    /// # Arguments
-    /// * `pdf_y` - 原始 0-Up 坐标。
-    /// * `page_height` - 页面逻辑总高度。
+    /// 将 PDF 原始 Y-Up 坐标转换为 Y-Down 坐标。
     #[inline(always)]
-    pub fn normalize_y(pdf_y: f32, page_height: f32) -> f32 {
-        page_height - pdf_y
+    pub fn to_y_down(y_up: f32, page_height: f32) -> f32 {
+        page_height - y_up
     }
 
-    /// 执行反向投影：将 Y-Down 坐标还原为 PDF 物理 Y-Up 坐标。
+    /// 将 Y-Down 坐标还原为 PDF Y-Up 坐标。
     #[inline(always)]
-    pub fn denormalize_y(v3_y: f32, page_height: f32) -> f32 {
-        page_height - v3_y
+    pub fn to_y_up(y_down: f32, page_height: f32) -> f32 {
+        page_height - y_down
     }
 }
 
@@ -198,7 +187,7 @@ impl PdfCoordinateSpace {
 /// `EditorViewportTransform` 弥合了基于物理位移的绝对排版系统，与基于 DOM / HTML 表层渲染环境间的语义误差。
 ///
 /// # Invariants (不变式约束)
-/// * **输入法预校验**: 提供给 `point_from_pdf` 的参数 `pdf_x`, `pdf_y` **绝对不可是原始 Y-Up** 数据。
+/// * **输入法预校验**: 提供给 `project_point` 的参数 `x`, `y` **绝对不可是原始 Y-Up** 数据。
 /// * **锚点生死周期 (Anchor Binding)**: `anchor` 代表其寄生成素的绝对基准框。无论何时这个文本流遭遇 `Relayout`（重排），
 ///    该变换实例应当立即在堆栈中释放重构。
 ///
@@ -227,7 +216,7 @@ impl EditorViewportTransform {
     ///
     /// # Returns
     /// 提供出可供 `<textarea>` 或 `<div>` 消费定位的光标点。
-    pub fn point_from_pdf(&self, pdf_x: f32, pdf_y: f32) -> EditorLocalPoint {
+    pub fn project_point(&self, pdf_x: f32, pdf_y: f32) -> EditorLocalPoint {
         EditorLocalPoint {
             x: pdf_x - self.anchor.left,
             // 在内部 Y-Down 坐标系中，视觉顶部即为较小的 Y 值 (anchor.top)
@@ -236,21 +225,21 @@ impl EditorViewportTransform {
         }
     }
 
-    /// 执行一阶纯横向空间脱钩计算。
+    /// 投影 X 轴坐标到编辑器局部坐标。
     #[inline]
-    pub fn x_from_pdf(&self, x: f32) -> f32 {
+    pub fn project_x(&self, x: f32) -> f32 {
         x - self.anchor.left
     }
 
-    /// 将系统级字体基线映射回受保护缓冲的 DOM 安全渲染距中。
+    /// 投影基线 Y 坐标到编辑器局部坐标。
     #[inline]
-    pub fn baseline_y_from_pdf(&self, baseline_y: f32) -> f32 {
+    pub fn project_baseline_y(&self, baseline_y: f32) -> f32 {
         self.top_buffer + (baseline_y - self.anchor.top)
     }
 
-    /// 用于进行增量（Delta）偏移挂载的安全缓冲叠加器。
+    /// 投影相对锚点的 Y 偏移量到编辑器局部坐标。
     #[inline]
-    pub fn baseline_y_from_anchor_relative(&self, relative_y: f32) -> f32 {
+    pub fn project_relative_y(&self, relative_y: f32) -> f32 {
         self.top_buffer + relative_y
     }
 }

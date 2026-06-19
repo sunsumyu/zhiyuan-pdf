@@ -13,7 +13,7 @@ thread_local! {
         RefCell::new(HostRenderLoopState::default());
 }
 
-pub fn queue_render_loop_frame(frame: Option<RenderFrameEnvelope>) -> Option<RenderFrameEnvelope> {
+pub fn queue_frame(frame: Option<RenderFrameEnvelope>) -> Option<RenderFrameEnvelope> {
     RENDER_LOOP_STATE.with(|state| {
         let mut state = state.borrow_mut();
         if let Some(frame) = frame {
@@ -30,7 +30,7 @@ pub fn queue_render_loop_frame(frame: Option<RenderFrameEnvelope>) -> Option<Ren
     })
 }
 
-pub fn advance_render_loop_frame(
+pub fn advance_frame(
     next_frame: Option<RenderFrameEnvelope>,
 ) -> Option<RenderFrameEnvelope> {
     RENDER_LOOP_STATE.with(|state| {
@@ -46,7 +46,7 @@ pub fn advance_render_loop_frame(
     })
 }
 
-pub fn reset_render_loop_runtime() {
+pub fn reset_runtime() {
     RENDER_LOOP_STATE.with(|state| {
         *state.borrow_mut() = HostRenderLoopState::default();
     });

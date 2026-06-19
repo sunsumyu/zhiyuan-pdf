@@ -45,7 +45,7 @@ pub fn collect_target_source_object_ids(target: &ActiveEditorTarget) -> HashSet<
     object_ids
 }
 
-pub fn collect_target_source_object_indices_set(target: &ActiveEditorTarget) -> HashSet<usize> {
+pub fn collect_object_index_set(target: &ActiveEditorTarget) -> HashSet<usize> {
     let mut object_indices = target
         .scene
         .original_runs
@@ -85,13 +85,13 @@ pub fn collect_target_source_object_indices_set(target: &ActiveEditorTarget) -> 
 }
 
 pub fn collect_target_source_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
-    let ordered = collect_target_source_object_indices_set(target)
+    let ordered = collect_object_index_set(target)
         .into_iter()
         .collect::<BTreeSet<_>>();
     ordered.into_iter().collect()
 }
 
-pub fn collect_object_indices_from_runs(
+pub fn collect_run_indices(
     runs: &[GlyphPaintRun],
     vector_model: Option<&VectorPageModel>,
 ) -> Vec<usize> {

@@ -119,11 +119,11 @@ thread_local! {
     static PAGE_TURN_STATE: RefCell<PageTurnSnapshot> = RefCell::new(PageTurnSnapshot::default());
 }
 
-pub fn read_page_turn_snapshot() -> PageTurnSnapshot {
+pub fn read_snapshot() -> PageTurnSnapshot {
     PAGE_TURN_STATE.with(|state| state.borrow().clone())
 }
 
-pub fn reset_page_turn_state() {
+pub fn reset_state() {
     PAGE_TURN_STATE.with(|state| {
         *state.borrow_mut() = PageTurnSnapshot::default();
     });
@@ -199,7 +199,7 @@ pub fn request_page_turn(target_page: u16, reason: String, now_ms: f64) -> PageT
     decision
 }
 
-pub fn is_latest_page_turn(page_turn_id: u32, page_index: u16) -> bool {
+pub fn is_latest_turn(page_turn_id: u32, page_index: u16) -> bool {
     PAGE_TURN_STATE.with(|state| {
         let state = state.borrow();
         state.latest_page_turn_id == page_turn_id && state.latest_page_index == Some(page_index)
@@ -358,7 +358,7 @@ fn reject(
     reason: String,
     reject_reason: &str,
 ) -> PageTurnDecision {
-    let snapshot = read_page_turn_snapshot();
+    let snapshot = read_snapshot();
     let decision = PageTurnDecision {
         accepted: false,
         page_turn_id: snapshot.latest_page_turn_id,
@@ -586,7 +586,7 @@ mod tests {
     };
 
     fn reset_with_document(current_page: u16, page_count: u16) {
-        reset_page_turn_state();
+        reset_state();
         reset_viewer_session();
         set_viewer_document(Some("fixture.pdf".to_string()), page_count, 1.0);
         set_current_page(current_page);
@@ -603,8 +603,8 @@ mod tests {
         assert_eq!(decision.target_page, 3);
         assert_eq!(decision.previous_page, 2);
         assert_eq!(decision.direction, 1);
-        assert!(is_latest_page_turn(decision.page_turn_id, 3));
-        assert!(!is_latest_page_turn(decision.page_turn_id, 2));
+        assert!(is_latest_turn(decision.page_turn_id, 3));
+        assert!(!is_latest_turn(decision.page_turn_id, 2));
 
         let stale_visible = mark_page_visible(2, "preview".to_string());
         assert!(!stale_visible.accepted);
@@ -683,7 +683,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_turn() {
-        reset_page_turn_state();
+        reset_state();
         reset_viewer_session();
         let no_document = request_page_turn(1, "next".to_string(), 1000.0);
         assert!(!no_document.accepted);

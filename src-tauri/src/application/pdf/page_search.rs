@@ -1,4 +1,4 @@
-use super::page_context::build_page_region_context_from_vector_model;
+use super::page_context::build_region_context;
 use crate::infrastructure::pdf::models::NativeVectorPageModel;
 use pdf_viewer_core::document::page_region_context::{BoundingBoxOutput, PageRegionContextOutput};
 use serde::{Deserialize, Serialize};
@@ -149,7 +149,7 @@ fn search_page_matches(
     if query.is_empty() {
         return Vec::new();
     }
-    let page_context = build_page_region_context_from_vector_model(page_model);
+    let page_context = build_region_context(page_model);
     let mut matches = Vec::new();
 
     collect_paragraph_matches(
