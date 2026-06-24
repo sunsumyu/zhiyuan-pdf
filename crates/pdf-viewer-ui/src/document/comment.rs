@@ -7,7 +7,7 @@ use crate::review::review_store::{
     set_scope as set_comment_review_scope, toggle_panel as toggle_comment_review_panel,
     HostCommentReviewScope, HostCommentReviewSession,
 };
-use crate::runtime::smart_invoke;
+use crate::app_controller::smart_invoke;
 
 pub use pdf_viewer_core::annotation::{
     CommentBoxRect, CommentPercentFrame, PdfCommentOverlayDisplay, PdfCommentOverlayMarker,

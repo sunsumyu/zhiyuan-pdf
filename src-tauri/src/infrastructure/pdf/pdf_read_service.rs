@@ -84,6 +84,7 @@ impl PdfReadService {
     }
 
     /// 从应用状态获取矢量页面模型
+    #[allow(dead_code)]
     pub(crate) async fn resolve_vector_page_model(
         app_state: &crate::AppState,
         path: &str,

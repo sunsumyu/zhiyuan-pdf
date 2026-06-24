@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 
 use crate::viewer::viewer_store::read_viewer_session;
 
@@ -115,17 +114,15 @@ pub struct PagePrefetchDecision {
     pub snapshot: PageTurnSnapshot,
 }
 
-thread_local! {
-    static PAGE_TURN_STATE: RefCell<PageTurnSnapshot> = RefCell::new(PageTurnSnapshot::default());
-}
+use crate::app_context;
 
 pub fn read_snapshot() -> PageTurnSnapshot {
-    PAGE_TURN_STATE.with(|state| state.borrow().clone())
+    app_context::with_page_turn(Clone::clone)
 }
 
 pub fn reset_state() {
-    PAGE_TURN_STATE.with(|state| {
-        *state.borrow_mut() = PageTurnSnapshot::default();
+    app_context::with_page_turn_mut(|state| {
+        *state = PageTurnSnapshot::default();
     });
 }
 
@@ -161,8 +158,7 @@ pub fn request_page_turn(target_page: u16, reason: String, now_ms: f64) -> PageT
     }
 
     let direction = resolve_direction(current_page, target_page);
-    let snapshot = PAGE_TURN_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    let snapshot = app_context::with_page_turn_mut(|state| {
         // fast-flip 检测：两次翻页间隔 < FAST_FLIP_THRESHOLD_MS 时进入高速模式
         let fast_flip_mode = if now_ms.is_finite()
             && state.last_turn_at_ms > 0.0
@@ -200,16 +196,14 @@ pub fn request_page_turn(target_page: u16, reason: String, now_ms: f64) -> PageT
 }
 
 pub fn is_latest_turn(page_turn_id: u32, page_index: u16) -> bool {
-    PAGE_TURN_STATE.with(|state| {
-        let state = state.borrow();
+    app_context::with_page_turn(|state| {
         state.latest_page_turn_id == page_turn_id && state.latest_page_index == Some(page_index)
     })
 }
 
 pub fn mark_page_visible(page_index: u16, surface: String) -> PageVisibleDecision {
     let normalized_surface = normalize_surface(surface);
-    let decision = PAGE_TURN_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    let decision = app_context::with_page_turn_mut(|state| {
         let accepted =
             state.latest_page_index.is_none() || state.latest_page_index == Some(page_index);
 
@@ -239,8 +233,7 @@ pub fn mark_page_visible(page_index: u16, surface: String) -> PageVisibleDecisio
 }
 
 pub fn can_prefetch(page_index: u16) -> bool {
-    PAGE_TURN_STATE.with(|state| {
-        let state = state.borrow();
+    app_context::with_page_turn(|state| {
         phase_allows_prefetch(state.phase)
             && (state.visible_page_index == Some(page_index) || state.latest_page_index.is_none())
     })
@@ -249,9 +242,8 @@ pub fn can_prefetch(page_index: u16) -> bool {
 pub fn admit_page_asset(page_index: u16, role: String, asset_kind: String) -> PageAssetAdmission {
     let normalized_role = normalize_role(role);
     let normalized_asset_kind = normalize_asset_kind(asset_kind);
-    PAGE_TURN_STATE.with(|state| {
-        let state = state.borrow();
-        let session = read_viewer_session();
+    let session = read_viewer_session();
+    app_context::with_page_turn(|state| {
         let (accepted, priority, reject_reason) = match normalized_role.as_str() {
             "current" => {
                 let is_current_session_page = session.current_page == page_index;
@@ -304,21 +296,20 @@ pub fn admit_page_asset(page_index: u16, role: String, asset_kind: String) -> Pa
 }
 
 pub fn decide_adjacent_prefetch(anchor_page: u16, page_count: u16) -> PagePrefetchDecision {
-    PAGE_TURN_STATE.with(|state| {
-        let state = state.borrow();
+    app_context::with_page_turn(|state| {
         if !phase_allows_prefetch(state.phase) {
-            return reject_prefetch(anchor_page, "presentationBusy", &state);
+            return reject_prefetch(anchor_page, "presentationBusy", state);
         }
         if page_count == 0 {
-            return reject_prefetch(anchor_page, "emptyDocument", &state);
+            return reject_prefetch(anchor_page, "emptyDocument", state);
         }
         if anchor_page >= page_count {
-            return reject_prefetch(anchor_page, "pageOutOfRange", &state);
+            return reject_prefetch(anchor_page, "pageOutOfRange", state);
         }
         if state.visible_page_index != Some(anchor_page)
             && state.latest_page_index != Some(anchor_page)
         {
-            return reject_prefetch(anchor_page, "stalePrefetchAnchor", &state);
+            return reject_prefetch(anchor_page, "stalePrefetchAnchor", state);
         }
 
         let fast_flip = state.fast_flip_mode;
@@ -338,7 +329,7 @@ pub fn decide_adjacent_prefetch(anchor_page: u16, page_count: u16) -> PagePrefet
 
         let targets = candidates;
         if targets.is_empty() {
-            return reject_prefetch(anchor_page, "noAdjacentPage", &state);
+            return reject_prefetch(anchor_page, "noAdjacentPage", state);
         }
 
         PagePrefetchDecision {

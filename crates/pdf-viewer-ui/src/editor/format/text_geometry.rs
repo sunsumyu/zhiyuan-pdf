@@ -162,7 +162,7 @@ fn resolve_caret_index_for_draft_point(
 ) -> usize {
     let Some(lines) = build_unified_draft_caret_lines(active_target, draft_text) else {
         let resolved = resolve_index(
-            &active_target.scene.body_session,
+            &active_target.scene.body_session(),
             &active_target.scene.document_plan.body_text_plan,
             page_x,
             page_y,
@@ -182,7 +182,8 @@ fn resolve_caret_index_for_draft_point(
     };
 
     let session = &active_target.scene.document_plan.body_session;
-    let local_click_x = (page_x - session.anchor_bbox.left).max(0.0);
+    let marker_advance = active_target.scene.marker().map(|m| m.advance).unwrap_or(0.0);
+    let local_click_x = (page_x - (session.anchor_bbox.left + marker_advance)).max(0.0);
     let local_click_y = (page_y - session.anchor_bbox.top).max(0.0);
     let resolved = resolve_caret_index_from_lines(&lines, local_click_x, local_click_y)
         .min(draft_text.chars().count());
@@ -249,7 +250,7 @@ fn resolve_caret_visual_from_draft(
 ) -> EditorCaretVisualPosition {
     let Some(lines) = build_draft_caret_lines(active_target, draft_text) else {
         return session_plan_caret_visual(
-            &active_target.scene.body_session,
+            &active_target.scene.body_session(),
             &active_target.scene.document_plan.body_text_plan,
             caret_index,
             active_target.font_size.max(1.0),
@@ -311,7 +312,8 @@ pub fn caret_at_page_point(
     page_x: f32,
     page_y: f32,
 ) -> usize {
-    let body_left = active_target.scene.body_session.anchor_bbox.left;
+    let marker_advance = active_target.scene.marker().map(|m| m.advance).unwrap_or(0.0);
+    let body_left = active_target.scene.body_session().anchor_bbox.left + marker_advance;
     if page_x <= body_left {
         dbg_event(
             "caret.resolve",
@@ -338,8 +340,8 @@ pub fn caret_at_shell_point(
 ) -> usize {
     let shell_left = active_target.scene.shell_bbox.left;
     let shell_top = active_target.scene.shell_bbox.top;
-    let body_left = active_target.scene.body_session.anchor_bbox.left;
-    let body_top = active_target.scene.body_session.anchor_bbox.top;
+    let body_left = active_target.scene.body_session().anchor_bbox.left;
+    let body_top = active_target.scene.body_session().anchor_bbox.top;
     let body_offset_x = (body_left - shell_left).max(0.0);
     let body_offset_y = (body_top - shell_top).max(0.0);
     let page_x = body_left + (shell_x - body_offset_x).max(0.0);

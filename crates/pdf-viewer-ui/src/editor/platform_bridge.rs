@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,18 +16,15 @@ impl Default for EditorHostRuntimeState {
     }
 }
 
-thread_local! {
-    pub static EDITOR_HOST_RUNTIME_STATE: RefCell<EditorHostRuntimeState> =
-        RefCell::new(EditorHostRuntimeState::default());
-}
+use crate::app_context;
 
 pub fn read_state() -> EditorHostRuntimeState {
-    EDITOR_HOST_RUNTIME_STATE.with(|state| state.borrow().clone())
+    app_context::with_editor_host(Clone::clone)
 }
 
 pub fn reset_state() {
-    EDITOR_HOST_RUNTIME_STATE.with(|state| {
-        *state.borrow_mut() = EditorHostRuntimeState::default();
+    app_context::with_editor_host_mut(|state| {
+        *state = EditorHostRuntimeState::default();
     });
 }
 
@@ -39,14 +34,13 @@ pub fn set_display_zoom(display_zoom: f32) {
     } else {
         1.0
     };
-    EDITOR_HOST_RUNTIME_STATE.with(|state| {
-        state.borrow_mut().last_display_zoom = display_zoom;
+    app_context::with_editor_host_mut(|state| {
+        state.last_display_zoom = display_zoom;
     });
 }
 
 pub fn begin_commit() -> bool {
-    EDITOR_HOST_RUNTIME_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    app_context::with_editor_host_mut(|state| {
         if state.committing {
             false
         } else {
@@ -57,7 +51,7 @@ pub fn begin_commit() -> bool {
 }
 
 pub fn finish_commit() {
-    EDITOR_HOST_RUNTIME_STATE.with(|state| {
-        state.borrow_mut().committing = false;
+    app_context::with_editor_host_mut(|state| {
+        state.committing = false;
     });
 }

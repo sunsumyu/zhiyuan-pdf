@@ -104,12 +104,6 @@ impl ReviewSession {
     pub fn read_state(&self) -> JsValue {
         to_value(&read_review_state()).unwrap_or(JsValue::NULL)
     }
-
-    #[wasm_bindgen(js_name = "getState")]
-    #[deprecated(since = "0.2.0", note = "Use readState instead")]
-    pub fn get_state(&self) -> JsValue {
-        self.read_state()
-    }
 }
 
 impl Default for ReviewSession {

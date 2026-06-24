@@ -7,27 +7,22 @@
 //! - `comment::comment_api::CommentManager` 读写评论目标快照
 //! - `review::review_api::ReviewSession`（未来）读写审阅 panel 状态
 
-use std::cell::RefCell;
-
 // Re-export pure data structures from core.
 pub use pdf_viewer_core::render::comment_review_state::*;
 
-thread_local! {
-    pub static COMMENT_REVIEW_SESSION: RefCell<HostCommentReviewSession> =
-        RefCell::new(HostCommentReviewSession::default());
-}
+use crate::app_context;
 
 pub fn clear_review_session() {
     replace_review_session(HostCommentReviewSession::default());
 }
 
 pub fn read_review_session() -> HostCommentReviewSession {
-    COMMENT_REVIEW_SESSION.with(|session| session.borrow().clone())
+    app_context::with_review(Clone::clone)
 }
 
 fn replace_review_session(next: HostCommentReviewSession) -> HostCommentReviewSession {
-    COMMENT_REVIEW_SESSION.with(|session| {
-        *session.borrow_mut() = next.clone();
+    app_context::with_review_mut(|session| {
+        *session = next.clone();
     });
     next
 }

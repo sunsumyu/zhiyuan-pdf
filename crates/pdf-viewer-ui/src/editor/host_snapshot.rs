@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::patch_persistence::has_persistable_patches;
 use crate::editor::debug_trace::{resolve_editor_debug_trace, EditorDebugTraceEvent};
-use crate::editor::host_runtime::read_state as get_editor_host_state;
+use crate::editor::platform_bridge::read_state as get_editor_host_state;
 use crate::editor::mode::is_edit_enabled;
 use crate::editor::mode::read_state;
 use crate::editor::projection::{
@@ -143,7 +143,7 @@ pub fn resolve_diagnostics() -> Option<ActiveEditorDiagnostics> {
         live_caret_index: active_state.caret_index,
         runs: target
             .scene
-            .body_session
+            .body_session()
             .paragraph
             .runs
             .iter()

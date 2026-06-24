@@ -1,13 +1,11 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 
+use crate::app_context;
 use crate::editor::editor_types::SessionState;
 
 // ── Thread-local state ──────────────────────────────────────────
 
 thread_local! {
-    static SESSION_STATE: Cell<SessionState> = Cell::new(SessionState::Viewing);
-    static ACTIVE_BLOCK_ID: RefCell<Option<String>> = RefCell::new(None);
-
     // ── §14.7 event callbacks ───────────────────────────────────
     // `STATE_CHANGE_CB` fires only on `SessionState` transitions.
     // `CHANGE_CB` fires on any session-relevant mutation (state OR active block).
@@ -21,30 +19,29 @@ thread_local! {
 // ── Public accessors ────────────────────────────────────────────
 
 pub fn read_state() -> SessionState {
-    SESSION_STATE.with(|s| s.get())
+    app_context::with_editor_session(|session| session.session_state)
 }
 
 pub fn set_state(state: SessionState) {
-    let prev = SESSION_STATE.with(|s| {
-        let p = s.get();
-        s.set(state);
-        p
+    let changed = app_context::with_editor_session_mut(|session| {
+        let changed = session.session_state != state;
+        session.session_state = state;
+        changed
     });
-    if prev != state {
+    if changed {
         notify_state_change(state);
     }
     notify_change();
 }
 
 pub fn read_block_id() -> Option<String> {
-    ACTIVE_BLOCK_ID.with(|id| id.borrow().clone())
+    app_context::with_editor_session(|session| session.active_block_id.clone())
 }
 
 pub fn set_block_id(block_id: Option<String>) {
-    let changed = ACTIVE_BLOCK_ID.with(|id| {
-        let mut slot = id.borrow_mut();
-        let differs = *slot != block_id;
-        *slot = block_id;
+    let changed = app_context::with_editor_session_mut(|session| {
+        let differs = session.active_block_id != block_id;
+        session.active_block_id = block_id;
         differs
     });
     if changed {
@@ -128,8 +125,24 @@ pub fn transition_editing(block_id: String) {
 
 /// EditingBlock → Viewing (close / commit / discard)
 pub fn transition_to_viewing() {
-    set_block_id(None);
-    set_state(SessionState::Viewing);
+    reset_session();
+}
+
+/// Reset the public editor session state to its idle shape.
+pub fn reset_session() {
+    let (state_changed, block_changed) = app_context::with_editor_session_mut(|session| {
+        let state_changed = session.session_state != SessionState::Viewing;
+        let block_changed = session.active_block_id.is_some();
+        session.session_state = SessionState::Viewing;
+        session.active_block_id = None;
+        (state_changed, block_changed)
+    });
+    if state_changed {
+        notify_state_change(SessionState::Viewing);
+    }
+    if state_changed || block_changed {
+        notify_change();
+    }
 }
 
 /// EditingBlock(A) → EditingBlock(B) (block switch)

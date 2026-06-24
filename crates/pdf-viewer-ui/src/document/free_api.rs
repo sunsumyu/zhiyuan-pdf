@@ -55,12 +55,6 @@ pub fn read_viewer_session() -> JsValue {
     to_value(&viewer_controller::read_session()).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen(js_name = "getViewerSession")]
-#[deprecated(since = "0.2.0", note = "Use read_viewer_session instead")]
-pub fn get_viewer_session() -> JsValue {
-    read_viewer_session()
-}
-
 #[wasm_bindgen(js_name = "setViewerDocument")]
 pub fn set_viewer_document(path: Option<String>, page_count: u16, initial_zoom: f32) {
     viewer_controller::set_document(path, page_count, initial_zoom);

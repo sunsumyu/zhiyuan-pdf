@@ -11,7 +11,10 @@ use crate::zoom::interaction::{
     compute_anchor_scroll_result, compute_anchor_viewport_layout_result, AnchorScrollResult,
     ZoomPreviewFrame,
 };
-use crate::zoom::zoom_store::{reset_zoom_state, HostZoomState, VisualLayoutState, ZOOM_STATE};
+use crate::zoom::zoom_store::{
+    reset_zoom_state, read_zoom_state as store_read_zoom_state, with_zoom_state,
+    with_zoom_state_mut, HostZoomState, VisualLayoutState,
+};
 
 pub fn reset_zoom_runtime(initial_zoom: f32) {
     reset_zoom_state(initial_zoom);
@@ -20,7 +23,7 @@ pub fn reset_zoom_runtime(initial_zoom: f32) {
 }
 
 pub fn read_zoom_state() -> HostZoomState {
-    ZOOM_STATE.with(|state| state.borrow().clone())
+    store_read_zoom_state()
 }
 
 pub fn set_target_zoom(target_zoom: f32) {
@@ -29,41 +32,38 @@ pub fn set_target_zoom(target_zoom: f32) {
     } else {
         1.0
     };
-    ZOOM_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    with_zoom_state_mut(|state| {
         state.target_zoom = zoom;
         state.last_animation_timestamp_ms = 0.0;
     });
 }
 
 pub fn mark_rendered_zoom(rendered_zoom: f32) {
-    ZOOM_STATE.with(|state| {
-        commit_rendered_zoom(&mut state.borrow_mut(), rendered_zoom);
+    with_zoom_state_mut(|state| {
+        commit_rendered_zoom(state, rendered_zoom);
     });
 }
 
 pub fn step_zoom_animation() -> crate::zoom::zoom_store::ZoomAnimationStep {
-    ZOOM_STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        advance_zoom_animation_state(&mut state, None)
+    with_zoom_state_mut(|state| {
+        advance_zoom_animation_state(state, None)
     })
 }
 
 pub fn step_frame_plan(request: &FramePlanRequest) -> ZoomPreviewFrame {
     let viewer_session = viewer_store::read_viewer_session();
-    present_store::with_present_state(|present_state| {
-        ZOOM_STATE.with(|state| {
-            let mut state = state.borrow_mut();
-            build_zoom_preview_frame(request, &mut state, |frame_request, zoom_state| {
-                build_frame_plan_result(
-                    frame_request,
-                    zoom_state,
-                    &viewer_session,
-                    present_state,
-                    &render_scene_key(),
-                    false,
-                )
-            })
+    let scene_key = render_scene_key();
+    let present_snapshot = present_store::with_present_state(Clone::clone);
+    with_zoom_state_mut(|state| {
+        build_zoom_preview_frame(request, state, |frame_request, zoom_state| {
+            build_frame_plan_result(
+                frame_request,
+                zoom_state,
+                &viewer_session,
+                &present_snapshot,
+                &scene_key,
+                false,
+            )
         })
     })
 }
@@ -74,8 +74,7 @@ pub fn take_anchor_scroll(
     viewport_width: f32,
     viewport_height: f32,
 ) -> Option<AnchorScrollResult> {
-    ZOOM_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    with_zoom_state_mut(|state| {
         let anchor = state.pending_anchor.take()?;
         Some(compute_anchor_scroll_result(
             display_width,
@@ -98,8 +97,7 @@ pub fn peek_anchor_scroll(
     viewport_width: f32,
     viewport_height: f32,
 ) -> Option<AnchorScrollResult> {
-    ZOOM_STATE.with(|state| {
-        let state = state.borrow();
+    with_zoom_state(|state| {
         let anchor = state.pending_anchor.as_ref()?;
         Some(compute_anchor_scroll_result(
             display_width,
@@ -122,8 +120,7 @@ pub fn peek_anchor_layout(
     viewport_width: f32,
     viewport_height: f32,
 ) -> Option<AnchorViewportLayoutResult> {
-    ZOOM_STATE.with(|state| {
-        let state = state.borrow();
+    with_zoom_state(|state| {
         let anchor = state.pending_anchor.as_ref()?;
         Some(compute_anchor_viewport_layout_result(
             display_width,
@@ -146,8 +143,7 @@ pub fn take_anchor_layout(
     viewport_width: f32,
     viewport_height: f32,
 ) -> Option<AnchorViewportLayoutResult> {
-    ZOOM_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    with_zoom_state_mut(|state| {
         let anchor = state.pending_anchor.take()?;
         Some(compute_anchor_viewport_layout_result(
             display_width,
@@ -165,14 +161,13 @@ pub fn take_anchor_layout(
 }
 
 pub fn clear_pending_anchor() {
-    ZOOM_STATE.with(|state| {
-        state.borrow_mut().pending_anchor = None;
+    with_zoom_state_mut(|state| {
+        state.pending_anchor = None;
     });
 }
 
 pub fn set_visual_layout(display_zoom: f32, content_left: f32, content_top: f32) {
-    ZOOM_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    with_zoom_state_mut(|state| {
         state.visual_layout = Some(VisualLayoutState {
             display_zoom: if display_zoom.is_finite() && display_zoom > 0.0 {
                 display_zoom
@@ -194,7 +189,7 @@ pub fn set_visual_layout(display_zoom: f32, content_left: f32, content_top: f32)
 }
 
 pub fn clear_preview_present() {
-    ZOOM_STATE.with(|state| {
-        state.borrow_mut().preview_transform = None;
+    with_zoom_state_mut(|state| {
+        state.preview_transform = None;
     });
 }

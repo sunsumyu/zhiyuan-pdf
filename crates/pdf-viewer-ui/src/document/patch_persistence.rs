@@ -1,8 +1,7 @@
 use wasm_bindgen::JsValue;
 
-use crate::bridge::target_invoke;
 use crate::editor::list_format::reconcile_numbering_patches;
-use crate::models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
 use crate::ui_state_store::{
     record_patch, clear_persistable_patches as core_clear_persistable_patches,
@@ -84,11 +83,7 @@ pub async fn save_persistable_patches(path: String, page_index: u16) -> Result<J
         "patches": patches,
     });
 
-    let result = target_invoke(
-        "apply_region_patches".into(),
-        serde_wasm_bindgen::to_value(&args).unwrap_or(JsValue::NULL),
-    )
-    .await?;
+    let result: JsValue = crate::app_controller::raw_invoke("apply_region_patches", &args).await?;
     clear_persistable_patches(true);
     Ok(result)
 }

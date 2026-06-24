@@ -1,3 +1,4 @@
+pub mod app_context;
 pub mod api;
 pub mod application;
 pub mod events;
@@ -9,14 +10,12 @@ pub mod comment;
 pub mod document;
 pub mod editor;
 pub mod find;
-pub mod host;
+pub mod platform;
 pub mod page;
 pub mod present;
 pub mod presentation;
 pub mod render;
 pub mod review;
-pub mod runtime;
-pub mod style_mapper;
 pub mod ui_state_store;
 pub mod common;
 pub mod viewer;
@@ -24,10 +23,6 @@ pub mod viewport_culling;
 pub mod viewport_refresh;
 pub mod zoom;
 
-pub mod bridge;
-pub mod dom_projection;
-pub mod models;
-pub mod projection_workflow;
 
 // All legacy `pub use ... as ..._workflow` aliases were removed in Phase 3.
 // New code uses canonical paths (e.g. `crate::editor::session`).

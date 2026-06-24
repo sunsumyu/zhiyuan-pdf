@@ -5,7 +5,7 @@ use wasm_bindgen::prelude::*;
 use crate::editor::orchestrator::replace_pipeline::{
     apply_replacements_tx, RegionTextReplaceRequest,
 };
-use crate::find::host_find_store::{
+use crate::find::find_store::{
     clear_find_session, move_find_match, read_find_session, set_find_session, HostFindScope,
 };
 use crate::present::plan_builder::FramePlanRequest;

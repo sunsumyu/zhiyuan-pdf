@@ -8,7 +8,7 @@ use crate::editor::bridge::{
     resolve_paragraph_shell_bbox as bridge_resolve_shell_bbox,
 };
 use crate::editor::session::{is_edit_enabled, ActiveEditorTarget};
-use crate::models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use pdf_viewer_core::models::BoundingBox;
 
 pub fn build_interaction_targets(

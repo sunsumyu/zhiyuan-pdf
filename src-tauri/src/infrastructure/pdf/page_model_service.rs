@@ -67,6 +67,7 @@ impl PdfPageModelService {
         Self::read_pdf_metadata_from_app_state(&state, path).await
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn resolve_vector_page_model(
         app_state: &crate::AppState,
         path: String,

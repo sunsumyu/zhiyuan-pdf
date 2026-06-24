@@ -12,7 +12,7 @@ use crate::editor::mode::read_state;
 use crate::editor::replacement_snapshot::find_target;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::source_identity::collect_target_source_object_indices;
-use crate::page::page_store::PAGE_STATE;
+use crate::page::page_store::with_page_state;
 use crate::ui_state_store::read_patch_state;
 
 // 数据结构已迁至 pdf_viewer_core::edit::paragraph_overlay。
@@ -131,8 +131,8 @@ pub fn collect_overlays(
             .cloned()
             .flatten()
             .or_else(|| {
-                PAGE_STATE.with(|page_state: &crate::page::page_store::HostPageState| {
-                    resolve_marker_text(&active_state, &page_state.borrow())
+                with_page_state(|page_state| {
+                    resolve_marker_text(&active_state, page_state)
                 })
             });
         let source_object_indices = target_source_object_indices(&active_state.target);
@@ -147,26 +147,26 @@ pub fn collect_overlays(
             };
             let obj_ids = collect_target_source_object_ids(&active_state.target);
             let obj_indices = collect_object_index_set(&active_state.target);
-            let orig_run_count = active_state.target.scene.original_runs.len();
-            let body_run_count = active_state.target.scene.body_session.paragraph.runs.len();
+            let orig_run_count = active_state.target.scene.original_runs().len();
+            let body_run_count = active_state.target.scene.body_session().paragraph.runs.len();
             let orig_obj_ids: Vec<String> = active_state
                 .target
                 .scene
-                .original_runs
+                .original_runs()
                 .iter()
                 .flat_map(|r| r.object_ids.iter().cloned())
                 .collect();
             let orig_obj_indices: Vec<usize> = active_state
                 .target
                 .scene
-                .original_runs
+                .original_runs()
                 .iter()
                 .flat_map(|r| r.object_indices.iter().copied())
                 .collect();
             let body_obj_ids: Vec<String> = active_state
                 .target
                 .scene
-                .body_session
+                .body_session()
                 .paragraph
                 .runs
                 .iter()
@@ -175,7 +175,7 @@ pub fn collect_overlays(
             let body_obj_indices: Vec<usize> = active_state
                 .target
                 .scene
-                .body_session
+                .body_session()
                 .paragraph
                 .runs
                 .iter()
@@ -245,7 +245,7 @@ pub fn collect_overlays(
 #[cfg(test)]
 mod persisted_overlay_tests {
     use super::*;
-    use crate::models::PersistableRegionPatch;
+    use pdf_viewer_core::persistence::models::PersistableRegionPatch;
     use crate::ui_state_store::{record_patch, read_patch_state};
     use pdf_viewer_core::models::{
         BoundingBox, GlyphPaintPlan, GlyphPaintRegion, LayoutMode, LayoutParagraph, LayoutRole,
@@ -263,7 +263,7 @@ mod persisted_overlay_tests {
             right: 360.0,
             bottom: 116.0,
         };
-        target.scene.body_session = ParagraphEditContext {
+        *target.scene.body_session_mut() = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 90.0,
                 top: 100.0,

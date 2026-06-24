@@ -174,12 +174,6 @@ impl Application {
         to_value(&snapshot_state()).unwrap_or(JsValue::NULL)
     }
 
-    #[wasm_bindgen(js_name = "getState")]
-    #[deprecated(since = "0.2.0", note = "Use readState instead")]
-    pub fn get_state(&self) -> JsValue {
-        self.read_state()
-    }
-
     // ── Event system (Nutrient borrowing #1) ────────────────────
 
     /// Register an event listener. DOM-style: multiple listeners per event.

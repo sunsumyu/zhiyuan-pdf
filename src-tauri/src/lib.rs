@@ -104,10 +104,10 @@ pub fn run() {
             interfaces::pdf::diagnose_page,
             interfaces::pdf::create_demo,
             interfaces::pdf::set_log_level,
-            interfaces::pdf::clear_event_log,
-            interfaces::pdf::read_event_log,
-            interfaces::pdf::set_page_asset_test_delay_ms,
             interfaces::pdf::terminal_log,
+            interfaces::pdf::clear_pdf_event_log,
+            interfaces::pdf::read_pdf_event_log,
+            interfaces::pdf::set_page_asset_test_delay_ms,
             interfaces::pdf::resolve_asset_url,
             interfaces::pdf::pick_file,
         ]);

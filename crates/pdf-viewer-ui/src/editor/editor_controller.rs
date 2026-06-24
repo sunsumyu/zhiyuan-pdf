@@ -16,7 +16,7 @@ use crate::editor::workflow::{
     build_text_patch as workflow_build_text_patch,
     open_paragraph_editor as workflow_open_paragraph_editor, resolve_shell_bbox,
 };
-use crate::models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
 use crate::common::sanitize::sanitize_positive;
 use crate::zoom::zoom_store;
@@ -102,7 +102,7 @@ pub fn open_at_point(
 
     let body_object_id_count = active_target
         .scene
-        .body_session
+        .body_session()
         .paragraph
         .runs
         .iter()
@@ -110,14 +110,14 @@ pub fn open_at_point(
         .count();
     let original_object_id_count = active_target
         .scene
-        .original_runs
+        .original_runs()
         .iter()
         .flat_map(|run| run.object_ids.iter())
         .count();
     let body_object_ids = summarize_object_ids(
         active_target
             .scene
-            .body_session
+            .body_session()
             .paragraph
             .runs
             .iter()
@@ -126,7 +126,7 @@ pub fn open_at_point(
     let original_object_ids = summarize_object_ids(
         active_target
             .scene
-            .original_runs
+            .original_runs()
             .iter()
             .flat_map(|run| run.object_ids.iter()),
     );
@@ -172,15 +172,14 @@ pub fn open_at_point(
                 "targetAlignment",
                 format!(
                     "{:?}",
-                    active_target.scene.body_session.paragraph.style.align
+                    active_target.scene.body_session().paragraph.style.align
                 ),
             ),
             dbg_field(
                 "targetListKind",
                 active_target
                     .scene
-                    .marker
-                    .as_ref()
+                    .marker()
                     .map(|marker| format!("{:?}", marker.kind))
                     .unwrap_or_else(|| "None".to_string()),
             ),
@@ -192,10 +191,10 @@ pub fn open_at_point(
                 "bodyBBox",
                 format!(
                     "[{:.2},{:.2},{:.2},{:.2}]",
-                    active_target.scene.body_session.anchor_bbox.left,
-                    active_target.scene.body_session.anchor_bbox.top,
-                    active_target.scene.body_session.anchor_bbox.right,
-                    active_target.scene.body_session.anchor_bbox.bottom
+                    active_target.scene.body_session().anchor_bbox.left,
+                    active_target.scene.body_session().anchor_bbox.top,
+                    active_target.scene.body_session().anchor_bbox.right,
+                    active_target.scene.body_session().anchor_bbox.bottom
                 ),
             ),
         ],

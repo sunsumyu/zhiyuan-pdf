@@ -6,7 +6,7 @@ use crate::editor::paragraph_overlay::ParagraphRenderOverlay;
 use crate::editor::replacement_region::build_region;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::text_geometry::measure_text_width as measure_text_width_shared;
-use crate::render::canvas::{draw_text_run_core, CanvasRenderer, CoordinateMode};
+use crate::render::canvas::CanvasRenderer;
 use crate::common::debug::truncate_debug_text;
 
 pub(crate) fn path_bbox_summary(
@@ -84,105 +84,7 @@ fn count_overlay_underline_runs(
         .count()
 }
 
-pub(crate) fn draw_editor_marker_page(
-    renderer: &CanvasRenderer,
-    active_target: &ActiveEditorTarget,
-    marker_text_override: Option<&str>,
-) {
-    crate::chain_trace!(
-        "render.marker-draw",
-        "hasMarker" => active_target.scene.document_plan.marker.is_some(),
-        "paragraphId" => &active_target.paragraph_id,
-    );
-    let synthetic_marker_text = marker_text_override
-        .filter(|text| active_target.scene.document_plan.marker.is_none() && !text.is_empty());
-    if let Some(marker) = &active_target.scene.document_plan.marker {
-        if let Some(override_text) = marker_text_override {
-            if !override_text.is_empty() {
-                if let Some(run) = marker.runs.first() {
-                    draw_text_run_core(
-                        &renderer.ctx,
-                        renderer.dpr,
-                        override_text,
-                        run.origin_x,
-                        run.origin_y,
-                        run.style.font_size,
-                        &run.style.color,
-                        &run.style.font_name,
-                        if run.style.is_bold { "bold" } else { "normal" },
-                        if run.style.is_italic {
-                            "italic"
-                        } else {
-                            "normal"
-                        },
-                        false,
-                        run.style.scale_x,
-                        0,
-                        None,
-                        CoordinateMode::PageSpace,
-                    );
-                }
-            }
-        } else {
-            for run in &marker.runs {
-                draw_text_run_core(
-                    &renderer.ctx,
-                    renderer.dpr,
-                    &run.text,
-                    run.origin_x,
-                    run.origin_y,
-                    run.style.font_size,
-                    &run.style.color,
-                    &run.style.font_name,
-                    if run.style.is_bold { "bold" } else { "normal" },
-                    if run.style.is_italic {
-                        "italic"
-                    } else {
-                        "normal"
-                    },
-                    false,
-                    run.style.scale_x,
-                    0,
-                    if run.char_origins.is_empty() {
-                        None
-                    } else {
-                        Some(&run.char_origins)
-                    },
-                    CoordinateMode::PageSpace,
-                );
-            }
-        }
-    } else if let Some(override_text) = synthetic_marker_text {
-        let run = active_target
-            .scene
-            .body_session
-            .paragraph
-            .runs
-            .first()
-            .unwrap_or(&active_target.scene.document_plan.draft_template_run);
-        draw_text_run_core(
-            &renderer.ctx,
-            renderer.dpr,
-            override_text,
-            active_target.scene.body_session.anchor_bbox.left,
-            run.origin_y,
-            run.style.font_size,
-            &run.style.color,
-            &run.style.font_name,
-            if run.style.is_bold { "bold" } else { "normal" },
-            if run.style.is_italic {
-                "italic"
-            } else {
-                "normal"
-            },
-            false,
-            run.style.scale_x,
-            0,
-            None,
-            CoordinateMode::PageSpace,
-        );
-    }
-}
+
 
 pub(crate) fn draw_active_editor_shell_overlay_page(
     renderer: &CanvasRenderer,
@@ -224,10 +126,10 @@ pub(crate) fn draw_active_editor_shell_overlay_page(
                 "bodyBBox",
                 format!(
                     "[{:.2},{:.2},{:.2},{:.2}]",
-                    active_target.scene.body_session.anchor_bbox.left,
-                    active_target.scene.body_session.anchor_bbox.top,
-                    active_target.scene.body_session.anchor_bbox.right,
-                    active_target.scene.body_session.anchor_bbox.bottom
+                    active_target.scene.body_session().anchor_bbox.left,
+                    active_target.scene.body_session().anchor_bbox.top,
+                    active_target.scene.body_session().anchor_bbox.right,
+                    active_target.scene.body_session().anchor_bbox.bottom
                 ),
             ),
             dbg_field(
@@ -320,7 +222,7 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
             dbg_field("sourceReplacementHeight", replacement_height),
         ],
     );
-    draw_editor_marker_page(renderer, active_target, marker_text_override);
+    // marker 不再单独渲染，已在 build_persisted_overlay_render_plan 中统一排版
 
     let document_plan = &active_target.scene.document_plan;
     let session = &document_plan.body_session;

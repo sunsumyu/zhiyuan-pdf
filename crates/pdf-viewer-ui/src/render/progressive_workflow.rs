@@ -1,9 +1,9 @@
 use wasm_bindgen::{JsCast, JsValue};
 
-use crate::bridge::on_debug;
+use crate::app_controller::on_debug;
 use crate::editor::paragraph_overlay::collect_overlays;
 use crate::page::page_store::{
-    set_progressive_task, with_page_and_scene, with_page_state, with_progressive_task_mut,
+    set_progressive_task, with_page_and_scene, with_page_scene_snapshot, with_progressive_task_mut,
 };
 use crate::render::canvas::CanvasRenderer;
 use crate::render::progressive::{
@@ -70,6 +70,7 @@ pub fn step_progressive_render(
     max_items: u32,
 ) -> ProgressiveRenderStepResult {
     let image_provider: js_sys::Map = image_cache.unchecked_into();
+    let page_snapshot = with_page_scene_snapshot();
     let step = with_progressive_task_mut(|task_state| {
         let Some(task) = task_state.as_mut() else {
             return ProgressiveRenderStep {
@@ -82,15 +83,25 @@ pub fn step_progressive_render(
 
         let clear_first = task.next_index == 0;
         let processed_before = task.next_index;
-        let processed_items = with_page_state(|state| {
-            let Some(vector_model) = state.vector_model.as_ref() else {
-                return 0;
+        let processed_items = {
+            let Some(vector_model) = page_snapshot.page.vector_model.as_ref() else {
+                return ProgressiveRenderStep {
+                    active: false,
+                    completed: false,
+                    processed_items: 0,
+                    remaining_items: task.total_items().saturating_sub(task.next_index),
+                };
             };
             let Some(renderer) = CanvasRenderer::new_hijacked(&canvas_id) else {
-                return 0;
+                return ProgressiveRenderStep {
+                    active: false,
+                    completed: false,
+                    processed_items: 0,
+                    remaining_items: task.total_items().saturating_sub(task.next_index),
+                };
             };
             renderer.render_vector_slice(
-                state,
+                &page_snapshot.page,
                 vector_model,
                 task,
                 &image_provider,
@@ -98,7 +109,7 @@ pub fn step_progressive_render(
                 Some(budget_ms),
                 clear_first,
             )
-        });
+        };
         let processed_items = processed_items.max(task.next_index.saturating_sub(processed_before));
         let remaining_items = task.total_items().saturating_sub(task.next_index);
         let completed = task.is_complete();
@@ -166,6 +177,7 @@ pub fn step_offscreen(
     dpr: f32,
 ) -> ProgressiveRenderStepResult {
     let image_provider: js_sys::Map = image_cache.unchecked_into();
+    let page_snapshot = with_page_scene_snapshot();
     let step = with_progressive_task_mut(|task_state| {
         let Some(task) = task_state.as_mut() else {
             return ProgressiveRenderStep {
@@ -178,15 +190,25 @@ pub fn step_offscreen(
 
         let clear_first = task.next_index == 0;
         let processed_before = task.next_index;
-        let processed_items = with_page_state(|state| {
-            let Some(vector_model) = state.vector_model.as_ref() else {
-                return 0;
+        let processed_items = {
+            let Some(vector_model) = page_snapshot.page.vector_model.as_ref() else {
+                return ProgressiveRenderStep {
+                    active: false,
+                    completed: false,
+                    processed_items: 0,
+                    remaining_items: task.total_items().saturating_sub(task.next_index),
+                };
             };
             let Some(renderer) = CanvasRenderer::new_offscreen(canvas_js.clone(), dpr) else {
-                return 0;
+                return ProgressiveRenderStep {
+                    active: false,
+                    completed: false,
+                    processed_items: 0,
+                    remaining_items: task.total_items().saturating_sub(task.next_index),
+                };
             };
             renderer.render_vector_slice(
-                state,
+                &page_snapshot.page,
                 vector_model,
                 task,
                 &image_provider,
@@ -194,7 +216,7 @@ pub fn step_offscreen(
                 Some(budget_ms),
                 clear_first,
             )
-        });
+        };
         let processed_items = processed_items.max(task.next_index.saturating_sub(processed_before));
         let remaining_items = task.total_items().saturating_sub(task.next_index);
         let completed = task.is_complete();

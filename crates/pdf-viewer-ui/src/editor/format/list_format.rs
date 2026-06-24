@@ -8,7 +8,7 @@ use pdf_viewer_core::text::list_semantics::{
 use crate::editor::bridge::build_rich_patch;
 use crate::editor::edit_target::get_base_paragraph_id;
 use crate::editor::engine_state::LiveEditorParagraphState;
-use crate::models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use crate::ui_state_store::{read_patch_state, GlobalPatchState};
 
 #[derive(Debug, Clone, Default)]
@@ -203,8 +203,7 @@ fn build_paragraph_list_context<'a>(
             marker_text: active_state
                 .target
                 .scene
-                .marker
-                .as_ref()
+                .marker()
                 .map(|marker| marker.text.clone())
                 .unwrap_or_default(),
         }
@@ -270,7 +269,7 @@ fn collect_ordered_page_paragraphs(plan: &GlyphPaintPlan) -> Vec<&GlyphPaintPara
 fn resolve_patch_for_base_paragraph<'a>(
     state: &'a GlobalPatchState,
     base_paragraph_id: &str,
-) -> Option<&'a crate::models::PersistableRegionPatch> {
+) -> Option<&'a pdf_viewer_core::persistence::models::PersistableRegionPatch> {
     state.paragraph_patches.get(base_paragraph_id).or_else(|| {
         state
             .paragraph_patches

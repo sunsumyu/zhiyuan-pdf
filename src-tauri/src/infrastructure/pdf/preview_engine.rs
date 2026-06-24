@@ -419,6 +419,5 @@ mod tests {
                 }
             }
         }
-        panic!("Show stdout output"); // intentionally panic to see print statements
     }
 }

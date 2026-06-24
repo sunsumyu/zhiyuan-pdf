@@ -9,7 +9,7 @@ pub mod editor_store;
 pub mod editor_types;
 pub mod engine_state;
 pub mod host_mode;
-pub mod host_runtime;
+pub mod platform_bridge;
 pub mod host_snapshot;
 pub mod host_workflow;
 pub mod mode;

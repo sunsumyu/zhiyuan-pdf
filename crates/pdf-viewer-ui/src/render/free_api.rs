@@ -21,7 +21,7 @@ use crate::present::present_store::{
 };
 use crate::render::commit::commit_render_result as inner_commit_render_result;
 use crate::render::facade::resolve_progressive_render_policy_request;
-use crate::render::host_runtime::{
+use crate::render::platform_bridge::{
     advance_frame as inner_advance_render_loop_frame,
     queue_frame as inner_queue_render_loop_frame,
 };
@@ -163,7 +163,7 @@ pub fn resolve_host_scroll_refresh(request_js: JsValue) -> JsValue {
     to_value(&inner_resolve_viewport_refresh(&request)).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "clearZoomPreviewHostState")]
 pub fn clear_zoom_preview_host_state(clear_anchor: bool) {
     inner_clear_zoom_preview_host_state(clear_anchor);
 }

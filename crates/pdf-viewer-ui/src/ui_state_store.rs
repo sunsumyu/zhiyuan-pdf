@@ -1,5 +1,5 @@
 use crate::editor::session::ActiveEditorTarget;
-use crate::models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use std::sync::OnceLock;
 use std::sync::RwLock;
 

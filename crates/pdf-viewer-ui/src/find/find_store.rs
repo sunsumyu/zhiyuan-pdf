@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 
-use crate::find::host_find_store::{
-    clear_find_session, move_find_match, read_find_session, set_find_session, HostFindScope,
-};
+pub use pdf_viewer_core::render::find_state::*;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -101,10 +98,11 @@ impl FindSessionState {
     }
 }
 
+use crate::app_context;
+
 /// Snapshot of the current find session state, suitable for TS consumption.
 pub fn read_find_state() -> FindSessionState {
-    CONTROLLER.with(|c| {
-        let ctrl = c.borrow();
+    app_context::with_find_controller(|ctrl| {
         FindSessionState::derive(
             ctrl.is_open,
             &ctrl.last_result.query,
@@ -180,44 +178,40 @@ pub struct FindToolbarState {
 
 // ─── Controller State ─────────────────────────────────────────────────────────
 
-thread_local! {
-    static CONTROLLER: RefCell<FindControllerInner> = RefCell::new(FindControllerInner::default());
-}
-
-#[derive(Debug, Default)]
-struct FindControllerInner {
-    is_open: bool,
-    last_result: SearchResult,
-    current_page: u16,
-    page_count: u16,
-    path: String,
+#[derive(Debug, Clone, Default)]
+pub struct FindControllerInner {
+    pub is_open: bool,
+    pub last_result: SearchResult,
+    pub current_page: u16,
+    pub page_count: u16,
+    pub path: String,
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 pub fn open_find(current_page: u16, page_count: u16, path: String) -> FindStateUpdate {
-    CONTROLLER.with(|c| {
-        let mut ctrl = c.borrow_mut();
+    let ctrl_snapshot = app_context::with_find_controller_mut(|ctrl| {
         ctrl.is_open = true;
         ctrl.current_page = current_page;
         ctrl.page_count = page_count;
         ctrl.path = path;
-        build_state_update(&ctrl)
-    })
+        ctrl.clone()
+    });
+    build_state_update(&ctrl_snapshot)
 }
 
 pub fn close_find() -> FindStateUpdate {
-    CONTROLLER.with(|c| {
-        let mut ctrl = c.borrow_mut();
+    clear_find_session();
+    let ctrl_snapshot = app_context::with_find_controller_mut(|ctrl| {
         ctrl.is_open = false;
         ctrl.last_result = SearchResult::default();
-        clear_find_session();
-        build_state_update(&ctrl)
-    })
+        ctrl.clone()
+    });
+    build_state_update(&ctrl_snapshot)
 }
 
 pub fn toggle_find(current_page: u16, page_count: u16, path: String) -> FindStateUpdate {
-    let is_open = CONTROLLER.with(|c| c.borrow().is_open);
+    let is_open = app_context::with_find_controller(|ctrl| ctrl.is_open);
     if is_open {
         close_find()
     } else {
@@ -230,47 +224,35 @@ pub fn set_search_result(
     scope: FindScope,
     current_page: u16,
 ) -> FindStateUpdate {
-    CONTROLLER.with(|c| {
-        let mut ctrl = c.borrow_mut();
+    let match_pages: Vec<u16> = result.matches.iter().map(|m| m.page_index).collect();
+    let query = result.query.clone();
+    let host_scope = match scope {
+        FindScope::Page => HostFindScope::Page,
+        FindScope::Document => HostFindScope::Document,
+    };
+    set_find_session(query, host_scope, match_pages, Some(current_page));
+
+    let ctrl_snapshot = app_context::with_find_controller_mut(|ctrl| {
         ctrl.current_page = current_page;
         ctrl.last_result = result;
-
-        // Update session tracking
-        let match_pages: Vec<u16> = ctrl
-            .last_result
-            .matches
-            .iter()
-            .map(|m| m.page_index)
-            .collect();
-        let host_scope = match scope {
-            FindScope::Page => HostFindScope::Page,
-            FindScope::Document => HostFindScope::Document,
-        };
-        set_find_session(
-            ctrl.last_result.query.clone(),
-            host_scope,
-            match_pages,
-            Some(current_page),
-        );
-
-        build_state_update(&ctrl)
-    })
+        ctrl.clone()
+    });
+    build_state_update(&ctrl_snapshot)
 }
 
 pub fn clear_search() -> FindStateUpdate {
-    CONTROLLER.with(|c| {
-        let mut ctrl = c.borrow_mut();
+    clear_find_session();
+    let ctrl_snapshot = app_context::with_find_controller_mut(|ctrl| {
         ctrl.last_result = SearchResult::default();
-        clear_find_session();
-        build_state_update(&ctrl)
-    })
+        ctrl.clone()
+    });
+    build_state_update(&ctrl_snapshot)
 }
 
 pub fn move_active(step: i32) -> FindStateUpdate {
     let nav = move_find_match(step);
-    CONTROLLER.with(|c| {
-        let ctrl = c.borrow();
-        let mut update = build_state_update(&ctrl);
+    app_context::with_find_controller(|ctrl| {
+        let mut update = build_state_update(ctrl);
         update.state.active_index = nav.active_index;
 
         // Check if navigation crosses page boundary
@@ -292,18 +274,15 @@ pub fn move_active(step: i32) -> FindStateUpdate {
 }
 
 pub fn set_current_page(page: u16) -> FindStateUpdate {
-    CONTROLLER.with(|c| {
-        let mut ctrl = c.borrow_mut();
+    let ctrl_snapshot = app_context::with_find_controller_mut(|ctrl| {
         ctrl.current_page = page;
-        build_state_update(&ctrl)
-    })
+        ctrl.clone()
+    });
+    build_state_update(&ctrl_snapshot)
 }
 
 pub fn read_toolbar_state() -> FindToolbarState {
-    CONTROLLER.with(|c| {
-        let ctrl = c.borrow();
-        build_toolbar_state(&ctrl)
-    })
+    app_context::with_find_controller(build_toolbar_state)
 }
 
 pub fn build_replace_requests(
@@ -311,8 +290,7 @@ pub fn build_replace_requests(
     replace_all: bool,
     scope: FindScope,
 ) -> Vec<ReplaceRequest> {
-    CONTROLLER.with(|c| {
-        let ctrl = c.borrow();
+    app_context::with_find_controller(|ctrl| {
         let session = read_find_session();
         let active_index = session.active_index;
 
@@ -464,3 +442,84 @@ fn build_toolbar_state(ctrl: &FindControllerInner) -> FindToolbarState {
         can_replace_all,
     }
 }
+
+// ─── Centralized Host Find Session State ─────────────────────────────────────
+
+pub fn clear_find_session() {
+    crate::app_context::with_find_session_mut(|session| {
+        *session = HostFindSession::default();
+    });
+}
+
+pub fn read_find_session() -> HostFindSession {
+    crate::app_context::with_find_session(Clone::clone)
+}
+
+pub fn set_find_session(
+    query: String,
+    scope: HostFindScope,
+    match_pages: Vec<u16>,
+    preferred_active_page: Option<u16>,
+) -> HostFindNavigationResult {
+    let total_matches = match_pages.len();
+    let active_index = resolve_initial_active_index(&match_pages, preferred_active_page);
+    let active_page = match_pages.get(active_index).copied();
+
+    crate::app_context::with_find_session_mut(|session| {
+        *session = HostFindSession {
+            query,
+            scope,
+            active_index,
+            total_matches,
+            match_pages,
+        };
+    });
+
+    HostFindNavigationResult {
+        has_matches: total_matches > 0,
+        active_index,
+        active_page,
+        wrapped: false,
+    }
+}
+
+pub fn move_find_match(step: i32) -> HostFindNavigationResult {
+    crate::app_context::with_find_session_mut(|session| {
+        if session.match_pages.is_empty() {
+            return HostFindNavigationResult::default();
+        }
+
+        let previous_index = session.active_index;
+        let total = session.match_pages.len() as i32;
+        let next_index = (session.active_index as i32 + step).rem_euclid(total) as usize;
+        session.active_index = next_index;
+
+        HostFindNavigationResult {
+            has_matches: true,
+            active_index: next_index,
+            active_page: session.match_pages.get(next_index).copied(),
+            wrapped: wrapped_between(previous_index, next_index, step),
+        }
+    })
+}
+
+fn resolve_initial_active_index(match_pages: &[u16], preferred_active_page: Option<u16>) -> usize {
+    let Some(page) = preferred_active_page else {
+        return 0;
+    };
+    match_pages
+        .iter()
+        .position(|candidate| *candidate == page)
+        .unwrap_or(0)
+}
+
+fn wrapped_between(previous_index: usize, next_index: usize, step: i32) -> bool {
+    if step > 0 {
+        next_index < previous_index
+    } else if step < 0 {
+        next_index > previous_index
+    } else {
+        false
+    }
+}
+

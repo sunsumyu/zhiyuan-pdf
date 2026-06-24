@@ -11,6 +11,7 @@
 //! backward compatibility with the TS bridge; new TS code should
 //! construct `DocumentSession` and call its methods directly.
 
+use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
@@ -173,5 +174,67 @@ impl DocumentSession {
 impl Default for DocumentSession {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ── Cache metadata MRU coordinator ──────────────────────────────
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvictionResult {
+    pub evicted_key: Option<String>,
+}
+
+#[wasm_bindgen]
+pub struct PageBundleCacheCoordinator {
+    max_size: usize,
+    // entries as (key, revision)
+    entries: Vec<(String, u32)>,
+}
+
+#[wasm_bindgen]
+impl PageBundleCacheCoordinator {
+    #[wasm_bindgen(constructor)]
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            max_size,
+            entries: Vec::new(),
+        }
+    }
+
+    #[wasm_bindgen(js_name = "touchOrEvictStale")]
+    pub fn touch_or_evict_stale(&mut self, key: String, current_revision: u32, entry_revision: u32) -> JsValue {
+        let idx = self.entries.iter().position(|(k, _)| k == &key);
+        if let Some(i) = idx {
+            if entry_revision != current_revision {
+                self.entries.remove(i);
+                return to_value(&EvictionResult { evicted_key: Some(key) }).unwrap_or(JsValue::NULL);
+            }
+            let item = self.entries.remove(i);
+            self.entries.insert(0, item);
+        }
+        to_value(&EvictionResult { evicted_key: None }).unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(js_name = "insertAndCheckEviction")]
+    pub fn insert_and_check_eviction(&mut self, key: String, current_revision: u32) -> JsValue {
+        if let Some(i) = self.entries.iter().position(|(k, _)| k == &key) {
+            self.entries.remove(i);
+        }
+        self.entries.insert(0, (key, current_revision));
+
+        let mut evicted_key = None;
+        if self.entries.len() > self.max_size {
+            if let Some((k, _)) = self.entries.pop() {
+                evicted_key = Some(k);
+            }
+        }
+
+        to_value(&EvictionResult { evicted_key }).unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(js_name = "clear")]
+    pub fn clear(&mut self) {
+        self.entries.clear();
     }
 }

@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-
 use crate::render::workflow::RenderFrameEnvelope;
 
 #[derive(Default)]
@@ -8,14 +6,10 @@ pub struct HostRenderLoopState {
     pub pending_frame: Option<RenderFrameEnvelope>,
 }
 
-thread_local! {
-    pub static RENDER_LOOP_STATE: RefCell<HostRenderLoopState> =
-        RefCell::new(HostRenderLoopState::default());
-}
+use crate::app_context;
 
 pub fn queue_frame(frame: Option<RenderFrameEnvelope>) -> Option<RenderFrameEnvelope> {
-    RENDER_LOOP_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    app_context::with_render_loop_mut(|state| {
         if let Some(frame) = frame {
             state.pending_frame = Some(frame);
         }
@@ -33,8 +27,7 @@ pub fn queue_frame(frame: Option<RenderFrameEnvelope>) -> Option<RenderFrameEnve
 pub fn advance_frame(
     next_frame: Option<RenderFrameEnvelope>,
 ) -> Option<RenderFrameEnvelope> {
-    RENDER_LOOP_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    app_context::with_render_loop_mut(|state| {
         if let Some(frame) = next_frame {
             return Some(frame);
         }
@@ -47,7 +40,7 @@ pub fn advance_frame(
 }
 
 pub fn reset_runtime() {
-    RENDER_LOOP_STATE.with(|state| {
-        *state.borrow_mut() = HostRenderLoopState::default();
+    app_context::with_render_loop_mut(|state| {
+        *state = HostRenderLoopState::default();
     });
 }

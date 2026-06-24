@@ -266,6 +266,7 @@ impl PageAssetKind {
 pub(crate) struct PageAssetAdmissionService;
 
 impl PageAssetAdmissionService {
+    #[allow(dead_code)]
     pub(crate) fn set_test_delay_ms(delay_ms: u64) {
         #[cfg(debug_assertions)]
         PAGE_ASSET_TEST_DELAY_MS.store(delay_ms.min(5_000), Ordering::SeqCst);
