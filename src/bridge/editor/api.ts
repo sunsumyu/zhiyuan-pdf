@@ -71,9 +71,6 @@ export function discard(): EditorResponse<void> | null {
     return getSession()?.discard() ?? null;
 }
 
-export function getSnapshot(displayZoom: number): EditorResponse<SnapshotResult> | null {
-    return getSession()?.getSnapshot(displayZoom) ?? null;
-}
 
 export function isActive(): boolean {
     return !!getSession()?.isActive();
@@ -136,13 +133,7 @@ export function applyFormat(action: EditorFormatAction): EditorResponse<CommitRe
     return getSession()?.applyFormat(action) ?? null;
 }
 
-export function getTextBlocks(pageIndex: number): EditorResponse<TextBlockInfo[]> | null {
-    return getSession()?.getTextBlocks(pageIndex) ?? null;
-}
 
-export function getFormatState(): unknown {
-    return getSession()?.getFormatState() ?? null;
-}
 
 // ── Region editor ───────────────────────────────────────────────
 
@@ -200,19 +191,19 @@ export function paste(text: string): EditorResponse | null {
 }
 
 export function undo(): EditorResponse | null {
-    return getSession()?.undo() ?? null;
+    return (getSession() as any)?.undo() ?? null;
 }
 
 export function redo(): EditorResponse | null {
-    return getSession()?.redo() ?? null;
+    return (getSession() as any)?.redo() ?? null;
 }
 
 export function canUndo(): boolean {
-    return !!getSession()?.canUndo();
+    return !!(getSession() as any)?.canUndo();
 }
 
 export function canRedo(): boolean {
-    return !!getSession()?.canRedo();
+    return !!(getSession() as any)?.canRedo();
 }
 
 export function getTextContent(): EditorResponse<string> | null {

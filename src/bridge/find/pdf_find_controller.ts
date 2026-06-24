@@ -185,6 +185,26 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
         }
     }
 
+    function resolvePercentageRect(
+        rect: { left: number; top: number; width: number; height: number },
+        pageWidth: number,
+        pageHeight: number,
+    ) {
+        const wasm = deps.getWasmApi() as any;
+        if (wasm?.GeometryApi) {
+            const geo = new wasm.GeometryApi();
+            return geo.toPercentageRect(rect.left, rect.top, rect.width, rect.height, pageWidth, pageHeight);
+        }
+        const pw = Math.max(1, pageWidth);
+        const ph = Math.max(1, pageHeight);
+        return {
+            left: (rect.left / pw) * 100,
+            top: (rect.top / ph) * 100,
+            width: (rect.width / pw) * 100,
+            height: (rect.height / ph) * 100,
+        };
+    }
+
     function renderOverlayFromUpdate(update: FindStateUpdate): void {
         const nodes = getNodes();
         if (!nodes.overlay) return;
@@ -199,10 +219,11 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
             el.style.position = 'absolute';
             el.style.pointerEvents = 'auto';
             el.style.cursor = m.isEditable ? 'text' : 'default';
-            el.style.left = `${(m.boxRect.left / pageWidth) * 100}%`;
-            el.style.top = `${(m.boxRect.top / pageHeight) * 100}%`;
-            el.style.width = `${(m.boxRect.width / pageWidth) * 100}%`;
-            el.style.height = `${(m.boxRect.height / pageHeight) * 100}%`;
+            const pct = resolvePercentageRect(m.boxRect, pageWidth, pageHeight);
+            el.style.left = `${pct.left}%`;
+            el.style.top = `${pct.top}%`;
+            el.style.width = `${pct.width}%`;
+            el.style.height = `${pct.height}%`;
             el.style.borderRadius = '6px';
             el.style.boxSizing = 'border-box';
             if (m.isActive) {

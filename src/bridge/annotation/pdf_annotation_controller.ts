@@ -1,6 +1,26 @@
 import type { DocumentEditApi } from '../document/document_edit_api';
-import { targetInvokeV3 } from '../shared/wasm_loader';
+import { getWasmApi, targetInvokeV3 } from '../shared/wasm_loader';
 import { setToolbarButtonActive } from '../viewer/pdf_viewer_dom';
+
+function resolvePercentageRect(
+    rect: { left: number; top: number; width: number; height: number },
+    pageWidth: number,
+    pageHeight: number,
+) {
+    const wasm = getWasmApi() as any;
+    if (wasm?.GeometryApi) {
+        const geo = new wasm.GeometryApi();
+        return geo.toPercentageRect(rect.left, rect.top, rect.width, rect.height, pageWidth, pageHeight);
+    }
+    const pw = Math.max(1, pageWidth);
+    const ph = Math.max(1, pageHeight);
+    return {
+        left: (rect.left / pw) * 100,
+        top: (rect.top / ph) * 100,
+        width: (rect.width / pw) * 100,
+        height: (rect.height / ph) * 100,
+    };
+}
 
 type ViewerSessionSnapshot = {
     path: string | null;
@@ -114,10 +134,11 @@ export function createPdfAnnotationController(
             node.title = '点击删除这条高亮';
             node.style.position = 'absolute';
             node.style.pointerEvents = 'auto';
-            node.style.left = `${(highlight.boxRect.left / pageWidth) * 100}%`;
-            node.style.top = `${(highlight.boxRect.top / pageHeight) * 100}%`;
-            node.style.width = `${(highlight.boxRect.width / pageWidth) * 100}%`;
-            node.style.height = `${(highlight.boxRect.height / pageHeight) * 100}%`;
+            const pct = resolvePercentageRect(highlight.boxRect, pageWidth, pageHeight);
+            node.style.left = `${pct.left}%`;
+            node.style.top = `${pct.top}%`;
+            node.style.width = `${pct.width}%`;
+            node.style.height = `${pct.height}%`;
             node.style.borderRadius = '4px';
             node.style.background = colorToCss(highlight.color, 0.26);
             node.style.border = `1px solid ${colorToCss(highlight.color, 0.65)}`;
@@ -192,10 +213,11 @@ export function createPdfAnnotationController(
             const node = document.createElement('div');
             node.dataset.annotationTargetId = target.id;
             node.style.position = 'absolute';
-            node.style.left = `${(target.boxRect.left / pageWidth) * 100}%`;
-            node.style.top = `${(target.boxRect.top / pageHeight) * 100}%`;
-            node.style.width = `${(target.boxRect.width / pageWidth) * 100}%`;
-            node.style.height = `${(target.boxRect.height / pageHeight) * 100}%`;
+            const pct = resolvePercentageRect(target.boxRect, pageWidth, pageHeight);
+            node.style.left = `${pct.left}%`;
+            node.style.top = `${pct.top}%`;
+            node.style.width = `${pct.width}%`;
+            node.style.height = `${pct.height}%`;
             node.style.borderRadius = '6px';
             node.style.background = 'rgba(249, 226, 175, 0.08)';
             node.style.border = '1px dashed rgba(249, 226, 175, 0.7)';
