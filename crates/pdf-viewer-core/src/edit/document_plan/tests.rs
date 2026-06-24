@@ -1,0 +1,418 @@
+use super::*;
+use crate::models::{
+    EditorControlStyle, FontSourceKind, PaintMode, ParagraphStyle, ResolvedFontFace,
+    ResolvedFontIdentity, RunStyle, BoundingBox, LayoutRun, ParagraphEditContext,
+    LayoutParagraph, SemanticRole, StyledRun, SymbolClass, VectorRenderObject,
+    VectorTextObject, GlyphPaintParagraph, GlyphPaintRun, VectorPageModel,
+};
+use crate::text::glyph_layout::build_editor_session_text_plan;
+
+const CANONICAL_MIXED_TEXT: &str =
+    "智能合约: Anchor Framework, Solana Program Library (SPL), ERC-20/721";
+
+fn test_style() -> RunStyle {
+    RunStyle {
+        font_name: "Microsoft YaHei".to_string(),
+        font_size: 10.0,
+        color: "#000000".to_string(),
+        is_bold: false,
+        is_italic: false,
+        is_underline: false,
+        char_spacing: 0.0,
+        scale_x: 1.0,
+    }
+}
+
+fn test_bbox(left: f32, width: f32) -> BoundingBox {
+    BoundingBox {
+        left,
+        top: 40.0,
+        right: left + width,
+        bottom: 52.0,
+    }
+}
+
+fn test_layout_run(id: &str, text: &str, left: f32, width: f32) -> LayoutRun {
+    LayoutRun {
+        id: id.to_string(),
+        text: text.to_string(),
+        style: test_style(),
+        bbox: test_bbox(left, width),
+        origin_x: left,
+        origin_y: 50.0,
+        char_origins: Vec::new(),
+        char_widths: Vec::new(),
+        object_ids: vec!["obj-1".to_string()],
+        object_indices: vec![0],
+    }
+}
+
+fn layout_with_gaps(
+    id: &str,
+    text: &str,
+    left: f32,
+    origins: Vec<f32>,
+    widths: Vec<f32>,
+) -> LayoutRun {
+    let right = origins
+        .iter()
+        .zip(widths.iter())
+        .map(|(origin, width)| origin + width)
+        .fold(left, f32::max);
+    let mut run = test_layout_run(id, text, left, (right - left).max(1.0));
+    run.char_origins = origins;
+    run.char_widths = widths;
+    run
+}
+
+fn session_from_runs(runs: Vec<LayoutRun>) -> ParagraphEditContext {
+    let anchor_bbox = runs.iter().fold(
+        BoundingBox {
+            left: f32::INFINITY,
+            top: f32::INFINITY,
+            right: f32::NEG_INFINITY,
+            bottom: f32::NEG_INFINITY,
+        },
+        |acc, run| BoundingBox {
+            left: acc.left.min(run.bbox.left),
+            top: acc.top.min(run.bbox.top),
+            right: acc.right.max(run.bbox.right),
+            bottom: acc.bottom.max(run.bbox.bottom),
+        },
+    );
+
+    ParagraphEditContext {
+        anchor_bbox,
+        paragraph: LayoutParagraph {
+            id: "p1".to_string(),
+            bbox: anchor_bbox,
+            origin_x: anchor_bbox.left,
+            origin_y: anchor_bbox.top,
+            wrap_width: (anchor_bbox.right - anchor_bbox.left).max(1.0),
+            runs,
+            ..Default::default()
+        },
+    }
+}
+
+fn mixed_runs() -> Vec<LayoutRun> {
+    vec![
+        test_layout_run("r0", "智能合约: ", 0.0, 50.0),
+        test_layout_run("r1", "A", 50.0, 5.0),
+        test_layout_run("r2", "nchor", 58.0, 25.0),
+        test_layout_run("r3", " ", 83.0, 4.0),
+        test_layout_run("r4", "Fram", 87.0, 20.0),
+        test_layout_run("r5", "ew", 110.0, 10.0),
+        test_layout_run("r6", "ork", 123.0, 15.0),
+        test_layout_run("r7", ", ", 138.0, 6.0),
+        test_layout_run("r8", "S", 144.0, 5.0),
+        test_layout_run("r9", "olana Program Library (", 152.0, 110.0),
+        test_layout_run("r10", "S", 262.0, 5.0),
+        test_layout_run("r11", "PL)", 270.0, 15.0),
+        test_layout_run("r12", ", ER", 285.0, 20.0),
+        test_layout_run("r13", "C", 308.0, 5.0),
+        test_layout_run("r14", "-20/721", 316.0, 35.0),
+    ]
+}
+
+#[test]
+fn preserves_canonical_source() {
+    let session = session_from_runs(mixed_runs());
+    let reconstructed = build_editor_session_text_plan(&session).text;
+
+    assert!(reconstructed.contains("A nchor"));
+    assert!(reconstructed.contains("Fram ew ork"));
+    assert!(reconstructed.contains("S PL"));
+    assert!(reconstructed.contains("ER C -20"));
+
+    let document_plan = build_editor_document_plan_from_session(&session);
+
+    assert_eq!(document_plan.source_body_text(), CANONICAL_MIXED_TEXT);
+    assert!(!document_plan.source_body_text().contains("A nchor"));
+    assert_ne!(document_plan.source_body_text(), reconstructed);
+}
+
+#[test]
+fn restores_visual_gaps() {
+    let session = session_from_runs(vec![
+        test_layout_run("r0", "智能合约:", 0.0, 46.0),
+        test_layout_run("r1", "A", 51.0, 5.0),
+        test_layout_run("r2", "nchor", 59.0, 25.0),
+        test_layout_run("r3", "Framework,", 90.0, 58.0),
+        test_layout_run("r4", "Solana", 154.0, 36.0),
+        test_layout_run("r5", "Program", 196.0, 42.0),
+        test_layout_run("r6", "Library", 244.0, 38.0),
+        test_layout_run("r7", "(SPL),", 288.0, 32.0),
+        test_layout_run("r8", "ERC-20/721", 326.0, 54.0),
+    ]);
+
+    let document_plan = build_editor_document_plan_from_session(&session);
+
+    assert_eq!(
+        document_plan.source_body_text(),
+        "智能合约: Anchor Framework, Solana Program Library (SPL), ERC-20/721"
+    );
+    assert!(!document_plan.source_body_text().contains("A nchor"));
+}
+
+#[test]
+fn restores_run_spaces() {
+    let text = "智能合约:AnchorFramework,SolanaProgramLibrary(SPL),ERC-20/721";
+    let chars = text.chars().collect::<Vec<_>>();
+    let mut x = 0.0;
+    let mut origins = Vec::new();
+    let mut widths = Vec::new();
+    for index in 0..chars.len() {
+        origins.push(x);
+        let width = if chars[index].is_ascii() { 5.0 } else { 10.0 };
+        widths.push(width);
+        x += width;
+        if index + 1 < chars.len()
+            && matches!(
+                (chars[index], chars[index + 1]),
+                (':', 'A')
+                    | ('r', 'F')
+                    | (',', 'S')
+                    | ('a', 'P')
+                    | ('m', 'L')
+                    | ('y', '(')
+                    | (',', 'E')
+            )
+        {
+            x += 4.0;
+        }
+    }
+    let session = session_from_runs(vec![layout_with_gaps(
+        "single-run",
+        text,
+        0.0,
+        origins,
+        widths,
+    )]);
+
+    let document_plan = build_editor_document_plan_from_session(&session);
+
+    assert_eq!(
+        document_plan.source_body_text(),
+        "智能合约: Anchor Framework, Solana Program Library (SPL), ERC-20/721"
+    );
+    assert!(!document_plan.source_body_text().contains("A nchor"));
+    assert!(!document_plan.source_body_text().contains("S PL"));
+    assert!(!document_plan.source_body_text().contains("ER C"));
+}
+
+fn test_resolved_font() -> ResolvedFontFace {
+    ResolvedFontFace {
+        identity: ResolvedFontIdentity {
+            raw_name: "Microsoft YaHei".to_string(),
+            canonical_family: "Microsoft YaHei".to_string(),
+            style_name: "Regular".to_string(),
+            weight: 400,
+            is_italic: false,
+            symbol_class: SymbolClass::None,
+            subset_stripped: false,
+        },
+        render_family: "Microsoft YaHei".to_string(),
+        metrics_family: "Microsoft YaHei".to_string(),
+        source: FontSourceKind::SystemMatched,
+        confidence: 1.0,
+    }
+}
+
+fn test_paint_run(id: &str, text: &str, left: f32, width: f32) -> GlyphPaintRun {
+    GlyphPaintRun {
+        id: id.to_string(),
+        page_index: 0,
+        region_id: "region-1".to_string(),
+        paragraph_id: "p1".to_string(),
+        text: text.to_string(),
+        bbox: test_bbox(left, width),
+        origin_x: left,
+        origin_y: 50.0,
+        char_origins: Vec::new(),
+        color: "#000000".to_string(),
+        resolved_font: test_resolved_font(),
+        font_size: 10.0,
+        scale_x: 1.0,
+        is_bold: false,
+        is_italic: false,
+        is_underline: false,
+        paint_mode: PaintMode::Fill,
+        object_ids: vec!["obj-1".to_string()],
+        object_indices: vec![0],
+    }
+}
+
+fn test_styled_run(text: &str, left: f32, width: f32, z_index: usize) -> StyledRun {
+    StyledRun {
+        text: text.to_string(),
+        color: "#000000".to_string(),
+        tx: left,
+        ty: 50.0,
+        width,
+        font_size: 10.0,
+        font_name: "Microsoft YaHei".to_string(),
+        a: 1.0,
+        d: 1.0,
+        horizontal_scaling: 1.0,
+        z_index,
+        object_id: Some("obj-1".to_string()),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn prefers_vector_source() {
+    let polluted_paint_run = test_paint_run("paint-1", "智能合约: A nchor", 0.0, 90.0);
+    let paint_session = session_from_runs(vec![test_layout_run(
+        "paint-layout-1",
+        "智能合约: A nchor",
+        0.0,
+        90.0,
+    )]);
+    let paragraph = GlyphPaintParagraph {
+        id: "p1".to_string(),
+        region_id: "region-1".to_string(),
+        bbox: paint_session.anchor_bbox,
+        style: ParagraphStyle::default(),
+        editor_session: paint_session,
+        editor_session_v2: None,
+        control_style: EditorControlStyle::default(),
+        semantic_role: SemanticRole::None,
+        runs: vec![polluted_paint_run],
+    };
+    let vector_model = VectorPageModel {
+        page_index: 0,
+        width: 400.0,
+        height: 200.0,
+        objects: vec![VectorRenderObject::Text(VectorTextObject {
+            id: "obj-1".to_string(),
+            runs: vec![
+                test_styled_run("智能合约: ", 0.0, 50.0, 0),
+                test_styled_run("A", 50.0, 5.0, 1),
+                test_styled_run("nchor", 55.0, 25.0, 2),
+            ],
+            z_index: 0,
+        })],
+    };
+
+    let document_plan =
+        build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
+            .expect("document plan should use vector source");
+
+    assert_eq!(document_plan.source_body_text(), "智能合约: Anchor");
+    assert!(!document_plan.source_body_text().contains("A nchor"));
+}
+
+#[test]
+#[ignore = "需要 source→runs 索引映射支持 compact-PDF synthetic-space 场景，Phase 7 实现"]
+fn keeps_overlay_source() {
+    let source_session = session_from_runs(vec![test_layout_run(
+        "source-layout-1",
+        "编程语言: Rust (Solana/Anchor), Solidity (Ethereum)",
+        0.0,
+        260.0,
+    )]);
+    let mut patched_display_run = test_paint_run(
+        "patched-display-1",
+        "编程语言: Rust (Sona/Anchor), Solidity (Ethereum)",
+        0.0,
+        32.0,
+    );
+    patched_display_run.object_ids.clear();
+    patched_display_run.object_indices.clear();
+
+    let paragraph = GlyphPaintParagraph {
+        id: "p1".to_string(),
+        region_id: "region-1".to_string(),
+        bbox: source_session.anchor_bbox,
+        style: ParagraphStyle::default(),
+        editor_session: source_session,
+        editor_session_v2: None,
+        control_style: EditorControlStyle::default(),
+        semantic_role: SemanticRole::None,
+        runs: vec![patched_display_run],
+    };
+    let vector_model = VectorPageModel {
+        page_index: 0,
+        width: 400.0,
+        height: 200.0,
+        objects: vec![VectorRenderObject::Text(VectorTextObject {
+            id: "obj-1".to_string(),
+            runs: vec![test_styled_run(
+                "编程语言: Rust (Solana/Anchor), Solidity (Ethereum)",
+                0.0,
+                260.0,
+                0,
+            )],
+            z_index: 0,
+        })],
+    };
+
+    let document_plan =
+        build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
+            .expect("persisted overlay target should recover the original vector source");
+
+    assert_eq!(
+        document_plan.source_body_text(),
+        "编程语言: Rust (Solana/Anchor), Solidity (Ethereum)"
+    );
+    assert!(
+        document_plan.body_session.anchor_bbox.right >= 259.0,
+        "source geometry must come from the original vector text, not the shortened patched display run"
+    );
+}
+
+#[test]
+fn uses_vector_geometry() {
+    let paint_session = session_from_runs(vec![test_layout_run(
+        "paint-layout-1",
+        "编程语言:Rust(Solana/Anchor),Solidity(Ethereum)",
+        0.0,
+        240.0,
+    )]);
+    let mut paint_run = test_paint_run(
+        "paint-run-1",
+        "编程语言:Rust(Solana/Anchor),Solidity(Ethereum)",
+        0.0,
+        240.0,
+    );
+    paint_run.object_ids.clear();
+    paint_run.object_indices.clear();
+
+    let paragraph = GlyphPaintParagraph {
+        id: "p1".to_string(),
+        region_id: "region-1".to_string(),
+        bbox: paint_session.anchor_bbox,
+        style: ParagraphStyle::default(),
+        editor_session: paint_session,
+        editor_session_v2: None,
+        control_style: EditorControlStyle::default(),
+        semantic_role: SemanticRole::None,
+        runs: vec![paint_run],
+    };
+    let vector_model = VectorPageModel {
+        page_index: 0,
+        width: 400.0,
+        height: 200.0,
+        objects: vec![VectorRenderObject::Text(VectorTextObject {
+            id: "unlinked-vector-object".to_string(),
+            runs: vec![test_styled_run(
+                "编程语言: Rust (Solana/Anchor), Solidity (Ethereum)",
+                0.0,
+                260.0,
+                0,
+            )],
+            z_index: 0,
+        })],
+    };
+
+    let document_plan =
+        build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
+            .expect("geometry fallback should recover vector source");
+
+    assert_eq!(
+        document_plan.source_body_text(),
+        "编程语言: Rust (Solana/Anchor), Solidity (Ethereum)"
+    );
+}
