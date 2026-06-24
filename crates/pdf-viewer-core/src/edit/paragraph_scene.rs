@@ -29,21 +29,11 @@ impl Serialize for ParagraphEditorScene {
     where
         S: Serializer,
     {
-        let body_text = self.document_plan.source_body_text();
-        let has_body_text = !body_text.is_empty();
-        let field_count = if has_body_text { 9 } else { 8 };
-        let mut state = serializer.serialize_struct("ParagraphEditorScene", field_count)?;
+        let mut state = serializer.serialize_struct("ParagraphEditorScene", 4)?;
         state.serialize_field("targetId", &self.target_id)?;
         state.serialize_field("baseParagraphId", &self.base_paragraph_id)?;
         state.serialize_field("shellBbox", &self.shell_bbox)?;
         state.serialize_field("documentPlan", &self.document_plan)?;
-        if has_body_text {
-            state.serialize_field("bodyText", body_text)?;
-        }
-        state.serialize_field("bodySession", &self.document_plan.body_session)?;
-        state.serialize_field("bodyInitialCaret", &self.document_plan.body_initial_caret)?;
-        state.serialize_field("marker", &self.document_plan.marker)?;
-        state.serialize_field("originalRuns", &self.document_plan.original_runs)?;
         state.end()
     }
 }
@@ -118,6 +108,10 @@ impl ParagraphEditorScene {
 
     pub fn body_initial_caret(&self) -> usize {
         self.document_plan.body_initial_caret
+    }
+
+    pub fn set_body_initial_caret(&mut self, caret: usize) {
+        self.document_plan.body_initial_caret = caret;
     }
 
     pub fn marker(&self) -> Option<&ParagraphEditorMarker> {
@@ -212,12 +206,20 @@ mod tests {
         // Serialize to JSON string
         let json_str = serde_json::to_string(&scene).unwrap();
 
-        // Assert that the JSON contains both documentPlan and flat fields
+        // Assert that the JSON contains documentPlan (single source of truth)
         assert!(json_str.contains("\"documentPlan\""));
-        assert!(json_str.contains("\"bodyText\":\"Hello world\""));
+        // Flat fields should NOT appear at the top level — they are only inside documentPlan.
+        // Verify by parsing the JSON and checking top-level keys.
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let obj = parsed.as_object().unwrap();
+        assert!(obj.contains_key("documentPlan"), "documentPlan must be present");
+        assert!(!obj.contains_key("bodyText"), "bodyText must not be a top-level key");
+        assert!(!obj.contains_key("bodySession"), "bodySession must not be a top-level key");
+        assert!(!obj.contains_key("bodyInitialCaret"), "bodyInitialCaret must not be a top-level key");
+        assert!(!obj.contains_key("marker"), "marker must not be a top-level key");
+        assert!(!obj.contains_key("originalRuns"), "originalRuns must not be a top-level key");
+        // Verify data via documentPlan content
         assert!(json_str.contains("\"bodyInitialCaret\":5"));
-        assert!(json_str.contains("\"marker\""));
-
         // Deserialize back
         let deserialized: ParagraphEditorScene = serde_json::from_str(&json_str).unwrap();
         assert_eq!(deserialized.target_id, "test_target");

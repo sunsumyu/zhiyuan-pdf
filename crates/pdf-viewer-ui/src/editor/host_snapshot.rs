@@ -131,7 +131,7 @@ pub fn resolve_diagnostics() -> Option<ActiveEditorDiagnostics> {
     Some(ActiveEditorDiagnostics {
         paragraph_id: target.paragraph_id,
         draft_text: active_state.current_text().to_string(),
-        scene_body_text: target.scene.document_plan.source_body_text().to_string(),
+        scene_body_text: target.scene.body_text().to_string(),
         text_plan_text: text_plan.text,
         marker_text: target
             .scene

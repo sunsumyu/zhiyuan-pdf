@@ -97,7 +97,7 @@ pub fn open_at_point(
             click_page_y,
         );
         active_target.initial_caret_index = unified_caret;
-        active_target.scene.document_plan.body_initial_caret = unified_caret;
+        active_target.scene.set_body_initial_caret(unified_caret);
     }
 
     let body_object_id_count = active_target

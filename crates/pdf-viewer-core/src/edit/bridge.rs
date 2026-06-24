@@ -90,7 +90,7 @@ pub fn build_rich_patch(
                 None,
             )?;
             let replacement_target = active_editor_target_from_scene(plan, paragraph, &scene);
-            let original_text = scene.document_plan.source_body_text().to_string();
+            let original_text = scene.body_text().to_string();
             let is_list_item = scene.marker().is_some();
             let full_target_indices = if let Some(marker) = scene.marker() {
                 let mut target_indices = marker
@@ -184,7 +184,7 @@ fn active_editor_target_from_scene(
         paragraph_id: scene.target_id.clone(),
         region_id: paragraph.region_id.clone(),
         page_index: plan.page_index,
-        text: scene.document_plan.source_body_text().to_string(),
+        text: scene.body_text().to_string(),
         bbox_left: scene.shell_bbox.left,
         bbox_top: scene.shell_bbox.top,
         bbox_right: scene.shell_bbox.right,
@@ -195,7 +195,7 @@ fn active_editor_target_from_scene(
         font_style: paragraph.control_style.font_style.clone(),
         color: paragraph.control_style.color.clone(),
         text_decoration: paragraph.control_style.text_decoration.clone(),
-        initial_caret_index: scene.document_plan.body_initial_caret,
+        initial_caret_index: scene.body_initial_caret(),
         editor_session: scene.body_session().clone(),
         scene: scene.clone(),
     }
@@ -224,7 +224,7 @@ pub fn build_editor_target(
                 paragraph_id: scene.target_id.clone(),
                 region_id: paragraph.region_id.clone(),
                 page_index: plan.page_index,
-                text: scene.document_plan.source_body_text().to_string(),
+                text: scene.body_text().to_string(),
                 bbox_left: scene.shell_bbox.left,
                 bbox_top: scene.shell_bbox.top,
                 bbox_right: scene.shell_bbox.right,
@@ -235,7 +235,7 @@ pub fn build_editor_target(
                 font_style: paragraph.control_style.font_style.clone(),
                 color: paragraph.control_style.color.clone(),
                 text_decoration: paragraph.control_style.text_decoration.clone(),
-                initial_caret_index: scene.document_plan.body_initial_caret,
+                initial_caret_index: scene.body_initial_caret(),
                 editor_session: scene.body_session().clone(),
                 scene,
             });
@@ -265,7 +265,7 @@ pub fn build_paragraph_render_target(
                 paragraph_id: scene.target_id.clone(),
                 region_id: paragraph.region_id.clone(),
                 page_index: plan.page_index,
-                text: scene.document_plan.source_body_text().to_string(),
+                text: scene.body_text().to_string(),
                 bbox_left: scene.shell_bbox.left,
                 bbox_top: scene.shell_bbox.top,
                 bbox_right: scene.shell_bbox.right,
@@ -276,7 +276,7 @@ pub fn build_paragraph_render_target(
                 font_style: paragraph.control_style.font_style.clone(),
                 color: paragraph.control_style.color.clone(),
                 text_decoration: paragraph.control_style.text_decoration.clone(),
-                initial_caret_index: scene.document_plan.body_initial_caret,
+                initial_caret_index: scene.body_initial_caret(),
                 editor_session: scene.body_session().clone(),
                 scene,
             });

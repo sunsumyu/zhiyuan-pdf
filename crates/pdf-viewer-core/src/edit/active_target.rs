@@ -59,10 +59,10 @@ impl Default for ActiveEditorTarget {
 
 impl ActiveEditorTarget {
     pub fn source_body_text(&self) -> &str {
-        self.scene.document_plan.source_body_text()
+        self.scene.body_text()
     }
 
     pub fn initial_body_caret_index(&self) -> usize {
-        self.scene.document_plan.body_initial_caret
+        self.scene.body_initial_caret()
     }
 }
