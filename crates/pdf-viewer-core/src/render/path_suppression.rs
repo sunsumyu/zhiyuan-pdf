@@ -186,7 +186,7 @@ mod tests {
             right: 360.0,
             bottom: 116.0,
         };
-        target.scene.body_session = ParagraphEditContext {
+        *target.scene.body_session_mut() = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 90.0,
                 top: 100.0,

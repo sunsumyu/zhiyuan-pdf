@@ -1,5 +1,5 @@
 use crate::models::{
-    BoundingBox, EditorControlStyle, FieldEditorParams, FieldEditorParamsRequest, FontHints,
+    EditorControlStyle, FieldEditorParams, FieldEditorParamsRequest, FontHints,
     GlyphPaintParagraph, GlyphPaintPlan, GlyphPaintRegion, GlyphPaintRun, LayoutInferenceResult,
     LayoutParagraph, LayoutRun, PaintMode, ParagraphEditContext, ResolvedFontFace,
 };
@@ -154,32 +154,7 @@ pub fn build_field_editor_params(request: &FieldEditorParamsRequest) -> FieldEdi
         runs: request
             .runs
             .iter()
-            .map(|run| LayoutRun {
-                id: run.id.clone(),
-                text: run.text.clone(),
-                style: crate::models::RunStyle {
-                    font_name: run.resolved_font.render_family.clone(),
-                    font_size: run.font_size,
-                    color: run.color.clone(),
-                    is_bold: run.is_bold,
-                    is_italic: run.is_italic,
-                    is_underline: run.is_underline,
-                    char_spacing: 0.0,
-                    scale_x: run.scale_x.max(0.01),
-                },
-                bbox: BoundingBox {
-                    left: run.bbox.left,
-                    top: run.bbox.top,
-                    right: run.bbox.right,
-                    bottom: run.bbox.bottom,
-                },
-                origin_x: run.origin_x,
-                origin_y: run.origin_y,
-                char_origins: run.char_origins.clone(),
-                char_widths: vec![],
-                object_ids: run.object_ids.clone(),
-                object_indices: run.object_indices.clone(),
-            })
+            .map(|run| run.to_text_run().to_layout_run())
             .collect(),
         object_ids: request
             .runs
@@ -225,12 +200,14 @@ pub fn build_glyph_paint_plan(layout: &LayoutInferenceResult) -> GlyphPaintPlan 
                         },
                     );
 
+                    let editor_session = build_editor_session(paragraph);
                     GlyphPaintParagraph {
                         id: paragraph.id.clone(),
                         region_id: region.id.clone(),
                         bbox,
                         style: paragraph.style.clone(),
-                        editor_session: build_editor_session(paragraph),
+                        editor_session: editor_session.clone(),
+                        editor_session_v2: Some(editor_session.to_editor_session()),
                         control_style: build_control_style(paragraph),
                         semantic_role: region.semantic_role.clone(),
                         runs: paragraph

@@ -9,7 +9,7 @@ use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{VectorPageModel, VectorRenderObject};
 use crate::render::path_suppression::should_suppress;
 use crate::render::source_suppression::{
-    matching_text_run_refs, run_text_is_list_marker_only, text_object_should_be_suppressed,
+    matching_text_run_refs, text_object_should_be_suppressed,
 };
 use crate::render::viewport_culling::path_bbox;
 
@@ -97,10 +97,8 @@ pub(super) fn apply_text_suppression(
             overlay.suppressed_text_object_count =
                 overlay.suppressed_text_object_count.saturating_add(1);
             if let VectorRenderObject::Text(text) = object {
-                for (run_index, run) in text.runs.iter().enumerate() {
-                    if !run_text_is_list_marker_only(&run.text) {
-                        suppressed_text_runs.run_indices.insert(run_index);
-                    }
+                for (run_index, _) in text.runs.iter().enumerate() {
+                    suppressed_text_runs.run_indices.insert(run_index);
                 }
             }
             true

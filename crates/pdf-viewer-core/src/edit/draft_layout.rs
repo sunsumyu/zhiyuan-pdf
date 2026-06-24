@@ -4,12 +4,9 @@
 //! - `draft_types`: 核心类型定义（DraftCaretStop, DraftCaretLine, EditorDraftRenderPlan, TextDiff）
 //! - `draft_text_diff`: 文本差异计算和索引映射
 //! - `draft_style`: 样式构建、源布局、run 切片
-
-use crate::common::debug::truncate_debug_text;
-use crate::edit::debug_trace::{editor_debug_field as dbg_field, record_editor_debug_event as dbg_event};
-use crate::edit::document_plan::{EditContext, EditorDocumentPlan};
-use crate::geometry::layout_engine::{layout_paragraph, ParagraphLayout, VisualLine};
-use crate::models::{LayoutParagraph, LayoutRun};
+//! - `draft_init`: 空段落初始化
+//! - `draft_geometry`: 几何与光标转换
+//! - `draft_reflow`: 核心重排计算
 
 #[path = "draft_style.rs"]
 mod draft_style;
@@ -17,384 +14,22 @@ mod draft_style;
 mod draft_text_diff;
 #[path = "draft_types.rs"]
 mod draft_types;
+#[path = "draft_init.rs"]
+mod draft_init;
+#[path = "draft_geometry.rs"]
+mod draft_geometry;
+#[path = "draft_reflow.rs"]
+mod draft_reflow;
 
 pub use draft_types::{DraftCaretLine, DraftCaretStop, EditorDraftRenderPlan};
-
-use draft_style::{
-    build_draft_paragraph_with_policy, build_source_layout, paragraph_preserve_underline,
-    resolve_draft_template_run, resolve_template, shell_width, source_baseline_y,
-};
-use draft_text_diff::{body_runs_match_source_text, remap_caret_indices_to_draft_space};
-
-fn summarize_render_plan_lines(plan: &EditorDraftRenderPlan) -> String {
-    plan.layout
-        .lines
-        .iter()
-        .take(4)
-        .enumerate()
-        .map(|(line_index, line)| {
-            let runs = line
-                .runs
-                .iter()
-                .take(8)
-                .enumerate()
-                .map(|(run_index, run)| {
-                    let first_origin = run.char_origins.first().copied().unwrap_or(f32::NAN);
-                    let last_origin = run.char_origins.last().copied().unwrap_or(f32::NAN);
-                    format!(
-                        "r{run_index}('{}' x={:.2} origins={} first={:.2} last={:.2} font='{}')",
-                        truncate_debug_text(&run.text, 18),
-                        run.origin_x,
-                        run.char_origins.len(),
-                        first_origin,
-                        last_origin,
-                        truncate_debug_text(&run.style.font_name, 18),
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!(
-                "line{line_index}(base={:.2}, off={:.2}, width={:.2}, text='{}', {runs})",
-                line.baseline_y,
-                line.offset_x,
-                line.width,
-                truncate_debug_text(&line.text, 40),
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(" || ")
-}
-
-fn build_draft_paragraph(
-    document_plan: &EditorDocumentPlan,
-    draft_text: &str,
-    measure_width: &dyn Fn(&str, &LayoutRun) -> f32,
-) -> LayoutParagraph {
-    build_draft_paragraph_with_policy(
-        document_plan,
-        draft_text,
-        measure_width,
-        paragraph_preserve_underline(&document_plan.body_session.paragraph),
-    )
-}
-
-fn align_layout_baseline(layout: &mut ParagraphLayout, target_baseline_y: f32) {
-    let Some(first_line) = layout.lines.first() else {
-        return;
-    };
-    let baseline_offset = target_baseline_y - first_line.baseline_y;
-    if baseline_offset.abs() <= f32::EPSILON {
-        return;
-    }
-    for line in &mut layout.lines {
-        line.baseline_y += baseline_offset;
-    }
-}
-
-fn build_empty_render_plan(document_plan: &EditorDocumentPlan) -> EditorDraftRenderPlan {
-    let template_run = resolve_draft_template_run(document_plan);
-    let baseline_y = source_baseline_y(document_plan);
-    let height = template_run.style.font_size.max(1.0);
-    let line = VisualLine {
-        text: String::new(),
-        runs: vec![template_run],
-        width: 0.0,
-        height,
-        baseline_y,
-        offset_x: 0.0,
-    };
-    let caret_line = DraftCaretLine {
-        baseline_y,
-        height,
-        stops: vec![DraftCaretStop {
-            index: 0,
-            left: 0.0,
-        }],
-    };
-    EditorDraftRenderPlan {
-        layout: ParagraphLayout {
-            lines: vec![line],
-            height: baseline_y + height,
-        },
-        caret_lines: vec![caret_line],
-    }
-}
-
-fn build_editor_draft_caret_plan_from_layout<F>(
-    layout: &ParagraphLayout,
-    measure_width: F,
-) -> Vec<DraftCaretLine>
-where
-    F: Fn(&str, &LayoutRun) -> f32,
-{
-    let mut lines = Vec::new();
-    let mut consumed = 0usize;
-
-    for line in &layout.lines {
-        let mut caret_line = DraftCaretLine {
-            baseline_y: line.baseline_y,
-            height: line
-                .runs
-                .iter()
-                .map(|run| run.style.font_size.max(1.0))
-                .fold(1.0, f32::max),
-            stops: Vec::new(),
-        };
-
-        for run in &line.runs {
-            let start_index = consumed;
-            let run_origin_x = line.offset_x + run.origin_x;
-            let chars: Vec<char> = run.text.chars().collect();
-            let glyph_count = chars.len();
-            if glyph_count == 0 {
-                continue;
-            }
-
-            if !run.char_origins.is_empty() {
-                let first_origin = run.char_origins.first().copied().unwrap_or(0.0);
-                caret_line.stops.push(DraftCaretStop {
-                    index: start_index,
-                    left: run_origin_x + first_origin,
-                });
-                for glyph_index in 0..glyph_count {
-                    let origin = run
-                        .char_origins
-                        .get(glyph_index)
-                        .copied()
-                        .unwrap_or(first_origin);
-                    let right = if let Some(width) = run.char_widths.get(glyph_index).copied() {
-                        origin + width
-                    } else if let Some(next_origin) = run.char_origins.get(glyph_index + 1).copied()
-                    {
-                        next_origin
-                    } else {
-                        let mut buf = [0_u8; 4];
-                        let glyph = chars[glyph_index].encode_utf8(&mut buf);
-                        origin + measure_width(glyph, run)
-                    };
-                    caret_line.stops.push(DraftCaretStop {
-                        index: start_index + glyph_index + 1,
-                        left: run_origin_x + right,
-                    });
-                }
-                consumed += glyph_count;
-                continue;
-            }
-
-            caret_line.stops.push(DraftCaretStop {
-                index: start_index,
-                left: run_origin_x,
-            });
-            let mut prefix = String::new();
-            for (glyph_index, ch) in chars.iter().enumerate() {
-                prefix.push(*ch);
-                let prefix_width = measure_width(&prefix, run);
-                caret_line.stops.push(DraftCaretStop {
-                    index: start_index + glyph_index + 1,
-                    left: run_origin_x + prefix_width,
-                });
-            }
-            consumed += glyph_count;
-        }
-
-        if caret_line.stops.is_empty() {
-            caret_line.stops.push(DraftCaretStop {
-                index: consumed,
-                left: line.offset_x,
-            });
-        }
-
-        lines.push(caret_line);
-    }
-
-    if lines.is_empty() {
-        lines.push(DraftCaretLine {
-            baseline_y: 0.0,
-            height: 1.0,
-            stops: vec![DraftCaretStop {
-                index: 0,
-                left: 0.0,
-            }],
-        });
-    }
-
-    lines
-}
-
-fn rebuild_layout_pipeline<F>(
-    paragraph: LayoutParagraph,
-    document_plan: &EditorDocumentPlan,
-    draft_text: &str,
-    measure_width: &F,
-) -> EditorDraftRenderPlan
-where
-    F: Fn(&str, &LayoutRun) -> f32,
-{
-    let mut layout = layout_paragraph(&paragraph, paragraph.wrap_width, measure_width);
-    align_layout_baseline(&mut layout, source_baseline_y(document_plan));
-    let mut caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
-    remap_caret_indices_to_draft_space(&mut caret_lines, document_plan, draft_text);
-    EditorDraftRenderPlan { layout, caret_lines }
-}
-
-fn trace_render_plan(
-    action: &str,
-    paragraph_id: &str,
-    draft_text: &str,
-    body_text: &str,
-    plan: &EditorDraftRenderPlan,
-) {
-    dbg_event(
-        "render-plan",
-        action,
-        vec![
-            dbg_field("paragraphId", paragraph_id),
-            dbg_field("draftText", draft_text),
-            dbg_field("bodyText", body_text),
-            dbg_field("lineSummary", summarize_render_plan_lines(plan)),
-            dbg_field("visualLineCount", plan.layout.lines.len()),
-            dbg_field("caretLineCount", plan.caret_lines.len()),
-            dbg_field(
-                "caretStopCount",
-                plan.caret_lines
-                    .iter()
-                    .map(|l| l.stops.len())
-                    .sum::<usize>(),
-            ),
-        ],
-    );
-}
-
-/// 构建 draft 渲染计划 — 编辑器 active editing 模式的核心入口。
-pub fn build_draft_render_plan<F>(
-    document_plan: &EditorDocumentPlan,
-    draft_text: &str,
-    measure_width: F,
-) -> EditorDraftRenderPlan
-where
-    F: Fn(&str, &LayoutRun) -> f32,
-{
-    if draft_text == document_plan.source_body_text() && body_runs_match_source_text(document_plan)
-    {
-        let layout = build_source_layout(document_plan);
-        let caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
-        let plan = EditorDraftRenderPlan {
-            layout,
-            caret_lines,
-        };
-        dbg_event(
-            "render-plan",
-            "existing-layout",
-            vec![
-                dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
-                dbg_field("draftText", draft_text),
-                dbg_field("bodyText", document_plan.source_body_text()),
-                dbg_field("lineSummary", summarize_render_plan_lines(&plan)),
-                dbg_field("visualLineCount", plan.layout.lines.len()),
-                dbg_field("caretLineCount", plan.caret_lines.len()),
-                dbg_field(
-                    "caretStopCount",
-                    plan.caret_lines
-                        .iter()
-                        .map(|line| line.stops.len())
-                        .sum::<usize>(),
-                ),
-            ],
-        );
-        return plan;
-    }
-
-    if draft_text.is_empty() {
-        let plan = build_empty_render_plan(document_plan);
-        dbg_event(
-            "render-plan",
-            "uniform-layout-empty",
-            vec![
-                dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
-                dbg_field("draftText", draft_text),
-                dbg_field("bodyText", document_plan.source_body_text()),
-                dbg_field("lineSummary", summarize_render_plan_lines(&plan)),
-            ],
-        );
-        return plan;
-    }
-
-    let paragraph = build_draft_paragraph(document_plan, draft_text, &measure_width);
-    let mut layout = layout_paragraph(&paragraph, paragraph.wrap_width, &measure_width);
-    align_layout_baseline(&mut layout, source_baseline_y(document_plan));
-    let mut caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
-    remap_caret_indices_to_draft_space(&mut caret_lines, document_plan, draft_text);
-    let plan = EditorDraftRenderPlan {
-        layout,
-        caret_lines,
-    };
-
-    dbg_event(
-        "render-plan",
-        "uniform-layout",
-        vec![
-            dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
-            dbg_field("draftText", draft_text),
-            dbg_field("bodyText", document_plan.source_body_text()),
-            dbg_field("lineSummary", summarize_render_plan_lines(&plan)),
-            dbg_field("visualLineCount", plan.layout.lines.len()),
-            dbg_field("caretLineCount", plan.caret_lines.len()),
-            dbg_field(
-                "caretStopCount",
-                plan.caret_lines
-                    .iter()
-                    .map(|line| line.stops.len())
-                    .sum::<usize>(),
-            ),
-        ],
-    );
-
-    plan
-}
-
-/// 构建 persisted overlay 渲染计划 — 用于提交/持久化编辑后的渲染。
-pub fn build_persisted_overlay_render_plan<F>(
-    document_plan: &EditorDocumentPlan,
-    draft_text: &str,
-    measure_width: F,
-) -> EditorDraftRenderPlan
-where
-    F: Fn(&str, &LayoutRun) -> f32,
-{
-    if draft_text.is_empty() {
-        let plan = build_empty_render_plan(document_plan);
-        dbg_event(
-            "render-plan",
-            "persisted-overlay-empty",
-            vec![
-                dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
-                dbg_field("draftText", draft_text),
-                dbg_field("bodyText", document_plan.source_body_text()),
-                dbg_field("lineSummary", summarize_render_plan_lines(&plan)),
-            ],
-        );
-        return plan;
-    }
-
-    let paragraph =
-        build_draft_paragraph_with_policy(document_plan, draft_text, &measure_width, false);
-    let plan = rebuild_layout_pipeline(paragraph, document_plan, draft_text, &measure_width);
-    trace_render_plan(
-        "persisted-overlay-uniform-layout",
-        &document_plan.body_session.paragraph.id,
-        draft_text,
-        &document_plan.source_body_text(),
-        &plan,
-    );
-
-    plan
-}
+pub use draft_reflow::{build_draft_render_plan, build_persisted_overlay_render_plan};
 
 #[cfg(test)]
 mod tests {
     use super::{
-        build_draft_render_plan, build_persisted_overlay_render_plan, build_source_layout,
+        build_draft_render_plan, build_persisted_overlay_render_plan,
     };
+    use super::draft_style::build_source_layout;
     use crate::edit::document_plan::EditContext;
     use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
     use crate::text::glyph_layout::build_editor_session_text_plan;
@@ -442,7 +77,7 @@ mod tests {
         run
     }
 
-    fn changed_text_document_plan() -> EditorDocumentPlan {
+    fn changed_text_document_plan() -> EditContext {
         let source_text =
             "智能合约: Anchor Framework, Solana Program Library (SPL), ERC-20/721".to_string();
         let runs = vec![test_run_with_origins("r1", &source_text, 10.0, false)];
@@ -460,7 +95,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        EditorDocumentPlan {
+        EditContext {
             source_body_text: source_text,
             body_text_plan: build_editor_session_text_plan(&body_session),
             body_session,
@@ -502,7 +137,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        let document_plan = EditorDocumentPlan {
+        let document_plan = EditContext {
             source_body_text: "专业：计算机科学与技术".to_string(),
             body_text_plan: build_editor_session_text_plan(&body_session),
             body_session,
@@ -545,7 +180,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        let document_plan = EditorDocumentPlan {
+        let document_plan = EditContext {
             source_body_text: "编程语言: Rust".to_string(),
             body_text_plan: build_editor_session_text_plan(&body_session),
             body_session,
@@ -635,7 +270,7 @@ mod tests {
         // 编辑器实际显示给用户的文本（带合成空格），与 raw runs 字符长度不同。
         let visual_source_text =
             "智能合约: Anchor Framework, Solana Program Library (SPL), ERC-20/721".to_string();
-        let document_plan = EditorDocumentPlan {
+        let document_plan = EditContext {
             source_body_text: visual_source_text.clone(),
             body_text_plan: build_editor_session_text_plan(&body_session),
             body_session,
@@ -679,7 +314,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        let document_plan = EditorDocumentPlan {
+        let document_plan = EditContext {
             source_body_text: "Anchor".to_string(),
             body_text_plan: build_editor_session_text_plan(&body_session),
             body_session,
@@ -741,5 +376,62 @@ mod tests {
                 source_len
             );
         }
+    }
+
+    #[test]
+    fn unified_layout_with_marker() {
+        // 验证 marker + body 统一布局：marker 作为第一个 run 插入
+        use crate::edit::document_plan::ParagraphEditorMarker;
+        use crate::text::list_semantics::ListMarkerKind;
+
+        let body_text = "Anchor Framework, Solana Program Library (SPL)".to_string();
+        let runs = vec![test_run_with_origins("r1", &body_text, 50.0, false)];
+        let body_session = ParagraphEditContext {
+            anchor_bbox: BoundingBox {
+                left: 40.0,
+                top: 40.0,
+                right: 250.0,
+                bottom: 52.0,
+            },
+            paragraph: LayoutParagraph {
+                id: "p-list-item".to_string(),
+                runs,
+                wrap_width: 210.0,
+                ..Default::default()
+            },
+        };
+
+        let marker = ParagraphEditorMarker {
+            kind: ListMarkerKind::Bullet,
+            text: "•".to_string(),
+            advance: 0.0,  // marker 从 anchor 左边界开始
+            runs: vec![test_run("marker-1", "•", 40.0, 50.0, false)],
+        };
+
+        let document_plan = EditContext {
+            source_body_text: body_text.clone(),
+            body_text_plan: build_editor_session_text_plan(&body_session),
+            body_session,
+            marker: Some(marker),
+            ..Default::default()
+        };
+
+        // 删除部分文字后
+        let draft_text = "Anchor Framework";
+        let plan = build_persisted_overlay_render_plan(&document_plan, draft_text, |text, run| {
+            text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
+        });
+
+        // 验证：marker 文本应该在渲染结果的开头
+        let rendered = rendered_text(&plan);
+        assert!(rendered.starts_with("•"), "rendered text should start with marker, got: {}", rendered);
+
+        // 验证：只有一行
+        assert_eq!(plan.layout.lines.len(), 1, "single line expected");
+
+        // 验证：第一个 run 是 marker
+        let first_run = plan.layout.lines[0].runs.first();
+        assert!(first_run.is_some(), "should have first run");
+        assert_eq!(first_run.unwrap().text, "•", "first run should be marker");
     }
 }

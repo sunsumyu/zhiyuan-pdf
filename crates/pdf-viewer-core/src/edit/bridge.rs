@@ -91,22 +91,22 @@ pub fn build_rich_patch(
             )?;
             let replacement_target = active_editor_target_from_scene(plan, paragraph, &scene);
             let original_text = scene.document_plan.source_body_text().to_string();
-            let is_list_item = scene.marker.is_some();
-            let full_target_indices = if let Some(marker) = scene.marker.as_ref() {
+            let is_list_item = scene.marker().is_some();
+            let full_target_indices = if let Some(marker) = scene.marker() {
                 let mut target_indices = marker
                     .runs
                     .iter()
                     .flat_map(|run| run.object_indices.iter().copied())
                     .collect::<BTreeSet<_>>();
                 target_indices.extend(resolve_target_indices_from_runs(
-                    &scene.original_runs,
+                    scene.original_runs(),
                     vector_model,
                 ));
                 target_indices.into_iter().collect::<Vec<_>>()
             } else {
                 Vec::new()
             };
-            let marker_text = scene.marker.as_ref().map(|marker| marker.text.clone());
+            let marker_text = scene.marker().map(|marker| marker.text.clone());
             let snapshot = build_edit_replacement_snapshot(
                 replacement_target,
                 if is_list_item {
@@ -153,14 +153,14 @@ pub fn build_rich_patch(
                 original_value_text: None,
                 new_value_text: None,
                 target_indices: resolve_target_indices_from_runs(
-                    &scene.original_runs,
+                    scene.original_runs(),
                     vector_model,
                 ),
                 full_target_indices,
                 displacement_y: None,
                 wrap_width: Some(
                     scene
-                        .body_session
+                        .body_session()
                         .paragraph
                         .wrap_width
                         .max(scene.shell_bbox.right - scene.shell_bbox.left),
@@ -196,7 +196,7 @@ fn active_editor_target_from_scene(
         color: paragraph.control_style.color.clone(),
         text_decoration: paragraph.control_style.text_decoration.clone(),
         initial_caret_index: scene.document_plan.body_initial_caret,
-        editor_session: scene.body_session.clone(),
+        editor_session: scene.body_session().clone(),
         scene: scene.clone(),
     }
 }
@@ -236,7 +236,7 @@ pub fn build_editor_target(
                 color: paragraph.control_style.color.clone(),
                 text_decoration: paragraph.control_style.text_decoration.clone(),
                 initial_caret_index: scene.document_plan.body_initial_caret,
-                editor_session: scene.body_session.clone(),
+                editor_session: scene.body_session().clone(),
                 scene,
             });
         }
@@ -277,7 +277,7 @@ pub fn build_paragraph_render_target(
                 color: paragraph.control_style.color.clone(),
                 text_decoration: paragraph.control_style.text_decoration.clone(),
                 initial_caret_index: scene.document_plan.body_initial_caret,
-                editor_session: scene.body_session.clone(),
+                editor_session: scene.body_session().clone(),
                 scene,
             });
         }

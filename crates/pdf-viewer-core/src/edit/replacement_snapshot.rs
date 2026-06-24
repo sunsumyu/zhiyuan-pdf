@@ -39,7 +39,7 @@ pub fn build_edit_replacement_snapshot(
     let object_indices = collect_object_indices(&replacement_target);
     let wrap_width = replacement_target
         .scene
-        .body_session
+        .body_session()
         .paragraph
         .wrap_width
         .max(replacement_target.scene.shell_bbox.right - replacement_target.scene.shell_bbox.left);
@@ -83,11 +83,11 @@ pub fn find_target(
 fn collect_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
     let mut indices = target
         .scene
-        .original_runs
+        .original_runs()
         .iter()
         .flat_map(|run| run.object_indices.iter().copied())
         .collect::<BTreeSet<_>>();
-    if let Some(marker) = target.scene.marker.as_ref() {
+    if let Some(marker) = target.scene.marker() {
         indices.extend(
             marker
                 .runs
@@ -99,7 +99,7 @@ fn collect_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
         indices.extend(
             target
                 .scene
-                .body_session
+                .body_session()
                 .paragraph
                 .runs
                 .iter()
@@ -130,7 +130,7 @@ mod tests {
             right: 200.0,
             bottom: 40.0,
         };
-        target.scene.body_session.anchor_bbox = BoundingBox {
+        target.scene.body_session_mut().anchor_bbox = BoundingBox {
             left: 30.0,
             top: 20.0,
             right: 190.0,

@@ -92,23 +92,22 @@ impl LiveEditorParagraphState {
     pub fn new(target: ActiveEditorTarget) -> Self {
         let source_text = target.source_body_text().to_string();
         let style_mapper = StyleMapper::from_paragraph_text(
-            &target.scene.body_session.paragraph,
+            &target.scene.body_session().paragraph,
             &source_text,
         );
         let list_kind = target
             .scene
-            .marker
-            .as_ref()
+            .marker()
             .map(|marker| marker.kind)
             .unwrap_or(ListMarkerKind::None);
         Self {
             text_model: EditorTextModel::new(source_text),
             style_mapper,
             list_kind,
-            source_alignment: target.scene.body_session.paragraph.style.align,
+            source_alignment: target.scene.body_session().paragraph.style.align,
             source_line_height: target
                 .scene
-                .body_session
+                .body_session()
                 .paragraph
                 .style
                 .line_height
@@ -280,7 +279,7 @@ impl LiveEditorParagraphState {
     pub fn active_line_height(&self) -> f32 {
         self.target
             .scene
-            .body_session
+            .body_session()
             .paragraph
             .style
             .line_height
@@ -305,7 +304,7 @@ impl LiveEditorParagraphState {
     }
 
     pub fn active_alignment(&self) -> LayoutAlignment {
-        self.target.scene.body_session.paragraph.style.align
+        self.target.scene.body_session().paragraph.style.align
     }
 
     pub fn active_alignment_label(&self) -> String {
@@ -319,8 +318,7 @@ impl LiveEditorParagraphState {
     pub fn source_list_kind(&self) -> ListMarkerKind {
         self.target
             .scene
-            .marker
-            .as_ref()
+            .marker()
             .map(|marker| marker.kind)
             .unwrap_or(ListMarkerKind::None)
     }
@@ -335,7 +333,7 @@ impl LiveEditorParagraphState {
 
     pub fn has_style_changes(&self) -> bool {
         self.style_mapper
-            .has_style_changes_against_paragraph(&self.target.scene.body_session.paragraph)
+            .has_style_changes_against_paragraph(&self.target.scene.body_session().paragraph)
     }
 
     pub fn requires_source_replacement(&self) -> bool {
@@ -397,7 +395,7 @@ impl LiveEditorParagraphState {
         if self.active_alignment() == align {
             return false;
         }
-        self.target.scene.body_session.paragraph.style.align = align;
+        self.target.scene.body_session_mut().paragraph.style.align = align;
         self.target.editor_session.paragraph.style.align = align;
         self.scene_revision = self.scene_revision.saturating_add(1);
         self.session_dirty = true;
@@ -428,8 +426,7 @@ impl LiveEditorParagraphState {
         let source_marker_text = self
             .target
             .scene
-            .marker
-            .as_ref()
+            .marker()
             .map(|marker| marker.text.as_str());
         let next = derive_next_marker_text(
             self.active_list_kind(),
@@ -446,8 +443,7 @@ impl LiveEditorParagraphState {
     pub fn source_marker_text(&self) -> Option<&str> {
         self.target
             .scene
-            .marker
-            .as_ref()
+            .marker()
             .map(|marker| marker.text.as_str())
     }
 
@@ -519,7 +515,7 @@ impl LiveEditorParagraphState {
         if (self.active_line_height() - normalized).abs() < 0.01 {
             return false;
         }
-        self.target.scene.body_session.paragraph.style.line_height = normalized;
+        self.target.scene.body_session_mut().paragraph.style.line_height = normalized;
         self.target.editor_session.paragraph.style.line_height = normalized;
         self.scene_revision = self.scene_revision.saturating_add(1);
         self.session_dirty = true;

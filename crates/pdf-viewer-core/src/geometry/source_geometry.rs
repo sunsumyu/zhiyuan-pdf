@@ -50,93 +50,16 @@ pub fn compute_run_bbox(run: &LayoutRun) -> Option<BoundingBox> {
     if run.text.is_empty() {
         return None;
     }
-    let (left, right) = source_run_horizontal_span(run)?;
-    if run.origin_y.is_finite() && run.style.font_size.is_finite() && run.style.font_size > 0.0 {
-        let font_size = run.style.font_size.max(1.0);
-        return Some(BoundingBox {
-            left,
-            top: run.origin_y - font_size,
-            right,
-            bottom: run.origin_y,
-        });
-    }
-    if bbox_has_area(run.bbox) {
-        return Some(BoundingBox {
-            left,
-            top: run.bbox.top,
-            right,
-            bottom: run.bbox.bottom,
-        });
-    }
-    None
-}
-
-fn source_run_horizontal_span(run: &LayoutRun) -> Option<(f32, f32)> {
-    let mut left = f32::INFINITY;
-    let mut right = f32::NEG_INFINITY;
-
-    if run.bbox.left.is_finite() && run.bbox.right.is_finite() && run.bbox.right > run.bbox.left {
-        left = left.min(run.bbox.left);
-        right = right.max(run.bbox.right);
-    }
-
-    if run.origin_x.is_finite() {
-        let inferred_width = inferred_run_width(run)
-            .or_else(|| bbox_width(run.bbox).filter(|width| *width > 0.0))
-            .unwrap_or(1.0);
-        left = left.min(run.origin_x);
-        right = right.max(run.origin_x + inferred_width.max(1.0));
-    }
-
-    if left.is_finite() && right.is_finite() && right > left {
-        Some((left, right))
+    let text_run = run.to_text_run();
+    let bbox = text_run.compute_bbox();
+    if bbox.left.is_finite() && bbox.right.is_finite() && bbox.right > bbox.left {
+        Some(bbox)
+    } else if run.bbox.left.is_finite() && run.bbox.right.is_finite() && run.bbox.right > run.bbox.left {
+        // 回退到 LayoutRun 存储的 bbox
+        Some(run.bbox)
     } else {
         None
     }
-}
-
-fn inferred_run_width(run: &LayoutRun) -> Option<f32> {
-    if run.char_origins.is_empty() {
-        return None;
-    }
-    let glyph_count = run.text.chars().count().min(run.char_origins.len());
-    if glyph_count == 0 {
-        return None;
-    }
-
-    let mut right = f32::NEG_INFINITY;
-    for glyph_index in 0..glyph_count {
-        let origin = run.char_origins[glyph_index];
-        if !origin.is_finite() {
-            continue;
-        }
-        let glyph_right = if let Some(width) = run.char_widths.get(glyph_index).copied() {
-            origin + width.max(0.0)
-        } else if let Some(next_origin) = run.char_origins.get(glyph_index + 1).copied() {
-            next_origin
-        } else {
-            origin + (run.style.font_size.max(1.0) * 0.5)
-        };
-        if glyph_right.is_finite() {
-            right = right.max(glyph_right);
-        }
-    }
-    right.is_finite().then_some(right.max(1.0))
-}
-
-fn bbox_width(bbox: BoundingBox) -> Option<f32> {
-    let width = bbox.right - bbox.left;
-    width.is_finite().then_some(width)
-}
-
-fn bbox_height(bbox: BoundingBox) -> Option<f32> {
-    let height = bbox.bottom - bbox.top;
-    height.is_finite().then_some(height)
-}
-
-fn bbox_has_area(bbox: BoundingBox) -> bool {
-    bbox_width(bbox).is_some_and(|width| width > 0.0)
-        && bbox_height(bbox).is_some_and(|height| height > 0.0)
 }
 
 fn union_bbox(left: BoundingBox, right: BoundingBox) -> BoundingBox {

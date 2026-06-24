@@ -1,4 +1,4 @@
-use crate::models::{LayoutParagraph, LayoutRun, RunStyle};
+use crate::models::{LayoutParagraph, LayoutRun, RunStyle, TextRun};
 use crate::typography::font_resolver::looks_like_symbolic_font;
 use crate::text::glyph_layout::is_decorative_text;
 use serde::{Deserialize, Serialize};
@@ -235,19 +235,17 @@ impl StyleMapper {
             .iter()
             .enumerate()
             .map(|(i, span)| {
-                LayoutRun {
+                TextRun {
                     id: format!("run-{}", i),
                     text: span.text.clone(),
-                    style: span.style.clone(),
                     // 坐标由排版引擎动态生成，此处设为 0
-                    bbox: Default::default(),
                     origin_x: 0.0,
-                    origin_y: 0.0,
-                    char_origins: Vec::new(),
-                    char_widths: Vec::new(),
+                    baseline_y: 0.0,
+                    glyphs: Vec::new(),
+                    style: span.style.clone(),
                     object_ids: Vec::new(),
-                    object_indices: Vec::new(),
                 }
+                .to_layout_run()
             })
             .collect()
     }

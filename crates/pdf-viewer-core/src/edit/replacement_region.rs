@@ -82,17 +82,42 @@ pub fn build_region(target: &ActiveEditorTarget) -> ParagraphReplacementRegion {
 }
 
 fn resolve_preferred_bbox(target: &ActiveEditorTarget) -> BoundingBox {
-    if let Some(source_bbox) = compute_session_bbox(&target.scene.body_session) {
+    // 遮盖区域必须覆盖整行（marker + body），而非仅 body 部分
+    // 因为 PDF 原文包含 marker 和 body，如果只遮盖 body，marker 区域的原文会透出来
+    let shell_bbox = target.scene.shell_bbox;
+
+    // 先尝试完整 session 的 bbox（如果有 editor_session，它包含整行数据）
+    let body_bbox = if let Some(source_bbox) = compute_session_bbox(target.scene.body_session()) {
         if bbox_has_area(&source_bbox) {
-            return source_bbox;
+            source_bbox
+        } else {
+            target.scene.body_session().anchor_bbox
         }
+    } else {
+        target.scene.body_session().anchor_bbox
+    };
+
+    // 如果有 marker，扩展 bbox 覆盖 marker 区域
+    let full_bbox = if target.scene.marker().is_some() {
+        // marker.advance 是 marker 相对于 anchor_bbox.left 的偏移
+        // marker 区域从 anchor_bbox.left + advance 开始，到 body_bbox.left
+        let anchor_left = target.scene.body_session().anchor_bbox.left;
+        let marker_left = anchor_left;  // marker 从 anchor 的最左边开始
+        BoundingBox {
+            left: marker_left.min(body_bbox.left),
+            top: body_bbox.top.min(shell_bbox.top),
+            right: body_bbox.right,
+            bottom: body_bbox.bottom.max(shell_bbox.bottom),
+        }
+    } else {
+        body_bbox
+    };
+
+    if bbox_has_area(&full_bbox) {
+        return full_bbox;
     }
-    let body_bbox = target.scene.body_session.anchor_bbox;
-    if bbox_has_area(&body_bbox) {
-        return body_bbox;
-    }
-    if bbox_has_area(&target.scene.shell_bbox) {
-        return target.scene.shell_bbox;
+    if bbox_has_area(&shell_bbox) {
+        return shell_bbox;
     }
     BoundingBox {
         left: target.bbox_left,
@@ -120,7 +145,7 @@ mod tests {
             right: 180.0,
             bottom: 112.0,
         };
-        target.scene.body_session = ParagraphEditContext {
+        *target.scene.body_session_mut() = ParagraphEditContext {
             anchor_bbox: body_bbox,
             paragraph: LayoutParagraph::default(),
         };
@@ -134,7 +159,7 @@ mod tests {
             right: 170.0,
             bottom: 124.0,
         });
-        target.scene.body_session.paragraph.runs = vec![LayoutRun {
+        target.scene.body_session_mut().paragraph.runs = vec![LayoutRun {
             id: "body-run".to_string(),
             text: "Anchor Framework".to_string(),
             style: RunStyle {
@@ -177,7 +202,7 @@ mod tests {
         assert!(region.text_clear_bbox.left > target.scene.shell_bbox.left);
         assert!(region.text_clear_bbox.right < target.scene.shell_bbox.right);
         assert!(region.text_clear_bbox.bottom > target.scene.shell_bbox.bottom);
-        assert!(region.text_clear_bbox.top >= target.scene.body_session.anchor_bbox.top - 2.0);
+        assert!(region.text_clear_bbox.top >= target.scene.body_session().anchor_bbox.top - 2.0);
     }
 
     #[test]

@@ -54,37 +54,12 @@ fn bbox_overlap_height(left: &BoundingBox, right: &BoundingBox) -> f32 {
     (left.bottom.min(right.bottom) - left.top.max(right.top)).max(0.0)
 }
 
-pub fn run_text_is_list_marker_only(text: &str) -> bool {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return false;
-    }
-    trimmed.chars().all(|c| {
-        matches!(
-            c,
-            '\u{2022}' | // •
-        '\u{25CF}' | // ●
-        '\u{25CB}' | // ○
-        '\u{25E6}' | // ◦
-        '\u{2219}' | // ∙
-        '\u{00B7}' | // ·
-        '\u{25A0}' | // ■
-        '\u{25AA}' | // ▪
-        '\u{2043}' | // ⁃
-        '*' | '-'
-        )
-    })
-}
+
 
 pub fn text_matches_region(
     run: &StyledRun,
     replacement_region: &ParagraphReplacementRegion,
 ) -> bool {
-    // list marker run 永远不通过空间匹配被 suppress；
-    // 这样同一个 PDF 文本对象内的 marker（●）不会因为 body run 的修改而消失
-    if run_text_is_list_marker_only(&run.text) {
-        return false;
-    }
     let run_bbox = run_bbox(run);
     if !bbox_intersects(&run_bbox, &replacement_region.text_clear_bbox) {
         return false;

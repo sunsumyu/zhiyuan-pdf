@@ -4,7 +4,7 @@
 
 use crate::common::debug::truncate_debug_text;
 use crate::edit::debug_trace::{editor_debug_field as dbg_field, record_editor_debug_event as dbg_event};
-use crate::edit::document_plan::{EditContext, EditorDocumentPlan};
+use crate::edit::document_plan::EditContext;
 use crate::geometry::layout_engine::{ParagraphLayout, VisualLine};
 use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext};
 use crate::text::glyph_layout::is_decorative_text;
@@ -33,7 +33,7 @@ pub(super) fn same_existing_layout_line(
     (reference_baseline_y - baseline_y).abs() <= tolerance
 }
 
-pub(super) fn build_source_layout(document_plan: &EditorDocumentPlan) -> ParagraphLayout {
+pub(super) fn build_source_layout(document_plan: &EditContext) -> ParagraphLayout {
     let session = &document_plan.body_session;
     let anchor_left = session.anchor_bbox.left;
     let anchor_top = session.anchor_bbox.top;
@@ -92,7 +92,7 @@ pub(super) fn build_source_layout(document_plan: &EditorDocumentPlan) -> Paragra
     ParagraphLayout { lines, height }
 }
 
-pub(super) fn resolve_draft_template_run(document_plan: &EditorDocumentPlan) -> LayoutRun {
+pub(super) fn resolve_draft_template_run(document_plan: &EditContext) -> LayoutRun {
     resolve_template(
         document_plan,
         paragraph_preserve_underline(&document_plan.body_session.paragraph),
@@ -100,7 +100,7 @@ pub(super) fn resolve_draft_template_run(document_plan: &EditorDocumentPlan) -> 
 }
 
 pub(super) fn resolve_template(
-    document_plan: &EditorDocumentPlan,
+    document_plan: &EditContext,
     preserve_underline: bool,
 ) -> LayoutRun {
     let mut run = if !document_plan.draft_template_run.id.is_empty()
@@ -158,7 +158,7 @@ pub(super) fn is_good_body_style(run: &LayoutRun) -> bool {
 }
 
 pub(super) fn select_style(
-    document_plan: &EditorDocumentPlan,
+    document_plan: &EditContext,
     source_runs: &[LayoutRun],
     anchor_index: usize,
     preserve_underline: bool,
@@ -212,8 +212,7 @@ pub(super) fn slice_runs_by_char_range(
     let mut output = Vec::new();
     let mut cursor = 0usize;
     for run in runs.iter().filter(|run| !run.text.is_empty()) {
-        let chars: Vec<char> = run.text.chars().collect();
-        let run_len = chars.len();
+        let run_len = run.text.chars().count();
         let run_start = cursor;
         let run_end = cursor + run_len;
         cursor = run_end;
@@ -226,27 +225,21 @@ pub(super) fn slice_runs_by_char_range(
         if slice_start >= slice_end {
             continue;
         }
-        let mut sliced = run.clone();
-        sliced.text = chars[slice_start..slice_end].iter().collect();
-        if !run.char_origins.is_empty() && run.char_origins.len() >= slice_end {
-            let origins = &run.char_origins[slice_start..slice_end];
-            if let Some(first_origin) = origins.first().copied() {
-                sliced.char_origins = origins.iter().map(|o| o - first_origin).collect();
-            } else {
-                sliced.char_origins.clear();
-            }
-            if run.char_widths.len() >= slice_end {
-                sliced.char_widths = run.char_widths[slice_start..slice_end]
-                    .iter()
-                    .copied()
-                    .collect();
-            } else {
-                sliced.char_widths.clear();
-            }
-        } else {
-            sliced.char_origins.clear();
-            sliced.char_widths.clear();
-        }
+
+        // 使用 TextRun::split_at 实现零变换切片
+        // 先从 slice_start 处切一刀，取右侧
+        // 再从 (slice_end - slice_start) 处切一刀，取左侧
+        let text_run = run.to_text_run();
+        let (_, right) = text_run.split_at(slice_start);
+        let Some(middle_text_run) = right else {
+            continue;
+        };
+        let (middle, _) = middle_text_run.split_at(slice_end - slice_start);
+        let Some(middle) = middle else {
+            continue;
+        };
+
+        let mut sliced = middle.to_layout_run();
         sliced = sliced.cleared_style(true, preserve_underline, true);
         output.push(sliced);
     }
@@ -269,7 +262,7 @@ pub(super) fn slice_runs_by_char_range(
 ///   (c) `draft!=source && !runs_match`：reconstructed-fallback
 /// 这些都会让 PDF char_origins 丢失，导致字体/字距与编辑前/原 PDF 出现可见漂移。
 pub(super) fn build_styles(
-    document_plan: &EditorDocumentPlan,
+    document_plan: &EditContext,
     draft_text: &str,
     preserve_underline: bool,
 ) -> Vec<LayoutRun> {
@@ -396,7 +389,7 @@ pub(super) fn build_styles(
     runs
 }
 
-pub(super) fn source_baseline_y(document_plan: &EditorDocumentPlan) -> f32 {
+pub(super) fn source_baseline_y(document_plan: &EditContext) -> f32 {
     document_plan
         .body_session
         .paragraph
@@ -413,7 +406,7 @@ pub(super) fn source_baseline_y(document_plan: &EditorDocumentPlan) -> f32 {
 }
 
 pub(super) fn build_draft_paragraph_with_policy(
-    document_plan: &EditorDocumentPlan,
+    document_plan: &EditContext,
     draft_text: &str,
     _measure_width: &dyn Fn(&str, &LayoutRun) -> f32,
     preserve_underline: bool,

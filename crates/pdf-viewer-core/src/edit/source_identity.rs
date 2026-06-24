@@ -9,7 +9,7 @@ use crate::models::{GlyphPaintRun, VectorPageModel, VectorRenderObject};
 pub fn collect_target_source_object_ids(target: &ActiveEditorTarget) -> HashSet<String> {
     let mut object_ids = target
         .scene
-        .original_runs
+        .original_runs()
         .iter()
         .flat_map(|run| run.object_ids.iter().cloned())
         .collect::<HashSet<_>>();
@@ -17,7 +17,7 @@ pub fn collect_target_source_object_ids(target: &ActiveEditorTarget) -> HashSet<
     object_ids.extend(
         target
             .scene
-            .body_session
+            .body_session()
             .paragraph
             .runs
             .iter()
@@ -48,7 +48,7 @@ pub fn collect_target_source_object_ids(target: &ActiveEditorTarget) -> HashSet<
 pub fn collect_object_index_set(target: &ActiveEditorTarget) -> HashSet<usize> {
     let mut object_indices = target
         .scene
-        .original_runs
+        .original_runs()
         .iter()
         .flat_map(|run| run.object_indices.iter().copied())
         .collect::<HashSet<_>>();
@@ -56,7 +56,7 @@ pub fn collect_object_index_set(target: &ActiveEditorTarget) -> HashSet<usize> {
     object_indices.extend(
         target
             .scene
-            .body_session
+            .body_session()
             .paragraph
             .runs
             .iter()
