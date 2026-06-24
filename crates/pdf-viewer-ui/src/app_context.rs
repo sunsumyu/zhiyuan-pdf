@@ -68,6 +68,10 @@ pub struct AppStores {
     pub editor_mode: RefCell<EditorModeState>,
     pub editor_host: RefCell<EditorHostRuntimeState>,
     pub editor_session: RefCell<EditorSessionStore>,
+    #[cfg(target_arch = "wasm32")]
+    pub state_change_cb: RefCell<Option<js_sys::Function>>,
+    #[cfg(target_arch = "wasm32")]
+    pub change_cb: RefCell<Option<js_sys::Function>>,
 }
 
 impl Default for AppStores {
@@ -90,6 +94,10 @@ impl Default for AppStores {
             editor_mode: RefCell::new(EditorModeState::default()),
             editor_host: RefCell::new(EditorHostRuntimeState::default()),
             editor_session: RefCell::new(EditorSessionStore::default()),
+            #[cfg(target_arch = "wasm32")]
+            state_change_cb: RefCell::new(None),
+            #[cfg(target_arch = "wasm32")]
+            change_cb: RefCell::new(None),
         }
     }
 }
@@ -260,4 +268,26 @@ pub fn with_editor_session<R>(f: impl FnOnce(&EditorSessionStore) -> R) -> R {
 
 pub fn with_editor_session_mut<R>(f: impl FnOnce(&mut EditorSessionStore) -> R) -> R {
     APP_STORES.with(|stores| f(&mut *stores.editor_session.borrow_mut()))
+}
+
+// ── editor callbacks (wasm32 only) ──────────────────────────────
+
+#[cfg(target_arch = "wasm32")]
+pub fn with_state_change_cb<R>(f: impl FnOnce(&Option<js_sys::Function>) -> R) -> R {
+    APP_STORES.with(|stores| f(&stores.state_change_cb.borrow()))
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn with_state_change_cb_mut<R>(f: impl FnOnce(&mut Option<js_sys::Function>) -> R) -> R {
+    APP_STORES.with(|stores| f(&mut *stores.state_change_cb.borrow_mut()))
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn with_change_cb<R>(f: impl FnOnce(&Option<js_sys::Function>) -> R) -> R {
+    APP_STORES.with(|stores| f(&stores.change_cb.borrow()))
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn with_change_cb_mut<R>(f: impl FnOnce(&mut Option<js_sys::Function>) -> R) -> R {
+    APP_STORES.with(|stores| f(&mut *stores.change_cb.borrow_mut()))
 }

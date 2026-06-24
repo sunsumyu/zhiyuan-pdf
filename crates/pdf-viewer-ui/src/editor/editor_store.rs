@@ -1,20 +1,15 @@
-use std::cell::RefCell;
-
 use crate::app_context;
 use crate::editor::editor_types::SessionState;
 
 // ── Thread-local state ──────────────────────────────────────────
 
-thread_local! {
-    // ── §14.7 event callbacks ───────────────────────────────────
-    // `STATE_CHANGE_CB` fires only on `SessionState` transitions.
-    // `CHANGE_CB` fires on any session-relevant mutation (state OR active block).
-    // Both are optional and replace any previously registered callback.
-    #[cfg(target_arch = "wasm32")]
-    static STATE_CHANGE_CB: RefCell<Option<js_sys::Function>> = RefCell::new(None);
-    #[cfg(target_arch = "wasm32")]
-    static CHANGE_CB: RefCell<Option<js_sys::Function>> = RefCell::new(None);
-}
+// ── §14.7 event callbacks ───────────────────────────────────
+// `STATE_CHANGE_CB` fires only on `SessionState` transitions.
+// `CHANGE_CB` fires on any session-relevant mutation (state OR active block).
+// Both are optional and replace any previously registered callback.
+// Note: The actual storage has been migrated to AppStores (app_context.rs)
+// for centralized thread-local management. The accessors below delegate
+// to app_context::with_state_change_cb / with_change_cb.
 
 // ── Public accessors ────────────────────────────────────────────
 
@@ -56,21 +51,21 @@ pub fn set_block_id(block_id: Option<String>) {
 /// (`"viewing"` / `"editing"` / `"editingBlock"` / `"saving"`).
 #[cfg(target_arch = "wasm32")]
 pub fn set_state_change_callback(cb: Option<js_sys::Function>) {
-    STATE_CHANGE_CB.with(|slot| *slot.borrow_mut() = cb);
+    app_context::with_state_change_cb_mut(|slot| *slot = cb);
 }
 
 /// Install a callback fired on any session mutation (state OR active block).
 /// Arity-0; JS reads fresh state via `EditorSession.readSnapshot()` if needed.
 #[cfg(target_arch = "wasm32")]
 pub fn set_change_callback(cb: Option<js_sys::Function>) {
-    CHANGE_CB.with(|slot| *slot.borrow_mut() = cb);
+    app_context::with_change_cb_mut(|slot| *slot = cb);
 }
 
 #[cfg(target_arch = "wasm32")]
 fn notify_state_change(state: SessionState) {
     let arg = wasm_bindgen::JsValue::from_str(state_camel_case(state));
     // Legacy single-slot callback (backward compat)
-    let cb = STATE_CHANGE_CB.with(|slot| slot.borrow().clone());
+    let cb = app_context::with_state_change_cb(|slot| slot.clone());
     if let Some(cb) = cb {
         let _ = cb.call1(&wasm_bindgen::JsValue::NULL, &arg);
     }
@@ -81,7 +76,7 @@ fn notify_state_change(state: SessionState) {
 #[cfg(target_arch = "wasm32")]
 fn notify_change() {
     // Legacy single-slot callback (backward compat)
-    let cb = CHANGE_CB.with(|slot| slot.borrow().clone());
+    let cb = app_context::with_change_cb(|slot| slot.clone());
     if let Some(cb) = cb {
         let _ = cb.call0(&wasm_bindgen::JsValue::NULL);
     }
