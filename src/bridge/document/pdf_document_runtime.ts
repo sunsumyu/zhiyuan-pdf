@@ -86,23 +86,31 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
     }
 
     async function openTextPdfFlow(path: string): Promise<void> {
+        emitPdfDiagnostic('DOC', 'openTextPdfFlow.start', { path });
         await deps.ensureWasmInitialized();
+        emitPdfDiagnostic('DOC', 'openTextPdfFlow.wasmReady', { path });
         try {
             const session = resolveDocumentSession(deps.getWasmApi);
-            emitPdfDiagnostic('DOC', 'openTextPdfFlow', { path, session: 'OK' });
+            emitPdfDiagnostic('DOC', 'openTextPdfFlow.sessionResolved', { path, session: 'OK' });
             // Eagerly clear the vector host BEFORE awaiting session.open().
             // This cancels any in-flight Rust render (cancelProgressiveRender + resetFrameCache)
             // so the old document's Worker render cannot complete and flash old pixels
             // during the async IPC gap of session.open().
             deps.clearVectorHost();
             deps.clearEditorHost();
+            emitPdfDiagnostic('DOC', 'openTextPdfFlow.callingSessionOpen', { path });
             const openResult = await session.open({
                 path,
                 initialZoom: 1.0,
                 defaultPageWidth: 595,
                 defaultPageHeight: 842,
             });
-            emitPdfDiagnostic('DOC', 'openResult', { openResult: openResult ? JSON.stringify(openResult) : 'null' });
+            emitPdfDiagnostic('DOC', 'openResult', { 
+                opened: openResult?.opened,
+                pageCount: openResult?.pageCount,
+                path,
+                fullResult: openResult ? JSON.stringify(openResult) : 'null' 
+            });
             const pageCount: number = Number(openResult?.pageCount || 0);
             if (!openResult?.opened || pageCount <= 0) {
                 const reason = pageCount <= 0
@@ -114,10 +122,17 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
             emitPdfDiagnostic('DOC', 'openSuccess', { path, pageCount });
             deps.syncZoomSelect();
             deps.syncTextEditButton();
+            emitPdfDiagnostic('DOC', 'openTextPdfFlow.callingRender', { path });
             await renderCurrentPage();
             emitPdfDiagnostic('DOC', 'renderCompleted', { path });
         } catch (err) {
-            emitPdfDiagnostic('DOC', 'openException', { path, error: String(err) }, { level: 'ERROR' });
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            const errorStack = err instanceof Error ? err.stack : undefined;
+            emitPdfDiagnostic('DOC', 'openException', { 
+                path, 
+                error: errorMsg,
+                stack: errorStack,
+            }, { level: 'ERROR' });
             resetPdfViewerState();
             throw err instanceof Error ? err : new Error(String(err));
         }

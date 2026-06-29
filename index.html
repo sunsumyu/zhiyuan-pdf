@@ -244,8 +244,11 @@
         var openBtn = document.getElementById('open-btn');
         if (!openBtn) return;
         openBtn.addEventListener('click', function() {
-            // 如果主模块已加载且挂了高级处理器，用它
-            if (window.__pdfOpenHandler) { window.__pdfOpenHandler(); return; }
+            // 如果主模块已加载且挂了高级处理器，优先用它（避免重复对话框）
+            if (window.__pdfOpenHandler) {
+                window.__pdfOpenHandler();
+                return;
+            }
             // 否则用 Tauri 全局 API 直接调用后端 pick_file。
             var tauri = window.__TAURI__;
             if (!tauri || !tauri.core || !tauri.core.invoke) return;
