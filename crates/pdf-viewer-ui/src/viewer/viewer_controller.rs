@@ -10,8 +10,8 @@ use crate::render::render_store::reset_render_state;
 use crate::review::review_store::clear_review_session as clear_comment_review_session;
 use crate::ui_state_store::clear_persistable_patches;
 use crate::viewer::viewer_store::{
-    bump_document_revision, reset_viewer_session, set_current_page, set_current_zoom,
-    set_page_dimensions, set_viewer_document, HostViewerSession, read_viewer_session,
+    bump_document_revision, read_viewer_session, reset_viewer_session, set_current_page,
+    set_current_zoom, set_page_dimensions, set_viewer_document, HostViewerSession,
 };
 use crate::zoom::preview_host::{clear_preview_state, settle_at_target};
 use crate::zoom::zoom_controller::reset_zoom_runtime;

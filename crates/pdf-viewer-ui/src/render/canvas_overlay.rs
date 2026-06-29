@@ -1,3 +1,4 @@
+use crate::common::debug::truncate_debug_text;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
@@ -7,7 +8,6 @@ use crate::editor::replacement_region::build_region;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::text_geometry::measure_text_width as measure_text_width_shared;
 use crate::render::canvas::CanvasRenderer;
-use crate::common::debug::truncate_debug_text;
 
 pub(crate) fn path_bbox_summary(
     path: &pdf_viewer_core::models::VectorPathObject,
@@ -83,8 +83,6 @@ fn count_overlay_underline_runs(
         .filter(|run| run.style.is_underline)
         .count()
 }
-
-
 
 pub(crate) fn draw_active_editor_shell_overlay_page(
     renderer: &CanvasRenderer,

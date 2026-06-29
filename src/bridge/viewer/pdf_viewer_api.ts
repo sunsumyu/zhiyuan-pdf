@@ -191,14 +191,25 @@ export class PdfViewerAPI {
     // === Text Edit Mode ===
 
     async toggleTextEditMode(): Promise<void> {
-        const nextEnabled = !this.deps.editorHost.isTextEditEnabled();
-        if (!nextEnabled) {
-            await this.deps.editorHost.commitActiveEditor();
+        await this.deps.ensureWasmInitialized();
+        const path = this.deps.readPath();
+        if (!path) {
+            emitPdfDiagnostic('editor', 'toggleTextEditMode.noDocument', {}, { level: 'WARN' });
+            this.deps.syncTextEditButton();
+            return;
         }
-        this.deps.editorHost.setTextEditEnabled(nextEnabled);
-        this.deps.syncTextEditButton();
-        if (this.deps.readPath()) {
+        try {
+            const nextEnabled = !this.deps.editorHost.isTextEditEnabled();
+            if (!nextEnabled) {
+                await this.deps.editorHost.commitActiveEditor();
+            }
+            this.deps.editorHost.setTextEditEnabled(nextEnabled);
+            this.deps.syncTextEditButton();
             this.deps.editorHost.syncTargets(this.deps.readTargetZoom());
+        } catch (err) {
+            emitPdfDiagnostic('editor', 'toggleTextEditMode.failed', { error: String(err) }, { level: 'ERROR' });
+            this.deps.syncTextEditButton();
+            throw err;
         }
     }
 

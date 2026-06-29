@@ -17,11 +17,10 @@ pub struct RotateCurrentPageResult {
 }
 
 pub async fn open_pdf_file(path: String) -> Result<OpenPdfFileResult, JsValue> {
-    let page_count: u16 = crate::app_controller::smart_invoke(
-        "open_pdf",
-        &serde_json::json!({ "path": path }),
-    )
-    .await.unwrap_or(0);
+    let page_count_js =
+        crate::app_controller::raw_invoke("open_pdf", &serde_json::json!({ "path": path })).await?;
+    let page_count: u16 = serde_wasm_bindgen::from_value(page_count_js)
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
 
     Ok(OpenPdfFileResult {
         page_count,

@@ -7,9 +7,7 @@ use std::collections::HashSet;
 use crate::edit::paragraph_overlay::ParagraphRenderOverlay;
 use crate::edit::replacement_region::build_region;
 use crate::models::glyph::GlyphPaintParagraph;
-use crate::render::source_suppression::{
-    glyph_matches_overlay, glyph_matches_region,
-};
+use crate::render::source_suppression::{glyph_matches_overlay, glyph_matches_region};
 use crate::render::viewport_culling::{
     glyph_run_intersects_viewport, paragraph_intersects_viewport, region_intersects_viewport,
 };
@@ -53,9 +51,10 @@ fn process_glyph_paragraph(
                     .iter()
                     .any(|object_index| paragraph_object_indices.contains(object_index));
             let replacement_region = build_region(&overlay.target);
-            let spatial_match = paragraph.runs.iter().any(|run| {
-                glyph_matches_region(run, &replacement_region)
-            });
+            let spatial_match = paragraph
+                .runs
+                .iter()
+                .any(|run| glyph_matches_region(run, &replacement_region));
             let source_text_match = glyph_matches_overlay(paragraph, overlay);
             object_id_match || object_index_match || spatial_match || source_text_match
         })

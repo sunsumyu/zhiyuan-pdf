@@ -1,4 +1,4 @@
-use lopdf::{Document, Object, Dictionary};
+use lopdf::{Dictionary, Document, Object};
 
 pub fn replace_image_xobject(
     _doc: &mut Document,

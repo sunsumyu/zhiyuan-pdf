@@ -31,12 +31,15 @@ import type {
 
 let _session: EditorSession | null = null;
 
-function getSession(): EditorSession | null {
+function getSession(): EditorSession {
     if (!_session) {
         const api = getWasmApi();
         if (typeof api?.EditorSession === 'function') {
             _session = new api.EditorSession();
         }
+    }
+    if (!_session) {
+        throw new Error('EditorSession WASM API is unavailable');
     }
     return _session;
 }
@@ -190,20 +193,20 @@ export function paste(text: string): EditorResponse | null {
     return getSession()?.paste(text) ?? null;
 }
 
-export function undo(): EditorResponse | null {
-    return (getSession() as any)?.undo() ?? null;
+export function undo(): EditorResponse<SyncInputResult> | null {
+    return getSession()?.undo() ?? null;
 }
 
-export function redo(): EditorResponse | null {
-    return (getSession() as any)?.redo() ?? null;
+export function redo(): EditorResponse<SyncInputResult> | null {
+    return getSession()?.redo() ?? null;
 }
 
 export function canUndo(): boolean {
-    return !!(getSession() as any)?.canUndo();
+    return !!getSession()?.canUndo();
 }
 
 export function canRedo(): boolean {
-    return !!(getSession() as any)?.canRedo();
+    return !!getSession()?.canRedo();
 }
 
 export function getTextContent(): EditorResponse<string> | null {

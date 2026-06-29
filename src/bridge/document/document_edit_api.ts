@@ -189,7 +189,7 @@ export function createDocumentEditApi(deps: DocumentEditApiDeps): DocumentEditAp
         const result = editorApi.applyRegionTextReplacements(
             edits,
             deps.buildRenderRequest('documentMutation'),
-        ) ?? { appliedCount: 0, skippedCount: edits.length, renderFrame: null };
+        );
         logEditApi('replace.result', {
             source,
             result,

@@ -5,8 +5,7 @@
 //! 运行时所有读取必须通过 accessor 方法走 document_plan，消除状态分叉。
 
 use crate::edit::document_plan::{
-    from_paragraph, from_target_id, EditContext,
-    ParagraphEditorMarker,
+    from_paragraph, from_target_id, EditContext, ParagraphEditorMarker,
 };
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, ParagraphEditContext,
@@ -60,7 +59,7 @@ impl<'de> Deserialize<'de> for ParagraphEditorScene {
         D: Deserializer<'de>,
     {
         let helper = ParagraphEditorSceneHelper::deserialize(deserializer)?;
-        
+
         let document_plan = if let Some(plan) = helper.document_plan {
             plan
         } else {
@@ -155,8 +154,7 @@ pub fn build_paragraph_editor_scene(
     vector_model: Option<&VectorPageModel>,
     click_page_point: Option<(f32, f32)>,
 ) -> Option<ParagraphEditorScene> {
-    let document_plan: EditContext =
-        from_paragraph(paragraph, vector_model, click_page_point)?;
+    let document_plan: EditContext = from_paragraph(paragraph, vector_model, click_page_point)?;
     paragraph_editor_scene_from_plan(document_plan)
 }
 
@@ -166,12 +164,8 @@ pub fn build_target_scene(
     target_id: &str,
     click_page_point: Option<(f32, f32)>,
 ) -> Option<ParagraphEditorScene> {
-    let document_plan: EditContext = from_target_id(
-        paragraph,
-        vector_model,
-        target_id,
-        click_page_point,
-    )?;
+    let document_plan: EditContext =
+        from_target_id(paragraph, vector_model, target_id, click_page_point)?;
     paragraph_editor_scene_from_plan(document_plan)
 }
 
@@ -199,7 +193,12 @@ mod tests {
         let scene = ParagraphEditorScene {
             target_id: plan.target_id.clone(),
             base_paragraph_id: plan.base_paragraph_id.clone(),
-            shell_bbox: BoundingBox { left: 0.0, top: 0.0, right: 100.0, bottom: 50.0 },
+            shell_bbox: BoundingBox {
+                left: 0.0,
+                top: 0.0,
+                right: 100.0,
+                bottom: 50.0,
+            },
             document_plan: plan,
         };
 
@@ -212,12 +211,30 @@ mod tests {
         // Verify by parsing the JSON and checking top-level keys.
         let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
         let obj = parsed.as_object().unwrap();
-        assert!(obj.contains_key("documentPlan"), "documentPlan must be present");
-        assert!(!obj.contains_key("bodyText"), "bodyText must not be a top-level key");
-        assert!(!obj.contains_key("bodySession"), "bodySession must not be a top-level key");
-        assert!(!obj.contains_key("bodyInitialCaret"), "bodyInitialCaret must not be a top-level key");
-        assert!(!obj.contains_key("marker"), "marker must not be a top-level key");
-        assert!(!obj.contains_key("originalRuns"), "originalRuns must not be a top-level key");
+        assert!(
+            obj.contains_key("documentPlan"),
+            "documentPlan must be present"
+        );
+        assert!(
+            !obj.contains_key("bodyText"),
+            "bodyText must not be a top-level key"
+        );
+        assert!(
+            !obj.contains_key("bodySession"),
+            "bodySession must not be a top-level key"
+        );
+        assert!(
+            !obj.contains_key("bodyInitialCaret"),
+            "bodyInitialCaret must not be a top-level key"
+        );
+        assert!(
+            !obj.contains_key("marker"),
+            "marker must not be a top-level key"
+        );
+        assert!(
+            !obj.contains_key("originalRuns"),
+            "originalRuns must not be a top-level key"
+        );
         // Verify data via documentPlan content
         assert!(json_str.contains("\"bodyInitialCaret\":5"));
         // Deserialize back
@@ -226,7 +243,10 @@ mod tests {
         assert_eq!(deserialized.base_paragraph_id, "test_base");
         assert_eq!(deserialized.document_plan.source_body_text(), "Hello world");
         assert_eq!(deserialized.document_plan.body_initial_caret, 5);
-        assert_eq!(deserialized.document_plan.marker.as_ref().unwrap().text, "•");
+        assert_eq!(
+            deserialized.document_plan.marker.as_ref().unwrap().text,
+            "•"
+        );
     }
 
     #[test]
@@ -265,9 +285,18 @@ mod tests {
         let deserialized: ParagraphEditorScene = serde_json::from_str(legacy_json).unwrap();
         assert_eq!(deserialized.target_id, "legacy_target");
         assert_eq!(deserialized.base_paragraph_id, "legacy_base");
-        assert_eq!(deserialized.document_plan.source_body_text(), "Legacy flat text");
+        assert_eq!(
+            deserialized.document_plan.source_body_text(),
+            "Legacy flat text"
+        );
         assert_eq!(deserialized.document_plan.body_initial_caret, 3);
-        assert_eq!(deserialized.document_plan.marker.as_ref().unwrap().text, "•");
-        assert_eq!(deserialized.document_plan.marker.as_ref().unwrap().advance, 12.5);
+        assert_eq!(
+            deserialized.document_plan.marker.as_ref().unwrap().text,
+            "•"
+        );
+        assert_eq!(
+            deserialized.document_plan.marker.as_ref().unwrap().advance,
+            12.5
+        );
     }
 }

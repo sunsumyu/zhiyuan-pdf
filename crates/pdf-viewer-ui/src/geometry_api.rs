@@ -93,10 +93,13 @@ impl GeometryApi {
         let point: DomPointLike = unwrap_or_null!(from_value(point_js));
         let ctx: TransformContext = unwrap_or_null!(from_value(ctx_js));
         let transform = build_transform(&ctx);
-        let page = transform.to_page(ClientPoint {
-            x: point.client_x,
-            y: point.client_y,
-        }, None);
+        let page = transform.to_page(
+            ClientPoint {
+                x: point.client_x,
+                y: point.client_y,
+            },
+            None,
+        );
         to_value(&PointResult {
             x: page.x,
             y: page.y,
@@ -154,10 +157,13 @@ impl GeometryApi {
         let point: DomPointLike = unwrap_or_null!(from_value(point_js));
         let ctx: TransformContext = unwrap_or_null!(from_value(ctx_js));
         let transform = build_transform(&ctx);
-        let page = transform.to_page(ClientPoint {
-            x: point.client_x,
-            y: point.client_y,
-        }, None);
+        let page = transform.to_page(
+            ClientPoint {
+                x: point.client_x,
+                y: point.client_y,
+            },
+            None,
+        );
         let raw = PointResult {
             x: page.x,
             y: PdfCoordinateSpace::to_y_up(page.y, ctx.page_height),

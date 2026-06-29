@@ -50,5 +50,3 @@ pub fn extract_page_bbox(doc: &Document, page_index: u16) -> Result<[f32; 4], St
     }
     Ok(result)
 }
-
-

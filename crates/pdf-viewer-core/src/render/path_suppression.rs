@@ -216,12 +216,7 @@ mod tests {
         let suppression_bbox = region.row_suppression_bbox(420.0);
         let object = row_image("blue-image-row", 101.0, 8.0);
 
-        assert!(should_suppress(
-            &object,
-            &region,
-            &suppression_bbox
-        )
-        .is_some());
+        assert!(should_suppress(&object, &region, &suppression_bbox).is_some());
     }
 
     #[test]
@@ -231,11 +226,6 @@ mod tests {
         let suppression_bbox = region.row_suppression_bbox(420.0);
         let object = row_image("normal-image", 96.0, 42.0);
 
-        assert!(should_suppress(
-            &object,
-            &region,
-            &suppression_bbox
-        )
-        .is_none());
+        assert!(should_suppress(&object, &region, &suppression_bbox).is_none());
     }
 }

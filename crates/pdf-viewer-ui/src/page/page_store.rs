@@ -61,7 +61,7 @@ pub fn init_page_context(
             .max(1.0);
         state.paint_plan = Some(paint_plan);
         state.vector_model = Some(vector_model);
-        
+
         *prepared_scene_slot = prepared_scene;
         *progressive_task = None;
     });

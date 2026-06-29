@@ -25,7 +25,6 @@ pub async fn read_page_asset_bundle(
     image_only: Option<bool>,
     text_only: Option<bool>,
 ) -> Result<PageAssetBundle, String> {
-
     let role = PageAssetRole::from_request(request_role);
     let kind = PageAssetKind::PageBundle;
     let span = crate::infrastructure::pdf::log_service::PdfEventSpan::begin(
@@ -110,10 +109,20 @@ pub async fn read_vector(
     .await?;
 
     if image_only.unwrap_or(false) {
-        model.objects.retain(|obj| !matches!(obj, crate::infrastructure::pdf::models::RenderObject::Text(_)));
+        model.objects.retain(|obj| {
+            !matches!(
+                obj,
+                crate::infrastructure::pdf::models::RenderObject::Text(_)
+            )
+        });
     }
     if text_only.unwrap_or(false) {
-        model.objects.retain(|obj| matches!(obj, crate::infrastructure::pdf::models::RenderObject::Text(_)));
+        model.objects.retain(|obj| {
+            matches!(
+                obj,
+                crate::infrastructure::pdf::models::RenderObject::Text(_)
+            )
+        });
     }
 
     PageAssetAdmissionService::admit_after_work(&state, &path, page_index, role, kind)?;

@@ -2,7 +2,9 @@
 //!
 //! 文本差异计算（公共前后缀检测）以及源文本/runs 文本之间的字符索引映射。
 
-use crate::edit::debug_trace::{editor_debug_field as dbg_field, record_editor_debug_event as dbg_event};
+use crate::edit::debug_trace::{
+    editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
+};
 use crate::edit::document_plan::EditContext;
 
 use super::draft_types::{DraftCaretLine, TextDiff};
@@ -244,8 +246,8 @@ pub(super) fn remap_caret_indices_to_draft_space(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::DraftCaretStop;
+    use super::*;
 
     #[test]
     fn test_build_index_map_no_spaces() {
@@ -307,7 +309,7 @@ mod tests {
     #[test]
     fn test_build_index_map_mixed_real_synthetic() {
         let source_text = "A  B"; // two spaces (first real, second synthetic)
-        let runs_text = "A B";   // one space
+        let runs_text = "A B"; // one space
         let (s_to_r, r_to_s) = build_index_map(source_text, runs_text);
         assert_eq!(s_to_r, vec![0, 1, 2, 2, 3]);
         assert_eq!(r_to_s, vec![0, 1, 3, 4]);
@@ -323,9 +325,18 @@ mod tests {
             baseline_y: 10.0,
             height: 12.0,
             stops: vec![
-                DraftCaretStop { index: 0, left: 0.0 },
-                DraftCaretStop { index: 5, left: 25.0 },
-                DraftCaretStop { index: 10, left: 50.0 },
+                DraftCaretStop {
+                    index: 0,
+                    left: 0.0,
+                },
+                DraftCaretStop {
+                    index: 5,
+                    left: 25.0,
+                },
+                DraftCaretStop {
+                    index: 10,
+                    left: 50.0,
+                },
             ],
         }];
 
@@ -340,5 +351,81 @@ mod tests {
         assert_eq!(stops[0].index, 0);
         assert_eq!(stops[1].index, 6);
         assert_eq!(stops[2].index, 11);
+    }
+
+    #[test]
+    fn remap_caret_indices_clamps_deleted_suffix_stops() {
+        let document_plan = EditContext::default();
+        let mut caret_lines = vec![DraftCaretLine {
+            baseline_y: 10.0,
+            height: 12.0,
+            stops: vec![
+                DraftCaretStop {
+                    index: 0,
+                    left: 0.0,
+                },
+                DraftCaretStop {
+                    index: 1,
+                    left: 5.0,
+                },
+                DraftCaretStop {
+                    index: 2,
+                    left: 10.0,
+                },
+                DraftCaretStop {
+                    index: 3,
+                    left: 15.0,
+                },
+                DraftCaretStop {
+                    index: 4,
+                    left: 20.0,
+                },
+            ],
+        }];
+
+        remap_caret_indices_to_draft_space(&mut caret_lines, &document_plan, "Rust", "Ru");
+
+        let indices = caret_lines[0]
+            .stops
+            .iter()
+            .map(|stop| stop.index)
+            .collect::<Vec<_>>();
+        assert_eq!(indices, vec![0, 1, 2, 2, 2]);
+    }
+
+    #[test]
+    fn remap_caret_indices_handles_multiple_synthetic_gaps() {
+        let document_plan = EditContext::default();
+        let mut caret_lines = vec![DraftCaretLine {
+            baseline_y: 10.0,
+            height: 12.0,
+            stops: vec![
+                DraftCaretStop {
+                    index: 0,
+                    left: 0.0,
+                },
+                DraftCaretStop {
+                    index: 1,
+                    left: 5.0,
+                },
+                DraftCaretStop {
+                    index: 2,
+                    left: 10.0,
+                },
+                DraftCaretStop {
+                    index: 3,
+                    left: 15.0,
+                },
+            ],
+        }];
+
+        remap_caret_indices_to_draft_space(&mut caret_lines, &document_plan, "ABC", "A B C");
+
+        let indices = caret_lines[0]
+            .stops
+            .iter()
+            .map(|stop| stop.index)
+            .collect::<Vec<_>>();
+        assert_eq!(indices, vec![0, 2, 4, 5]);
     }
 }

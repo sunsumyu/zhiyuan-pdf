@@ -1,5 +1,5 @@
-pub mod app_context;
 pub mod api;
+pub mod app_context;
 pub mod application;
 pub mod events;
 pub mod geometry_api;
@@ -7,22 +7,21 @@ pub mod geometry_api;
 pub mod annotation;
 pub mod app_controller;
 pub mod comment;
+pub mod common;
 pub mod document;
 pub mod editor;
 pub mod find;
-pub mod platform;
 pub mod page;
+pub mod platform;
 pub mod present;
 pub mod presentation;
 pub mod render;
 pub mod review;
 pub mod ui_state_store;
-pub mod common;
 pub mod viewer;
 pub mod viewport_culling;
 pub mod viewport_refresh;
 pub mod zoom;
-
 
 // All legacy `pub use ... as ..._workflow` aliases were removed in Phase 3.
 // New code uses canonical paths (e.g. `crate::editor::session`).

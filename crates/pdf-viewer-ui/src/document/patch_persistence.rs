@@ -1,12 +1,12 @@
 use wasm_bindgen::JsValue;
 
 use crate::editor::list_format::reconcile_numbering_patches;
-use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
 use crate::ui_state_store::{
-    record_patch, clear_persistable_patches as core_clear_persistable_patches,
-    collect_persistable_patches,
+    clear_persistable_patches as core_clear_persistable_patches, collect_persistable_patches,
+    record_patch,
 };
+use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 
 /// Direct Rust-to-Rust patch application (no JsValue roundtrip).
 /// Use this from internal Rust callers; only `apply_document_patch` should

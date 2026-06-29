@@ -5,8 +5,8 @@ pub mod marker;
 mod tests;
 
 pub use marker::{
-    bbox_from_runs, split_editor_session, split_run, ParagraphEditorMarker, SessionSplit,
-    resolve_marker_split,
+    bbox_from_runs, resolve_marker_split, split_editor_session, split_run, ParagraphEditorMarker,
+    SessionSplit,
 };
 
 use crate::edit::debug_trace::{
@@ -21,7 +21,9 @@ use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, LayoutRun,
     ParagraphEditContext, VectorPageModel,
 };
-use crate::text::glyph_layout::{build_editor_session_text_plan, is_decorative_text, EditorSessionTextPlan};
+use crate::text::glyph_layout::{
+    build_editor_session_text_plan, is_decorative_text, EditorSessionTextPlan,
+};
 use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind, ListTextSemantic};
 use crate::typography::font_resolver::looks_like_symbolic_font;
 use serde::{Deserialize, Serialize};
@@ -108,9 +110,7 @@ fn resolve_shell_bbox(target_session: &ParagraphEditContext, split: &SessionSpli
     target_session.anchor_bbox
 }
 
-pub fn build_editor_document_plan_from_session(
-    session: &ParagraphEditContext,
-) -> EditContext {
+pub fn build_editor_document_plan_from_session(session: &ParagraphEditContext) -> EditContext {
     let body_text_plan = build_editor_session_text_plan(session);
     let body_lines = build_body_line_plans(session, &body_text_plan);
     let draft_template_run = select_draft_template_run(session, &body_lines);
@@ -290,9 +290,15 @@ fn trace_open_caret_resolved(
             dbg_field("targetId", target_id),
             dbg_field("baseParagraphId", base_paragraph_id),
             dbg_field("fullSourceText", full_source_text),
-            dbg_field("fullSourceTextCodepoints", codepoint_preview(full_source_text, 12)),
+            dbg_field(
+                "fullSourceTextCodepoints",
+                codepoint_preview(full_source_text, 12),
+            ),
             dbg_field("bodySourceText", body_source_text),
-            dbg_field("bodySourceTextCodepoints", codepoint_preview(body_source_text, 12)),
+            dbg_field(
+                "bodySourceTextCodepoints",
+                codepoint_preview(body_source_text, 12),
+            ),
             dbg_field(
                 "runOrder",
                 full_session

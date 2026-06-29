@@ -83,11 +83,8 @@ impl PdfSystemFontMatcher {
             family_hint: text.font_family_hint.clone(),
         };
 
-        let request = build_descriptor_request(
-            &text.font_name,
-            text.font_hints.as_ref(),
-            descriptor,
-        );
+        let request =
+            build_descriptor_request(&text.font_name, text.font_hints.as_ref(), descriptor);
         let resolved =
             resolve_system_or_fallback_font(&request, &self.candidates, &self.fallback_family);
         self.maybe_log_resolution(&cache_key, &text.font_name, &resolved, Some(&request));

@@ -1,6 +1,6 @@
-use wasm_bindgen::prelude::*;
-use crate::editor::editor_types::*;
 use super::EditorSession;
+use crate::editor::editor_types::*;
+use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 impl EditorSession {

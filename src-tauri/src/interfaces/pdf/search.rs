@@ -14,14 +14,9 @@ pub async fn find_in_page(
     query: String,
     case_sensitive: Option<bool>,
 ) -> Result<PdfPageSearchResult, String> {
-    let page_model = PdfPageIntermediateService::resolve_vector_page_model(
-        &state,
-        path,
-        page_index,
-        1.0,
-        None,
-    )
-    .await?;
+    let page_model =
+        PdfPageIntermediateService::resolve_vector_page_model(&state, path, page_index, 1.0, None)
+            .await?;
     Ok(crate::application::pdf::page_search::search_page_regions(
         &page_model,
         &PdfPageSearchRequest {

@@ -4,9 +4,9 @@
 use pdf_viewer_core::models::LayoutRun;
 // 重新导出 core 提供的纯计算 API，保持 ui 内的旧调用路径不变。
 pub use pdf_viewer_core::text::caret_geometry::{
-    caret_index_at_page_point, resolve_index, session_caret_visual,
-    session_plan_caret_visual, resolve_caret_index_from_lines, resolve_navigation_from_lines,
-    CaretLine, CaretStop, EditorCaretVisualPosition,
+    caret_index_at_page_point, resolve_caret_index_from_lines, resolve_index,
+    resolve_navigation_from_lines, session_caret_visual, session_plan_caret_visual, CaretLine,
+    CaretStop, EditorCaretVisualPosition,
 };
 
 use wasm_bindgen::JsCast;
@@ -18,11 +18,7 @@ use crate::editor::debug_trace::{
 use crate::editor::draft_layout::build_draft_render_plan;
 use crate::editor::session::ActiveEditorTarget;
 
-pub fn measure_text_width(
-    ctx: &CanvasRenderingContext2d,
-    text: &str,
-    run: &LayoutRun,
-) -> f32 {
+pub fn measure_text_width(ctx: &CanvasRenderingContext2d, text: &str, run: &LayoutRun) -> f32 {
     let font_weight = if run.style.is_bold { "bold" } else { "normal" };
     let font_style = if run.style.is_italic {
         "italic"
@@ -182,7 +178,11 @@ fn resolve_caret_index_for_draft_point(
     };
 
     let session = &active_target.scene.document_plan.body_session;
-    let marker_advance = active_target.scene.marker().map(|m| m.advance).unwrap_or(0.0);
+    let marker_advance = active_target
+        .scene
+        .marker()
+        .map(|m| m.advance)
+        .unwrap_or(0.0);
     let local_click_x = (page_x - (session.anchor_bbox.left + marker_advance)).max(0.0);
     let local_click_y = (page_y - session.anchor_bbox.top).max(0.0);
     let resolved = resolve_caret_index_from_lines(&lines, local_click_x, local_click_y)
@@ -209,6 +209,9 @@ fn resolve_caret_index_for_draft_point(
         "pageY" => format!("{:.2}", page_y),
         "anchorL" => format!("{:.2}", session.anchor_bbox.left),
         "anchorT" => format!("{:.2}", session.anchor_bbox.top),
+        "markerAdvance" => format!("{:.2}", marker_advance),
+        "bodyLeft" => format!("{:.2}", session.anchor_bbox.left + marker_advance),
+        "bodyTop" => format!("{:.2}", session.anchor_bbox.top),
         "localX" => format!("{:.2}", local_click_x),
         "localY" => format!("{:.2}", local_click_y),
         "lines" => lines.len(),
@@ -224,6 +227,9 @@ fn resolve_caret_index_for_draft_point(
             dbg_field("pageY", page_y),
             dbg_field("localClickX", local_click_x),
             dbg_field("localClickY", local_click_y),
+            dbg_field("markerAdvance", marker_advance),
+            dbg_field("bodyLeft", session.anchor_bbox.left + marker_advance),
+            dbg_field("bodyTop", session.anchor_bbox.top),
             dbg_field("draftText", draft_text),
             dbg_field("resolvedCaretIndex", resolved),
             dbg_field("caretLineCount", lines.len()),
@@ -312,7 +318,8 @@ pub fn caret_at_page_point(
     page_x: f32,
     page_y: f32,
 ) -> usize {
-    let marker_advance = active_target.scene.marker().map(|m| m.advance).unwrap_or(0.0);
+    let marker = active_target.scene.marker();
+    let marker_advance = marker.map(|m| m.advance).unwrap_or(0.0);
     let body_left = active_target.scene.body_session().anchor_bbox.left + marker_advance;
     if page_x <= body_left {
         dbg_event(
@@ -323,6 +330,8 @@ pub fn caret_at_page_point(
                 dbg_field("pageX", page_x),
                 dbg_field("pageY", page_y),
                 dbg_field("bodyLeft", body_left),
+                dbg_field("markerText", marker.map(|m| m.text.as_str()).unwrap_or("")),
+                dbg_field("markerAdvance", marker_advance),
                 dbg_field("resolvedCaretIndex", 0),
             ],
         );
@@ -342,6 +351,9 @@ pub fn caret_at_shell_point(
     let shell_top = active_target.scene.shell_bbox.top;
     let body_left = active_target.scene.body_session().anchor_bbox.left;
     let body_top = active_target.scene.body_session().anchor_bbox.top;
+    let marker = active_target.scene.marker();
+    let marker_advance = marker.map(|m| m.advance).unwrap_or(0.0);
+    let body_left_with_marker = body_left + marker_advance;
     let body_offset_x = (body_left - shell_left).max(0.0);
     let body_offset_y = (body_top - shell_top).max(0.0);
     let page_x = body_left + (shell_x - body_offset_x).max(0.0);
@@ -353,8 +365,22 @@ pub fn caret_at_shell_point(
             dbg_field("paragraphId", &active_target.paragraph_id),
             dbg_field("shellX", shell_x),
             dbg_field("shellY", shell_y),
+            dbg_field("shellLeft", shell_left),
+            dbg_field("shellTop", shell_top),
+            dbg_field("bodyLeft", body_left),
+            dbg_field("bodyTop", body_top),
+            dbg_field("bodyLeftWithMarker", body_left_with_marker),
             dbg_field("bodyOffsetX", body_offset_x),
             dbg_field("bodyOffsetY", body_offset_y),
+            dbg_field("markerText", marker.map(|m| m.text.as_str()).unwrap_or("")),
+            dbg_field(
+                "markerKind",
+                marker
+                    .map(|m| format!("{:?}", m.kind))
+                    .unwrap_or_else(|| "None".to_string()),
+            ),
+            dbg_field("markerAdvance", marker_advance),
+            dbg_field("markerRunCount", marker.map(|m| m.runs.len()).unwrap_or(0)),
             dbg_field("pageX", page_x),
             dbg_field("pageY", page_y),
         ],

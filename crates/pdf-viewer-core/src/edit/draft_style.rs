@@ -3,7 +3,9 @@
 //! 构建 draft runs 的样式，包括源布局构建、模板选择、run 切片等。
 
 use crate::common::debug::truncate_debug_text;
-use crate::edit::debug_trace::{editor_debug_field as dbg_field, record_editor_debug_event as dbg_event};
+use crate::edit::debug_trace::{
+    editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
+};
 use crate::edit::document_plan::EditContext;
 use crate::geometry::layout_engine::{ParagraphLayout, VisualLine};
 use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext};
@@ -61,8 +63,7 @@ pub(super) fn build_source_layout(document_plan: &EditContext) -> ParagraphLayou
         normalized_run.bbox.left = (run.bbox.left - anchor_left).max(0.0);
         normalized_run.bbox.right = (run.bbox.right - anchor_left).max(normalized_run.bbox.left);
         normalized_run.bbox.top = (run.bbox.top - anchor_top).max(0.0);
-        normalized_run.bbox.bottom =
-            (run.bbox.bottom - anchor_top).max(normalized_run.bbox.top);
+        normalized_run.bbox.bottom = (run.bbox.bottom - anchor_top).max(normalized_run.bbox.top);
 
         if let Some(line) = lines
             .last_mut()
@@ -99,10 +100,7 @@ pub(super) fn resolve_draft_template_run(document_plan: &EditContext) -> LayoutR
     )
 }
 
-pub(super) fn resolve_template(
-    document_plan: &EditContext,
-    preserve_underline: bool,
-) -> LayoutRun {
+pub(super) fn resolve_template(document_plan: &EditContext, preserve_underline: bool) -> LayoutRun {
     let mut run = if !document_plan.draft_template_run.id.is_empty()
         || !document_plan.draft_template_run.style.font_name.is_empty()
         || document_plan.draft_template_run.style.font_size > 0.0

@@ -26,10 +26,7 @@ pub fn with_present_state<R>(f: impl FnOnce(&HostPresentState) -> R) -> R {
     app_context::with_present(f)
 }
 
-pub fn build_plan_result(
-    request: &FramePlanRequest,
-    consume_anchor: bool,
-) -> FramePlanResult {
+pub fn build_plan_result(request: &FramePlanRequest, consume_anchor: bool) -> FramePlanResult {
     let viewer_session = viewer_store::read_viewer_session();
     let scene_key = render_scene_key();
     let present_snapshot = app_context::with_present(Clone::clone);
@@ -180,6 +177,9 @@ pub fn schedule_render_frame_request(request: &FramePlanRequest) -> Option<Rende
 }
 
 /// Alias used by free_api that imported `build_frame_plan_result`.
-pub fn build_frame_plan_result(request: &FramePlanRequest, consume_anchor: bool) -> FramePlanResult {
+pub fn build_frame_plan_result(
+    request: &FramePlanRequest,
+    consume_anchor: bool,
+) -> FramePlanResult {
     build_plan_result(request, consume_anchor)
 }

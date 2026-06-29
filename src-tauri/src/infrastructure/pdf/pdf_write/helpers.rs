@@ -1,7 +1,6 @@
 use crate::infrastructure::pdf::pdf_utils;
 use lopdf::{Document, Object};
 
-
 pub(crate) fn read_page_height(doc: &Document, id: lopdf::ObjectId) -> Result<f32, String> {
     let page_size = pdf_utils::read_page_size(doc, id);
     Ok(page_size.effective_height())
@@ -106,7 +105,9 @@ pub(crate) fn read_page_annotation_refs(
     }
 }
 
-pub(crate) fn resolve_line_color(line: &pdf_viewer_core::geometry::layout_engine::VisualLine) -> String {
+pub(crate) fn resolve_line_color(
+    line: &pdf_viewer_core::geometry::layout_engine::VisualLine,
+) -> String {
     line.runs
         .iter()
         .find(|r| !r.text.is_empty())
@@ -114,7 +115,8 @@ pub(crate) fn resolve_line_color(line: &pdf_viewer_core::geometry::layout_engine
         .filter(|c| !c.trim().is_empty())
         .unwrap_or_else(|| "#000000".to_string())
 }
-pub(crate) fn resolve_line_underline(line: &pdf_viewer_core::geometry::layout_engine::VisualLine) -> bool {
+pub(crate) fn resolve_line_underline(
+    line: &pdf_viewer_core::geometry::layout_engine::VisualLine,
+) -> bool {
     line.runs.iter().any(|r| r.style.is_underline)
 }
-

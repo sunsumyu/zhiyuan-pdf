@@ -78,24 +78,26 @@ impl PdfEditorGeometryService {
         session: pdf_viewer_core::models::ParagraphEditContext,
         click_x_from_anchor_left: f32,
     ) -> Result<usize, String> {
-        Ok(
-            pdf_viewer_core::text::glyph_layout::resolve_click_caret(
-                &session,
-                click_x_from_anchor_left,
-            ),
-        )
+        Ok(pdf_viewer_core::text::glyph_layout::resolve_click_caret(
+            &session,
+            click_x_from_anchor_left,
+        ))
     }
 
     pub fn resolve_field_hit(
         request: pdf_viewer_core::models::FieldHitRequest,
     ) -> Result<pdf_viewer_core::models::FieldHitResolution, String> {
-        Ok(pdf_viewer_core::text::glyph_layout::resolve_click_hit(&request))
+        Ok(pdf_viewer_core::text::glyph_layout::resolve_click_hit(
+            &request,
+        ))
     }
 
     pub fn resolve_field_hit_target(
         request: pdf_viewer_core::models::FieldHitBatchRequest,
     ) -> Result<Option<pdf_viewer_core::models::FieldHitMatch>, String> {
-        Ok(pdf_viewer_core::text::glyph_layout::resolve_click_target(&request))
+        Ok(pdf_viewer_core::text::glyph_layout::resolve_click_target(
+            &request,
+        ))
     }
 
     pub fn resolve_field_projection(

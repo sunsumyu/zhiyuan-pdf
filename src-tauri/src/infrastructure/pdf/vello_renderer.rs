@@ -1,12 +1,12 @@
 use crate::infrastructure::pdf::models::{NativeTextModel, RenderObject};
+use crate::infrastructure::pdf::{color_utils, path_utils};
 use cosmic_text::{Buffer, FontSystem, Metrics, Shaping, SwashCache};
 use image::{ImageBuffer, Rgba};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use swash::scale::ScaleContext;
 use swash::proxy::MetricsProxy;
+use swash::scale::ScaleContext;
 use vello::kurbo::{Affine, BezPath, Stroke, Vec2};
-use crate::infrastructure::pdf::{color_utils, path_utils};
 use vello::peniko::{Color, Fill};
 use vello::{Renderer, RendererOptions, Scene};
 use wgpu::{
@@ -470,7 +470,10 @@ impl VelloRenderer {
         } else {
             &text.color
         };
-        color_utils::parse_hex_vello_color(text.stroke_color.as_deref().unwrap_or(fallback), text.alpha)
+        color_utils::parse_hex_vello_color(
+            text.stroke_color.as_deref().unwrap_or(fallback),
+            text.alpha,
+        )
     }
     fn text_stroke_width(&self, text: &NativeTextModel) -> f64 {
         let width = if text.stroke_width > 0.0 {

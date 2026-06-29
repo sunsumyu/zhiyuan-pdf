@@ -32,7 +32,13 @@ pub(crate) fn resolve_working_path(original_path: &str) -> String {
     };
     let _locked = lock.lock().unwrap();
     let elapsed = total_start.elapsed();
-    crate::pdf_log!(2, "[WORKING_COPY] resolve_working_path({}) = {} ({}ms)", original_path, working_path, elapsed.as_millis());
+    crate::pdf_log!(
+        2,
+        "[WORKING_COPY] resolve_working_path({}) = {} ({}ms)",
+        original_path,
+        working_path,
+        elapsed.as_millis()
+    );
     working_path
 }
 

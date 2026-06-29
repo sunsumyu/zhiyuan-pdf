@@ -3,12 +3,12 @@ use crate::models::{
     TextRun, VectorPageModel, VectorRenderObject,
 };
 
+use crate::common::debug::truncate_debug_text;
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::geometry::bbox_ops::{bbox_height, bbox_width};
-use crate::geometry::source_geometry::{compute_run_bbox, compute_bbox_from_runs};
-use crate::common::debug::truncate_debug_text;
+use crate::geometry::source_geometry::{compute_bbox_from_runs, compute_run_bbox};
 
 pub fn target_paint_runs(
     paragraph: &GlyphPaintParagraph,
@@ -411,11 +411,7 @@ fn resolve_glyph_paint_runs(paragraph: &GlyphPaintParagraph) -> Option<Vec<Layou
     }
 }
 
-fn build_layout(
-    run: &StyledRun,
-    owner_object_id: &str,
-    run_index: usize,
-) -> LayoutRun {
+fn build_layout(run: &StyledRun, owner_object_id: &str, run_index: usize) -> LayoutRun {
     let mut layout_run = TextRun::from_styled(run).to_layout_run();
     if layout_run.id.is_empty() {
         layout_run.id = format!("{owner_object_id}::run::{run_index}");
@@ -425,4 +421,3 @@ fn build_layout(
     }
     layout_run
 }
-

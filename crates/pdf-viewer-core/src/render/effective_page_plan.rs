@@ -12,12 +12,12 @@ use crate::edit::paragraph_overlay::ParagraphRenderOverlay;
 use crate::models::{BoundingBox, VectorPageModel};
 use crate::render::prepared_scene::PreparedPageScene;
 
+#[path = "glyph_plan.rs"]
+pub mod glyph_plan;
 #[path = "overlay_ops.rs"]
 mod overlay_ops;
 #[path = "text_suppression.rs"]
 mod text_suppression;
-#[path = "glyph_plan.rs"]
-pub mod glyph_plan;
 
 pub use crate::render::source_suppression::SuppressedVectorTextRuns;
 
@@ -71,12 +71,15 @@ pub fn build_effective_vector_render_plan(
         return build_entries_without_overlays(visible_indices, vector_model);
     }
 
-    let mut entries = process_visible_objects(visible_indices, vector_model, &mut prepared_overlays);
+    let mut entries =
+        process_visible_objects(visible_indices, vector_model, &mut prepared_overlays);
 
     for overlay in prepared_overlays {
         trace_overlay_summary(&overlay);
         if !overlay.inserted {
-            entries.push(EffectiveVectorRenderEntry::ParagraphOverlay(overlay.overlay));
+            entries.push(EffectiveVectorRenderEntry::ParagraphOverlay(
+                overlay.overlay,
+            ));
         }
     }
 

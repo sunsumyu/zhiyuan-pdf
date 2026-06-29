@@ -1,31 +1,32 @@
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
-use web_sys::{HtmlImageElement, ImageBitmap};
-use pdf_viewer_core::models::{BoundingBox, PageState, VectorImageObject, VectorPathObject, VectorRenderObject, VectorTextObject, VectorPageModel};
-use pdf_viewer_core::typography::font_resolver::resolve_font_face;
-use crate::render::effective_page_plan::{
-    build_effective_vector_render_plan, build_effective_glyph_render_plan,
-    EffectiveGlyphRenderEntry, EffectiveVectorRenderEntry, SuppressedVectorTextRuns,
+use super::{
+    current_time_ms, debug_log_canvas_method, draw_text_run_core, CanvasRenderer, CoordinateMode,
 };
-use crate::render::prepared_scene::PreparedPageScene;
-use crate::render::progressive::ProgressiveVectorRenderTask;
 use crate::common::bbox::bbox_intersects;
-use crate::viewport_culling::{
-    glyph_run_intersects_viewport, path_bbox, resolve_page_viewport_bbox,
-};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::paragraph_overlay::{
-    collect_overlays, ParagraphRenderOverlayOwner,
-};
+use crate::editor::paragraph_overlay::{collect_overlays, ParagraphRenderOverlayOwner};
 use crate::editor::replacement_region::build_region;
 use crate::render::canvas_overlay::{
     draw_active_editor_shell_overlay_page, draw_persisted_paragraph_overlay_page, path_bbox_summary,
 };
-use super::{
-    CanvasRenderer, CoordinateMode, draw_text_run_core, current_time_ms, debug_log_canvas_method,
+use crate::render::effective_page_plan::{
+    build_effective_glyph_render_plan, build_effective_vector_render_plan,
+    EffectiveGlyphRenderEntry, EffectiveVectorRenderEntry, SuppressedVectorTextRuns,
 };
+use crate::render::prepared_scene::PreparedPageScene;
+use crate::render::progressive::ProgressiveVectorRenderTask;
+use crate::viewport_culling::{
+    glyph_run_intersects_viewport, path_bbox, resolve_page_viewport_bbox,
+};
+use pdf_viewer_core::models::{
+    BoundingBox, PageState, VectorImageObject, VectorPageModel, VectorPathObject,
+    VectorRenderObject, VectorTextObject,
+};
+use pdf_viewer_core::typography::font_resolver::resolve_font_face;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
+use web_sys::{HtmlImageElement, ImageBitmap};
 
 impl CanvasRenderer {
     pub(super) fn draw_vector_object(
@@ -57,14 +58,17 @@ impl CanvasRenderer {
             Some(path.id.as_str()),
             bbox,
             vec![
-                dbg_field("strokeColor", path.stroke_color.as_deref().unwrap_or("none")),
+                dbg_field(
+                    "strokeColor",
+                    path.stroke_color.as_deref().unwrap_or("none"),
+                ),
                 dbg_field("fillColor", path.fill_color.as_deref().unwrap_or("none")),
                 dbg_field("strokeWidth", path.stroke_width),
             ],
         );
         if let Some((path_width, path_height)) = path_bbox_summary(path) {
-            let is_suspicious_horizontal_path = path_width >= 120.0
-                && path_height <= (path.stroke_width.max(0.0) * 6.0).max(30.0);
+            let is_suspicious_horizontal_path =
+                path_width >= 120.0 && path_height <= (path.stroke_width.max(0.0) * 6.0).max(30.0);
             if is_suspicious_horizontal_path
                 && bbox
                     .as_ref()
@@ -76,7 +80,10 @@ impl CanvasRenderer {
                     "vector-path",
                     vec![
                         dbg_field("objectId", path.id.as_str()),
-                        dbg_field("strokeColor", path.stroke_color.as_deref().unwrap_or("none")),
+                        dbg_field(
+                            "strokeColor",
+                            path.stroke_color.as_deref().unwrap_or("none"),
+                        ),
                         dbg_field("fillColor", path.fill_color.as_deref().unwrap_or("none")),
                         dbg_field("strokeWidth", path.stroke_width),
                         dbg_field("pathWidth", path_width),
@@ -137,7 +144,10 @@ impl CanvasRenderer {
             object_index,
             Some(image.id.as_str()),
             bbox,
-            vec![dbg_field("width", image.width), dbg_field("height", image.height)],
+            vec![
+                dbg_field("width", image.width),
+                dbg_field("height", image.height),
+            ],
         );
         let img_val = image_provider.get(&JsValue::from_str(&image.id));
         if let Some(img_js) = img_val.clone().dyn_into::<HtmlImageElement>().ok() {
@@ -411,8 +421,7 @@ impl CanvasRenderer {
                     }
                     EffectiveVectorRenderEntry::ParagraphOverlay(overlay) => {
                         let replacement_region = build_region(&overlay.target);
-                        let overlay_cull_bbox =
-                            replacement_region.viewport_cull_bbox(plan.width);
+                        let overlay_cull_bbox = replacement_region.viewport_cull_bbox(plan.width);
                         let intersects = bbox_intersects(&overlay_cull_bbox, &viewport_bbox);
                         if intersects {
                             dbg_event(

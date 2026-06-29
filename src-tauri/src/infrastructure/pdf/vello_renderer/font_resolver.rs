@@ -1,11 +1,11 @@
-use swash::scale::ScaleContext;
-use vello::Scene;
-use vello::kurbo::Affine;
-use pdf_viewer_core::typography::models::ResolvedPdfFont;
+use super::{preview_text, should_trace_text_render, text_is_non_painting, VelloRenderer};
 use crate::infrastructure::pdf::models::NativeTextModel;
 use crate::infrastructure::pdf::path_utils;
+use pdf_viewer_core::typography::models::ResolvedPdfFont;
 use swash::proxy::MetricsProxy;
-use super::{VelloRenderer, text_is_non_painting, should_trace_text_render, preview_text};
+use swash::scale::ScaleContext;
+use vello::kurbo::Affine;
+use vello::Scene;
 
 impl VelloRenderer {
     pub(super) fn resolve_pdf_font(&mut self, text: &NativeTextModel) -> ResolvedPdfFont {
@@ -267,7 +267,11 @@ impl VelloRenderer {
         0
     }
 
-    pub(super) fn resolve_cached_cid_glyph_id(&self, text: &NativeTextModel, raw_code: u32) -> Option<u16> {
+    pub(super) fn resolve_cached_cid_glyph_id(
+        &self,
+        text: &NativeTextModel,
+        raw_code: u32,
+    ) -> Option<u16> {
         let font_key = text.embedded_font_key.as_deref()?;
         let cache = crate::infrastructure::pdf::cache::PDF_FONT_GLYPH_MAP_CACHE
             .lock()

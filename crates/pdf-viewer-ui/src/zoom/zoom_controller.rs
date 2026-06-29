@@ -12,7 +12,7 @@ use crate::zoom::interaction::{
     ZoomPreviewFrame,
 };
 use crate::zoom::zoom_store::{
-    reset_zoom_state, read_zoom_state as store_read_zoom_state, with_zoom_state,
+    read_zoom_state as store_read_zoom_state, reset_zoom_state, with_zoom_state,
     with_zoom_state_mut, HostZoomState, VisualLayoutState,
 };
 
@@ -45,9 +45,7 @@ pub fn mark_rendered_zoom(rendered_zoom: f32) {
 }
 
 pub fn step_zoom_animation() -> crate::zoom::zoom_store::ZoomAnimationStep {
-    with_zoom_state_mut(|state| {
-        advance_zoom_animation_state(state, None)
-    })
+    with_zoom_state_mut(|state| advance_zoom_animation_state(state, None))
 }
 
 pub fn step_frame_plan(request: &FramePlanRequest) -> ZoomPreviewFrame {

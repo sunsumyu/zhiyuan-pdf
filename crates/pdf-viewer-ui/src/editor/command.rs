@@ -5,10 +5,7 @@ use crate::editor::document_edit_ops::{delete_backward, delete_forward, insert_t
 use crate::editor::engine_state::LiveEditorParagraphState;
 use crate::editor::mode::read_state;
 use crate::editor::navigation::execute_navigation;
-use crate::editor::session::{
-    caret_index, set_caret, sync_input,
-    ActiveEditorInputSyncResult,
-};
+use crate::editor::session::{caret_index, set_caret, sync_input, ActiveEditorInputSyncResult};
 
 #[derive(Debug, Clone, Copy)]
 pub enum EditorInputCommand<'a> {
@@ -106,7 +103,17 @@ pub fn apply_host_input(
             let Some(active_state) = effective_editor_state(host_text, host_caret_index) else {
                 return ActiveEditorInputSyncResult::default();
             };
+            let before_caret = active_state.normalized_caret_index();
+            let before_len = active_state.current_text().chars().count();
             let mutation = insert_text(&active_state, inserted_text);
+            crate::chain_trace!(
+                "cmd.insert",
+                "beforeCaret" => before_caret,
+                "beforeLen" => before_len,
+                "insertedCharCount" => inserted_text.chars().count(),
+                "afterCaret" => mutation.caret_index,
+                "afterLen" => mutation.text.chars().count()
+            );
             sync_input(mutation.text, mutation.caret_index)
         }
         EditorInputCommand::DeleteBackward => {
@@ -136,7 +143,22 @@ pub fn apply_host_input(
                 return ActiveEditorInputSyncResult::default();
             };
             let current_caret = active_state.normalized_caret_index();
+            let before_text = active_state.current_text().to_string();
+            let before_len = before_text.chars().count();
             let mutation = delete_forward(&active_state);
+            let removed_char: String = before_text
+                .chars()
+                .nth(current_caret)
+                .map(|c| c.to_string())
+                .unwrap_or_default();
+            crate::chain_trace!(
+                "cmd.delete",
+                "beforeCaret" => current_caret,
+                "beforeLen" => before_len,
+                "removedChar" => removed_char,
+                "afterCaret" => mutation.caret_index,
+                "afterLen" => mutation.text.chars().count()
+            );
             if mutation.caret_index == active_state.normalized_caret_index()
                 && mutation.text == active_state.current_text()
             {

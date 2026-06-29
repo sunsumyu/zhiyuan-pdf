@@ -9,9 +9,7 @@ use crate::edit::debug_trace::{
 };
 use crate::edit::paragraph_overlay::{ParagraphRenderOverlay, ParagraphRenderOverlayOwner};
 use crate::edit::replacement_region::{build_region, ParagraphReplacementRegion};
-use crate::edit::source_identity::{
-    collect_target_source_object_ids, collect_object_index_set,
-};
+use crate::edit::source_identity::{collect_object_index_set, collect_target_source_object_ids};
 use crate::models::{BoundingBox, VectorPageModel, VectorRenderObject};
 use crate::render::prepared_scene::PreparedPageScene;
 use crate::render::viewport_culling::{path_bbox, run_bbox, vector_object_intersects_viewport};
@@ -238,11 +236,7 @@ pub(super) fn prepare_overlays(
 
 // --- 追踪 ---
 
-pub(super) fn trace_overlay_identity(
-    po: &[PreparedOverlay],
-    vi: &[usize],
-    vm: &VectorPageModel,
-) {
+pub(super) fn trace_overlay_identity(po: &[PreparedOverlay], vi: &[usize], vm: &VectorPageModel) {
     for (i, ov) in po.iter().enumerate() {
         dbg_event(
             "effective-plan",
@@ -329,7 +323,7 @@ pub(super) fn trace_overlay_summary(o: &PreparedOverlay) {
                 sb,
                 pb,
                 o.first_path_summary.as_deref().unwrap_or("none")
-            )
+            ),
         )],
     );
     dbg_event(
@@ -371,10 +365,7 @@ pub(super) fn trace_overlay_summary(o: &PreparedOverlay) {
             dbg_field("imageIntersectCount", o.image_intersect_count),
             dbg_field("thinHorizontalPathCount", o.thin_horizontal_path_count),
             dbg_field("suppressedPathCount", o.suppressed_path_count),
-            dbg_field(
-                "suppressedTextObjectCount",
-                o.suppressed_text_object_count,
-            ),
+            dbg_field("suppressedTextObjectCount", o.suppressed_text_object_count),
             dbg_field("suppressedTextRunCount", o.suppressed_text_run_count),
             dbg_field("sourceObjectIdCount", o.object_ids.len()),
             dbg_field(
@@ -402,7 +393,9 @@ pub(super) fn insert_overlay_if_needed(
     e: &mut Vec<EffectiveVectorRenderEntry>,
 ) {
     if !o.inserted && !overlay_renders_last(&o.overlay) {
-        e.push(EffectiveVectorRenderEntry::ParagraphOverlay(o.overlay.clone()));
+        e.push(EffectiveVectorRenderEntry::ParagraphOverlay(
+            o.overlay.clone(),
+        ));
         o.inserted = true;
     }
 }

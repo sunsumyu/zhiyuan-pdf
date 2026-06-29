@@ -4,9 +4,10 @@
 //! （serde 进 → 域函数 → serde 出），属于"未升级到 Session 模式但仍在 TS 调用"
 //! 的兼容层。新代码请走 `DocumentSession` / `CommentManager` / `ReviewSession`。
 
-use serde_wasm_bindgen::{from_value, to_value};
+use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
+use crate::document::document_types::parse_request;
 use crate::document::host_pipeline::{
     self, OpenDocumentPipelineRequest, PickDocumentPipelineRequest,
 };
@@ -24,14 +25,14 @@ pub fn redo_document_pipeline() -> JsValue {
 
 #[wasm_bindgen(js_name = "openDocumentPipeline")]
 pub async fn open_document_pipeline(request_js: JsValue) -> Result<JsValue, JsValue> {
-    let request: OpenDocumentPipelineRequest = from_value(request_js).unwrap_or_default();
+    let request: OpenDocumentPipelineRequest = parse_request(request_js, "openDocumentPipeline")?;
     let result = host_pipeline::open_document_pipeline(request).await?;
     Ok(to_value(&result).unwrap_or(JsValue::NULL))
 }
 
 #[wasm_bindgen(js_name = "pickDocumentPipeline")]
 pub async fn pick_document_pipeline(request_js: JsValue) -> Result<JsValue, JsValue> {
-    let request: PickDocumentPipelineRequest = from_value(request_js).unwrap_or_default();
+    let request: PickDocumentPipelineRequest = parse_request(request_js, "pickDocumentPipeline")?;
     host_pipeline::pick_document_pipeline(request).await
 }
 

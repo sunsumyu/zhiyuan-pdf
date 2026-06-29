@@ -7,7 +7,7 @@ use crate::zoom::host::{
     PreviewTickDecisionRequest, WheelRenderDecision, WheelRenderDecisionRequest,
 };
 use crate::zoom::interaction::{WheelZoomRequest, WheelZoomResult};
-use crate::zoom::preview_host::{set_preview_active, set_pending as set_wheel_render_pending};
+use crate::zoom::preview_host::{set_pending as set_wheel_render_pending, set_preview_active};
 use crate::zoom::request::resolve_wheel_zoom;
 use crate::zoom::zoom_controller::{read_zoom_state, step_frame_plan as step_zoom_frame_plan};
 

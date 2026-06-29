@@ -95,7 +95,8 @@ impl HostPageTransform {
             let box_height = (bbox.bottom - bbox.top).max(1.0);
             let scale_x = positive_ratio(self.reference.width, box_width);
             let scale_y = positive_ratio(self.reference.height, box_height);
-            result.x = bbox.left + ((point.x - self.reference.left) / scale_x).clamp(0.0, box_width);
+            result.x =
+                bbox.left + ((point.x - self.reference.left) / scale_x).clamp(0.0, box_width);
             result.y = bbox.top + ((point.y - self.reference.top) / scale_y).clamp(0.0, box_height);
         }
         result

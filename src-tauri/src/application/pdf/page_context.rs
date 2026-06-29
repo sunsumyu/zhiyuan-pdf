@@ -7,9 +7,7 @@ use pdf_viewer_core::document::page_region_context::{
 use pdf_viewer_core::models::{
     NativePageModel, NativePageObject, NativeTextModel as CoreNativeTextModel,
 };
-pub(crate) fn build_region_context(
-    page_model: &NativeVectorPageModel,
-) -> PageRegionContextOutput {
+pub(crate) fn build_region_context(page_model: &NativeVectorPageModel) -> PageRegionContextOutput {
     let native_page = native_page_from_vector_model(page_model);
     build_page_region_context(&native_page)
 }

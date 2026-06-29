@@ -4,7 +4,7 @@ use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContex
 use crate::text::list_semantics::derive_list_text_semantics;
 use crate::typography::font_resolver::looks_like_symbolic_font;
 
-use crate::geometry::source_geometry::{compute_run_bbox, compute_bbox_from_runs};
+use crate::geometry::source_geometry::{compute_bbox_from_runs, compute_run_bbox};
 
 const EDIT_SEGMENT_DELIMITER: &str = "::edit-segment::";
 

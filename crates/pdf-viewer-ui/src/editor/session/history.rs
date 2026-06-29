@@ -30,7 +30,9 @@ impl LocalEditHistory {
                 true
             } else {
                 // If text is unchanged or only minor character length change, don't push a new snapshot
-                let text_diff = (state.current_text().len() as isize - last.state.current_text().len() as isize).abs();
+                let text_diff = (state.current_text().len() as isize
+                    - last.state.current_text().len() as isize)
+                    .abs();
                 text_diff > 2 || state.has_style_changes() != last.state.has_style_changes()
             }
         } else {
@@ -49,7 +51,10 @@ impl LocalEditHistory {
         self.redo_stack.clear();
     }
 
-    pub fn undo(&mut self, current_state: &LiveEditorParagraphState) -> Option<LiveEditorParagraphState> {
+    pub fn undo(
+        &mut self,
+        current_state: &LiveEditorParagraphState,
+    ) -> Option<LiveEditorParagraphState> {
         let prev = self.undo_stack.pop()?;
         self.redo_stack.push(HistorySnapshot {
             state: current_state.clone(),
@@ -58,7 +63,10 @@ impl LocalEditHistory {
         Some(prev.state)
     }
 
-    pub fn redo(&mut self, current_state: &LiveEditorParagraphState) -> Option<LiveEditorParagraphState> {
+    pub fn redo(
+        &mut self,
+        current_state: &LiveEditorParagraphState,
+    ) -> Option<LiveEditorParagraphState> {
         let next = self.redo_stack.pop()?;
         self.undo_stack.push(HistorySnapshot {
             state: current_state.clone(),

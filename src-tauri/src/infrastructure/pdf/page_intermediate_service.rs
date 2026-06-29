@@ -59,7 +59,8 @@ impl PdfPageIntermediateService {
             }
 
             let path_for_load = path.clone();
-            let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(&path);
+            let working_path =
+                crate::infrastructure::pdf::working_copy::resolve_working_path(&path);
             let loaded_doc = tokio::task::spawn_blocking(move || {
                 crate::infrastructure::pdf::document_service::load_public(&working_path)
                     .map(Arc::new)
@@ -86,9 +87,7 @@ impl PdfPageIntermediateService {
         };
 
         let display_list = tokio::task::spawn_blocking(move || {
-            crate::infrastructure::pdf::vector_engine::resolve_display_list(
-                &lopdf_doc, page_index,
-            )
+            crate::infrastructure::pdf::vector_engine::resolve_display_list(&lopdf_doc, page_index)
         })
         .await
         .map_err(|e| format!("Intermediate display list spawn error: {}", e))??;
@@ -128,13 +127,8 @@ impl PdfPageIntermediateService {
             return Ok((*model).clone());
         }
 
-        let display_list = Self::resolve_page_display_list(
-            app_state,
-            path,
-            page_index,
-            document_revision,
-        )
-        .await?;
+        let display_list =
+            Self::resolve_page_display_list(app_state, path, page_index, document_revision).await?;
         let display_list = (*display_list).clone();
         let model = tokio::task::spawn_blocking(move || {
             crate::infrastructure::pdf::vector_engine::build_vector_page_model_from_display_list(
@@ -166,13 +160,8 @@ impl PdfPageIntermediateService {
             return Ok((*result).clone());
         }
 
-        let display_list = Self::resolve_page_display_list(
-            app_state,
-            path,
-            page_index,
-            document_revision,
-        )
-        .await?;
+        let display_list =
+            Self::resolve_page_display_list(app_state, path, page_index, document_revision).await?;
         let display_list = (*display_list).clone();
         let result = tokio::task::spawn_blocking(move || {
             crate::infrastructure::pdf::vector_engine::resolve_layout_inference_from_display_list(
@@ -195,13 +184,8 @@ impl PdfPageIntermediateService {
         page_index: u16,
         document_revision: Option<u64>,
     ) -> Result<GlyphPaintPlan, String> {
-        let layout = Self::resolve_layout_inference(
-            app_state,
-            path,
-            page_index,
-            document_revision,
-        )
-        .await?;
+        let layout =
+            Self::resolve_layout_inference(app_state, path, page_index, document_revision).await?;
         let plan = pdf_viewer_core::render::paint_plan::build_glyph_paint_plan(&layout);
         let region_count = plan.regions.len();
         let paragraph_count: usize = plan.regions.iter().map(|r| r.paragraphs.len()).sum();
@@ -236,10 +220,20 @@ impl PdfPageIntermediateService {
         .await?;
 
         if image_only.unwrap_or(false) {
-            model.objects.retain(|obj| !matches!(obj, crate::infrastructure::pdf::models::RenderObject::Text(_)));
+            model.objects.retain(|obj| {
+                !matches!(
+                    obj,
+                    crate::infrastructure::pdf::models::RenderObject::Text(_)
+                )
+            });
         }
         if text_only.unwrap_or(false) {
-            model.objects.retain(|obj| matches!(obj, crate::infrastructure::pdf::models::RenderObject::Text(_)));
+            model.objects.retain(|obj| {
+                matches!(
+                    obj,
+                    crate::infrastructure::pdf::models::RenderObject::Text(_)
+                )
+            });
         }
 
         let paint_plan = if image_only.unwrap_or(false) {
@@ -296,7 +290,9 @@ mod tests {
 
     #[tokio::test]
     async fn uses_seeded_display_list() {
-        let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX.lock().unwrap();
+        let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX
+            .lock()
+            .unwrap();
         crate::infrastructure::pdf::log_service::clear_event_log();
         let state = crate::AppState::new();
         let path = "cached-doc.pdf".to_string();
@@ -438,4 +434,3 @@ mod tests {
         );
     }
 }
-

@@ -5,7 +5,6 @@ use crate::infrastructure::pdf::page_intermediate_service::PdfPageIntermediateSe
 use lopdf::Document as LopdfDocument;
 use std::collections::HashMap;
 
-
 pub struct PdfReadService;
 
 impl PdfReadService {
@@ -35,7 +34,8 @@ impl PdfReadService {
 
         let path_for_load = path.clone();
         let loaded_doc = tokio::task::spawn_blocking(move || {
-            let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(&path_for_load);
+            let working_path =
+                crate::infrastructure::pdf::working_copy::resolve_working_path(&path_for_load);
             LopdfDocument::load(&working_path)
                 .map(std::sync::Arc::new)
                 .map_err(|e| format!("Lopdf Load Error for {}: {}", path_for_load, e))
@@ -106,10 +106,7 @@ impl PdfReadService {
         path: String,
         page_index: u16,
     ) -> Result<LayoutInferenceResult, String> {
-        PdfPageIntermediateService::resolve_layout_inference(
-            &state, path, page_index, None,
-        )
-        .await
+        PdfPageIntermediateService::resolve_layout_inference(&state, path, page_index, None).await
     }
 
     /// 获取字形绘制计划
@@ -118,10 +115,7 @@ impl PdfReadService {
         path: String,
         page_index: u16,
     ) -> Result<GlyphPaintPlan, String> {
-        PdfPageIntermediateService::resolve_glyph_paint_plan(
-            &state, path, page_index, None,
-        )
-        .await
+        PdfPageIntermediateService::resolve_glyph_paint_plan(&state, path, page_index, None).await
     }
 
     /// 读取图像缓存（目前返回空HashMap）

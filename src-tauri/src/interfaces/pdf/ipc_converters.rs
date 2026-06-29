@@ -201,9 +201,7 @@ pub(crate) async fn execute_commands(
             .get(&save_path)
             .ok_or_else(|| "Document not found in cache".to_string())?;
         let doc_clone = (**current_doc).clone();
-        crate::infrastructure::pdf::save_engine::apply_commands(
-            doc_clone, page_index, commands,
-        )?
+        crate::infrastructure::pdf::save_engine::apply_commands(doc_clone, page_index, commands)?
     };
 
     // 3. Save to disk
@@ -238,5 +236,3 @@ pub(crate) async fn execute_commands(
 
     Ok(())
 }
-
-

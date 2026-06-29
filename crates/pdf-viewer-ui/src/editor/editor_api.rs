@@ -7,9 +7,9 @@ use crate::editor::editor_store;
 use crate::editor::editor_types::*;
 use crate::guard_state;
 
-pub mod text;
-pub mod format;
 pub mod block;
+pub mod format;
+pub mod text;
 
 // ── Incoming request DTOs (JS → Rust) ───────────────────────────
 
@@ -141,10 +141,13 @@ impl EditorSession {
                 height: request.page_height,
             },
         );
-        let page_point = transform.to_page(ClientPoint {
-            x: request.client_x,
-            y: request.client_y,
-        }, None);
+        let page_point = transform.to_page(
+            ClientPoint {
+                x: request.client_x,
+                y: request.client_y,
+            },
+            None,
+        );
 
         // Delegate to existing hit-test logic
         let target = resolve_target_at_page_point(page_point.x, page_point.y);
@@ -313,8 +316,8 @@ impl EditorSession {
             Err(js) => return js,
         };
 
-        use crate::editor::platform_bridge::{begin_commit, finish_commit};
         use crate::editor::orchestrator::render_transaction::commit_editor_tx;
+        use crate::editor::platform_bridge::{begin_commit, finish_commit};
 
         if !begin_commit() {
             return err_response(EditorError::InvalidState {
@@ -584,6 +587,68 @@ impl EditorSession {
     pub fn has_session_changes(&self) -> bool {
         use crate::editor::session::has_changes;
         has_changes()
+    }
+
+    /// Undo one active editor history step.
+    #[wasm_bindgen(js_name = "undo")]
+    pub fn undo(&self) -> JsValue {
+        guard_state!(SessionState::EditingBlock, "undo");
+
+        use crate::editor::session::undo_active_editor;
+        match undo_active_editor() {
+            Some(result) => ok_response(
+                SyncInputResult {
+                    changed: result.text_changed || result.caret_changed || result.scene_changed,
+                    caret_index: result.caret_index as u32,
+                },
+                result.request_visibility_render,
+            ),
+            None => ok_response(
+                SyncInputResult {
+                    changed: false,
+                    caret_index: 0,
+                },
+                false,
+            ),
+        }
+    }
+
+    /// Redo one active editor history step.
+    #[wasm_bindgen(js_name = "redo")]
+    pub fn redo(&self) -> JsValue {
+        guard_state!(SessionState::EditingBlock, "redo");
+
+        use crate::editor::session::redo_active_editor;
+        match redo_active_editor() {
+            Some(result) => ok_response(
+                SyncInputResult {
+                    changed: result.text_changed || result.caret_changed || result.scene_changed,
+                    caret_index: result.caret_index as u32,
+                },
+                result.request_visibility_render,
+            ),
+            None => ok_response(
+                SyncInputResult {
+                    changed: false,
+                    caret_index: 0,
+                },
+                false,
+            ),
+        }
+    }
+
+    /// Whether active editor undo history is available.
+    #[wasm_bindgen(js_name = "canUndo")]
+    pub fn can_undo(&self) -> bool {
+        use crate::editor::session::can_undo;
+        can_undo()
+    }
+
+    /// Whether active editor redo history is available.
+    #[wasm_bindgen(js_name = "canRedo")]
+    pub fn can_redo(&self) -> bool {
+        use crate::editor::session::can_redo;
+        can_redo()
     }
 
     /// Open a region-based editor (used by document review flows).

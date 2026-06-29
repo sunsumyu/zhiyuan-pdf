@@ -261,10 +261,7 @@ pub fn compute_run_aware_caret_left(session: &ParagraphEditContext, caret_index:
 /// # 算法策略
 /// 使用 `O(N)` 穷举所有游程及其包含的字元槽，维护最近距离 (Nearest Neighbor Euclidean Distance)。
 /// 由于 PDF 单段通常字符不超过 100~200，此处不引入基于二分查找或者 Quad-Tree 的过早优化。
-pub fn resolve_click_caret(
-    session: &ParagraphEditContext,
-    click_x_from_anchor_left: f32,
-) -> usize {
+pub fn resolve_click_caret(session: &ParagraphEditContext, click_x_from_anchor_left: f32) -> usize {
     let mut best_index = 0usize;
     let mut best_distance = f32::INFINITY;
     let mut consumed = 0usize;
@@ -597,11 +594,7 @@ fn line_contextual_run_delta(runs: &[&LayoutRun], run_index: usize) -> Option<f3
     Some(deltas[index.min(deltas.len() - 1)].max(1.0))
 }
 
-fn needs_gap(
-    prev: &LayoutRun,
-    next: &LayoutRun,
-    line_typical_delta: Option<f32>,
-) -> bool {
+fn needs_gap(prev: &LayoutRun, next: &LayoutRun, line_typical_delta: Option<f32>) -> bool {
     if !same_visual_line(prev, next) {
         return false;
     }

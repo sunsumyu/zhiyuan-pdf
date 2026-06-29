@@ -91,10 +91,8 @@ fn derive_next_marker_text(
 impl LiveEditorParagraphState {
     pub fn new(target: ActiveEditorTarget) -> Self {
         let source_text = target.source_body_text().to_string();
-        let style_mapper = StyleMapper::from_paragraph_text(
-            &target.scene.body_session().paragraph,
-            &source_text,
-        );
+        let style_mapper =
+            StyleMapper::from_paragraph_text(&target.scene.body_session().paragraph, &source_text);
         let list_kind = target
             .scene
             .marker()
@@ -135,7 +133,9 @@ impl LiveEditorParagraphState {
 
     pub fn set_caret_index(&mut self, caret_index: usize) -> bool {
         let normalized = caret_index.min(self.text_char_count());
-        let changed = self.caret_index != normalized || self.selection_start.is_some() || self.selection_end.is_some();
+        let changed = self.caret_index != normalized
+            || self.selection_start.is_some()
+            || self.selection_end.is_some();
         if changed {
             self.caret_index = normalized;
             self.selection_start = None;
@@ -515,7 +515,12 @@ impl LiveEditorParagraphState {
         if (self.active_line_height() - normalized).abs() < 0.01 {
             return false;
         }
-        self.target.scene.body_session_mut().paragraph.style.line_height = normalized;
+        self.target
+            .scene
+            .body_session_mut()
+            .paragraph
+            .style
+            .line_height = normalized;
         self.target.editor_session.paragraph.style.line_height = normalized;
         self.scene_revision = self.scene_revision.saturating_add(1);
         self.session_dirty = true;
@@ -531,5 +536,116 @@ impl LiveEditorParagraphState {
             _ => return false,
         };
         self.set_line_height(target_line_height)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::edit::active_target::ActiveEditorTarget;
+    use crate::edit::document_plan::EditContext;
+    use crate::edit::paragraph_scene::paragraph_editor_scene_from_plan;
+    use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
+    use crate::text::glyph_layout::build_editor_session_text_plan;
+
+    fn test_style() -> RunStyle {
+        RunStyle {
+            font_name: "Microsoft YaHei".to_string(),
+            font_size: 10.0,
+            color: "#000000".to_string(),
+            is_bold: false,
+            is_italic: false,
+            is_underline: false,
+            char_spacing: 0.0,
+            scale_x: 1.0,
+        }
+    }
+
+    fn test_run(text: &str) -> LayoutRun {
+        LayoutRun {
+            id: "r-engine-state".to_string(),
+            text: text.to_string(),
+            style: test_style(),
+            bbox: BoundingBox {
+                left: 10.0,
+                top: 40.0,
+                right: 110.0,
+                bottom: 52.0,
+            },
+            origin_x: 10.0,
+            origin_y: 50.0,
+            char_origins: Vec::new(),
+            char_widths: Vec::new(),
+            object_ids: Vec::new(),
+            object_indices: Vec::new(),
+        }
+    }
+
+    fn state_with_text(text: &str, caret_index: usize) -> LiveEditorParagraphState {
+        let anchor_bbox = BoundingBox {
+            left: 10.0,
+            top: 40.0,
+            right: 110.0,
+            bottom: 52.0,
+        };
+        let body_session = ParagraphEditContext {
+            anchor_bbox,
+            paragraph: LayoutParagraph {
+                id: "p-engine-state".to_string(),
+                bbox: anchor_bbox,
+                origin_x: anchor_bbox.left,
+                origin_y: anchor_bbox.top,
+                wrap_width: 100.0,
+                runs: vec![test_run(text)],
+                ..Default::default()
+            },
+        };
+        let document_plan = EditContext {
+            target_id: "p-engine-state".to_string(),
+            base_paragraph_id: "p-engine-state".to_string(),
+            shell_bbox: anchor_bbox,
+            source_body_text: text.to_string(),
+            body_text_plan: build_editor_session_text_plan(&body_session),
+            body_session,
+            body_initial_caret: caret_index,
+            ..Default::default()
+        };
+        let scene = paragraph_editor_scene_from_plan(document_plan).expect("scene should build");
+        let target = ActiveEditorTarget {
+            paragraph_id: "p-engine-state".to_string(),
+            region_id: "region-engine-state".to_string(),
+            page_index: 0,
+            text: text.to_string(),
+            bbox_left: anchor_bbox.left,
+            bbox_top: anchor_bbox.top,
+            bbox_right: anchor_bbox.right,
+            bbox_bottom: anchor_bbox.bottom,
+            font_family: "Microsoft YaHei".to_string(),
+            font_size: 10.0,
+            font_weight: "400".to_string(),
+            font_style: "normal".to_string(),
+            color: "#000000".to_string(),
+            text_decoration: String::new(),
+            initial_caret_index: caret_index,
+            editor_session: scene.body_session().clone(),
+            scene,
+        };
+        LiveEditorParagraphState::new(target)
+    }
+
+    #[test]
+    fn set_draft_text_clamps_caret_clears_selection_and_marks_dirty() {
+        let mut state = state_with_text("abcdef", 6);
+        assert!(state.set_selection_range(1, 4));
+        state.mark_session_clean();
+        let revision_before = state.scene_revision;
+
+        assert!(state.set_draft_text("ab".to_string()));
+
+        assert_eq!(state.current_text(), "ab");
+        assert_eq!(state.caret_index, 2);
+        assert_eq!(state.selection_range(), None);
+        assert!(state.scene_revision > revision_before);
+        assert!(state.has_session_changes());
     }
 }

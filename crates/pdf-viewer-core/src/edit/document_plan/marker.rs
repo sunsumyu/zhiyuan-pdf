@@ -5,8 +5,7 @@ use crate::edit::debug_trace::{
 };
 use crate::geometry::source_geometry::compute_bbox_from_runs;
 use crate::models::{
-    BoundingBox, GlyphPaintParagraph, LayoutParagraph, LayoutRun,
-    ParagraphEditContext,
+    BoundingBox, GlyphPaintParagraph, LayoutParagraph, LayoutRun, ParagraphEditContext,
 };
 use crate::text::glyph_layout::EditorSessionTextPlan;
 use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind};
@@ -159,7 +158,9 @@ pub fn split_editor_session(
 }
 
 /// Font-aware marker detection for symbolic-font bullets.
-pub fn detect_symbolic_font_marker(session: &ParagraphEditContext) -> Option<(usize, ListMarkerKind)> {
+pub fn detect_symbolic_font_marker(
+    session: &ParagraphEditContext,
+) -> Option<(usize, ListMarkerKind)> {
     let runs = &session.paragraph.runs;
     let non_empty_runs: Vec<&LayoutRun> = runs.iter().filter(|r| !r.text.is_empty()).collect();
     if non_empty_runs.len() < 2 {
@@ -237,8 +238,7 @@ pub fn synthesize_marker_from_paragraph(
         return None;
     }
 
-    let bbox = bbox_from_runs(&candidates)?;
-    let advance = (body_origin_x - bbox.left).max(0.0);
+    let advance = (body_origin_x - body_session.anchor_bbox.left).max(0.0);
     let text: String = candidates.iter().map(|r| r.text.clone()).collect();
     let kind = derive_list_text_semantics(&text).kind;
     let kind = if kind == ListMarkerKind::None {
@@ -287,8 +287,14 @@ pub fn resolve_marker_split(
         marker: None,
     };
 
+    let mut strategy = "none";
     let mut split = match strategy_result {
         Some((body_char_start, marker_kind)) => {
+            strategy = if semantics.has_marker && semantics.body_char_start > 0 {
+                "semantic"
+            } else {
+                "symbolic-font"
+            };
             let raw = full_text_plan.to_raw(body_char_start);
             split_editor_session(full_session, raw, marker_kind).unwrap_or_else(default_split)
         }
@@ -298,6 +304,7 @@ pub fn resolve_marker_split(
     // Strategy 3: geometric synthesis fills a missing marker after the split.
     if split.marker.is_none() {
         if let Some(marker) = synthesize_marker_from_paragraph(paragraph, &split.body_session) {
+            strategy = "geometric";
             split.marker = Some(marker);
         }
     }
@@ -312,6 +319,31 @@ pub fn resolve_marker_split(
                 "markerText",
                 split.marker.as_ref().map(|m| m.text.as_str()).unwrap_or(""),
             ),
+            dbg_field(
+                "markerKind",
+                split
+                    .marker
+                    .as_ref()
+                    .map(|m| format!("{:?}", m.kind))
+                    .unwrap_or_else(|| "None".to_string()),
+            ),
+            dbg_field(
+                "markerAdvance",
+                split
+                    .marker
+                    .as_ref()
+                    .map(|m| m.advance.to_string())
+                    .unwrap_or_default(),
+            ),
+            dbg_field(
+                "markerRunCount",
+                split
+                    .marker
+                    .as_ref()
+                    .map(|m| m.runs.len().to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+            ),
+            dbg_field("strategy", strategy),
             dbg_field("bodyRunCount", split.body_session.paragraph.runs.len()),
         ],
     );

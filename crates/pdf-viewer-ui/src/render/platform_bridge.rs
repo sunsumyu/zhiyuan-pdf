@@ -24,9 +24,7 @@ pub fn queue_frame(frame: Option<RenderFrameEnvelope>) -> Option<RenderFrameEnve
     })
 }
 
-pub fn advance_frame(
-    next_frame: Option<RenderFrameEnvelope>,
-) -> Option<RenderFrameEnvelope> {
+pub fn advance_frame(next_frame: Option<RenderFrameEnvelope>) -> Option<RenderFrameEnvelope> {
     app_context::with_render_loop_mut(|state| {
         if let Some(frame) = next_frame {
             return Some(frame);

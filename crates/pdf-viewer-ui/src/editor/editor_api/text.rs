@@ -1,7 +1,7 @@
-use wasm_bindgen::prelude::*;
+use super::{build_frame_request, EditorSession};
 use crate::editor::editor_types::*;
 use crate::guard_state;
-use super::{EditorSession, build_frame_request};
+use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 impl EditorSession {
@@ -17,7 +17,12 @@ impl EditorSession {
         use crate::editor::orchestrator::render_transaction::apply_input_tx;
 
         let frame_request = build_frame_request();
-        let result = apply_input_tx(EditorInputCommand::InsertText(text), None, None, frame_request);
+        let result = apply_input_tx(
+            EditorInputCommand::InsertText(text),
+            None,
+            None,
+            frame_request,
+        );
         let snapshot = resolve_snapshot(1.0);
 
         ok_response(

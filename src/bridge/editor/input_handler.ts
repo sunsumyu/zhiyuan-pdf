@@ -1,3 +1,4 @@
+import { emitPdfDiagnostic } from '../shared/diagnostics';
 import type { EditorContext } from './lifecycle';
 import * as api from './api';
 import {
@@ -22,6 +23,31 @@ import {
 } from './lifecycle';
 
 export function createInputHandlers(ctx: EditorContext) {
+    function logEditorDiagnostic(
+        event: string,
+        fields: Record<string, unknown> = {},
+        level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' = 'WARN',
+        verboseOnly = false,
+    ): void {
+        emitPdfDiagnostic('editor', event, fields, { level, verboseOnly });
+    }
+
+    function textareaCharCount(textarea: HTMLTextAreaElement): number {
+        return [...textarea.value].length;
+    }
+
+    function textareaCaretSnapshot(textarea: HTMLTextAreaElement): Record<string, unknown> {
+        const hostCaret = readTextareaCaret(textarea);
+        return {
+            hostCaret,
+            selectionStart: textarea.selectionStart,
+            selectionEnd: textarea.selectionEnd,
+            utf16Length: textarea.value.length,
+            charCount: textareaCharCount(textarea),
+            lastRustCaretIndex: ctx.state.lastRustCaretIndex,
+        };
+    }
+
     return {
         onCommitRequested: () => {
             void commitEditor(ctx).then(() => {
@@ -30,35 +56,66 @@ export function createInputHandlers(ctx: EditorContext) {
             });
         },
         onNavigationRequested: (command: string, textarea: HTMLTextAreaElement) => {
-            const hostCaret = readTextareaCaret(textarea);
-            api.syncInput({ text: textarea.value, caretIndex: Math.max(0, hostCaret) });
+            const before = textareaCaretSnapshot(textarea);
+            const hostCaret = Number(before.hostCaret);
+            logEditorDiagnostic('caret.navigation.before', {
+                command,
+                ...before,
+            }, 'DEBUG', true);
+            const syncResult = api.syncInput({ text: textarea.value, caretIndex: Math.max(0, hostCaret) });
             const result = api.applyCommand({ command, insertedText: null })?.data;
+            logEditorDiagnostic('caret.navigation.afterCommand', {
+                command,
+                syncOk: syncResult?.ok,
+                syncCaretIndex: syncResult?.data?.caretIndex,
+                resultCaretIndex: result?.caretIndex,
+                resultDraftCharCount: result?.draftText != null ? [...result.draftText].length : null,
+                resultChanged: result?.changed,
+            }, 'DEBUG', true);
             if (result && Number.isFinite(result.caretIndex) && result.caretIndex >= 0) {
                 rememberRustCaret(ctx.state, result.caretIndex);
                 withSuppressedNativeInput(ctx.state, () => {
                     if (result.draftText != null) textarea.value = result.draftText;
                     writeTextareaCaret(textarea, result.caretIndex);
                 });
+                logEditorDiagnostic('caret.navigation.afterWrite', {
+                    command,
+                    ...textareaCaretSnapshot(textarea),
+                }, 'DEBUG', true);
             }
             renderActiveEditor(ctx);
         },
         onBeforeInputRequested: (command: string, text: string | null, textarea: HTMLTextAreaElement) => {
-            const hostCaret = readTextareaCaret(textarea);
-            console.log('[CARET-DIAG]', command, {
-                hostCaret,
-                selStart: textarea.selectionStart,
-                selEnd: textarea.selectionEnd,
-                valLen: textarea.value.length,
-                lastRust: ctx.state.lastRustCaretIndex,
-            });
-            api.syncInput({ text: textarea.value, caretIndex: Math.max(0, hostCaret) });
+            const before = textareaCaretSnapshot(textarea);
+            const hostCaret = Number(before.hostCaret);
+            logEditorDiagnostic('caret.beforeinput.before', {
+                command,
+                insertedText: text,
+                ...before,
+            }, 'DEBUG', true);
+            const syncResult = api.syncInput({ text: textarea.value, caretIndex: Math.max(0, hostCaret) });
             const result = api.applyCommand({ command, insertedText: text })?.data;
+            logEditorDiagnostic('caret.beforeinput.afterCommand', {
+                command,
+                insertedText: text,
+                syncOk: syncResult?.ok,
+                syncCaretIndex: syncResult?.data?.caretIndex,
+                resultCaretIndex: result?.caretIndex,
+                resultDraftUtf16Length: result?.draftText != null ? result.draftText.length : null,
+                resultDraftCharCount: result?.draftText != null ? [...result.draftText].length : null,
+                resultChanged: result?.changed,
+            }, 'DEBUG', true);
             if (result && Number.isFinite(result.caretIndex) && result.caretIndex >= 0) {
                 rememberRustCaret(ctx.state, result.caretIndex);
                 withSuppressedNativeInput(ctx.state, () => {
                     if (result.draftText != null) textarea.value = result.draftText;
                     writeTextareaCaret(textarea, result.caretIndex);
                 });
+                logEditorDiagnostic('caret.beforeinput.afterWrite', {
+                    command,
+                    insertedText: text,
+                    ...textareaCaretSnapshot(textarea),
+                }, 'DEBUG', true);
             }
             renderActiveEditor(ctx);
             if (result?.changed) {
@@ -142,68 +199,81 @@ export function createInputHandlers(ctx: EditorContext) {
             void openEditor(ctx, target, event);
         },
         onRootPointerDown: (event: MouseEvent) => {
-            const beginResult = api.begin();
-            if (beginResult && !beginResult.ok) {
-                console.warn('[EDITOR-DIAG] rootPointerDown begin failed', beginResult);
-            }
+            try {
+                const beginResult = api.begin();
+                if (beginResult && !beginResult.ok) {
+                    logEditorDiagnostic('rootPointerDown.beginFailed', { beginResult }, 'WARN');
+                }
 
-            const nodes = ctx.ensureNodes();
-            if (!nodes) return;
+                const nodes = ctx.ensureNodes();
+                if (!nodes) return;
 
-            event.preventDefault();
-            event.stopPropagation();
+                event.preventDefault();
+                event.stopPropagation();
 
-            const referenceBox = readHostReferenceBox(nodes.root);
-            const hitResult = api.hitTest({
-                clientX: event.clientX,
-                clientY: event.clientY,
-                referenceLeft: referenceBox.left,
-                referenceTop: referenceBox.top,
-                referenceWidth: referenceBox.width,
-                referenceHeight: referenceBox.height,
-                pageWidth: ctx.deps.getPageWidth(),
-                pageHeight: ctx.deps.getPageHeight(),
-            });
+                const referenceBox = readHostReferenceBox(nodes.root);
+                const hitResult = api.hitTest({
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                    referenceLeft: referenceBox.left,
+                    referenceTop: referenceBox.top,
+                    referenceWidth: referenceBox.width,
+                    referenceHeight: referenceBox.height,
+                    pageWidth: ctx.deps.getPageWidth(),
+                    pageHeight: ctx.deps.getPageHeight(),
+                });
 
-            if (!hitResult?.ok || !hitResult.data?.blockId) {
-                console.warn('[EDITOR-DIAG] rootPointerDown hitTest missed', { hitResult });
-                api.discard();
+                if (!hitResult?.ok || !hitResult.data?.blockId) {
+                    logEditorDiagnostic('rootPointerDown.hitTestMiss', {
+                        hitResult,
+                        clientX: event.clientX,
+                        clientY: event.clientY,
+                    }, 'WARN');
+                    api.discard();
+                    hideEditorShell(ctx);
+                    syncTargets(ctx, getLastDisplayZoom(ctx.state));
+                    return;
+                }
+
+                const openResult = api.openBlock({
+                    blockId: hitResult.data.blockId,
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                    referenceLeft: referenceBox.left,
+                    referenceTop: referenceBox.top,
+                    referenceWidth: referenceBox.width,
+                    referenceHeight: referenceBox.height,
+                    pageWidth: ctx.deps.getPageWidth(),
+                    pageHeight: ctx.deps.getPageHeight(),
+                    fallbackPageX: hitResult.data.pageX,
+                    fallbackPageY: hitResult.data.pageY,
+                });
+
+                if (!openResult?.ok || !openResult.data) {
+                    logEditorDiagnostic('rootPointerDown.openBlockFailed', { openResult, hitResult }, 'ERROR');
+                    api.discard();
+                    hideEditorShell(ctx);
+                    return;
+                }
+
+                const snapshot = readLegacySnapshot(ctx);
+                const activeTarget = snapshot?.activeTarget;
+                if (!activeTarget) {
+                    logEditorDiagnostic('rootPointerDown.missingActiveTarget', { snapshot, hitResult }, 'ERROR');
+                    api.discard();
+                    hideEditorShell(ctx);
+                    return;
+                }
+
+                setupActiveEditor(ctx, nodes, activeTarget, openResult.data.draftText, openResult.data.caretIndex);
+            } catch (err) {
+                logEditorDiagnostic('rootPointerDown.exception', {
+                    error: String(err),
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                }, 'ERROR');
                 hideEditorShell(ctx);
-                syncTargets(ctx, getLastDisplayZoom(ctx.state));
-                return;
             }
-
-            const openResult = api.openBlock({
-                blockId: hitResult.data.blockId,
-                clientX: event.clientX,
-                clientY: event.clientY,
-                referenceLeft: referenceBox.left,
-                referenceTop: referenceBox.top,
-                referenceWidth: referenceBox.width,
-                referenceHeight: referenceBox.height,
-                pageWidth: ctx.deps.getPageWidth(),
-                pageHeight: ctx.deps.getPageHeight(),
-                fallbackPageX: hitResult.data.pageX,
-                fallbackPageY: hitResult.data.pageY,
-            });
-
-            if (!openResult?.ok || !openResult.data) {
-                console.warn('[EDITOR-DIAG] rootPointerDown openBlock failed', { openResult, hitResult });
-                api.discard();
-                hideEditorShell(ctx);
-                return;
-            }
-
-            const snapshot = readLegacySnapshot(ctx);
-            const activeTarget = snapshot?.activeTarget;
-            if (!activeTarget) {
-                console.warn('[EDITOR-DIAG] rootPointerDown missing activeTarget', { snapshot, hitResult });
-                api.discard();
-                hideEditorShell(ctx);
-                return;
-            }
-
-            setupActiveEditor(ctx, nodes, activeTarget, openResult.data.draftText, openResult.data.caretIndex);
         },
         onSelectionChanged: (start: number, end: number, textarea: HTMLTextAreaElement) => {
             if (

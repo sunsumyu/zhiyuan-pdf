@@ -17,22 +17,28 @@ type GetWasmApi = () => WasmModule;
 let _documentSession: DocumentSession | null = null;
 let _reviewSession: ReviewSession | null = null;
 
-function getDocumentSession(getWasmApi: GetWasmApi): DocumentSession | null {
+function getDocumentSession(getWasmApi: GetWasmApi): DocumentSession {
     if (!_documentSession) {
         const api = getWasmApi();
         if (typeof api?.DocumentSession === 'function') {
             _documentSession = new api.DocumentSession();
         }
     }
+    if (!_documentSession) {
+        throw new Error('DocumentSession WASM API is unavailable');
+    }
     return _documentSession;
 }
 
-function getReviewSession(getWasmApi: GetWasmApi): ReviewSession | null {
+function getReviewSession(getWasmApi: GetWasmApi): ReviewSession {
     if (!_reviewSession) {
         const api = getWasmApi();
         if (typeof api?.ReviewSession === 'function') {
             _reviewSession = new api.ReviewSession();
         }
+    }
+    if (!_reviewSession) {
+        throw new Error('ReviewSession WASM API is unavailable');
     }
     return _reviewSession;
 }
@@ -107,12 +113,12 @@ export type EditorWasmApi = {
     applyRegionTextReplacements: (
         replacements: RegionTextReplaceRequest[],
         frameRequest: Record<string, unknown>,
-    ) => RegionTextReplaceResult | null;
+    ) => RegionTextReplaceResult;
     /** document.requestRefresh */
     requestDocumentRefresh: (
         source: string,
         frameRequest: Record<string, unknown>,
-    ) => DocumentRefreshResult | null;
+    ) => DocumentRefreshResult;
     /** review.readFeed */
     getReviewFeed: () => ReviewFeedResult | null;
     /** review.accept */
@@ -127,21 +133,19 @@ export type EditorWasmApi = {
     saveSession: (path: string, pageIndex: number) => Promise<unknown>;
 };
 
-function callMethod<T>(target: unknown, method: string, ...args: unknown[]): T | null {
+function callMethod<T>(target: unknown, method: string, ...args: unknown[]): T {
     const targetRecord = target as Record<string, unknown> | null | undefined;
     const fn = targetRecord?.[method];
-    if (typeof fn !== 'function') return null;
-    try {
-        return (fn as (...a: unknown[]) => T).apply(target, args);
-    } catch {
-        return null;
+    if (typeof fn !== 'function') {
+        throw new Error(`Required WASM method is unavailable: ${method}`);
     }
+    return (fn as (...a: unknown[]) => T).apply(target, args);
 }
 
 export function createEditorWasmApi(getWasmApi: GetWasmApi): EditorWasmApi {
     return {
         applyDocumentPatch(patch: unknown): void {
-            getDocumentSession(getWasmApi)?.applyPatch?.(patch);
+            getDocumentSession(getWasmApi).applyPatch(patch);
         },
 
         buildRegionTextPatch(pageIndex, regionId, kind, originalText, newText) {

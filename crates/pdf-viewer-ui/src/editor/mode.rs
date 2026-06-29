@@ -1,10 +1,9 @@
 use crate::editor::engine_state::LiveEditorParagraphState;
 use crate::editor::session::{
-    paragraph_id, active_editor_state, active_editor_target,
-    close_active_editor as session_close_active_editor, is_edit_enabled as session_is_edit_enabled,
-    reset_editor_mode as session_reset_editor_mode,
-    set_paragraph as session_set_paragraph, set_edit_enabled as session_set_edit_enabled,
-    ActiveEditorTarget,
+    active_editor_state, active_editor_target, close_active_editor as session_close_active_editor,
+    is_edit_enabled as session_is_edit_enabled, paragraph_id,
+    reset_editor_mode as session_reset_editor_mode, set_edit_enabled as session_set_edit_enabled,
+    set_paragraph as session_set_paragraph, ActiveEditorTarget,
 };
 pub fn read_paragraph() -> Option<String> {
     paragraph_id()

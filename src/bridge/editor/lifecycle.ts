@@ -17,6 +17,7 @@ import {
     type ParagraphInteractionTarget,
 } from './editor_host_view';
 import { syncEditorFormatButtons } from '../viewer/pdf_viewer_dom';
+import { emitPdfDiagnostic } from '../shared/diagnostics';
 import {
     type EditorHostState,
     withSuppressedNativeInput,
@@ -55,11 +56,22 @@ export function setupActiveEditor(
     draftText: string,
     caretIndex: number,
 ): void {
-    console.log('[CARET-DIAG] setupActiveEditor', {
+    logEditorDiagnostic('caret.setupActiveEditor', {
         caretIndex,
-        draftLen: draftText.length,
+        draftUtf16Length: draftText.length,
         draftCharCount: [...draftText].length,
-    });
+        paragraphId: target.paragraphId,
+        markerText: target.markerText ?? null,
+        markerKind: target.markerKind ?? null,
+        markerAdvance: target.markerAdvance ?? null,
+        markerRunCount: target.markerRunCount ?? 0,
+        liveCaretIndex: target.liveCaretIndex ?? null,
+        targetTextCharCount: [...target.text].length,
+        shellLeft: target.left,
+        shellTop: target.top,
+        shellWidth: target.width,
+        shellHeight: target.height,
+    }, 'DEBUG', true);
     ctx.state.suppressBlurCommitForOpen = true;
     positionEditorShell(nodes, target);
     withSuppressedNativeInput(ctx.state, () => {
@@ -114,6 +126,15 @@ export function hideEditorShell(ctx: EditorContext): void {
 
 export function readLegacySnapshot(ctx: EditorContext): LegacySnapshot | null {
     return api.readLegacySnapshot(getLastDisplayZoom(ctx.state));
+}
+
+function logEditorDiagnostic(
+    event: string,
+    fields: Record<string, unknown> = {},
+    level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' = 'WARN',
+    verboseOnly = false,
+): void {
+    emitPdfDiagnostic('editor', event, fields, { level, verboseOnly });
 }
 
 export function renderActiveEditor(ctx: EditorContext, displayZoom = getLastDisplayZoom(ctx.state)): void {
@@ -224,59 +245,78 @@ export async function openEditor(
     target: ParagraphInteractionTarget,
     event: MouseEvent,
 ): Promise<void> {
-    const nodes = ctx.ensureNodes();
-    if (!nodes) return;
-    ctx.state.suppressBlurCommitForOpen = true;
-    clearDomSelection();
+    try {
+        const nodes = ctx.ensureNodes();
+        if (!nodes) return;
+        ctx.state.suppressBlurCommitForOpen = true;
+        clearDomSelection();
 
-    const beginResult = api.begin();
-    if (beginResult && !beginResult.ok) {
-        console.warn('[EDITOR-DIAG] openEditor begin failed', beginResult);
-    }
+        const beginResult = api.begin();
+        if (beginResult && !beginResult.ok) {
+            logEditorDiagnostic('openEditor.beginFailed', { beginResult }, 'WARN');
+        }
 
-    const referenceBox = resolveTargetReferenceBox(target, event, nodes.root);
-    const hitResult = api.hitTest({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        referenceLeft: referenceBox.left,
-        referenceTop: referenceBox.top,
-        referenceWidth: referenceBox.width,
-        referenceHeight: referenceBox.height,
-        pageWidth: ctx.deps.getPageWidth(),
-        pageHeight: ctx.deps.getPageHeight(),
-    });
+        const referenceBox = resolveTargetReferenceBox(target, event, nodes.root);
+        const hitResult = api.hitTest({
+            clientX: event.clientX,
+            clientY: event.clientY,
+            referenceLeft: referenceBox.left,
+            referenceTop: referenceBox.top,
+            referenceWidth: referenceBox.width,
+            referenceHeight: referenceBox.height,
+            pageWidth: ctx.deps.getPageWidth(),
+            pageHeight: ctx.deps.getPageHeight(),
+        });
 
-    const blockId = hitResult?.data?.blockId ?? target.paragraphId;
+        if (!hitResult?.ok || !hitResult.data?.blockId) {
+            logEditorDiagnostic('openEditor.hitTestMiss', {
+                paragraphId: target.paragraphId,
+                hitResult,
+                clientX: event.clientX,
+                clientY: event.clientY,
+            }, 'WARN');
+        }
 
-    const openResult = api.openBlock({
-        blockId,
-        clientX: event.clientX,
-        clientY: event.clientY,
-        referenceLeft: referenceBox.left,
-        referenceTop: referenceBox.top,
-        referenceWidth: referenceBox.width,
-        referenceHeight: referenceBox.height,
-        pageWidth: ctx.deps.getPageWidth(),
-        pageHeight: ctx.deps.getPageHeight(),
-        fallbackPageX: hitResult?.data?.pageX,
-        fallbackPageY: hitResult?.data?.pageY,
-    });
+        const blockId = hitResult?.data?.blockId ?? target.paragraphId;
 
-    if (!openResult?.ok || !openResult.data) {
-        console.warn('[EDITOR-DIAG] openEditor openBlock failed', { openResult, blockId, hitResult });
+        const openResult = api.openBlock({
+            blockId,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            referenceLeft: referenceBox.left,
+            referenceTop: referenceBox.top,
+            referenceWidth: referenceBox.width,
+            referenceHeight: referenceBox.height,
+            pageWidth: ctx.deps.getPageWidth(),
+            pageHeight: ctx.deps.getPageHeight(),
+            fallbackPageX: hitResult?.data?.pageX,
+            fallbackPageY: hitResult?.data?.pageY,
+        });
+
+        if (!openResult?.ok || !openResult.data) {
+            logEditorDiagnostic('openEditor.openBlockFailed', { openResult, blockId, hitResult }, 'ERROR');
+            hideEditorShell(ctx);
+            return;
+        }
+
+        const snapshot = readLegacySnapshot(ctx);
+        const activeTarget = snapshot?.activeTarget;
+        if (!activeTarget) {
+            logEditorDiagnostic('openEditor.missingActiveTarget', { snapshot, blockId, hitResult }, 'ERROR');
+            hideEditorShell(ctx);
+            return;
+        }
+
+        setupActiveEditor(ctx, nodes, activeTarget, openResult.data.draftText, openResult.data.caretIndex);
+    } catch (err) {
+        logEditorDiagnostic('openEditor.exception', {
+            error: String(err),
+            paragraphId: target.paragraphId,
+            clientX: event.clientX,
+            clientY: event.clientY,
+        }, 'ERROR');
         hideEditorShell(ctx);
-        return;
     }
-
-    const snapshot = readLegacySnapshot(ctx);
-    const activeTarget = snapshot?.activeTarget;
-    if (!activeTarget) {
-        console.warn('[EDITOR-DIAG] openEditor missing activeTarget', { snapshot, blockId, hitResult });
-        hideEditorShell(ctx);
-        return;
-    }
-
-    setupActiveEditor(ctx, nodes, activeTarget, openResult.data.draftText, openResult.data.caretIndex);
 }
 
 export function resolveTargetReferenceBox(
@@ -305,6 +345,11 @@ export function syncTargets(ctx: EditorContext, displayZoom: number): void {
 
     const snapshot = readLegacySnapshot(ctx);
     if (!snapshot?.enabled) {
+        logEditorDiagnostic('targets.disabled', {
+            pageIndex: ctx.deps.getCurrentPage(),
+            displayZoom,
+            hasSnapshot: !!snapshot,
+        }, 'DEBUG');
         hideInteractionTargets(nodes);
         hideEditorShell(ctx);
         syncFormatButtons();
@@ -334,9 +379,25 @@ export function syncTargets(ctx: EditorContext, displayZoom: number): void {
         }
         renderActiveEditor(ctx);
     } else {
+        const targets = Array.isArray(snapshot.targets) ? snapshot.targets : [];
+        if (targets.length === 0) {
+            logEditorDiagnostic('targets.empty', {
+                pageIndex: ctx.deps.getCurrentPage(),
+                displayZoom,
+                path: ctx.deps.getCurrentPath(),
+                pageWidth: ctx.deps.getPageWidth(),
+                pageHeight: ctx.deps.getPageHeight(),
+            }, 'WARN');
+        } else {
+            logEditorDiagnostic('targets.ready', {
+                pageIndex: ctx.deps.getCurrentPage(),
+                displayZoom,
+                count: targets.length,
+            }, 'DEBUG');
+        }
         renderInteractionTargets(
             nodes,
-            Array.isArray(snapshot.targets) ? snapshot.targets : [],
+            targets,
             (target, event) => {
                 void openEditor(ctx, target, event);
             },

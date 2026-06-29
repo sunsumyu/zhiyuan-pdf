@@ -203,9 +203,34 @@ where
         if let Some(marker_runs) = &line.marker_runs {
             if !marker_runs.is_empty() {
                 let mut marker_cursor_left = line.left;
-                for run in marker_runs {
+                crate::common::trace::emit(
+                    crate::common::trace::TraceLevel::Debug,
+                    "marker-render".to_string(),
+                    "start".to_string(),
+                    vec![
+                        crate::common::trace::field("lineLeft", line.left),
+                        crate::common::trace::field("bodyLeft", line.body_left.unwrap_or(line.left)),
+                        crate::common::trace::field("markerRunCount", marker_runs.len()),
+                    ],
+                );
+                for (run_idx, run) in marker_runs.iter().enumerate() {
                     let layout =
                         resolve_run_layout(line.left, marker_cursor_left, run, measure_text);
+                    crate::common::trace::emit(
+                        crate::common::trace::TraceLevel::Debug,
+                        "marker-render".to_string(),
+                        "run-layout".to_string(),
+                        vec![
+                            crate::common::trace::field("runIdx", run_idx),
+                            crate::common::trace::field("runText", run.text.as_str()),
+                            crate::common::trace::field("runWidth", run.width),
+                            crate::common::trace::field("runCharOrigins", format!("{:?}", run.char_origins)),
+                            crate::common::trace::field("lineLeft", line.left),
+                            crate::common::trace::field("markerCursorLeft", marker_cursor_left),
+                            crate::common::trace::field("layoutAbsoluteLeft", layout.absolute_left),
+                            crate::common::trace::field("layoutWidth", layout.width),
+                        ],
+                    );
                     // 使用绝对坐标构建 GlyphPaintRun
                     let mut synth_run = run.clone();
                     synth_run.width = layout.width;
@@ -226,7 +251,8 @@ where
                         line.bottom,
                         &synth_run,
                     ));
-                    marker_cursor_left = marker_cursor_left.max(layout.absolute_left + layout.width);
+                    marker_cursor_left =
+                        marker_cursor_left.max(layout.absolute_left + layout.width);
                 }
             }
         }

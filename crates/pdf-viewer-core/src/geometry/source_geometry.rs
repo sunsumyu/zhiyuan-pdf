@@ -54,7 +54,10 @@ pub fn compute_run_bbox(run: &LayoutRun) -> Option<BoundingBox> {
     let bbox = text_run.compute_bbox();
     if bbox.left.is_finite() && bbox.right.is_finite() && bbox.right > bbox.left {
         Some(bbox)
-    } else if run.bbox.left.is_finite() && run.bbox.right.is_finite() && run.bbox.right > run.bbox.left {
+    } else if run.bbox.left.is_finite()
+        && run.bbox.right.is_finite()
+        && run.bbox.right > run.bbox.left
+    {
         // 回退到 LayoutRun 存储的 bbox
         Some(run.bbox)
     } else {
@@ -73,7 +76,7 @@ fn union_bbox(left: BoundingBox, right: BoundingBox) -> BoundingBox {
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_caret_line_bbox, compute_bbox_from_runs};
+    use super::{compute_bbox_from_runs, compute_caret_line_bbox};
     use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
 
     fn test_run(id: &str, left: f32, baseline_y: f32, font_size: f32) -> LayoutRun {

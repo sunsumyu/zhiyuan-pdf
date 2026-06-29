@@ -26,8 +26,7 @@ pub fn outline_to_bez_path(outline: &swash::scale::outline::Outline) -> BezPath 
                 }
             }
             Verb::CurveTo => {
-                if let (Some(c1), Some(c2), Some(p)) =
-                    (points.next(), points.next(), points.next())
+                if let (Some(c1), Some(c2), Some(p)) = (points.next(), points.next(), points.next())
                 {
                     bez_path.curve_to(
                         Point::new(c1.x as f64, c1.y as f64),

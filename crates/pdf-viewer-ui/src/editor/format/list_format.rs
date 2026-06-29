@@ -8,8 +8,8 @@ use pdf_viewer_core::text::list_semantics::{
 use crate::editor::bridge::build_rich_patch;
 use crate::editor::edit_target::get_base_paragraph_id;
 use crate::editor::engine_state::LiveEditorParagraphState;
+use crate::ui_state_store::{with_patch_state, GlobalPatchState};
 use pdf_viewer_core::persistence::models::PersistableRegionPatch;
-use crate::ui_state_store::{read_patch_state, GlobalPatchState};
 
 #[derive(Debug, Clone, Default)]
 struct EffectiveListState {
@@ -44,14 +44,13 @@ pub fn collect_marker_overrides(
         return BTreeMap::new();
     };
     let ordered_paragraphs = collect_ordered_page_paragraphs(plan);
-    let Ok(state) = read_patch_state().read() else {
-        return BTreeMap::new();
-    };
-    let contexts = ordered_paragraphs
-        .into_iter()
-        .map(|paragraph| build_paragraph_list_context(&state, paragraph, active_state))
-        .collect::<Vec<_>>();
-    build_numbering_override_map(&contexts)
+    with_patch_state(|state| {
+        let contexts = ordered_paragraphs
+            .into_iter()
+            .map(|paragraph| build_paragraph_list_context(state, paragraph, active_state))
+            .collect::<Vec<_>>();
+        build_numbering_override_map(&contexts)
+    })
 }
 
 pub fn reconcile_numbering_patches(

@@ -1,3 +1,4 @@
+import { emitPdfDiagnostic } from '../shared/diagnostics';
 import type { PdfSaveResult } from '../document/document_edit_api';
 import type { EditorFormatAction } from './types';
 import * as api from './api';
@@ -45,6 +46,10 @@ export type EditorHost = {
 };
 
 export function createEditorHost(deps: EditorHostDeps): EditorHost {
+    function logEditorHostError(event: string, err: unknown): void {
+        emitPdfDiagnostic('editor', event, { error: String(err) }, { level: 'ERROR' });
+    }
+
     const state: EditorHostState = {
         suppressNativeInputCount: 0,
         lastRustCaretIndex: null,
@@ -95,7 +100,12 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
 
     return {
         syncTargets: (displayZoom: number) => {
-            syncTargets(ctx, displayZoom);
+            try {
+                syncTargets(ctx, displayZoom);
+            } catch (err) {
+                logEditorHostError('host.syncTargets.failed', err);
+                throw err;
+            }
         },
         clear: () => {
             const nodes = ctx.ensureNodes();
@@ -135,15 +145,27 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
         },
         hasPendingEdits: () => api.hasUnsavedChanges(),
         setTextEditEnabled: (enabled: boolean) => {
-            api.setEditMode(enabled);
-            if (!enabled) {
-                const nodes = ctx.ensureNodes();
-                if (nodes) hideInteractionTargets(nodes);
-                void commitEditor(ctx);
-            } else {
-                syncTargets(ctx, state.cachedDisplayZoom);
+            try {
+                api.setEditMode(enabled);
+                if (!enabled) {
+                    const nodes = ctx.ensureNodes();
+                    if (nodes) hideInteractionTargets(nodes);
+                    void commitEditor(ctx);
+                } else {
+                    syncTargets(ctx, state.cachedDisplayZoom);
+                }
+            } catch (err) {
+                logEditorHostError('host.setTextEditEnabled.failed', err);
+                throw err;
             }
         },
-        isTextEditEnabled: () => !!readLegacySnapshot(ctx)?.enabled,
+        isTextEditEnabled: () => {
+            try {
+                return !!readLegacySnapshot(ctx)?.enabled;
+            } catch (err) {
+                logEditorHostError('host.isTextEditEnabled.failed', err);
+                return false;
+            }
+        },
     };
 }

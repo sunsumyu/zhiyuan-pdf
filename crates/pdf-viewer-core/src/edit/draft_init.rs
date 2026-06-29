@@ -1,9 +1,9 @@
 //! Draft init — 初始与模板化子模块。
 
-use crate::edit::document_plan::EditContext;
-use crate::geometry::layout_engine::{ParagraphLayout, VisualLine};
 use super::draft_style::{resolve_draft_template_run, source_baseline_y};
 use super::draft_types::{DraftCaretLine, DraftCaretStop, EditorDraftRenderPlan};
+use crate::edit::document_plan::EditContext;
+use crate::geometry::layout_engine::{ParagraphLayout, VisualLine};
 
 pub(super) fn build_empty_render_plan(document_plan: &EditContext) -> EditorDraftRenderPlan {
     let template_run = resolve_draft_template_run(document_plan);

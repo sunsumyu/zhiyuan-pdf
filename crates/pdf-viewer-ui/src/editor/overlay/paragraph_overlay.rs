@@ -13,7 +13,7 @@ use crate::editor::replacement_snapshot::find_target;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::source_identity::collect_target_source_object_indices;
 use crate::page::page_store::with_page_state;
-use crate::ui_state_store::read_patch_state;
+use crate::ui_state_store::with_patch_state;
 
 // 数据结构已迁至 pdf_viewer_core::edit::paragraph_overlay。
 pub use pdf_viewer_core::edit::paragraph_overlay::{
@@ -46,7 +46,7 @@ pub fn collect_overlays(
     let active_state = read_state();
     let marker_overrides = collect_marker_overrides(Some(plan), active_state.as_ref());
 
-    if let Ok(state) = read_patch_state().read() {
+    with_patch_state(|state| {
         dbg_event(
             "overlay.collect",
             "start",
@@ -123,7 +123,7 @@ pub fn collect_overlays(
                 },
             );
         }
-    }
+    });
 
     if let Some(active_state) = active_state {
         let marker_text_override = marker_overrides
@@ -131,9 +131,7 @@ pub fn collect_overlays(
             .cloned()
             .flatten()
             .or_else(|| {
-                with_page_state(|page_state| {
-                    resolve_marker_text(&active_state, page_state)
-                })
+                with_page_state(|page_state| resolve_marker_text(&active_state, page_state))
             });
         let source_object_indices = target_source_object_indices(&active_state.target);
         let replaces_source = active_state.requires_source_replacement();
@@ -143,12 +141,18 @@ pub fn collect_overlays(
         // ── diagnostic: active overlay identity ──
         {
             use pdf_viewer_core::edit::source_identity::{
-                collect_target_source_object_ids, collect_object_index_set,
+                collect_object_index_set, collect_target_source_object_ids,
             };
             let obj_ids = collect_target_source_object_ids(&active_state.target);
             let obj_indices = collect_object_index_set(&active_state.target);
             let orig_run_count = active_state.target.scene.original_runs().len();
-            let body_run_count = active_state.target.scene.body_session().paragraph.runs.len();
+            let body_run_count = active_state
+                .target
+                .scene
+                .body_session()
+                .paragraph
+                .runs
+                .len();
             let orig_obj_ids: Vec<String> = active_state
                 .target
                 .scene
@@ -245,12 +249,12 @@ pub fn collect_overlays(
 #[cfg(test)]
 mod persisted_overlay_tests {
     use super::*;
-    use pdf_viewer_core::persistence::models::PersistableRegionPatch;
-    use crate::ui_state_store::{record_patch, read_patch_state};
+    use crate::ui_state_store::{record_patch, with_patch_state, with_patch_state_mut};
     use pdf_viewer_core::models::{
         BoundingBox, GlyphPaintPlan, GlyphPaintRegion, LayoutMode, LayoutParagraph, LayoutRole,
         ParagraphEditContext,
     };
+    use pdf_viewer_core::persistence::models::PersistableRegionPatch;
     use serde_json::json;
     use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -298,17 +302,18 @@ mod persisted_overlay_tests {
     }
 
     fn clear_state() {
-        let mut s = read_patch_state().write().unwrap();
-        s.paragraph_texts.clear();
-        s.paragraph_snapshots.clear();
-        s.paragraph_patches.clear();
-        s.paragraph_replacement_targets.clear();
-        s.field_group_texts.clear();
-        s.field_group_snapshots.clear();
-        s.field_group_patches.clear();
-        s.history.clear();
-        s.redo_stack.clear();
-        s.accepted_patch_keys.clear();
+        with_patch_state_mut(|s| {
+            s.paragraph_texts.clear();
+            s.paragraph_snapshots.clear();
+            s.paragraph_patches.clear();
+            s.paragraph_replacement_targets.clear();
+            s.field_group_texts.clear();
+            s.field_group_snapshots.clear();
+            s.field_group_patches.clear();
+            s.history.clear();
+            s.redo_stack.clear();
+            s.accepted_patch_keys.clear();
+        });
     }
 
     /// 端到端：record_patch 后，collect_overlays
@@ -337,8 +342,7 @@ mod persisted_overlay_tests {
         record_patch(patch);
 
         // 确认 patch 入了 state
-        {
-            let state = read_patch_state().read().unwrap();
+        with_patch_state(|state| {
             assert_eq!(
                 state.paragraph_patches.len(),
                 1,
@@ -350,7 +354,7 @@ mod persisted_overlay_tests {
                     .contains_key(paragraph_id),
                 "replacement target must be persisted from snapshot"
             );
-        }
+        });
 
         // 模拟"退出编辑后渲染"：collect_overlays
         let plan = make_glyph_plan(0);
@@ -394,7 +398,7 @@ mod persisted_overlay_tests {
         let target = make_active_editor_target(paragraph_id);
 
         // 模拟 commit.rs:42 显式记录 replacement target
-        crate::ui_state_store::remember_paragraph_replacement_target(paragraph_id, target);
+        crate::ui_state_store::remember_target(paragraph_id, target);
 
         // 模拟生产 patch（snapshot 不含 replacementTarget，与真实 build_edit_replacement_snapshot 一致）
         let patch = PersistableRegionPatch {

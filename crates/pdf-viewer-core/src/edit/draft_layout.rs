@@ -8,30 +8,30 @@
 //! - `draft_geometry`: 几何与光标转换
 //! - `draft_reflow`: 核心重排计算
 
+#[path = "draft_geometry.rs"]
+mod draft_geometry;
+#[path = "draft_init.rs"]
+mod draft_init;
+#[path = "draft_reflow.rs"]
+mod draft_reflow;
 #[path = "draft_style.rs"]
 mod draft_style;
 #[path = "draft_text_diff.rs"]
 mod draft_text_diff;
 #[path = "draft_types.rs"]
 mod draft_types;
-#[path = "draft_init.rs"]
-mod draft_init;
-#[path = "draft_geometry.rs"]
-mod draft_geometry;
-#[path = "draft_reflow.rs"]
-mod draft_reflow;
 
-pub use draft_types::{DraftCaretLine, DraftCaretStop, EditorDraftRenderPlan};
 pub use draft_reflow::{build_draft_render_plan, build_persisted_overlay_render_plan};
+pub use draft_types::{DraftCaretLine, DraftCaretStop, EditorDraftRenderPlan};
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        build_draft_render_plan, build_persisted_overlay_render_plan,
-    };
     use super::draft_style::build_source_layout;
+    use super::{build_draft_render_plan, build_persisted_overlay_render_plan};
     use crate::edit::document_plan::EditContext;
-    use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
+    use crate::models::{
+        BoundingBox, LayoutAlignment, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle,
+    };
     use crate::text::glyph_layout::build_editor_session_text_plan;
 
     fn test_run(id: &str, text: &str, left: f32, right: f32, underline: bool) -> LayoutRun {
@@ -74,6 +74,13 @@ mod tests {
         run.char_widths = char_widths;
         run.object_ids = vec!["source-text-object".to_string()];
         run.object_indices = vec![0];
+        run
+    }
+
+    fn marker_test_run(id: &str, text: &str, left: f32, width: f32) -> LayoutRun {
+        let mut run = test_run(id, text, left, left + width, false);
+        run.char_origins = vec![0.0; text.chars().count()];
+        run.char_widths = vec![width; text.chars().count()];
         run
     }
 
@@ -404,7 +411,7 @@ mod tests {
         let marker = ParagraphEditorMarker {
             kind: ListMarkerKind::Bullet,
             text: "•".to_string(),
-            advance: 0.0,  // marker 从 anchor 左边界开始
+            advance: 10.0, // body 相对 anchor 左边界偏移 10px
             runs: vec![test_run("marker-1", "•", 40.0, 50.0, false)],
         };
 
@@ -424,14 +431,361 @@ mod tests {
 
         // 验证：marker 文本应该在渲染结果的开头
         let rendered = rendered_text(&plan);
-        assert!(rendered.starts_with("•"), "rendered text should start with marker, got: {}", rendered);
+        assert!(
+            rendered.starts_with("•"),
+            "rendered text should start with marker, got: {}",
+            rendered
+        );
 
         // 验证：只有一行
         assert_eq!(plan.layout.lines.len(), 1, "single line expected");
 
-        // 验证：第一个 run 是 marker
-        let first_run = plan.layout.lines[0].runs.first();
+        // 验证：第一个 run 是 marker，且 marker 保持在 body 左侧。
+        let first_line = &plan.layout.lines[0];
+        let first_run = first_line.runs.first();
         assert!(first_run.is_some(), "should have first run");
         assert_eq!(first_run.unwrap().text, "•", "first run should be marker");
+        assert!(
+            first_line.runs.len() >= 2,
+            "marker line should also contain at least one body run"
+        );
+        assert!(
+            first_line.runs[0].origin_x < first_line.runs[1].origin_x,
+            "marker must render to the left of body text, marker_x={}, body_x={}",
+            first_line.runs[0].origin_x,
+            first_line.runs[1].origin_x
+        );
+    }
+
+    #[test]
+    fn deleting_text_keeps_semantic_marker_body_at_single_advance() {
+        use crate::edit::document_plan::ParagraphEditorMarker;
+        use crate::text::list_semantics::ListMarkerKind;
+
+        let body_text = "Shoes are boring. Wear sneakers. 用王威表达你的态度。".to_string();
+        let runs = vec![test_run_with_origins("body", &body_text, 60.0, false)];
+        let body_session = ParagraphEditContext {
+            anchor_bbox: BoundingBox {
+                left: 40.0,
+                top: 40.0,
+                right: 360.0,
+                bottom: 52.0,
+            },
+            paragraph: LayoutParagraph {
+                id: "p-semantic-delete-marker".to_string(),
+                runs,
+                wrap_width: 320.0,
+                ..Default::default()
+            },
+        };
+        let marker = ParagraphEditorMarker {
+            kind: ListMarkerKind::Bullet,
+            text: "•".to_string(),
+            advance: 20.0,
+            runs: vec![marker_test_run("marker", "•", 40.0, 8.0)],
+        };
+        let document_plan = EditContext {
+            source_body_text: body_text,
+            body_text_plan: build_editor_session_text_plan(&body_session),
+            body_session,
+            marker: Some(marker),
+            ..Default::default()
+        };
+
+        let draft_text = "Shoes are boring. Wear sneakers. 用王表达你的态度。";
+        let plan = build_persisted_overlay_render_plan(&document_plan, draft_text, |text, _run| {
+            text.chars().count() as f32 * 5.0
+        });
+
+        let first_line = plan.layout.lines.first().expect("expected first line");
+        assert!(first_line.runs.len() >= 2, "expected marker and body runs");
+        assert_eq!(first_line.runs[0].text, "•");
+        assert_eq!(first_line.runs[0].origin_x, 0.0);
+        assert_eq!(
+            first_line.runs[1].origin_x, 20.0,
+            "deleting text must not double-apply marker.advance or marker width to body x"
+        );
+    }
+
+    #[test]
+    fn deleting_text_keeps_geometric_marker_left_of_body_anchor() {
+        use crate::edit::document_plan::ParagraphEditorMarker;
+        use crate::text::list_semantics::ListMarkerKind;
+
+        let body_text = "你的最爱，由你定制。释放奇思妙想".to_string();
+        let runs = vec![test_run_with_origins("body", &body_text, 60.0, false)];
+        let body_session = ParagraphEditContext {
+            anchor_bbox: BoundingBox {
+                left: 60.0,
+                top: 40.0,
+                right: 260.0,
+                bottom: 52.0,
+            },
+            paragraph: LayoutParagraph {
+                id: "p-geometric-delete-marker".to_string(),
+                runs,
+                wrap_width: 200.0,
+                ..Default::default()
+            },
+        };
+        let marker = ParagraphEditorMarker {
+            kind: ListMarkerKind::Bullet,
+            text: "•".to_string(),
+            advance: 0.0,
+            runs: vec![marker_test_run("marker", "•", 42.0, 8.0)],
+        };
+        let document_plan = EditContext {
+            source_body_text: body_text,
+            body_text_plan: build_editor_session_text_plan(&body_session),
+            body_session,
+            marker: Some(marker),
+            ..Default::default()
+        };
+
+        let draft_text = "你的最爱，由你定制。释放奇思想";
+        let plan = build_persisted_overlay_render_plan(&document_plan, draft_text, |text, _run| {
+            text.chars().count() as f32 * 5.0
+        });
+
+        let first_line = plan.layout.lines.first().expect("expected first line");
+        assert!(first_line.runs.len() >= 2, "expected marker and body runs");
+        assert_eq!(first_line.runs[0].text, "•");
+        assert_eq!(
+            first_line.runs[0].origin_x, -18.0,
+            "geometric marker must stay at its PDF position relative to the body anchor"
+        );
+        assert_eq!(
+            first_line.runs[1].origin_x, 0.0,
+            "geometric marker gap must not be reused as body indent after deleting text"
+        );
+    }
+
+    #[test]
+    fn persisted_overlay_prefers_marker_source_width() {
+        use crate::edit::document_plan::ParagraphEditorMarker;
+        use crate::text::list_semantics::ListMarkerKind;
+
+        let body_text = "Body".to_string();
+        let runs = vec![test_run_with_origins("r1", &body_text, 50.0, false)];
+        let body_session = ParagraphEditContext {
+            anchor_bbox: BoundingBox {
+                left: 50.0,
+                top: 40.0,
+                right: 90.0,
+                bottom: 52.0,
+            },
+            paragraph: LayoutParagraph {
+                id: "p-source-width-marker".to_string(),
+                runs,
+                wrap_width: 120.0,
+                ..Default::default()
+            },
+        };
+
+        let marker = ParagraphEditorMarker {
+            kind: ListMarkerKind::Bullet,
+            text: "•".to_string(),
+            advance: 0.0,
+            runs: vec![marker_test_run("marker-1", "•", 42.0, 8.0)],
+        };
+
+        let document_plan = EditContext {
+            source_body_text: body_text.clone(),
+            body_text_plan: build_editor_session_text_plan(&body_session),
+            body_session,
+            marker: Some(marker),
+            ..Default::default()
+        };
+
+        let plan = build_persisted_overlay_render_plan(&document_plan, &body_text, |text, _run| {
+            if text == "•" {
+                40.0
+            } else {
+                text.chars().count() as f32 * 5.0
+            }
+        });
+
+        let first_line = plan.layout.lines.first().expect("expected first line");
+        assert!(first_line.runs.len() >= 2, "expected marker and body runs");
+        let marker_run = &first_line.runs[0];
+        let body_run = &first_line.runs[1];
+
+        assert_eq!(marker_run.text, "•");
+        assert_eq!(marker_run.origin_x, -8.0);
+        assert_eq!(body_run.origin_x, 0.0);
+    }
+
+    #[test]
+    fn persisted_overlay_uses_marker_bbox_when_char_width_missing() {
+        use crate::edit::document_plan::ParagraphEditorMarker;
+        use crate::text::list_semantics::ListMarkerKind;
+
+        let body_text = "Body".to_string();
+        let runs = vec![test_run_with_origins("r1", &body_text, 50.0, false)];
+        let body_session = ParagraphEditContext {
+            anchor_bbox: BoundingBox {
+                left: 50.0,
+                top: 40.0,
+                right: 90.0,
+                bottom: 52.0,
+            },
+            paragraph: LayoutParagraph {
+                id: "p-bbox-width-marker".to_string(),
+                runs,
+                wrap_width: 120.0,
+                ..Default::default()
+            },
+        };
+
+        let marker = ParagraphEditorMarker {
+            kind: ListMarkerKind::Bullet,
+            text: "•".to_string(),
+            advance: 0.0,
+            runs: vec![test_run("marker-1", "•", 42.0, 50.0, false)],
+        };
+
+        let document_plan = EditContext {
+            source_body_text: body_text.clone(),
+            body_text_plan: build_editor_session_text_plan(&body_session),
+            body_session,
+            marker: Some(marker),
+            ..Default::default()
+        };
+
+        let plan = build_persisted_overlay_render_plan(&document_plan, &body_text, |text, _run| {
+            if text == "•" {
+                40.0
+            } else {
+                text.chars().count() as f32 * 5.0
+            }
+        });
+
+        let first_line = plan.layout.lines.first().expect("expected first line");
+        assert!(first_line.runs.len() >= 2, "expected marker and body runs");
+        let marker_run = &first_line.runs[0];
+        let body_run = &first_line.runs[1];
+
+        assert_eq!(marker_run.text, "•");
+        assert_eq!(marker_run.origin_x, -8.0);
+        assert_eq!(body_run.origin_x, 0.0);
+    }
+
+    #[test]
+    fn persisted_overlay_shifts_caret_stops_by_multichar_marker() {
+        use crate::edit::document_plan::ParagraphEditorMarker;
+        use crate::text::list_semantics::ListMarkerKind;
+
+        let body_text = "Body".to_string();
+        let runs = vec![test_run_with_origins("r1", &body_text, 50.0, false)];
+        let body_session = ParagraphEditContext {
+            anchor_bbox: BoundingBox {
+                left: 50.0,
+                top: 40.0,
+                right: 90.0,
+                bottom: 52.0,
+            },
+            paragraph: LayoutParagraph {
+                id: "p-numbered-list-item".to_string(),
+                runs,
+                wrap_width: 120.0,
+                ..Default::default()
+            },
+        };
+
+        let marker = ParagraphEditorMarker {
+            kind: ListMarkerKind::Numbering,
+            text: "10. ".to_string(),
+            advance: 20.0,
+            runs: vec![test_run("marker-1", "10. ", 30.0, 48.0, false)],
+        };
+
+        let document_plan = EditContext {
+            source_body_text: body_text.clone(),
+            body_text_plan: build_editor_session_text_plan(&body_session),
+            body_session,
+            marker: Some(marker),
+            ..Default::default()
+        };
+
+        let plan = build_persisted_overlay_render_plan(&document_plan, &body_text, |text, _run| {
+            text.chars().count() as f32 * 5.0
+        });
+
+        assert!(rendered_text(&plan).starts_with("10. "));
+        let first_line = plan.caret_lines.first().expect("expected caret line");
+        let indices = first_line
+            .stops
+            .iter()
+            .map(|stop| stop.index)
+            .collect::<Vec<_>>();
+        assert!(
+            indices.first().copied().unwrap_or_default() >= "10. ".chars().count(),
+            "caret stops should be shifted by marker text length, got {:?}",
+            indices
+        );
+    }
+
+    #[test]
+    fn keeps_marker_left_of_body_when_right_aligned() {
+        use crate::edit::document_plan::ParagraphEditorMarker;
+        use crate::text::list_semantics::ListMarkerKind;
+
+        let body_text = "分布式：Seata分布式事务、Redis持久化".to_string();
+        let runs = vec![test_run_with_origins("r1", &body_text, 50.0, false)];
+        let body_session = ParagraphEditContext {
+            anchor_bbox: BoundingBox {
+                left: 50.0,
+                top: 40.0,
+                right: 260.0,
+                bottom: 52.0,
+            },
+            paragraph: LayoutParagraph {
+                id: "p-right-list-item".to_string(),
+                style: crate::models::ParagraphStyle {
+                    align: LayoutAlignment::Right,
+                    ..Default::default()
+                },
+                runs,
+                wrap_width: 210.0,
+                ..Default::default()
+            },
+        };
+
+        let marker = ParagraphEditorMarker {
+            kind: ListMarkerKind::Bullet,
+            text: "•".to_string(),
+            advance: 10.0,
+            runs: vec![test_run("marker-1", "•", 40.0, 50.0, false)],
+        };
+
+        let document_plan = EditContext {
+            source_body_text: body_text.clone(),
+            body_text_plan: build_editor_session_text_plan(&body_session),
+            body_session,
+            marker: Some(marker),
+            ..Default::default()
+        };
+
+        let plan = build_persisted_overlay_render_plan(&document_plan, &body_text, |text, run| {
+            text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
+        });
+
+        let first_line = plan.layout.lines.first().expect("expected first line");
+        assert!(first_line.runs.len() >= 2, "expected marker and body runs");
+        let marker_run = &first_line.runs[0];
+        let body_run = &first_line.runs[1];
+
+        assert_eq!(marker_run.text, "•");
+        assert!(
+            marker_run.origin_x < body_run.origin_x,
+            "right alignment must not move marker after body, marker_x={}, body_x={}",
+            marker_run.origin_x,
+            body_run.origin_x
+        );
+        assert!(
+            marker_run.origin_x < 0.0,
+            "marker should preserve its PDF position to the left of the body anchor, got {}",
+            marker_run.origin_x
+        );
     }
 }

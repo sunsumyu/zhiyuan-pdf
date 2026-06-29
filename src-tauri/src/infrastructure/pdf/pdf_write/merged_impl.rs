@@ -6,15 +6,13 @@ use crate::infrastructure::pdf::pdf_font::{
 use crate::infrastructure::pdf::pdf_read::{
     multiply_matrices, operands_to_f32, read_resources, FlatResources,
 };
+use crate::infrastructure::pdf::pdf_utils;
 use crate::infrastructure::pdf::pdf_write_font_resolver::resolve_text_write_font;
 use crate::infrastructure::pdf::save_text_write_plan::PersistedTextLinePlan;
 use lopdf::{content::Content, Dictionary, Document, Object, Stream, StringFormat};
-use crate::infrastructure::pdf::pdf_utils;
 use pdf_viewer_core::geometry::coordinate_transform::PdfCoordinateSpace;
 use std::collections::HashMap;
 use std::sync::Arc;
-
-
 
 impl PdfDocExt for Document {
     fn apply_text_patch(
@@ -158,9 +156,11 @@ impl PdfDocExt for Document {
         }
 
         if !state.deferred_lines.is_empty() {
-            content
-                .operations
-                .extend(emit_deferred_text_block(&state.deferred_lines, page_height, user_unit));
+            content.operations.extend(emit_deferred_text_block(
+                &state.deferred_lines,
+                page_height,
+                user_unit,
+            ));
         }
 
         if changed || !state.deferred_lines.is_empty() {
@@ -478,7 +478,10 @@ struct UnderlineSpec {
 
 /// Emit the PDF text operators for one reflow line: color, text matrix, font, show.
 /// Returns the operations plus an optional underline spec when the line needs one.
-fn emit_text_line_ops(run: &PersistedTextLinePlan, user_unit: f32) -> (Vec<lopdf::content::Operation>, Option<UnderlineSpec>) {
+fn emit_text_line_ops(
+    run: &PersistedTextLinePlan,
+    user_unit: f32,
+) -> (Vec<lopdf::content::Operation>, Option<UnderlineSpec>) {
     let mut ops = Vec::new();
     let h_scale = run.horizontal_scaling / 100.0;
     let adj_tx = run.tx / user_unit;
@@ -486,7 +489,9 @@ fn emit_text_line_ops(run: &PersistedTextLinePlan, user_unit: f32) -> (Vec<lopdf
     let adj_width = run.width / user_unit;
     let adj_font_size = run.font_size / user_unit;
 
-    if let Some([red, green, blue]) = crate::infrastructure::pdf::color_utils::parse_hex_color(&run.color) {
+    if let Some([red, green, blue]) =
+        crate::infrastructure::pdf::color_utils::parse_hex_color(&run.color)
+    {
         ops.push(lopdf::content::Operation::new(
             "rg",
             vec![Object::Real(red), Object::Real(green), Object::Real(blue)],
@@ -547,7 +552,10 @@ fn emit_underline_ops(spec: &UnderlineSpec) -> Vec<lopdf::content::Operation> {
             vec![Object::Real(r), Object::Real(g), Object::Real(b)],
         ));
     }
-    ops.push(lopdf::content::Operation::new("w", vec![Object::Real(spec.stroke_width)]));
+    ops.push(lopdf::content::Operation::new(
+        "w",
+        vec![Object::Real(spec.stroke_width)],
+    ));
     ops.push(lopdf::content::Operation::new(
         "m",
         vec![Object::Real(spec.x), Object::Real(spec.y)],
@@ -581,9 +589,18 @@ fn emit_deferred_text_block(
             Object::Real(page_height),
         ],
     ));
-    ops.push(lopdf::content::Operation::new("Tc", vec![Object::Real(0.0)]));
-    ops.push(lopdf::content::Operation::new("Tw", vec![Object::Real(0.0)]));
-    ops.push(lopdf::content::Operation::new("Tz", vec![Object::Real(100.0)]));
+    ops.push(lopdf::content::Operation::new(
+        "Tc",
+        vec![Object::Real(0.0)],
+    ));
+    ops.push(lopdf::content::Operation::new(
+        "Tw",
+        vec![Object::Real(0.0)],
+    ));
+    ops.push(lopdf::content::Operation::new(
+        "Tz",
+        vec![Object::Real(100.0)],
+    ));
     ops.push(lopdf::content::Operation::new("BT", vec![]));
 
     let mut rendered = std::collections::HashSet::new();
@@ -666,8 +683,7 @@ fn patch_atomic_reflow_recursive(
                             (trm[0].powi(2) + trm[1].powi(2)).sqrt(),
                             (trm[2].powi(2) + trm[3].powi(2)).sqrt(),
                         );
-                        let (ax, ay) =
-                            (trm[4], PdfCoordinateSpace::to_y_down(trm[5], page_height));
+                        let (ax, ay) = (trm[4], PdfCoordinateSpace::to_y_down(trm[5], page_height));
 
                         let first_base = layout
                             .lines
@@ -904,6 +920,3 @@ fn break_text_into_lines(
         font.resolve_text_width(t, font_size, char_spacing, scale_x)
     })
 }
-
-
-

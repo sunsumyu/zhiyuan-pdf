@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::JsValue;
 
 use super::target_resolution::{is_supported_region_kind, resolve_region_target};
+use crate::common::sanitize::sanitize_positive;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
@@ -8,19 +9,17 @@ use crate::editor::list_format::resolve_marker_text;
 use crate::editor::orchestrator::commit::commit_pending;
 use crate::editor::replacement_snapshot::build_edit_replacement_snapshot;
 use crate::editor::session::{
-    paragraph_id, is_edit_enabled, open_paragraph_editor,
-    set_caret, sync_input, ActiveEditorInputSyncResult,
+    is_edit_enabled, open_paragraph_editor, paragraph_id, set_caret, sync_input,
+    ActiveEditorInputSyncResult,
 };
 use crate::editor::workflow::{
-    build_interaction_targets,
-    build_text_patch as workflow_build_text_patch,
+    build_interaction_targets, build_text_patch as workflow_build_text_patch,
     open_paragraph_editor as workflow_open_paragraph_editor, resolve_shell_bbox,
 };
-use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
-use crate::common::sanitize::sanitize_positive;
 use crate::zoom::zoom_store;
 use pdf_viewer_core::models::BoundingBox;
+use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use pdf_viewer_core::text::list_semantics::ListMarkerKind;
 
 fn summarize_object_ids<'a>(ids: impl Iterator<Item = &'a String>) -> String {
@@ -40,8 +39,7 @@ pub struct EditorVisibilityAction {
 }
 
 pub use crate::editor::editor_format::{
-    format_state, apply_format, ActiveEditorFormatState,
-    EditorFormatAction,
+    apply_format, format_state, ActiveEditorFormatState, EditorFormatAction,
 };
 
 pub fn collect_paragraph_targets() -> JsValue {
@@ -130,6 +128,9 @@ pub fn open_at_point(
             .iter()
             .flat_map(|run| run.object_ids.iter()),
     );
+    let marker = active_target.scene.marker();
+    let shell_bbox = active_target.scene.shell_bbox;
+    let body_bbox = active_target.scene.body_session().anchor_bbox;
     dbg_event(
         "open.runtime",
         "target-built",
@@ -177,12 +178,32 @@ pub fn open_at_point(
             ),
             dbg_field(
                 "targetListKind",
-                active_target
-                    .scene
-                    .marker()
+                marker
                     .map(|marker| format!("{:?}", marker.kind))
                     .unwrap_or_else(|| "None".to_string()),
             ),
+            dbg_field("markerPresent", marker.is_some()),
+            dbg_field("markerText", marker.map(|m| m.text.as_str()).unwrap_or("")),
+            dbg_field(
+                "markerKind",
+                marker
+                    .map(|m| format!("{:?}", m.kind))
+                    .unwrap_or_else(|| "None".to_string()),
+            ),
+            dbg_field(
+                "markerAdvance",
+                marker.map(|m| m.advance.to_string()).unwrap_or_default(),
+            ),
+            dbg_field(
+                "markerRunCount",
+                marker
+                    .map(|m| m.runs.len().to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+            ),
+            dbg_field("shellLeft", shell_bbox.left),
+            dbg_field("shellTop", shell_bbox.top),
+            dbg_field("bodyLeft", body_bbox.left),
+            dbg_field("bodyTop", body_bbox.top),
             dbg_field("bodyObjectIdCount", body_object_id_count),
             dbg_field("originalObjectIdCount", original_object_id_count),
             dbg_field("bodyObjectIds", body_object_ids),
@@ -191,10 +212,7 @@ pub fn open_at_point(
                 "bodyBBox",
                 format!(
                     "[{:.2},{:.2},{:.2},{:.2}]",
-                    active_target.scene.body_session().anchor_bbox.left,
-                    active_target.scene.body_session().anchor_bbox.top,
-                    active_target.scene.body_session().anchor_bbox.right,
-                    active_target.scene.body_session().anchor_bbox.bottom
+                    body_bbox.left, body_bbox.top, body_bbox.right, body_bbox.bottom
                 ),
             ),
         ],
@@ -215,14 +233,7 @@ pub fn build_text_patch(
     new_text: String,
 ) -> Option<PersistableRegionPatch> {
     with_page_state(|state| {
-        workflow_build_text_patch(
-            state,
-            page_index,
-            region_id,
-            kind,
-            original_text,
-            new_text,
-        )
+        workflow_build_text_patch(state, page_index, region_id, kind, original_text, new_text)
     })
 }
 
@@ -250,13 +261,7 @@ pub fn open_region_editor(
 
     let zoom = zoom_store::with_zoom_state(|state| sanitize_positive(state.visual_zoom, 1.0));
     let active_target = with_page_state(|state| {
-        let target = resolve_region_target(
-            state,
-            page_index,
-            region_id,
-            kind,
-            original_text,
-        )?;
+        let target = resolve_region_target(state, page_index, region_id, kind, original_text)?;
         workflow_open_paragraph_editor(
             state,
             &target.paragraph_id,
@@ -368,10 +373,7 @@ fn patch_is_noop(
         .line_height
         .map(|line_height| (line_height - active_state.source_line_height()).abs() <= 0.01)
         .unwrap_or(true);
-    let source_marker = active_state
-        .source_marker_text()
-        .unwrap_or("")
-        .trim();
+    let source_marker = active_state.source_marker_text().unwrap_or("").trim();
     let next_marker = patch
         .new_marker_text
         .as_deref()

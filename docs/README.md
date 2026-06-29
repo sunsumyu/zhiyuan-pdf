@@ -12,11 +12,14 @@
 
 1. **[architecture-principles.md](architecture-principles.md)** — 项目架构铁律：单一渲染链、单一所有者、Rust core/UI/TS 边界。
 2. **[editor-render-architecture.md](editor-render-architecture.md)** — 编辑态渲染机制：canvas 单链、textarea 仅做输入捕获、为何不能用浏览器字体。
-3. **[page-presentation-runtime-architecture.md](page-presentation-runtime-architecture.md)** — 翻页、preview、vector、detail、prefetch、present 的框架级 runtime 方案。
-4. **[nushell-divergence-report-2026-05-06.md](nushell-divergence-report-2026-05-06.md)** — 2026-05-06 发现的与 nushell-enhanced 的 4 处分叉点及修复记录。
+3. **[editor-core-execution-flow.md](editor-core-execution-flow.md)** — 编辑核心执行流：source geometry、caret/index、删除、marker、overlay/suppression 与离线验证矩阵。
+4. **[page-presentation-runtime-architecture.md](page-presentation-runtime-architecture.md)** — 翻页、preview、vector、detail、prefetch、present 的框架级 runtime 方案。
+5. **[nushell-divergence-report-2026-05-06.md](nushell-divergence-report-2026-05-06.md)** — 2026-05-06 发现的与 nushell-enhanced 的 4 处分叉点及修复记录。
 
 ### 参考
 
+- **[editing-layout-call-formulas.md](editing-layout-call-formulas.md)** — 当前编辑/布局调用链与坐标、caret、hit-test、commit/save 公式速查。
+- **[editor-core-execution-flow.md](editor-core-execution-flow.md)** — 编辑核心执行流、marker/删除链路、离线验证矩阵。
 - **[origin/](origin/)** — 从 nushell-enhanced 复制的原始权威文档（保留作为来源）。
 - **[origin/pdf-engine-naming-guide.md](origin/pdf-engine-naming-guide.md)** — Rust/TS 命名规范。
 

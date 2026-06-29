@@ -26,6 +26,14 @@ fn parse_scope(scope: &str) -> HostCommentReviewScope {
     }
 }
 
+fn parse_request<T: serde::de::DeserializeOwned>(
+    request_js: JsValue,
+    method: &str,
+) -> Result<T, JsValue> {
+    from_value(request_js)
+        .map_err(|e| JsValue::from_str(&format!("CommentManager.{method}: invalid request: {e}")))
+}
+
 // ── CommentManager ──────────────────────────────────────────────
 
 #[wasm_bindgen]
@@ -138,7 +146,7 @@ impl CommentManager {
         path: String,
         request_js: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let request: PdfRegionCommentRequest = from_value(request_js).unwrap_or_default();
+        let request: PdfRegionCommentRequest = parse_request(request_js, "addRegionComment")?;
         let result = add_region_comment(path, request).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
@@ -149,7 +157,7 @@ impl CommentManager {
         path: String,
         request_js: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let request: PdfDeleteAnnotationRequest = from_value(request_js).unwrap_or_default();
+        let request: PdfDeleteAnnotationRequest = parse_request(request_js, "deleteAnnotation")?;
         let result = delete_page_annotation(path, request).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
@@ -160,7 +168,7 @@ impl CommentManager {
         path: String,
         request_js: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let request: PdfUpdateCommentRequest = from_value(request_js).unwrap_or_default();
+        let request: PdfUpdateCommentRequest = parse_request(request_js, "updateComment")?;
         let result = update_page_comment(path, request).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }

@@ -80,4 +80,3 @@ pub fn extract_glyph_paint_plan(
     );
     Ok(glyph_paint_plan)
 }
-

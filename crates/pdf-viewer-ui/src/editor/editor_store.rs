@@ -54,12 +54,18 @@ pub fn set_state_change_callback(cb: Option<js_sys::Function>) {
     app_context::with_state_change_cb_mut(|slot| *slot = cb);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn set_state_change_callback(_cb: Option<js_sys::Function>) {}
+
 /// Install a callback fired on any session mutation (state OR active block).
 /// Arity-0; JS reads fresh state via `EditorSession.readSnapshot()` if needed.
 #[cfg(target_arch = "wasm32")]
 pub fn set_change_callback(cb: Option<js_sys::Function>) {
     app_context::with_change_cb_mut(|slot| *slot = cb);
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn set_change_callback(_cb: Option<js_sys::Function>) {}
 
 #[cfg(target_arch = "wasm32")]
 fn notify_state_change(state: SessionState) {

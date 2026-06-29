@@ -1,9 +1,9 @@
+use crate::common::bbox::bbox_intersects;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::mode::read_state;
 use crate::editor::replacement_region::build_region;
-use crate::common::bbox::bbox_intersects;
 use js_sys;
 use pdf_viewer_core::models::{BoundingBox, PageState};
 use pdf_viewer_core::render::renderer::{DrawCommand, PdfRenderer};
@@ -39,8 +39,7 @@ pub(super) fn current_time_ms() -> f64 {
 }
 
 pub(super) fn active_shell_bbox_for_debug() -> Option<BoundingBox> {
-    read_state()
-        .map(|state| build_region(&state.target).text_clear_bbox)
+    read_state().map(|state| build_region(&state.target).text_clear_bbox)
 }
 
 pub(super) fn debug_bbox_intersects_active_shell(bbox: &BoundingBox) -> bool {
@@ -257,7 +256,12 @@ impl CanvasRenderer {
         );
     }
 
-    pub(super) fn prepare_page_surface(&self, state: &PageState, _page_width: f32, _page_height: f32) {
+    pub(super) fn prepare_page_surface(
+        &self,
+        state: &PageState,
+        _page_width: f32,
+        _page_height: f32,
+    ) {
         let page_scale = (state.zoom * state.dpr) as f64;
         let viewport_left_px = (state.viewport_left * state.dpr).max(0.0) as f64;
         let viewport_top_px = (state.viewport_top * state.dpr).max(0.0) as f64;
@@ -280,7 +284,12 @@ impl CanvasRenderer {
         );
     }
 
-    pub(super) fn apply_page_transform(&self, state: &PageState, _page_width: f32, _page_height: f32) {
+    pub(super) fn apply_page_transform(
+        &self,
+        state: &PageState,
+        _page_width: f32,
+        _page_height: f32,
+    ) {
         let page_scale = (state.zoom * state.dpr) as f64;
         let viewport_left_px = (state.viewport_left * state.dpr).max(0.0) as f64;
         let viewport_top_px = (state.viewport_top * state.dpr).max(0.0) as f64;
@@ -321,7 +330,11 @@ impl CanvasRenderer {
         if is_suspicious_horizontal_rect {
             dbg_event(
                 "canvas.draw",
-                if is_fill { "draw-command-fill-rect" } else { "draw-command-stroke-rect" },
+                if is_fill {
+                    "draw-command-fill-rect"
+                } else {
+                    "draw-command-stroke-rect"
+                },
                 vec![
                     dbg_field("x1", x),
                     dbg_field("y1", y),
@@ -333,22 +346,16 @@ impl CanvasRenderer {
         }
         if is_fill {
             self.ctx.set_fill_style_str(color);
-            self.ctx.fill_rect(x as f64, y as f64, width as f64, height as f64);
+            self.ctx
+                .fill_rect(x as f64, y as f64, width as f64, height as f64);
         } else {
             self.ctx.set_stroke_style_str(color);
-            self.ctx.stroke_rect(x as f64, y as f64, width as f64, height as f64);
+            self.ctx
+                .stroke_rect(x as f64, y as f64, width as f64, height as f64);
         }
     }
 
-    fn draw_line_command(
-        &mut self,
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-        color: &str,
-        width: f32,
-    ) {
+    fn draw_line_command(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: &str, width: f32) {
         let line_width = (x2 - x1).abs();
         let line_height = (y2 - y1).abs();
         let is_suspicious_horizontal_line = line_width >= 120.0 && line_height <= 6.0;

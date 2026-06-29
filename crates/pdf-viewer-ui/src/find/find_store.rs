@@ -522,4 +522,3 @@ fn wrapped_between(previous_index: usize, next_index: usize, step: i32) -> bool 
         false
     }
 }
-

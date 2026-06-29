@@ -60,4 +60,3 @@ impl GraphicsState {
         [a * x + c * y + e, b * x + d * y + f]
     }
 }
-

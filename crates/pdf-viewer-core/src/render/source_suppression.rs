@@ -54,8 +54,6 @@ fn bbox_overlap_height(left: &BoundingBox, right: &BoundingBox) -> f32 {
     (left.bottom.min(right.bottom) - left.top.max(right.top)).max(0.0)
 }
 
-
-
 pub fn text_matches_region(
     run: &StyledRun,
     replacement_region: &ParagraphReplacementRegion,

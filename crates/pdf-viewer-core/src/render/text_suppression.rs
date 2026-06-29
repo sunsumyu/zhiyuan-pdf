@@ -8,14 +8,12 @@ use crate::edit::debug_trace::{
 use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{VectorPageModel, VectorRenderObject};
 use crate::render::path_suppression::should_suppress;
-use crate::render::source_suppression::{
-    matching_text_run_refs, text_object_should_be_suppressed,
-};
+use crate::render::source_suppression::{matching_text_run_refs, text_object_should_be_suppressed};
 use crate::render::viewport_culling::path_bbox;
 
 use super::overlay_ops::{
     insert_overlay_if_needed, overlay_suppresses_row_paths, overlay_suppresses_text_source,
-    vector_object_bbox, vector_object_summary, PreparedOverlay, record_overlay_object_summary,
+    record_overlay_object_summary, vector_object_bbox, vector_object_summary, PreparedOverlay,
 };
 use super::{EffectiveVectorRenderEntry, SuppressedVectorTextRuns};
 
@@ -34,8 +32,10 @@ pub(super) fn decide_text_suppression(
     let z_index_hit = matches!(object, VectorRenderObject::Text(text) if overlay.object_indices.contains(&text.z_index));
     let array_index_hit = overlay.object_indices.contains(&object_index);
     let index_hit = z_index_hit || array_index_hit;
-    let id_hit = matches!(object, VectorRenderObject::Text(text) if overlay.object_ids.contains(&text.id));
-    let text_object_index_match = matches!(object, VectorRenderObject::Text(_)) && (index_hit || id_hit);
+    let id_hit =
+        matches!(object, VectorRenderObject::Text(text) if overlay.object_ids.contains(&text.id));
+    let text_object_index_match =
+        matches!(object, VectorRenderObject::Text(_)) && (index_hit || id_hit);
     if matches!(object, VectorRenderObject::Text(_)) {
         let (text_id, text_z) = if let VectorRenderObject::Text(text) = object {
             (text.id.as_str(), text.z_index)
@@ -49,7 +49,10 @@ pub(super) fn decide_text_suppression(
                 dbg_field("objectIndex", object_index),
                 dbg_field("textZIndex", text_z),
                 dbg_field("textId", text_id),
-                dbg_field("overlayParagraphId", overlay.overlay.target.paragraph_id.as_str()),
+                dbg_field(
+                    "overlayParagraphId",
+                    overlay.overlay.target.paragraph_id.as_str(),
+                ),
                 dbg_field("zIndexHit", z_index_hit),
                 dbg_field("arrayIndexHit", array_index_hit),
                 dbg_field("idHit", id_hit),
@@ -85,8 +88,9 @@ pub(super) fn apply_text_suppression(
             } else {
                 0
             };
-            overlay.suppressed_text_run_count =
-                overlay.suppressed_text_run_count.saturating_add(matched_run_count);
+            overlay.suppressed_text_run_count = overlay
+                .suppressed_text_run_count
+                .saturating_add(matched_run_count);
             overlay.suppressed_text_object_count =
                 overlay.suppressed_text_object_count.saturating_add(1);
             suppressed_text_runs.run_indices.extend(refs.run_indices);
@@ -129,9 +133,11 @@ pub(super) fn check_path_suppression(
             record_overlay_object_summary(overlay, vector_object_summary(object, object_index));
         }
     }
-    if let Some(path_summary) =
-        should_suppress(object, &overlay.replacement_region, &overlay.path_suppression_bbox)
-    {
+    if let Some(path_summary) = should_suppress(
+        object,
+        &overlay.replacement_region,
+        &overlay.path_suppression_bbox,
+    ) {
         overlay.thin_horizontal_path_count = overlay.thin_horizontal_path_count.saturating_add(1);
         overlay.suppressed_path_count = overlay.suppressed_path_count.saturating_add(1);
         if overlay.first_path_summary.is_none() {
@@ -199,8 +205,7 @@ pub(super) fn process_visible_objects(
             VectorRenderObject::Text(text) => {
                 suppress_entire_object
                     || (!text.runs.is_empty()
-                        && suppressed_text_runs.text_suppressed_count(text)
-                            == text.runs.len())
+                        && suppressed_text_runs.text_suppressed_count(text) == text.runs.len())
             }
             _ => suppress_entire_object,
         };

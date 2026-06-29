@@ -7,9 +7,7 @@ use crate::editor::command::{apply_host_input, EditorInputCommand};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::editor_controller::{
-    apply_format, sync_editor_input, EditorFormatAction,
-};
+use crate::editor::editor_controller::{apply_format, sync_editor_input, EditorFormatAction};
 use crate::editor::mode::close_active_editor;
 use crate::editor::orchestrator::commit::commit_text as do_commit_text;
 use crate::editor::session::{draft_text, has_changes};
@@ -157,10 +155,7 @@ pub fn commit_editor_tx(
     }
 }
 
-pub fn commit_silent_tx(
-    new_text: String,
-    caret_index: usize,
-) -> EditorRenderTransactionResult {
+pub fn commit_silent_tx(new_text: String, caret_index: usize) -> EditorRenderTransactionResult {
     let has_session_changes = has_changes();
     let text_to_commit = if has_session_changes {
         let _sync_result = sync_editor_input(new_text.clone(), caret_index);
@@ -225,15 +220,10 @@ pub fn apply_format_tx(
     action: EditorFormatAction,
     frame_request: FramePlanRequest,
 ) -> EditorRenderTransactionResult {
-    format_render_tx(
-        frame_request,
-        apply_format(action).changed,
-    )
+    format_render_tx(frame_request, apply_format(action).changed)
 }
 
-pub fn undo_tx(
-    _frame_request: FramePlanRequest,
-) -> EditorInputRenderTransactionResult {
+pub fn undo_tx(_frame_request: FramePlanRequest) -> EditorInputRenderTransactionResult {
     use crate::editor::session::undo_active_editor;
     match undo_active_editor() {
         Some(result) => EditorInputRenderTransactionResult {
@@ -247,9 +237,7 @@ pub fn undo_tx(
     }
 }
 
-pub fn redo_tx(
-    _frame_request: FramePlanRequest,
-) -> EditorInputRenderTransactionResult {
+pub fn redo_tx(_frame_request: FramePlanRequest) -> EditorInputRenderTransactionResult {
     use crate::editor::session::redo_active_editor;
     match redo_active_editor() {
         Some(result) => EditorInputRenderTransactionResult {

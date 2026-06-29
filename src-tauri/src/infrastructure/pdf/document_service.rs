@@ -2,11 +2,11 @@ use crate::infrastructure::pdf::models::PdfModifications;
 use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan;
 use crate::infrastructure::pdf_read::backend::PdfReadBackend;
 use crate::infrastructure::pdf_read::scanned_backend::ScannedReadBackend;
-use lopdf::Document;
-use tokio::sync::Mutex as AsyncMutex;
 use lazy_static::lazy_static;
+use lopdf::Document;
 use std::collections::HashMap;
 use std::fs;
+use tokio::sync::Mutex as AsyncMutex;
 
 use super::cache::{
     invalidate_pdf_layout_cache, invalidate_pdf_light_page_cache, invalidate_pdf_page_cache,
@@ -16,11 +16,9 @@ lazy_static! {
     static ref PDF_OPS_LOCK: AsyncMutex<()> = AsyncMutex::new(());
 }
 
-
 pub struct PdfDocumentService;
 
 impl PdfDocumentService {
-
     pub fn release_resources(state: &crate::AppState, path: &str) {
         {
             let mut docs = state.docs.pdf_documents.lock().unwrap();
@@ -111,7 +109,7 @@ impl PdfDocumentService {
         {
             let mut reports = state.cache.pdf_materialization_reports.lock().unwrap();
             reports.clear();
-        crate::infrastructure::pdf::working_copy::clear_working_copies();
+            crate::infrastructure::pdf::working_copy::clear_working_copies();
         }
 
         crate::log_step!("[PDF][Release] Released all PDF resources");
@@ -145,9 +143,21 @@ impl PdfDocumentService {
 
         let path_for_load = path.to_string();
         let load_start = std::time::Instant::now();
-        let doc = tokio::task::spawn_blocking(move || load_pdf_lenient(&path_for_load))
+        let load_result = tokio::task::spawn_blocking(move || load_pdf_lenient(&path_for_load))
             .await
-            .map_err(|e| e.to_string())??;
+            .map_err(|e| e.to_string())
+            .and_then(|inner| inner);
+        let doc = match load_result {
+            Ok(doc) => doc,
+            Err(err) => {
+                let mut loading = state.docs.loading_docs.lock().unwrap();
+                loading.insert(
+                    path.to_string(),
+                    crate::state::LoadingStatus::Error(err.clone()),
+                );
+                return Err(err);
+            }
+        };
         let load_elapsed = load_start.elapsed();
         let lopdf_count = doc.get_pages().len();
 

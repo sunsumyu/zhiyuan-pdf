@@ -55,7 +55,8 @@ pub fn clear_preview_present() {
 
 #[wasm_bindgen(js_name = "syncHostLayout")]
 pub fn sync_host_layout_wasm(request_js: JsValue) -> JsValue {
-    let request: crate::platform::layout::SyncHostLayoutRequest = from_value(request_js).unwrap_or_default();
+    let request: crate::platform::layout::SyncHostLayoutRequest =
+        from_value(request_js).unwrap_or_default();
     let result = crate::platform::layout::sync_host_layout(request);
     to_value(&result).unwrap_or(JsValue::NULL)
 }

@@ -4,8 +4,8 @@ use web_sys::HtmlCanvasElement;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::platform_bridge::read_state as get_editor_host_state;
 use crate::editor::mode::read_state;
+use crate::editor::platform_bridge::read_state as get_editor_host_state;
 use crate::editor::source_geometry::compute_caret_line_bbox;
 use crate::editor::text_geometry::active_caret_visual;
 use crate::render::canvas::CanvasRenderer;
@@ -45,14 +45,20 @@ fn scene_shell_height(active_target: &crate::editor::session::ActiveEditorTarget
 }
 
 fn body_left_offset(active_target: &crate::editor::session::ActiveEditorTarget) -> f32 {
-    let base_left = (active_target.scene.body_session().anchor_bbox.left - active_target.scene.shell_bbox.left)
+    let base_left = (active_target.scene.body_session().anchor_bbox.left
+        - active_target.scene.shell_bbox.left)
         .max(0.0);
-    let marker_advance = active_target.scene.marker().map(|m| m.advance).unwrap_or(0.0);
+    let marker_advance = active_target
+        .scene
+        .marker()
+        .map(|m| m.advance)
+        .unwrap_or(0.0);
     base_left + marker_advance
 }
 
 fn body_top_offset(active_target: &crate::editor::session::ActiveEditorTarget) -> f32 {
-    (active_target.scene.body_session().anchor_bbox.top - active_target.scene.shell_bbox.top).max(0.0)
+    (active_target.scene.body_session().anchor_bbox.top - active_target.scene.shell_bbox.top)
+        .max(0.0)
 }
 
 fn source_line_bbox_for_caret(

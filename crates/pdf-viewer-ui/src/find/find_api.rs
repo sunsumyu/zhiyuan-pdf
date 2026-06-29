@@ -4,14 +4,18 @@
 //!   - Zero-sized struct as handle.
 //!   - `#[wasm_bindgen]` methods with camelCase `js_name`.
 //!   - Thin delegation to `find::find_store`.
-//!
-//! The legacy `find::facade::findFacade*` and `find::controller_facade::findController*`
-//! functions remain for backward compatibility while the TS bridge migrates.
 
-use serde_wasm_bindgen::to_value;
+use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 
 use crate::find::find_store as controller;
+
+fn parse_scope(scope_js: &str) -> controller::FindScope {
+    match scope_js {
+        "document" => controller::FindScope::Document,
+        _ => controller::FindScope::Page,
+    }
+}
 
 // ── FindSession ─────────────────────────────────────────────────
 
@@ -49,6 +53,46 @@ impl FindSession {
     #[wasm_bindgen(js_name = "clear")]
     pub fn clear(&self) -> JsValue {
         to_value(&controller::clear_search()).unwrap_or(JsValue::NULL)
+    }
+
+    /// Store a freshly computed search result and update the active find session.
+    #[wasm_bindgen(js_name = "setResult")]
+    pub fn set_result(&self, result_js: JsValue, scope_js: String, current_page: u16) -> JsValue {
+        let result: controller::SearchResult = from_value(result_js).unwrap_or_default();
+        to_value(&controller::set_search_result(
+            result,
+            parse_scope(&scope_js),
+            current_page,
+        ))
+        .unwrap_or(JsValue::NULL)
+    }
+
+    /// Move the active match by `step` and return the resulting UI snapshot.
+    #[wasm_bindgen(js_name = "moveActive")]
+    pub fn move_active(&self, step: i32) -> JsValue {
+        to_value(&controller::move_active(step)).unwrap_or(JsValue::NULL)
+    }
+
+    /// Read toolbar rendering state.
+    #[wasm_bindgen(js_name = "getToolbarState")]
+    pub fn get_toolbar_state(&self) -> JsValue {
+        to_value(&controller::read_toolbar_state()).unwrap_or(JsValue::NULL)
+    }
+
+    /// Build replacement requests from the active search result.
+    #[wasm_bindgen(js_name = "getReplaceRequests")]
+    pub fn get_replace_requests(
+        &self,
+        replacement: String,
+        replace_all: bool,
+        scope_js: String,
+    ) -> JsValue {
+        to_value(&controller::build_replace_requests(
+            &replacement,
+            replace_all,
+            parse_scope(&scope_js),
+        ))
+        .unwrap_or(JsValue::NULL)
     }
 
     /// Notify the controller of a page change.

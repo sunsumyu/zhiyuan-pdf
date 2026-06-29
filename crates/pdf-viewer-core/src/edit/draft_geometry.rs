@@ -1,8 +1,8 @@
 //! Draft geometry — 几何与光标转换子模块。
 
+use super::draft_types::{DraftCaretLine, DraftCaretStop};
 use crate::geometry::layout_engine::ParagraphLayout;
 use crate::models::LayoutRun;
-use super::draft_types::{DraftCaretLine, DraftCaretStop};
 
 pub(super) fn align_layout_baseline(layout: &mut ParagraphLayout, target_baseline_y: f32) {
     let Some(first_line) = layout.lines.first() else {

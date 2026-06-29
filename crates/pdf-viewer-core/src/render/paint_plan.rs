@@ -3,8 +3,8 @@ use crate::models::{
     GlyphPaintParagraph, GlyphPaintPlan, GlyphPaintRegion, GlyphPaintRun, LayoutInferenceResult,
     LayoutParagraph, LayoutRun, PaintMode, ParagraphEditContext, ResolvedFontFace,
 };
-use crate::typography::font_resolver::resolve_font_face;
 use crate::text::glyph_layout::is_decorative_text;
+use crate::typography::font_resolver::resolve_font_face;
 
 fn paint_mode_from_render_mode(render_mode: i64) -> PaintMode {
     match render_mode {

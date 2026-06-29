@@ -35,9 +35,7 @@ impl PdfWriteService {
 
             // 保存到工作路径
             let working_path =
-                crate::infrastructure::pdf::working_copy::resolve_working_path(
-                    &path,
-                );
+                crate::infrastructure::pdf::working_copy::resolve_working_path(&path);
             modified_doc
                 .save(&working_path)
                 .map_err(|e| format!("Failed to save working copy: {}", e))?;
@@ -92,10 +90,7 @@ impl PdfWriteService {
 
         if let Some(previous_doc) = previous_doc {
             // 保存到磁盘
-            let working_path =
-                crate::infrastructure::pdf::working_copy::resolve_working_path(
-                    path,
-                );
+            let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(path);
             let mut doc_clone = (*previous_doc).clone();
 
             tokio::task::spawn_blocking(move || doc_clone.save(&working_path))
@@ -157,10 +152,7 @@ impl PdfWriteService {
             }
 
             // 应用重做版本
-            let working_path =
-                crate::infrastructure::pdf::working_copy::resolve_working_path(
-                    path,
-                );
+            let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(path);
             let mut doc_clone = redo_doc.clone();
 
             tokio::task::spawn_blocking(move || doc_clone.save(&working_path))
@@ -260,4 +252,3 @@ startxref
         }
     }
 }
-

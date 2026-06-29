@@ -8,13 +8,10 @@ use crate::editor::bridge::{
     resolve_paragraph_shell_bbox as bridge_resolve_shell_bbox,
 };
 use crate::editor::session::{is_edit_enabled, ActiveEditorTarget};
-use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use pdf_viewer_core::models::BoundingBox;
+use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 
-pub fn build_interaction_targets(
-    page_state: &PageState,
-    editing_enabled: bool,
-) -> JsValue {
+pub fn build_interaction_targets(page_state: &PageState, editing_enabled: bool) -> JsValue {
     if !editing_enabled {
         return JsValue::NULL;
     }
@@ -51,10 +48,7 @@ pub fn open_paragraph_editor(
     })
 }
 
-pub fn resolve_shell_bbox(
-    page_state: &PageState,
-    paragraph_id: &str,
-) -> Option<BoundingBox> {
+pub fn resolve_shell_bbox(page_state: &PageState, paragraph_id: &str) -> Option<BoundingBox> {
     page_state
         .paint_plan
         .as_ref()
@@ -88,13 +82,7 @@ pub fn build_text_patch(
     if !is_supported_region_kind(kind) {
         return None;
     }
-    let target = resolve_region_target(
-        page_state,
-        page_index,
-        region_id,
-        kind,
-        original_text,
-    )?;
+    let target = resolve_region_target(page_state, page_index, region_id, kind, original_text)?;
     let mut patch = build_paragraph_patch(page_state, &target.paragraph_id, new_text)?;
     if patch.target_indices.is_empty() && !target.target_indices.is_empty() {
         patch.target_indices = target.target_indices.clone();

@@ -41,7 +41,16 @@ pub fn init_page_context_from_models(
     viewport_width: Option<f32>,
     viewport_height: Option<f32>,
 ) {
-    init_context(vector_model, paint_plan, zoom, dpr, viewport_left, viewport_top, viewport_width, viewport_height);
+    init_context(
+        vector_model,
+        paint_plan,
+        zoom,
+        dpr,
+        viewport_left,
+        viewport_top,
+        viewport_width,
+        viewport_height,
+    );
 }
 
 pub fn update_viewport(

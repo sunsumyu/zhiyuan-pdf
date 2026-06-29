@@ -2,8 +2,8 @@ use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
 use crate::presentation::page_turn::{
-    admit_page_asset, can_prefetch, decide_adjacent_prefetch, is_latest_turn,
-    mark_page_visible, request_page_turn, reset_state,
+    admit_page_asset, can_prefetch, decide_adjacent_prefetch, is_latest_turn, mark_page_visible,
+    request_page_turn, reset_state,
 };
 use crate::presentation::render_queue::resolve_queue_action;
 

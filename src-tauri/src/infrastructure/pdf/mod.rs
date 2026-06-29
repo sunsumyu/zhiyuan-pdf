@@ -17,8 +17,8 @@ pub mod page_classifier;
 pub mod page_intermediate_service;
 pub mod pdf_font;
 pub mod pdf_read;
-pub mod pdf_utils;
 pub mod pdf_read_service;
+pub mod pdf_utils;
 pub mod pdf_write;
 pub mod pdf_write_font_resolver;
 pub mod pdf_write_service;
@@ -30,9 +30,8 @@ pub mod spatial_graph;
 pub mod vector_engine;
 pub mod vello_renderer;
 
-#[cfg(test)]
-pub mod tests_reflow;
 pub mod color_utils;
 pub mod path_utils;
+#[cfg(test)]
+pub mod tests_reflow;
 pub mod working_copy;
-

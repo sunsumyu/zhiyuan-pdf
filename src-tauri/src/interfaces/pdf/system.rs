@@ -14,7 +14,6 @@ pub fn set_log_level(level: u8) {
     crate::infrastructure::pdf::log_service::set_log_level(level);
 }
 
-
 #[command]
 pub fn terminal_log(message: String) {
     crate::infrastructure::pdf::log_service::log_terminal_message(&message);

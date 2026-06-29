@@ -156,7 +156,12 @@ impl LayoutRun {
     /// - preserve_char_geometry: keep char_origins and char_widths (for preserved runs).
     /// - preserve_underline: keep the underline flag (otherwise clear it).
     /// - sanitize_style: normalize scale_x to 1.0 if invalid.
-    pub fn cleared_style(&self, preserve_char_geometry: bool, preserve_underline: bool, sanitize_style: bool) -> Self {
+    pub fn cleared_style(
+        &self,
+        preserve_char_geometry: bool,
+        preserve_underline: bool,
+        sanitize_style: bool,
+    ) -> Self {
         let mut c = self.clone();
         if !preserve_char_geometry {
             c.char_origins.clear();
@@ -371,7 +376,10 @@ mod coordinate_system_tests {
 
     #[test]
     fn test_glyph_position_zero_width() {
-        let pos = GlyphPosition { x: 10.0, width: 0.0 };
+        let pos = GlyphPosition {
+            x: 10.0,
+            width: 0.0,
+        };
         assert_eq!(pos.right(), 10.0);
     }
 
@@ -384,11 +392,11 @@ mod coordinate_system_tests {
             origin_x: 72.0,
             baseline_y: 112.0,
             glyphs: vec![
-                GlyphPosition::new(72.0, 8.0),   // H
-                GlyphPosition::new(80.0, 5.0),   // e
-                GlyphPosition::new(85.0, 3.0),   // l
-                GlyphPosition::new(88.0, 3.0),   // l
-                GlyphPosition::new(91.0, 6.0),   // o
+                GlyphPosition::new(72.0, 8.0), // H
+                GlyphPosition::new(80.0, 5.0), // e
+                GlyphPosition::new(85.0, 3.0), // l
+                GlyphPosition::new(88.0, 3.0), // l
+                GlyphPosition::new(91.0, 6.0), // o
             ],
             style: RunStyle {
                 font_name: "Arial".to_string(),
@@ -409,8 +417,8 @@ mod coordinate_system_tests {
         let run = sample_run();
         let bbox = run.compute_bbox();
         assert_eq!(bbox.left, 72.0);
-        assert_eq!(bbox.top, 100.0);     // 112.0 - 12.0
-        assert_eq!(bbox.right, 97.0);    // 91.0 + 6.0
+        assert_eq!(bbox.top, 100.0); // 112.0 - 12.0
+        assert_eq!(bbox.right, 97.0); // 91.0 + 6.0
         assert_eq!(bbox.bottom, 112.0);
     }
 
@@ -425,7 +433,7 @@ mod coordinate_system_tests {
         let run = sample_run();
         assert_eq!(run.glyph_x(0), Some(72.0));
         assert_eq!(run.glyph_x(4), Some(91.0));
-        assert_eq!(run.glyph_x(5), None);  // 越界
+        assert_eq!(run.glyph_x(5), None); // 越界
     }
 
     #[test]
@@ -464,12 +472,12 @@ mod coordinate_system_tests {
         assert_eq!(left.text, "He");
         assert_eq!(left.origin_x, 72.0);
         assert_eq!(left.glyphs.len(), 2);
-        assert_eq!(left.glyphs[0].x, 72.0);  // 绝对坐标不变
+        assert_eq!(left.glyphs[0].x, 72.0); // 绝对坐标不变
         assert_eq!(left.glyphs[1].x, 80.0);
 
         let right = right.expect("right should exist");
         assert_eq!(right.text, "llo");
-        assert_eq!(right.origin_x, 85.0);    // 第一个 glyph 的绝对坐标
+        assert_eq!(right.origin_x, 85.0); // 第一个 glyph 的绝对坐标
         assert_eq!(right.glyphs.len(), 3);
         assert_eq!(right.glyphs[0].x, 85.0); // 绝对坐标不变
         assert_eq!(right.glyphs[1].x, 88.0);
@@ -530,9 +538,9 @@ mod coordinate_system_tests {
         };
         let bbox = para.compute_bbox();
         assert_eq!(bbox.left, 72.0);
-        assert_eq!(bbox.top, 100.0);     // min(100, 118)
-        assert_eq!(bbox.right, 130.0);   // max(97, 130)
-        assert_eq!(bbox.bottom, 130.0);  // max(112, 130)
+        assert_eq!(bbox.top, 100.0); // min(100, 118)
+        assert_eq!(bbox.right, 130.0); // max(97, 130)
+        assert_eq!(bbox.bottom, 130.0); // max(112, 130)
     }
 
     // ---- EditorSession tests ----
@@ -569,24 +577,24 @@ mod coordinate_system_tests {
             color: "#000000".to_string(),
             stroke_color: None,
             stroke_width: 0.0,
-            tx: 72.0,       // run 起点 X
-            ty: 112.0,      // run 基线 Y（Y-Up 体系）
-            width: 25.0,    // glyph 总宽度
+            tx: 72.0,    // run 起点 X
+            ty: 112.0,   // run 基线 Y（Y-Up 体系）
+            width: 25.0, // glyph 总宽度
             font_size: 12.0,
             is_bold: false,
             is_italic: false,
             is_underline: false,
             font_name: "Arial".to_string(),
-            a: 100.0,       // scale_x
-            b: 0.0,         // shear_y
-            c: 0.0,         // shear_x
-            d: 100.0,       // scale_y
+            a: 100.0, // scale_x
+            b: 0.0,   // shear_y
+            c: 0.0,   // shear_x
+            d: 100.0, // scale_y
             char_spacing: 0.0,
             word_spacing: 0.0,
             horizontal_scaling: 100.0,
             font_hints: None,
-            char_origins: vec![0.0, 8.0, 11.0, 14.0, 19.0],  // 相对于 tx 的偏移
-            char_widths: vec![8.0, 3.0, 3.0, 5.0, 6.0],      // glyph 宽度 (H, e, l, l, o)
+            char_origins: vec![0.0, 8.0, 11.0, 14.0, 19.0], // 相对于 tx 的偏移
+            char_widths: vec![8.0, 3.0, 3.0, 5.0, 6.0],     // glyph 宽度 (H, e, l, l, o)
             pdf_char_codes: vec![],
             render_mode: 0,
             object_id: None,
@@ -608,22 +616,22 @@ mod coordinate_system_tests {
         let text_run = TextRun::from_styled(&run);
 
         // 验证绝对坐标转换
-        assert_eq!(text_run.origin_x, run.tx);  // 绝对 X
-        assert_eq!(text_run.baseline_y, run.ty);  // 绝对 Y
+        assert_eq!(text_run.origin_x, run.tx); // 绝对 X
+        assert_eq!(text_run.baseline_y, run.ty); // 绝对 Y
 
         // 验证 glyphs 的绝对位置：tx + char_origins[i]
-        assert_eq!(text_run.glyphs[0].x, 72.0 + 0.0);  // H
-        assert_eq!(text_run.glyphs[1].x, 72.0 + 8.0);  // e
+        assert_eq!(text_run.glyphs[0].x, 72.0 + 0.0); // H
+        assert_eq!(text_run.glyphs[1].x, 72.0 + 8.0); // e
         assert_eq!(text_run.glyphs[2].x, 72.0 + 11.0); // l
         assert_eq!(text_run.glyphs[3].x, 72.0 + 14.0); // l
         assert_eq!(text_run.glyphs[4].x, 72.0 + 19.0); // o
 
         // 验证 glyphs 的宽度
-        assert_eq!(text_run.glyphs[0].width, 8.0);   // H
-        assert_eq!(text_run.glyphs[1].width, 3.0);   // e
-        assert_eq!(text_run.glyphs[2].width, 3.0);   // l
-        assert_eq!(text_run.glyphs[3].width, 5.0);   // l
-        assert_eq!(text_run.glyphs[4].width, 6.0);   // o (由 width 推导: 19.0 + 6.0 - 19.0)
+        assert_eq!(text_run.glyphs[0].width, 8.0); // H
+        assert_eq!(text_run.glyphs[1].width, 3.0); // e
+        assert_eq!(text_run.glyphs[2].width, 3.0); // l
+        assert_eq!(text_run.glyphs[3].width, 5.0); // l
+        assert_eq!(text_run.glyphs[4].width, 6.0); // o (由 width 推导: 19.0 + 6.0 - 19.0)
 
         // 验证 run 的物理宽度从 glyphs 推导
         assert_eq!(text_run.physical_width(), 25.0); // 72.0 + 25.0 - 72.0
@@ -631,8 +639,8 @@ mod coordinate_system_tests {
         // 验证 bbox 从 glyphs 推导（单一算法）
         let bbox = text_run.compute_bbox();
         assert_eq!(bbox.left, 72.0);
-        assert_eq!(bbox.top, 100.0);   // 112.0 - 12.0
-        assert_eq!(bbox.right, 97.0);  // 72.0 + 25.0
+        assert_eq!(bbox.top, 100.0); // 112.0 - 12.0
+        assert_eq!(bbox.right, 97.0); // 72.0 + 25.0
     }
 
     #[test]
@@ -660,7 +668,7 @@ mod coordinate_system_tests {
         let text_run = TextRun::from_styled(&run);
 
         assert_eq!(text_run.object_ids, vec!["obj-123".to_string()]);
-        assert_eq!(text_run.id, "obj-123");  // id 直接使用 object_id
+        assert_eq!(text_run.id, "obj-123"); // id 直接使用 object_id
     }
 
     #[test]
@@ -672,7 +680,7 @@ mod coordinate_system_tests {
         assert_eq!(text_run.glyph_x(0), Some(72.0));
         assert_eq!(text_run.glyph_x(2), Some(83.0));
         assert_eq!(text_run.glyph_x(4), Some(91.0));
-        assert_eq!(text_run.glyph_x(5), None);  // 越界
+        assert_eq!(text_run.glyph_x(5), None); // 越界
     }
 
     #[test]
@@ -687,14 +695,14 @@ mod coordinate_system_tests {
 
         // 验证左侧 run 的绝对位置
         assert_eq!(left.text, "He");
-        assert_eq!(left.origin_x, 72.0);  // 保持原起点
-        assert_eq!(left.glyphs[0].x, 72.0);  // 绝对坐标不变
+        assert_eq!(left.origin_x, 72.0); // 保持原起点
+        assert_eq!(left.glyphs[0].x, 72.0); // 绝对坐标不变
         assert_eq!(left.glyphs[1].x, 80.0);
 
         // 验证右侧 run 的绝对位置（新起点 = 第一个 glyph 的绝对坐标）
         assert_eq!(right.text, "llo");
-        assert_eq!(right.origin_x, 83.0);  // 72.0 + 11.0
-        assert_eq!(right.glyphs[0].x, 83.0);  // 绝对坐标不变
+        assert_eq!(right.origin_x, 83.0); // 72.0 + 11.0
+        assert_eq!(right.glyphs[0].x, 83.0); // 绝对坐标不变
         assert_eq!(right.glyphs[1].x, 86.0);
     }
 
@@ -776,9 +784,7 @@ mod coordinate_system_tests {
                 bottom: 52.0,
             },
             style: ParagraphStyle::default(),
-            runs: vec![
-                TextRun::from_styled(&sample_styled_run()).to_layout_run(),
-            ],
+            runs: vec![TextRun::from_styled(&sample_styled_run()).to_layout_run()],
             object_ids: vec!["obj1".to_string()],
             origin_x: 10.0,
             origin_y: 52.0,
@@ -830,13 +836,16 @@ mod coordinate_system_tests {
 
         assert_eq!(session.anchor_bbox, edit_context.anchor_bbox);
         assert_eq!(session.paragraph.id, edit_context.paragraph.id);
-        assert_eq!(session.paragraph.runs.len(), edit_context.paragraph.runs.len());
+        assert_eq!(
+            session.paragraph.runs.len(),
+            edit_context.paragraph.runs.len()
+        );
     }
 
     // ---- GlyphPaintRun → TextRun conversion tests ----
 
     fn sample_glyph_paint_run() -> crate::models::GlyphPaintRun {
-        use crate::models::{GlyphPaintRun, ResolvedFontFace, PaintMode};
+        use crate::models::{GlyphPaintRun, PaintMode, ResolvedFontFace};
 
         GlyphPaintRun {
             id: "paint-run-1".to_string(),
@@ -852,7 +861,7 @@ mod coordinate_system_tests {
             },
             origin_x: 72.0,
             origin_y: 112.0,
-            char_origins: vec![0.0, 8.0, 11.0, 14.0, 19.0],  // 相对于 origin_x 的偏移
+            char_origins: vec![0.0, 8.0, 11.0, 14.0, 19.0], // 相对于 origin_x 的偏移
             color: "#000000".to_string(),
             resolved_font: ResolvedFontFace {
                 render_family: "Arial".to_string(),
@@ -879,25 +888,25 @@ mod coordinate_system_tests {
         assert_eq!(text_run.baseline_y, 112.0);
 
         // 验证 glyphs 的绝对位置：origin_x + char_origins[i]
-        assert_eq!(text_run.glyphs[0].x, 72.0 + 0.0);   // H
-        assert_eq!(text_run.glyphs[1].x, 72.0 + 8.0);   // e
-        assert_eq!(text_run.glyphs[2].x, 72.0 + 11.0);  // l
-        assert_eq!(text_run.glyphs[3].x, 72.0 + 14.0);  // l
-        assert_eq!(text_run.glyphs[4].x, 72.0 + 19.0);  // o
+        assert_eq!(text_run.glyphs[0].x, 72.0 + 0.0); // H
+        assert_eq!(text_run.glyphs[1].x, 72.0 + 8.0); // e
+        assert_eq!(text_run.glyphs[2].x, 72.0 + 11.0); // l
+        assert_eq!(text_run.glyphs[3].x, 72.0 + 14.0); // l
+        assert_eq!(text_run.glyphs[4].x, 72.0 + 19.0); // o
 
         // 验证 glyph 宽度推导
-        assert_eq!(text_run.glyphs[0].width, 8.0);  // next - current = 8 - 0
-        assert_eq!(text_run.glyphs[1].width, 3.0);  // next - current = 11 - 8
-        assert_eq!(text_run.glyphs[2].width, 3.0);  // next - current = 14 - 11
-        assert_eq!(text_run.glyphs[3].width, 5.0);  // next - current = 19 - 14
-        // 最后一个 glyph 的宽度使用默认值
-        assert_eq!(text_run.glyphs[4].width, 6.0);  // font_size * 0.5
+        assert_eq!(text_run.glyphs[0].width, 8.0); // next - current = 8 - 0
+        assert_eq!(text_run.glyphs[1].width, 3.0); // next - current = 11 - 8
+        assert_eq!(text_run.glyphs[2].width, 3.0); // next - current = 14 - 11
+        assert_eq!(text_run.glyphs[3].width, 5.0); // next - current = 19 - 14
+                                                   // 最后一个 glyph 的宽度使用默认值
+        assert_eq!(text_run.glyphs[4].width, 6.0); // font_size * 0.5
 
         // 验证 compute_bbox 从绝对坐标推导
         let bbox = text_run.compute_bbox();
         assert_eq!(bbox.left, 72.0);
-        assert_eq!(bbox.top, 100.0);    // 112 - 12
-        assert_eq!(bbox.right, 97.0);   // 72 + 19 + 6 = 97
+        assert_eq!(bbox.top, 100.0); // 112 - 12
+        assert_eq!(bbox.right, 97.0); // 72 + 19 + 6 = 97
         assert_eq!(bbox.bottom, 112.0);
     }
 
@@ -919,12 +928,11 @@ mod coordinate_system_tests {
 
         // body 部分：origin_x = 第一个 glyph 的绝对坐标
         assert_eq!(right.text, "llo");
-        assert_eq!(right.origin_x, 83.0);  // 72 + 11
+        assert_eq!(right.origin_x, 83.0); // 72 + 11
         assert_eq!(right.glyphs[0].x, 83.0);
         assert_eq!(right.glyphs[1].x, 86.0);
     }
 }
-
 
 /// 文本 run，所有坐标都是绝对页面坐标（Y-Down 体系）
 /// 这是 LayoutRun 的重构版本，核心变化：
@@ -959,7 +967,12 @@ impl TextRun {
         let right = self.glyphs.iter().map(|g| g.right()).fold(left, f32::max);
         let top = self.baseline_y - self.style.font_size;
         let bottom = self.baseline_y;
-        BoundingBox { left, top, right, bottom }
+        BoundingBox {
+            left,
+            top,
+            right,
+            bottom,
+        }
     }
 
     /// run 的物理宽度（从 glyphs 推导）
@@ -968,7 +981,11 @@ impl TextRun {
             return 0.0;
         }
         let first_x = self.origin_x;
-        let last_right = self.glyphs.iter().map(|g| g.right()).fold(first_x, f32::max);
+        let last_right = self
+            .glyphs
+            .iter()
+            .map(|g| g.right())
+            .fold(first_x, f32::max);
         last_right - first_x
     }
 
@@ -1071,19 +1088,24 @@ impl TextRun {
 
     /// 从 StyledRun 构造（PDF 解析层的转换）
     pub fn from_styled(run: &StyledRun) -> Self {
-        let glyphs: Vec<GlyphPosition> = if run.char_origins.is_empty() || run.char_widths.is_empty() {
-            // 当没有 char_origins/char_widths 时，用 width 推导一个合成 glyph
-            // 这保证了 compute_bbox 能正确计算（用 origin_x + width）
-            vec![GlyphPosition::new(run.tx, run.width)]
-        } else {
-            run.char_origins.iter()
-                .zip(run.char_widths.iter())
-                .map(|(origin, width)| GlyphPosition::new(run.tx + *origin, *width))
-                .collect()
-        };
+        let glyphs: Vec<GlyphPosition> =
+            if run.char_origins.is_empty() || run.char_widths.is_empty() {
+                // 当没有 char_origins/char_widths 时，用 width 推导一个合成 glyph
+                // 这保证了 compute_bbox 能正确计算（用 origin_x + width）
+                vec![GlyphPosition::new(run.tx, run.width)]
+            } else {
+                run.char_origins
+                    .iter()
+                    .zip(run.char_widths.iter())
+                    .map(|(origin, width)| GlyphPosition::new(run.tx + *origin, *width))
+                    .collect()
+            };
 
         Self {
-            id: run.object_id.clone().unwrap_or_else(|| format!("run-{}", run.tx)),
+            id: run
+                .object_id
+                .clone()
+                .unwrap_or_else(|| format!("run-{}", run.tx)),
             text: run.text.clone(),
             origin_x: run.tx,
             baseline_y: run.ty,
@@ -1104,12 +1126,8 @@ impl TextRun {
 
     /// 转换回 LayoutRun（旧代码兼容，逐步删除）
     pub fn to_layout_run(&self) -> LayoutRun {
-        let char_origins: Vec<f32> = self.glyphs.iter()
-            .map(|g| g.x - self.origin_x)
-            .collect();
-        let char_widths: Vec<f32> = self.glyphs.iter()
-            .map(|g| g.width)
-            .collect();
+        let char_origins: Vec<f32> = self.glyphs.iter().map(|g| g.x - self.origin_x).collect();
+        let char_widths: Vec<f32> = self.glyphs.iter().map(|g| g.width).collect();
 
         LayoutRun {
             id: self.id.clone(),
@@ -1141,7 +1159,8 @@ pub struct TextParagraph {
 impl TextParagraph {
     /// 计算段落的包围盒（所有 run 的并集）
     pub fn compute_bbox(&self) -> BoundingBox {
-        self.runs.iter()
+        self.runs
+            .iter()
             .filter(|run| !run.text.is_empty())
             .map(|run| run.compute_bbox())
             .reduce(|acc, bbox| BoundingBox {
@@ -1179,4 +1198,3 @@ impl EditorSession {
         Some(glyph.x - self.anchor_bbox.left)
     }
 }
-

@@ -1,12 +1,12 @@
 // Re-export pure data structures and functions from core.
 pub use pdf_viewer_core::render::plan_builder::*;
 
+use crate::common::sanitize::sanitize_positive;
 use crate::present::plan::{preview_is_settled, quantize_cache_zoom, resolve_present_policy};
 use crate::render::tile_cache::{
     build_base_cache_key, build_detail_cache_key, find_reusable_base_layer,
     find_reusable_detail_tile, HostPresentState,
 };
-use crate::common::sanitize::sanitize_positive;
 use crate::viewer::viewer_store::HostViewerSession;
 use crate::zoom::zoom_store::HostZoomState;
 

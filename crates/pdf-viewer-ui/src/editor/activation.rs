@@ -11,8 +11,7 @@ use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::editor_controller::{
-    find_shell_bbox, open_at_point, open_region_editor, set_editor_caret,
-    EditorVisibilityAction,
+    find_shell_bbox, open_at_point, open_region_editor, set_editor_caret, EditorVisibilityAction,
 };
 use crate::editor::mode::{close_active_editor, read_state};
 use crate::editor::orchestrator::commit::commit_pending;
@@ -99,10 +98,13 @@ fn resolve_page_point_from_client(
             height: page_height,
         },
     );
-    let page_point = transform.to_page(ClientPoint {
-        x: client_x,
-        y: client_y,
-    }, None);
+    let page_point = transform.to_page(
+        ClientPoint {
+            x: client_x,
+            y: client_y,
+        },
+        None,
+    );
     // Clamp to the paragraph shell bbox so the caret stays within the target.
     let x = page_point.x.clamp(shell_bbox.left, shell_bbox.right);
     let y = page_point.y.clamp(shell_bbox.top, shell_bbox.bottom);
@@ -160,9 +162,7 @@ fn resolve_target_at_page_point(page_x: f32, page_y: f32) -> Option<ParagraphInt
     None
 }
 
-pub fn activate_from_client(
-    request: OpenEditorAtClientPointRequest,
-) -> EditorVisibilityAction {
+pub fn activate_from_client(request: OpenEditorAtClientPointRequest) -> EditorVisibilityAction {
     let resolved_paragraph_id = if request.paragraph_id.trim().is_empty() {
         let transform = HostPageTransform::new(
             HostReferenceRect {
@@ -176,10 +176,13 @@ pub fn activate_from_client(
                 height: request.page_height,
             },
         );
-        let page_point = transform.to_page(ClientPoint {
-            x: request.client_x,
-            y: request.client_y,
-        }, None);
+        let page_point = transform.to_page(
+            ClientPoint {
+                x: request.client_x,
+                y: request.client_y,
+            },
+            None,
+        );
         let Some(target) = resolve_target_at_page_point(page_point.x, page_point.y) else {
             // 点空白 = 退出编辑：先 commit pending edit 持久化当前编辑，
             // 再 close 当前 active editor，让 UI 回到 idle。
@@ -280,6 +283,15 @@ pub fn activate_from_client(
     );
 
     let primary = open_at_point(&resolved_paragraph_id, click_page_x, click_page_y);
+    crate::chain_trace!(
+        "caret.diag.open.result",
+        "targetId" => &resolved_paragraph_id,
+        "attempt" => "primary",
+        "pageX" => format!("{:.2}", click_page_x),
+        "pageY" => format!("{:.2}", click_page_y),
+        "changed" => primary.changed,
+        "requestVisibilityRender" => primary.request_visibility_render,
+    );
     if primary.changed {
         return primary;
     }
@@ -288,6 +300,15 @@ pub fn activate_from_client(
         &resolved_paragraph_id,
         fallback_page_point.0,
         fallback_page_point.1,
+    );
+    crate::chain_trace!(
+        "caret.diag.open.result",
+        "targetId" => &resolved_paragraph_id,
+        "attempt" => "fallback",
+        "pageX" => format!("{:.2}", fallback_page_point.0),
+        "pageY" => format!("{:.2}", fallback_page_point.1),
+        "changed" => fallback.changed,
+        "requestVisibilityRender" => fallback.request_visibility_render,
     );
     fallback
 }
@@ -324,10 +345,13 @@ pub fn move_caret_to_client(request: MoveCaretToClientPointRequest) -> Option<us
         },
     );
     // Convert client → page coordinates using full-page transform, then to local.
-    let page_point = transform.to_page(ClientPoint {
-        x: request.client_x,
-        y: request.client_y,
-    }, None);
+    let page_point = transform.to_page(
+        ClientPoint {
+            x: request.client_x,
+            y: request.client_y,
+        },
+        None,
+    );
     let shell_x =
         (page_point.x - shell_bbox.left).clamp(0.0, (shell_bbox.right - shell_bbox.left).max(0.0));
     let shell_y =
@@ -343,8 +367,7 @@ pub fn move_caret_to_client(request: MoveCaretToClientPointRequest) -> Option<us
     // the caret. The caret resolution function already handles out-of-bounds
     // positions by snapping to the nearest caret stop.
 
-    let caret_index =
-        caret_at_shell_point(&active_target, &draft_text, shell_x, shell_y);
+    let caret_index = caret_at_shell_point(&active_target, &draft_text, shell_x, shell_y);
     crate::chain_trace!(
         "caret.diag.move",
         "clientX" => format!("{:.2}", request.client_x),

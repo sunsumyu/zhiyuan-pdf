@@ -1,8 +1,7 @@
 //! ReviewSession — P2 struct-based WASM API for change-review (accept/reject patches).
 //!
-//! Mirrors the P0 `EditorSession` / P1 `DocumentSession` / P2 `FindSession` pattern.
-//! Delegates to `crate::document::review`. The legacy `review::facade::reviewFacade*`
-//! functions remain for backward compatibility.
+//! Mirrors the P0 `EditorSession` / P1 `DocumentSession` / P2 `FindSession` pattern
+//! and delegates to the document review helpers.
 
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::to_value;
@@ -12,6 +11,15 @@ use crate::document::review::{
     accept_all_review_changes, accept_review_change, collect_review_changes, read_review_feed,
     reject_all_review_changes, reject_review_change,
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewLocateResult {
+    pub page_index: u16,
+    pub region_id: String,
+    pub kind: Option<String>,
+    pub original_text: String,
+}
 
 // ── ReviewSessionState (Batch 2 sec 4) ──────────────────────────
 //
@@ -94,6 +102,21 @@ impl ReviewSession {
     #[wasm_bindgen(js_name = "rejectAll")]
     pub fn reject_all(&self) -> JsValue {
         to_value(&reject_all_review_changes()).unwrap_or(JsValue::NULL)
+    }
+
+    /// Locate a pending change by `patch_key`.
+    #[wasm_bindgen(js_name = "locate")]
+    pub fn locate(&self, patch_key: String) -> JsValue {
+        let result = collect_review_changes()
+            .into_iter()
+            .find(|entry| entry.patch_key == patch_key)
+            .map(|entry| ReviewLocateResult {
+                page_index: entry.page_index,
+                region_id: entry.region_id,
+                kind: entry.kind,
+                original_text: entry.original_text,
+            });
+        to_value(&result).unwrap_or(JsValue::NULL)
     }
 
     /// Current session state (Idle / HasPending).

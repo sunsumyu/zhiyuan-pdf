@@ -244,16 +244,10 @@ pub fn apply_format(action: EditorFormatAction) -> ActiveEditorFormatState {
         EditorFormatAction::DecreaseFontSize => step_font_size(false),
         EditorFormatAction::SetParagraphMode { mode } => set_paragraph_mode(&mode),
         EditorFormatAction::SetColor { color } => set_color(&color),
-        EditorFormatAction::SetFontFamily { font_family } => {
-            set_font_family(&font_family)
-        }
+        EditorFormatAction::SetFontFamily { font_family } => set_font_family(&font_family),
         EditorFormatAction::SetFontSize { font_size } => set_font_size(font_size),
-        EditorFormatAction::SetCharSpacing { char_spacing } => {
-            set_char_spacing(char_spacing)
-        }
-        EditorFormatAction::SetLineHeight { line_height } => {
-            set_line_height(line_height)
-        }
+        EditorFormatAction::SetCharSpacing { char_spacing } => set_char_spacing(char_spacing),
+        EditorFormatAction::SetLineHeight { line_height } => set_line_height(line_height),
         EditorFormatAction::SetAlignment { alignment } => set_alignment(&alignment),
         EditorFormatAction::SetListKind { list_kind } => set_list_kind(&list_kind),
     }

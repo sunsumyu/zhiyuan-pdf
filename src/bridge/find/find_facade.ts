@@ -41,36 +41,6 @@ export type SearchDocumentRequest = {
     caseSensitive: boolean;
 };
 
-export type ReplaceRequest = {
-    path: string;
-    pageIndex: number;
-    regionId: string;
-    kind: string;
-    originalText: string;
-    query: string;
-    replacement: string;
-    caseSensitive: boolean;
-};
-
-export type ReplaceResult = {
-    applied: boolean;
-    pageIndex: number;
-};
-
-export type BatchReplaceRequest = {
-    path: string;
-    pageCount: number;
-    query: string;
-    replacement: string;
-    caseSensitive: boolean;
-};
-
-export type BatchReplaceResult = {
-    appliedCount: number;
-    skippedCount: number;
-    touchedPages: number[];
-};
-
 // ── Helpers ──
 
 function callWasm<T>(fnName: string, arg?: unknown): T | null {
@@ -110,12 +80,4 @@ export async function findInDocumentAsync(request: SearchDocumentRequest): Promi
     } catch {
         return null;
     }
-}
-
-export function replaceOne(request: ReplaceRequest): ReplaceResult | null {
-    return callWasm<ReplaceResult>('searchFacadeReplace', request);
-}
-
-export function replaceAll(request: BatchReplaceRequest): BatchReplaceResult | null {
-    return callWasm<BatchReplaceResult>('searchFacadeBatchReplace', request);
 }

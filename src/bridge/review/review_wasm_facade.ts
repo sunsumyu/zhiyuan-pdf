@@ -1,19 +1,21 @@
 // Review WASM bridge — delegates to `ReviewSession` struct API (P2 of session-API plan).
 
 import { getWasmApi } from '../shared/wasm_loader';
-import type { WasmModule } from '../shared/wasm_loader';
 import type { ReviewSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
 // ── Singleton ReviewSession instance ──────────────────────────────────
 
 let _session: ReviewSession | null = null;
 
-function getReviewSession(): ReviewSession | null {
+function getReviewSession(): ReviewSession {
     if (!_session) {
         const api = getWasmApi();
         if (typeof api?.ReviewSession === 'function') {
             _session = new api.ReviewSession();
         }
+    }
+    if (!_session) {
+        throw new Error('ReviewSession WASM API is unavailable');
     }
     return _session;
 }
@@ -52,28 +54,14 @@ export type ReviewFacadeResult = {
 
 // ── Helpers ──
 
-function callMethod<T>(method: string, ...args: unknown[]): T | null {
+function callMethod<T>(method: string, ...args: unknown[]): T {
     const session = getReviewSession();
     const sessionRecord = session as unknown as Record<string, unknown>;
     const fn = sessionRecord?.[method];
-    if (typeof fn !== 'function') return null;
-    try {
-        return (fn as (...a: unknown[]) => T).apply(session, args);
-    } catch {
-        return null;
+    if (typeof fn !== 'function') {
+        throw new Error(`Required ReviewSession method is unavailable: ${method}`);
     }
-}
-
-// `locateChange` is not yet on `ReviewSession`; fall back to the raw wasm export.
-function callRawWasm<T>(fnName: string, arg?: unknown): T | null {
-    const api = getWasmApi() as unknown as Record<string, unknown>;
-    const fn = api?.[fnName];
-    if (typeof fn !== 'function') return null;
-    try {
-        return arg !== undefined ? (fn as (a?: unknown) => T)(arg) : (fn as () => T)();
-    } catch {
-        return null;
-    }
+    return (fn as (...a: unknown[]) => T).apply(session, args);
 }
 
 // ── Review API ──
@@ -82,26 +70,26 @@ export function getReviewFeed(): ReviewFeedResult | null {
     return callMethod<ReviewFeedResult>('readFeed');
 }
 
-export function acceptChange(patchKey: string): ReviewFacadeResult | null {
+export function acceptChange(patchKey: string): ReviewFacadeResult {
     const r = callMethod<{ changed: boolean }>('accept', patchKey);
-    return r ? { changed: r.changed, feed: null, locateResult: null, renderFrame: null } : null;
+    return { changed: r.changed, feed: null, locateResult: null, renderFrame: null };
 }
 
-export function rejectChange(patchKey: string): ReviewFacadeResult | null {
+export function rejectChange(patchKey: string): ReviewFacadeResult {
     const r = callMethod<{ changed: boolean }>('reject', patchKey);
-    return r ? { changed: r.changed, feed: null, locateResult: null, renderFrame: null } : null;
+    return { changed: r.changed, feed: null, locateResult: null, renderFrame: null };
 }
 
-export function acceptAllChanges(): ReviewFacadeResult | null {
+export function acceptAllChanges(): ReviewFacadeResult {
     const r = callMethod<{ changed: boolean }>('acceptAll');
-    return r ? { changed: r.changed, feed: null, locateResult: null, renderFrame: null } : null;
+    return { changed: r.changed, feed: null, locateResult: null, renderFrame: null };
 }
 
-export function rejectAllChanges(): ReviewFacadeResult | null {
+export function rejectAllChanges(): ReviewFacadeResult {
     const r = callMethod<{ changed: boolean }>('rejectAll');
-    return r ? { changed: r.changed, feed: null, locateResult: null, renderFrame: null } : null;
+    return { changed: r.changed, feed: null, locateResult: null, renderFrame: null };
 }
 
 export function locateChange(patchKey: string): ReviewLocateResult | null {
-    return callRawWasm<ReviewLocateResult>('locate_review_change', patchKey);
+    return callMethod<ReviewLocateResult>('locate', patchKey);
 }

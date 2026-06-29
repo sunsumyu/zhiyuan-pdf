@@ -46,6 +46,16 @@ pub struct ProjectedEditorShell {
     pub text_decoration: String,
     #[serde(default)]
     pub initial_caret_index: usize,
+    #[serde(default)]
+    pub live_caret_index: usize,
+    #[serde(default)]
+    pub marker_text: Option<String>,
+    #[serde(default)]
+    pub marker_kind: Option<String>,
+    #[serde(default)]
+    pub marker_advance: Option<f32>,
+    #[serde(default)]
+    pub marker_run_count: usize,
 }
 
 // const WIDTH_BUFFER: f32 = 6.0; // 已移除硬编码缓冲
@@ -87,16 +97,15 @@ pub fn project_targets(
         .collect()
 }
 
-pub fn project_shell(
-    display_zoom: f32,
-    page_height: f32,
-) -> Option<ProjectedEditorShell> {
+pub fn project_shell(display_zoom: f32, page_height: f32) -> Option<ProjectedEditorShell> {
     let zoom = sanitize_display_zoom(display_zoom);
     let transform = PdfToPageViewTransform::new(page_height);
     let active_state = read_state()?;
     let caret_index = active_state.normalized_caret_index();
     let draft_text = active_state.current_text().to_string();
     let target = active_state.target;
+    let initial_caret_index = target.initial_body_caret_index();
+    let marker = target.scene.document_plan.marker.as_ref();
 
     // 同上：bbox_top 为视觉顶部, bbox_bottom 为视觉底部 (Y-Down 统一语义)
     let visual_top_left = transform.point(target.bbox_left, target.bbox_top);
@@ -120,7 +129,12 @@ pub fn project_shell(
         font_style: target.font_style,
         color: target.color,
         text_decoration: target.text_decoration,
-        initial_caret_index: caret_index,
+        initial_caret_index,
+        live_caret_index: caret_index,
+        marker_text: marker.map(|marker| marker.text.clone()),
+        marker_kind: marker.map(|marker| format!("{:?}", marker.kind)),
+        marker_advance: marker.map(|marker| marker.advance),
+        marker_run_count: marker.map(|marker| marker.runs.len()).unwrap_or_default(),
     })
 }
 

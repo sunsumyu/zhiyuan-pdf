@@ -1,7 +1,7 @@
-use wasm_bindgen::prelude::*;
+use super::{build_frame_request, EditorSession};
 use crate::editor::editor_types::*;
 use crate::guard_state;
-use super::{EditorSession, build_frame_request};
+use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 impl EditorSession {

@@ -51,13 +51,25 @@ pub(crate) fn compute_segments_bbox(segments: &[PathSegment]) -> Option<(f32, f3
     let mut max_y = f32::NEG_INFINITY;
     for seg in segments {
         for pt in &seg.points {
-            if pt[0] < min_x { min_x = pt[0]; }
-            if pt[0] > max_x { max_x = pt[0]; }
-            if pt[1] < min_y { min_y = pt[1]; }
-            if pt[1] > max_y { max_y = pt[1]; }
+            if pt[0] < min_x {
+                min_x = pt[0];
+            }
+            if pt[0] > max_x {
+                max_x = pt[0];
+            }
+            if pt[1] < min_y {
+                min_y = pt[1];
+            }
+            if pt[1] > max_y {
+                max_y = pt[1];
+            }
         }
     }
-    if min_x.is_infinite() { None } else { Some((min_x, min_y, max_x, max_y)) }
+    if min_x.is_infinite() {
+        None
+    } else {
+        Some((min_x, min_y, max_x, max_y))
+    }
 }
 
 /// Resolve a TJ array (mixed strings and kerning adjustments) into unified text geometry.
@@ -98,5 +110,3 @@ lazy_static::lazy_static! {
     static ref PAGE_LOCKS: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::Mutex<()>>>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
 }
-
-

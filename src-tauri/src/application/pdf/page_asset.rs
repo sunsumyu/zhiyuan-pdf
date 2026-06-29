@@ -32,7 +32,9 @@ mod tests {
 
     #[tokio::test]
     async fn waits_for_inflight_key() {
-        let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX.lock().unwrap();
+        let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX
+            .lock()
+            .unwrap();
         crate::infrastructure::pdf::log_service::clear_event_log();
         let state = Arc::new(crate::AppState::new());
         let first = PageAssetAdmissionService::acquire_inflight_lock(

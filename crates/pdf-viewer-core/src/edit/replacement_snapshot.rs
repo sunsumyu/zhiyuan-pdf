@@ -70,9 +70,7 @@ pub fn build_edit_replacement_snapshot(
     })
 }
 
-pub fn find_target(
-    patch: &PersistableRegionPatch,
-) -> Option<ActiveEditorTarget> {
+pub fn find_target(patch: &PersistableRegionPatch) -> Option<ActiveEditorTarget> {
     let snapshot = patch.snapshot.as_ref()?;
     snapshot
         .get("replacementTarget")

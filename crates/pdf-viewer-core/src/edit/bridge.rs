@@ -83,12 +83,7 @@ pub fn build_rich_patch(
             if paragraph.id != base_paragraph_id {
                 continue;
             }
-            let scene = build_target_scene(
-                paragraph,
-                vector_model,
-                paragraph_id,
-                None,
-            )?;
+            let scene = build_target_scene(paragraph, vector_model, paragraph_id, None)?;
             let replacement_target = active_editor_target_from_scene(plan, paragraph, &scene);
             let original_text = scene.body_text().to_string();
             let is_list_item = scene.marker().is_some();
@@ -255,12 +250,7 @@ pub fn build_paragraph_render_target(
             if paragraph.id != base_paragraph_id {
                 continue;
             }
-            let scene = build_target_scene(
-                paragraph,
-                vector_model,
-                paragraph_id,
-                None,
-            )?;
+            let scene = build_target_scene(paragraph, vector_model, paragraph_id, None)?;
             return Some(ActiveEditorTarget {
                 paragraph_id: scene.target_id.clone(),
                 region_id: paragraph.region_id.clone(),
@@ -295,8 +285,7 @@ pub fn resolve_paragraph_shell_bbox(
             if paragraph.id != base_paragraph_id {
                 continue;
             }
-            let scene =
-                build_target_scene(paragraph, None, paragraph_id, None)?;
+            let scene = build_target_scene(paragraph, None, paragraph_id, None)?;
             return Some(scene.shell_bbox);
         }
     }

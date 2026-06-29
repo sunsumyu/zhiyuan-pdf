@@ -59,9 +59,7 @@ pub fn set_query(query: String) -> HostCommentReviewSession {
     })
 }
 
-pub fn select_comment(
-    selected_comment_id: Option<String>,
-) -> HostCommentReviewSession {
+pub fn select_comment(selected_comment_id: Option<String>) -> HostCommentReviewSession {
     update_review_session(|session| {
         session.selected_comment_id = selected_comment_id;
     })

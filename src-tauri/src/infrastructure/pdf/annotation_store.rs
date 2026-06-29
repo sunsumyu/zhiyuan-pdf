@@ -1,5 +1,5 @@
-use lopdf::{Document, Object};
 use crate::infrastructure::pdf::pdf_utils::obj_to_f32;
+use lopdf::{Document, Object};
 
 #[derive(Debug, Clone)]
 pub struct StoredPdfHighlight {
@@ -193,4 +193,3 @@ fn pdf_rect_to_top_down_box(rect: [f32; 4], page_height: f32) -> [f32; 4] {
 
     [left, page_height - top, width, height]
 }
-

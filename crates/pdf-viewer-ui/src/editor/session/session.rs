@@ -4,11 +4,11 @@ use crate::editor::debug_trace::{
 };
 use crate::editor::engine_state::LiveEditorParagraphState;
 use crate::editor::session::history::LocalEditHistory;
-use pdf_viewer_core::text::style_mapper::StyleMapper;
 use crate::ui_state_store::{
-    current_paragraph_patch, patch_text as current_paragraph_patch_text, current_patch_revision,
+    current_paragraph_patch, current_patch_revision, patch_text as current_paragraph_patch_text,
 };
 use crate::viewer::viewer_store::current_document_revision;
+use pdf_viewer_core::text::style_mapper::StyleMapper;
 use serde::{Deserialize, Serialize};
 
 // ActiveEditorTarget 数据结构已迁至 pdf_viewer_core::edit::active_target。
@@ -174,10 +174,7 @@ pub fn open_paragraph_editor(paragraph_id: String, target: ActiveEditorTarget) -
                 ),
                 dbg_field("initialCaretIndex", initial_caret),
                 dbg_field("sourceText", source_text),
-                dbg_field(
-                    "currentText",
-                    maybe_text.clone().unwrap_or_default(),
-                ),
+                dbg_field("currentText", maybe_text.clone().unwrap_or_default()),
                 dbg_field(
                     "liveColor",
                     mode.live_state
@@ -288,10 +285,7 @@ pub fn active_editor_selection() -> Option<(usize, usize, String)> {
     })
 }
 
-pub fn sync_input(
-    new_text: String,
-    caret_index: usize,
-) -> ActiveEditorInputSyncResult {
+pub fn sync_input(new_text: String, caret_index: usize) -> ActiveEditorInputSyncResult {
     with_editor_mode_mut(|mode| {
         let Some(live_state) = mode.live_state.as_mut() else {
             dbg_event(
@@ -349,7 +343,7 @@ pub fn undo_active_editor() -> Option<ActiveEditorInputSyncResult> {
         };
         let prev = mode.history.undo(live_state)?;
         *live_state = prev;
-        
+
         Some(ActiveEditorInputSyncResult {
             text_changed: true,
             caret_changed: true,
@@ -367,7 +361,7 @@ pub fn redo_active_editor() -> Option<ActiveEditorInputSyncResult> {
         };
         let next = mode.history.redo(live_state)?;
         *live_state = next;
-        
+
         Some(ActiveEditorInputSyncResult {
             text_changed: true,
             caret_changed: true,
@@ -389,21 +383,19 @@ pub fn can_redo() -> bool {
 pub fn render_scene_key() -> String {
     let document_revision = current_document_revision();
     let patch_revision = current_patch_revision();
-    with_editor_mode(|mode| {
-        match mode.live_state.as_ref() {
-            Some(live_state) if !live_state.paragraph_id().is_empty() => {
-                format!(
-                    "doc:rev{}|patch:rev{}|edit:{}:rev{}",
-                    document_revision,
-                    patch_revision,
-                    live_state.paragraph_id(),
-                    live_state.scene_revision
-                )
-            }
-            _ => format!(
-                "doc:rev{}|patch:rev{}|edit:none:rev0",
-                document_revision, patch_revision
-            ),
+    with_editor_mode(|mode| match mode.live_state.as_ref() {
+        Some(live_state) if !live_state.paragraph_id().is_empty() => {
+            format!(
+                "doc:rev{}|patch:rev{}|edit:{}:rev{}",
+                document_revision,
+                patch_revision,
+                live_state.paragraph_id(),
+                live_state.scene_revision
+            )
         }
+        _ => format!(
+            "doc:rev{}|patch:rev{}|edit:none:rev0",
+            document_revision, patch_revision
+        ),
     })
 }

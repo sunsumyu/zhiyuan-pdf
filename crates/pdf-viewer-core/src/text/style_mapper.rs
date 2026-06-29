@@ -1,6 +1,6 @@
 use crate::models::{LayoutParagraph, LayoutRun, RunStyle, TextRun};
-use crate::typography::font_resolver::looks_like_symbolic_font;
 use crate::text::glyph_layout::is_decorative_text;
+use crate::typography::font_resolver::looks_like_symbolic_font;
 use serde::{Deserialize, Serialize};
 
 /// 样式分片，表示一段具有相同样式的文本
