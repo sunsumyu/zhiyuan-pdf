@@ -78,6 +78,17 @@ fn split_runs_at(
         if run_end <= split_index {
             // 完全在 marker 区的 run：保持原始绝对坐标，不归零
             // resolve_run_layout会用 line_left + origin 计算绝对位置
+            crate::common::trace::emit(
+                crate::common::trace::TraceLevel::Debug,
+                "marker-split".to_string(),
+                "full-marker-run".to_string(),
+                vec![
+                    crate::common::trace::field("runIdx", run_index),
+                    crate::common::trace::field("text", run.text.as_str()),
+                    crate::common::trace::field("charOrigins", format!("{:?}", run.char_origins)),
+                    crate::common::trace::field("width", run.width),
+                ],
+            );
             let mut cloned = run.clone();
             cloned.id = format!("{line_key}::marker::{run_index}");
             cloned.start = 0;
@@ -108,6 +119,17 @@ fn split_runs_at(
                     .take(marker_count)
                     .collect::<Vec<_>>();
                 // 保持 marker 的原始绝对坐标，不归零
+                crate::common::trace::emit(
+                    crate::common::trace::TraceLevel::Debug,
+                    "marker-split".to_string(),
+                    "split-marker-run".to_string(),
+                    vec![
+                        crate::common::trace::field("runIdx", run_index),
+                        crate::common::trace::field("text", chars[..marker_count].iter().collect::<String>()),
+                        crate::common::trace::field("charOrigins", format!("{:?}", marker_origins)),
+                        crate::common::trace::field("width", run.width),
+                    ],
+                );
                 marker_runs.push(StyleRunSnapshot {
                     id: format!("{line_key}::marker::{run_index}"),
                     text: chars[..marker_count].iter().collect(),
@@ -241,6 +263,18 @@ pub(crate) fn build_list_item_region(
     };
 
     let semantics = derive_list_text_semantics(&text);
+    crate::common::trace::emit(
+        crate::common::trace::TraceLevel::Debug,
+        "marker-detect".to_string(),
+        "semantics".to_string(),
+        vec![
+            crate::common::trace::field("text", text.as_str()),
+            crate::common::trace::field("hasMarker", semantics.has_marker),
+            crate::common::trace::field("markerText", semantics.marker_text.as_str()),
+            crate::common::trace::field("bodyCharStart", semantics.body_char_start),
+            crate::common::trace::field("markerKind", format!("{:?}", semantics.kind)),
+        ],
+    );
     let (marker_runs, body_runs) = if semantics.has_marker {
         split_runs_at(&raw_style_runs, semantics.body_char_start, &line_key)
     } else {
