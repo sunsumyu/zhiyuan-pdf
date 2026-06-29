@@ -10,17 +10,6 @@ fn chars_count(text: &str) -> usize {
     text.chars().count()
 }
 
-fn normalize_style_run_origins(mut run: StyleRunSnapshot) -> StyleRunSnapshot {
-    if let Some(first_origin) = run.char_origins.first().copied() {
-        run.char_origins = run
-            .char_origins
-            .into_iter()
-            .map(|origin| origin - first_origin)
-            .collect();
-    }
-    run
-}
-
 fn style_run_right(run: &StyleRunSnapshot) -> f32 {
     if let Some(last_origin) = run.char_origins.last().copied() {
         let last_width = run
