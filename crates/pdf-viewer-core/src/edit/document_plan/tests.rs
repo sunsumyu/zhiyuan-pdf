@@ -2,8 +2,9 @@ use super::*;
 use crate::models::{
     BoundingBox, EditorControlStyle, FontSourceKind, GlyphPaintParagraph, GlyphPaintRun,
     LayoutParagraph, LayoutRun, PaintMode, ParagraphEditContext, ParagraphStyle, ResolvedFontFace,
-    ResolvedFontIdentity, RunStyle, SemanticRole, StyledRun, SymbolClass, VectorPageModel,
-    VectorRenderObject, VectorTextObject,
+    ResolvedFontIdentity, RunStyle, SemanticRole, StyledRun, SymbolClass, VectorImageObject,
+    VectorPageModel, VectorPathObject, VectorPathSegment, VectorRenderObject, VectorTextObject,
+    VisualMarkerContent,
 };
 use crate::text::glyph_layout::build_editor_session_text_plan;
 
@@ -545,3 +546,81 @@ fn uses_vector_geometry() {
         "编程语言: Rust (Solana/Anchor), Solidity (Ethereum)"
     );
 }
+
+fn bullet_image(id: &str, x: f32, y: f32, size: f32) -> VectorRenderObject {
+    VectorRenderObject::Image(VectorImageObject {
+        id: id.to_string(),
+        x,
+        y,
+        width: size,
+        height: size,
+        z_index: 1,
+    })
+}
+
+fn decorative_path(id: &str, x: f32, y: f32, width: f32, height: f32) -> VectorRenderObject {
+    VectorRenderObject::Path(VectorPathObject {
+        id: id.to_string(),
+        segments: vec![VectorPathSegment {
+            command: "move".to_string(),
+            points: vec![[x, y], [x + width, y + height]],
+        }],
+        fill_color: Some("#ff0000".to_string()),
+        stroke_color: None,
+        fill: true,
+        stroke: false,
+        stroke_width: 0.0,
+        z_index: 1,
+    })
+}
+
+#[test]
+fn detects_graphic_marker_alongside_body() {
+    // Body 文本位于 x=30..120；左侧 x=10..18 放置一个 8x8 的图形 bullet。
+    let session = session_from_runs(vec![test_layout_run("body", "Body", 30.0, 90.0)]);
+    let paragraph = paragraph_from_session(session.clone());
+    let vector_model = VectorPageModel {
+        page_index: 0,
+        width: 400.0,
+        height: 200.0,
+        objects: vec![
+            bullet_image("bullet-img", 10.0, 44.0, 8.0),
+            decorative_path("deco-bar", 0.0, 48.0, 400.0, 2.0),
+        ],
+    };
+
+    let plan = from_target_id(&paragraph, Some(&vector_model), "p1", None)
+        .expect("plan should resolve");
+
+    let graphic_markers = &plan.graphic_markers;
+    assert_eq!(
+        graphic_markers.len(),
+        1,
+        "only the small bullet image should be detected as a graphic marker"
+    );
+    let marker = &graphic_markers[0];
+    let VisualMarkerContent::Graphic { object_index, .. } = &marker.content else {
+        panic!("expected graphic marker content");
+    };
+    assert_eq!(*object_index, 0, "marker should reference the bullet image");
+    assert!(marker.contains_object_index(0));
+}
+
+#[test]
+fn graphic_marker_keeps_shell_bbox_extent() {
+    let session = session_from_runs(vec![test_layout_run("body", "Body", 30.0, 90.0)]);
+    let paragraph = paragraph_from_session(session.clone());
+    let vector_model = VectorPageModel {
+        page_index: 0,
+        width: 400.0,
+        height: 200.0,
+        objects: vec![bullet_image("bullet-img", 10.0, 44.0, 8.0)],
+    };
+
+    let plan = from_target_id(&paragraph, Some(&vector_model), "p1", None)
+        .expect("plan should resolve");
+
+    assert!(plan.shell_bbox.left <= 10.0);
+    assert!(plan.shell_bbox.right >= 120.0);
+}
+

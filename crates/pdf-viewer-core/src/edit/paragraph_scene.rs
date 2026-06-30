@@ -77,6 +77,7 @@ impl<'de> Deserialize<'de> for ParagraphEditorScene {
                 body_lines: Vec::new(),
                 body_initial_caret: helper.body_initial_caret.unwrap_or(0),
                 marker: helper.marker,
+                graphic_markers: Vec::new(),
                 original_runs: helper.original_runs.unwrap_or_default(),
             }
         };
@@ -123,6 +124,10 @@ impl ParagraphEditorScene {
 
     pub fn original_runs(&self) -> &[GlyphPaintRun] {
         &self.document_plan.original_runs
+    }
+
+    pub fn graphic_markers(&self) -> &[crate::models::VisualMarker] {
+        &self.document_plan.graphic_markers
     }
 }
 

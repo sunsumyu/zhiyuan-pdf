@@ -29,7 +29,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{HtmlImageElement, ImageBitmap};
 
 impl CanvasRenderer {
-    pub(super) fn draw_vector_object(
+    pub(crate) fn draw_vector_object(
         &self,
         obj: &VectorRenderObject,
         object_index: Option<usize>,
@@ -315,6 +315,8 @@ impl CanvasRenderer {
                             draw_active_editor_shell_overlay_page(
                                 self,
                                 &overlay,
+                                None,
+                                image_provider,
                                 overlay.marker_text_override.as_deref(),
                             );
                         }
@@ -323,6 +325,8 @@ impl CanvasRenderer {
                                 self,
                                 &overlay.target,
                                 &overlay.draft_text,
+                                None,
+                                image_provider,
                                 overlay.marker_text_override.as_deref(),
                                 "persisted-page-canvas",
                             );
@@ -448,6 +452,8 @@ impl CanvasRenderer {
                                     draw_active_editor_shell_overlay_page(
                                         self,
                                         &overlay,
+                                        Some(vector_model),
+                                        image_provider,
                                         overlay.marker_text_override.as_deref(),
                                     );
                                 }
@@ -456,6 +462,8 @@ impl CanvasRenderer {
                                         self,
                                         &overlay.target,
                                         &overlay.draft_text,
+                                        Some(vector_model),
+                                        image_provider,
                                         overlay.marker_text_override.as_deref(),
                                         "persisted-page-canvas",
                                     );
@@ -500,6 +508,8 @@ impl CanvasRenderer {
                             draw_active_editor_shell_overlay_page(
                                 self,
                                 &overlay,
+                                None,
+                                image_provider,
                                 overlay.marker_text_override.as_deref(),
                             );
                         }
@@ -508,6 +518,8 @@ impl CanvasRenderer {
                                 self,
                                 &overlay.target,
                                 &overlay.draft_text,
+                                None,
+                                image_provider,
                                 overlay.marker_text_override.as_deref(),
                                 "persisted-page-canvas",
                             );

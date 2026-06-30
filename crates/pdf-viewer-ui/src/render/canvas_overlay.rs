@@ -8,6 +8,7 @@ use crate::editor::replacement_region::build_region;
 use crate::editor::session::ActiveEditorTarget;
 use crate::editor::text_geometry::measure_text_width as measure_text_width_shared;
 use crate::render::canvas::CanvasRenderer;
+use pdf_viewer_core::models::{VectorPageModel, VisualMarkerContent};
 
 pub(crate) fn path_bbox_summary(
     path: &pdf_viewer_core::models::VectorPathObject,
@@ -84,9 +85,39 @@ fn count_overlay_underline_runs(
         .count()
 }
 
+fn draw_graphic_markers(
+    renderer: &CanvasRenderer,
+    document_plan: &pdf_viewer_core::edit::document_plan::EditContext,
+    vector_model: Option<&VectorPageModel>,
+    image_provider: &js_sys::Map,
+) {
+    let Some(vector_model) = vector_model else {
+        return;
+    };
+    for marker in &document_plan.graphic_markers {
+        let VisualMarkerContent::Graphic { object_index, .. } = &marker.content else {
+            continue;
+        };
+        let Some(object) = vector_model.objects.get(*object_index) else {
+            continue;
+        };
+        renderer.draw_vector_object(object, Some(*object_index), image_provider, None);
+        dbg_event(
+            "paint.overlay",
+            "graphic-marker-redraw",
+            vec![
+                dbg_field("paragraphId", document_plan.target_id.as_str()),
+                dbg_field("objectIndex", *object_index),
+            ],
+        );
+    }
+}
+
 pub(crate) fn draw_active_editor_shell_overlay_page(
     renderer: &CanvasRenderer,
     overlay: &ParagraphRenderOverlay,
+    vector_model: Option<&VectorPageModel>,
+    image_provider: &js_sys::Map,
     marker_text_override: Option<&str>,
 ) {
     let active_target = &overlay.target;
@@ -95,6 +126,8 @@ pub(crate) fn draw_active_editor_shell_overlay_page(
             renderer,
             active_target,
             &overlay.draft_text,
+            vector_model,
+            image_provider,
             marker_text_override,
             "active-editor-page-canvas",
         );
@@ -156,6 +189,8 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
     renderer: &CanvasRenderer,
     active_target: &ActiveEditorTarget,
     draft_text: &str,
+    vector_model: Option<&VectorPageModel>,
+    image_provider: &js_sys::Map,
     marker_text_override: Option<&str>,
     owner_label: &str,
 ) {
@@ -220,10 +255,12 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
             dbg_field("sourceReplacementHeight", replacement_height),
         ],
     );
-    // marker 不再单独渲染，已在 build_persisted_overlay_render_plan 中统一排版
-
     let document_plan = &active_target.scene.document_plan;
     let session = &document_plan.body_session;
+    // marker 不再单独渲染，文本 marker 已在 build_persisted_overlay_render_plan 中统一排版。
+    // 图形 marker 由 source vector object 恢复，避免正文替换时被 row path suppression 误删。
+    draw_graphic_markers(renderer, document_plan, vector_model, image_provider);
+
     let render_plan =
         build_persisted_overlay_render_plan(document_plan, draft_text, |text, run| {
             measure_text_width_shared(&renderer.ctx, text, run)

@@ -135,6 +135,8 @@ pub(super) fn check_path_suppression(
     }
     if let Some(path_summary) = should_suppress(
         object,
+        object_index,
+        &overlay.overlay.graphic_markers,
         &overlay.replacement_region,
         &overlay.path_suppression_bbox,
     ) {

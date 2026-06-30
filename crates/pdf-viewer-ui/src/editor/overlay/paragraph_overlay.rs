@@ -107,12 +107,14 @@ pub fn collect_overlays(
                     dbg_field("draftText", patch.new_text.as_str()),
                 ],
             );
+            let graphic_markers = target.scene.graphic_markers().to_vec();
             overlays.insert(
                 paragraph_id.clone(),
                 ParagraphRenderOverlay {
                     owner: ParagraphRenderOverlayOwner::PersistedPageCanvas,
                     target,
                     source_object_indices,
+                    graphic_markers,
                     source_text: patch.original_text.clone(),
                     draft_text: patch.new_text.clone(),
                     replaces_source: true,
@@ -134,6 +136,7 @@ pub fn collect_overlays(
                 with_page_state(|page_state| resolve_marker_text(&active_state, page_state))
             });
         let source_object_indices = target_source_object_indices(&active_state.target);
+        let graphic_markers = active_state.target.scene.graphic_markers().to_vec();
         let replaces_source = active_state.requires_source_replacement();
         let source_text = active_state.target.source_body_text().to_string();
         let draft_text = active_state.current_text().to_string();
@@ -219,6 +222,7 @@ pub fn collect_overlays(
                 owner: ParagraphRenderOverlayOwner::ActiveEditorShell,
                 target: active_state.target.clone(),
                 source_object_indices,
+                graphic_markers,
                 source_text,
                 draft_text,
                 replaces_source,
@@ -464,5 +468,57 @@ mod persisted_overlay_tests {
             0,
             "patch from other page must be skipped"
         );
+    }
+
+    /// 回归：persisted overlay 必须把 target.scene 中的 graphic_markers 透传到 overlay，
+    /// 否则提交后渲染时 should_suppress 会误删图形 bullet 且 overlay 不回绘。
+    #[wasm_bindgen_test]
+    fn persisted_overlay_carries_graphic_markers() {
+        clear_state();
+
+        let paragraph_id = "p-graphic-1";
+        let mut target = make_active_editor_target(paragraph_id);
+        // 注入一个图形 marker（引用 vector object 索引 7）。
+        target.scene.document_plan.graphic_markers =
+            vec![pdf_viewer_core::models::VisualMarker::from_graphic(
+                7,
+                pdf_viewer_core::models::GraphicType::Image,
+                "bullet-7".to_string(),
+                BoundingBox {
+                    left: 40.0,
+                    top: 98.0,
+                    right: 48.0,
+                    bottom: 106.0,
+                },
+            )];
+        let target_json = serde_json::to_value(&target).expect("target serialise");
+
+        let patch = PersistableRegionPatch {
+            patch_key: "k-g".to_string(),
+            page_index: 0,
+            region_id: paragraph_id.to_string(),
+            original_text: "Body".to_string(),
+            new_text: "Body2".to_string(),
+            source: "list-item-region".to_string(),
+            snapshot: Some(json!({ "replacementTarget": target_json })),
+            kind: Some("text".to_string()),
+            ..Default::default()
+        };
+        record_patch(patch);
+
+        let plan = make_glyph_plan(0);
+        let overlays = collect_overlays(&plan, None);
+        let persisted: Vec<&ParagraphRenderOverlay> = overlays
+            .iter()
+            .filter(|o| matches!(o.owner, ParagraphRenderOverlayOwner::PersistedPageCanvas))
+            .collect();
+        assert_eq!(persisted.len(), 1, "persisted overlay must be produced");
+        let overlay = persisted[0];
+        assert_eq!(
+            overlay.graphic_markers.len(),
+            1,
+            "persisted overlay must carry the graphic marker from the target scene"
+        );
+        assert!(overlay.graphic_markers[0].contains_object_index(7));
     }
 }
