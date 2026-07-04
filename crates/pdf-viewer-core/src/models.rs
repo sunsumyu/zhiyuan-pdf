@@ -24,6 +24,7 @@ pub mod glyph;
 pub mod interaction;
 pub mod layout;
 pub mod marker;
+pub mod semantic_block;
 pub mod styled_run;
 pub mod vector;
 
@@ -34,5 +35,6 @@ pub use glyph::*;
 pub use interaction::*;
 pub use layout::*;
 pub use marker::*;
+pub use semantic_block::*;
 pub use styled_run::*;
 pub use vector::*;

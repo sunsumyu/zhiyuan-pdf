@@ -9,7 +9,7 @@
 
 use crate::infrastructure::pdf::commands::PdfEditCommand;
 use crate::log_step;
-use pdf_viewer_core::persistence::models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::{PersistableRegionPatch, PersistableSemanticOperation};
 
 pub(crate) async fn ensure_document_loaded(
     app_state: &crate::AppState,
@@ -43,8 +43,9 @@ pub(crate) async fn execute_region_patches(
     path: String,
     page_index: u16,
     patches: Vec<PersistableRegionPatch>,
+    semantic_ops: Vec<PersistableSemanticOperation>,
 ) -> Result<(), String> {
-    use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan;
+    use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan_v2;
 
     for patch in &patches {
         log_step!(
@@ -57,7 +58,7 @@ pub(crate) async fn execute_region_patches(
         );
     }
 
-    let materialization_plan = build_region_materialization_plan(&patches, &[]);
+    let materialization_plan = build_region_materialization_plan_v2(&patches, &semantic_ops, &[]);
     let mut commands: Vec<Box<dyn PdfEditCommand>> = Vec::new();
 
     if !materialization_plan.effective_text_reflows.is_empty() {

@@ -1,5 +1,5 @@
 use crate::infrastructure::pdf::models::PdfModifications;
-use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan;
+use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan_v2;
 use crate::infrastructure::pdf_read::backend::PdfReadBackend;
 use crate::infrastructure::pdf_read::scanned_backend::ScannedReadBackend;
 use lazy_static::lazy_static;
@@ -221,8 +221,9 @@ impl PdfDocumentService {
             modifications.region_patches.len(),
             modifications.text_reflows.len()
         );
-        let materialization_plan = build_region_materialization_plan(
+        let materialization_plan = build_region_materialization_plan_v2(
             &modifications.region_patches,
+            &modifications.semantic_ops,
             &modifications.text_reflows,
         );
         let materialization_report = materialization_plan.to_report(

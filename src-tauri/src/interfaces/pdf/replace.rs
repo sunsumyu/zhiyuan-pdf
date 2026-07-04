@@ -2,7 +2,7 @@
 
 use super::ipc_converters::execute_region_patches;
 use crate::log_step;
-use pdf_viewer_core::persistence::models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::{PersistableRegionPatch, PersistableSemanticOperation};
 use tauri::command;
 
 #[command]
@@ -11,6 +11,7 @@ pub async fn apply_region_patches(
     path: String,
     page_index: u16,
     patches: Vec<PersistableRegionPatch>,
+    semantic_ops: Option<Vec<PersistableSemanticOperation>>,
 ) -> Result<(), String> {
     println!(
         ">>>>> [ENTRY] apply_region_patches | path={} | count={}",
@@ -23,5 +24,12 @@ pub async fn apply_region_patches(
         page_index,
         patches.len()
     );
-    execute_region_patches(&state, path, page_index, patches).await
+    execute_region_patches(
+        &state,
+        path,
+        page_index,
+        patches,
+        semantic_ops.unwrap_or_default(),
+    )
+    .await
 }

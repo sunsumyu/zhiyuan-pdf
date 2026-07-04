@@ -4,7 +4,7 @@ use crate::editor::list_format::reconcile_numbering_patches;
 use crate::page::page_store::with_page_state;
 use crate::ui_state_store::{
     clear_persistable_patches as core_clear_persistable_patches, collect_persistable_patches,
-    record_patch,
+    collect_persistable_semantic_ops, record_patch,
 };
 use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 
@@ -73,6 +73,8 @@ pub async fn save_persistable_patches(path: String, page_index: u16) -> Result<J
         }
     });
 
+    let semantic_ops = collect_persistable_semantic_ops();
+
     if patches.is_empty() {
         return Ok(JsValue::TRUE);
     }
@@ -81,6 +83,7 @@ pub async fn save_persistable_patches(path: String, page_index: u16) -> Result<J
         "path": path,
         "pageIndex": page_index,
         "patches": patches,
+        "semanticOps": semantic_ops,
     });
 
     let result: JsValue = crate::app_controller::raw_invoke("apply_region_patches", &args).await?;

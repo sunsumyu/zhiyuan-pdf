@@ -310,6 +310,42 @@ fn marker_split_preserves_semantic_advance_and_body_width() {
 }
 
 #[test]
+fn semantic_block_adapter_keeps_marker_out_of_body() {
+    let mut marker_run = test_layout_run("marker", "●", 0.0, 10.0);
+    marker_run.object_indices = vec![1];
+    let mut body_run = test_layout_run("body", "Body", 24.0, 40.0);
+    body_run.object_indices = vec![2];
+    let session = session_from_runs(vec![marker_run, body_run]);
+
+    let split = split_editor_session(
+        &session,
+        "●".chars().count(),
+        crate::text::list_semantics::ListMarkerKind::Bullet,
+    )
+    .expect("semantic marker should split");
+    let plan = EditContext {
+        target_id: "list-item-1".to_string(),
+        base_paragraph_id: "paragraph-1".to_string(),
+        shell_bbox: session.anchor_bbox,
+        source_body_text: "Body".to_string(),
+        body_text_plan: build_editor_session_text_plan(&split.body_session),
+        body_session: split.body_session,
+        marker: split.marker,
+        ..Default::default()
+    };
+
+    let block = plan.semantic_block();
+    assert_eq!(block.body_text(), "Body");
+    assert_eq!(
+        block.primary_marker().and_then(|m| m.text_content()),
+        Some("●")
+    );
+    assert!(block.validation.valid, "{:?}", block.validation.errors);
+    assert_eq!(block.provenance.body_object_indices, vec![2]);
+    assert_eq!(block.provenance.marker_object_indices, vec![1]);
+}
+
+#[test]
 fn marker_split_maps_visual_body_start_to_raw_index() {
     let session = session_from_runs(vec![
         test_layout_run("marker", "1.", 0.0, 10.0),
@@ -589,8 +625,8 @@ fn detects_graphic_marker_alongside_body() {
         ],
     };
 
-    let plan = from_target_id(&paragraph, Some(&vector_model), "p1", None)
-        .expect("plan should resolve");
+    let plan =
+        from_target_id(&paragraph, Some(&vector_model), "p1", None).expect("plan should resolve");
 
     let graphic_markers = &plan.graphic_markers;
     assert_eq!(
@@ -617,10 +653,9 @@ fn graphic_marker_keeps_shell_bbox_extent() {
         objects: vec![bullet_image("bullet-img", 10.0, 44.0, 8.0)],
     };
 
-    let plan = from_target_id(&paragraph, Some(&vector_model), "p1", None)
-        .expect("plan should resolve");
+    let plan =
+        from_target_id(&paragraph, Some(&vector_model), "p1", None).expect("plan should resolve");
 
     assert!(plan.shell_bbox.left <= 10.0);
     assert!(plan.shell_bbox.right >= 120.0);
 }
-

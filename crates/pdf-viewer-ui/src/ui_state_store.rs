@@ -77,12 +77,18 @@ pub fn collect_persistable_patches() -> Vec<PersistableRegionPatch> {
     })
 }
 
+pub fn collect_persistable_semantic_ops(
+) -> Vec<pdf_viewer_core::persistence::models::PersistableSemanticOperation> {
+    with_patch_state(collect_semantic_ops)
+}
+
 pub fn clear_persistable_patches(clear_history: bool) {
     with_patch_state_mut(|state| {
         let had_visible_patches = has_visible_patches(state);
         state.paragraph_texts.clear();
         state.paragraph_snapshots.clear();
         state.paragraph_patches.clear();
+        state.semantic_ops.clear();
         state.field_group_texts.clear();
         state.field_group_snapshots.clear();
         state.field_group_patches.clear();
@@ -193,6 +199,7 @@ pub fn reject_review_change(patch_key: &str) -> bool {
             state.paragraph_texts.remove(&region_id);
             state.paragraph_snapshots.remove(&region_id);
             state.paragraph_patches.remove(&region_id);
+            state.semantic_ops.remove(&region_id);
             state
                 .history
                 .retain(|cmd: &PatchCommand| cmd.patch_key != patch_key);
@@ -298,6 +305,7 @@ pub fn reject_all_changes() -> ReviewBulkChangeResult {
             state.paragraph_texts.remove(&region_id);
             state.paragraph_snapshots.remove(&region_id);
             state.paragraph_patches.remove(&region_id);
+            state.semantic_ops.remove(&region_id);
         }
         for region_id in field_region_ids {
             state.field_group_texts.remove(&region_id);

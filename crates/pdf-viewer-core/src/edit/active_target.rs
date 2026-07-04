@@ -2,7 +2,7 @@
 //! thread_local / state 管理仍位于 ui 侧。
 
 use crate::edit::paragraph_scene::ParagraphEditorScene;
-use crate::models::{BoundingBox, LayoutParagraph, ParagraphEditContext};
+use crate::models::{BoundingBox, LayoutParagraph, ParagraphEditContext, SemanticBlock};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,5 +64,9 @@ impl ActiveEditorTarget {
 
     pub fn initial_body_caret_index(&self) -> usize {
         self.scene.body_initial_caret()
+    }
+
+    pub fn semantic_block(&self) -> SemanticBlock {
+        self.scene.semantic_block()
     }
 }

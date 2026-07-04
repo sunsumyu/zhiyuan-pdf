@@ -5,8 +5,10 @@ use crate::edit::paragraph_scene::build_target_scene;
 use crate::edit::paragraph_scene::ParagraphEditorScene;
 use crate::edit::replacement_snapshot::build_edit_replacement_snapshot;
 use crate::edit::source_identity::collect_run_indices;
-use crate::models::{GlyphPaintParagraph, GlyphPaintPlan, VectorPageModel};
-use crate::persistence::models::PersistableRegionPatch;
+use crate::models::{GlyphPaintParagraph, GlyphPaintPlan, SemanticBlockKind, VectorPageModel};
+use crate::persistence::models::{
+    PersistableRegionPatch, PersistableSemanticBlockSummary, PersistableSemanticOperation,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -27,6 +29,31 @@ pub struct ParagraphInteractionTarget {
     pub color: String,
     #[serde(default)]
     pub text_decoration: String,
+}
+
+fn semantic_summary_from_scene(scene: &ParagraphEditorScene) -> PersistableSemanticBlockSummary {
+    let block = scene.semantic_block();
+    let (kind, marker_text) = match &block.kind {
+        SemanticBlockKind::ListItem(item) => (
+            "list-item".to_string(),
+            item.marker
+                .as_ref()
+                .and_then(|marker| marker.text_content().map(|text| text.to_string())),
+        ),
+        SemanticBlockKind::Paragraph => ("paragraph".to_string(), None),
+        SemanticBlockKind::FieldRow => ("field-row".to_string(), None),
+        SemanticBlockKind::Unknown => ("unknown".to_string(), None),
+    };
+    PersistableSemanticBlockSummary {
+        block_id: block.id.0,
+        region_id: block.region_id,
+        kind,
+        body_text: block.body.text,
+        marker_text,
+        body_object_indices: block.provenance.body_object_indices,
+        marker_object_indices: block.provenance.marker_object_indices,
+        graphic_marker_object_indices: block.provenance.graphic_marker_object_indices,
+    }
 }
 
 pub fn collect_paragraph_interaction_targets(
@@ -113,6 +140,16 @@ pub fn build_rich_patch(
                 marker_text.clone(),
                 None,
             );
+            let semantic_summary = semantic_summary_from_scene(&scene);
+            let semantic_ops = if original_text != new_text {
+                vec![PersistableSemanticOperation::ReplaceBodyText {
+                    block_id: semantic_summary.block_id.clone(),
+                    old_text: original_text.clone(),
+                    new_text: new_text.clone(),
+                }]
+            } else {
+                Vec::new()
+            };
             return Some(PersistableRegionPatch {
                 patch_key: format!(
                     "{}:{}",
@@ -164,6 +201,8 @@ pub fn build_rich_patch(
                 line_height: Some(paragraph.style.line_height.max(1.0)),
                 char_spacing: 0.0,
                 horizontal_scaling: 100.0,
+                semantic_block: Some(semantic_summary),
+                semantic_ops,
             });
         }
     }

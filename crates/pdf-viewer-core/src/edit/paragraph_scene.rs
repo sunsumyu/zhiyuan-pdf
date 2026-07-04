@@ -9,7 +9,7 @@ use crate::edit::document_plan::{
 };
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, ParagraphEditContext,
-    VectorPageModel,
+    SemanticBlock, SemanticListItem, VectorPageModel,
 };
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -128,6 +128,14 @@ impl ParagraphEditorScene {
 
     pub fn graphic_markers(&self) -> &[crate::models::VisualMarker] {
         &self.document_plan.graphic_markers
+    }
+
+    pub fn semantic_block(&self) -> SemanticBlock {
+        self.document_plan.semantic_block()
+    }
+
+    pub fn semantic_list_item(&self) -> Option<SemanticListItem> {
+        self.semantic_block().list_item_ref().cloned()
     }
 }
 

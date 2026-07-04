@@ -3,6 +3,42 @@ use std::collections::HashSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+pub struct PersistableSemanticBlockSummary {
+    pub block_id: String,
+    pub region_id: String,
+    pub kind: String,
+    pub body_text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker_text: Option<String>,
+    #[serde(default)]
+    pub body_object_indices: Vec<usize>,
+    #[serde(default)]
+    pub marker_object_indices: Vec<usize>,
+    #[serde(default)]
+    pub graphic_marker_object_indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum PersistableSemanticOperation {
+    ReplaceBodyText {
+        block_id: String,
+        old_text: String,
+        new_text: String,
+    },
+    SetListKind {
+        block_id: String,
+        list_kind: crate::text::list_semantics::ListMarkerKind,
+        marker_text: Option<String>,
+    },
+    SetListMarker {
+        block_id: String,
+        marker_text: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct PersistableRegionPatch {
     pub patch_key: String,
     pub page_index: u16,
@@ -40,6 +76,10 @@ pub struct PersistableRegionPatch {
     pub char_spacing: f32,
     #[serde(default = "default_scale_x_model")]
     pub horizontal_scaling: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_block: Option<PersistableSemanticBlockSummary>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub semantic_ops: Vec<PersistableSemanticOperation>,
 }
 
 fn default_scale_x_model() -> f32 {

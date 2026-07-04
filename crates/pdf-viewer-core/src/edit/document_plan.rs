@@ -19,7 +19,8 @@ use crate::edit::source_runs::{resolve_preferred_editor_session, target_paint_ru
 use crate::edit::source_text::session_source_text;
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, GraphicType, LayoutParagraph, LayoutRun,
-    ParagraphEditContext, VectorPageModel, VectorRenderObject, VisualMarker,
+    ParagraphEditContext, SemanticBlock, SemanticListItem, SemanticListLayout, SemanticMarker,
+    SemanticTextBody, VectorPageModel, VectorRenderObject, VisualMarker,
 };
 use crate::text::glyph_layout::{
     build_editor_session_text_plan, is_decorative_text, EditorSessionTextPlan,
@@ -96,6 +97,79 @@ impl EditContext {
 
     pub fn body_char_count(&self) -> usize {
         self.source_body_text.chars().count()
+    }
+
+    pub fn semantic_block(&self) -> SemanticBlock {
+        let body = SemanticTextBody::from_session(
+            self.source_body_text.clone(),
+            self.body_session.clone(),
+        );
+        let page_index = self
+            .original_runs
+            .first()
+            .map(|run| run.page_index)
+            .unwrap_or_default();
+        let region_id = self
+            .original_runs
+            .first()
+            .map(|run| run.region_id.clone())
+            .unwrap_or_default();
+
+        if self.marker.is_some() || !self.graphic_markers.is_empty() {
+            let marker = self.marker.as_ref().map(|marker| {
+                SemanticMarker::text(
+                    marker.kind,
+                    marker.text.clone(),
+                    marker.advance,
+                    marker.runs.clone(),
+                )
+            });
+            let graphic_markers = self
+                .graphic_markers
+                .iter()
+                .map(SemanticMarker::from_visual_marker)
+                .collect::<Vec<_>>();
+            let marker_advance = marker
+                .as_ref()
+                .map(|marker| marker.advance)
+                .or_else(|| graphic_markers.first().map(|marker| marker.advance))
+                .unwrap_or_default();
+            let marker_bbox = marker
+                .as_ref()
+                .map(|marker| marker.bbox)
+                .or_else(|| graphic_markers.first().map(|marker| marker.bbox))
+                .unwrap_or_default();
+            let list_item = SemanticListItem {
+                marker,
+                graphic_markers,
+                layout: SemanticListLayout {
+                    marker_bbox,
+                    body_bbox: self.body_session.paragraph.bbox,
+                    shell_bbox: self.shell_bbox,
+                    marker_advance,
+                    body_left: self.body_session.paragraph.bbox.left,
+                    wrap_width: self.body_session.paragraph.wrap_width,
+                },
+            };
+            SemanticBlock::list_item(
+                self.target_id.clone(),
+                self.base_paragraph_id.clone(),
+                region_id,
+                page_index,
+                self.shell_bbox,
+                body,
+                list_item,
+            )
+        } else {
+            SemanticBlock::paragraph(
+                self.target_id.clone(),
+                self.base_paragraph_id.clone(),
+                region_id,
+                page_index,
+                self.shell_bbox,
+                body,
+            )
+        }
     }
 }
 
@@ -427,7 +501,9 @@ pub fn collect_all(
         .unwrap_or_else(|| paragraph.editor_session.clone());
     collect_edit_targets_from_session(&paragraph.id, &full_session)
         .into_iter()
-        .filter_map(|target| resolve_from_target(paragraph, &full_session, target, vector_model, None))
+        .filter_map(|target| {
+            resolve_from_target(paragraph, &full_session, target, vector_model, None)
+        })
         .collect()
 }
 
@@ -443,7 +519,13 @@ pub fn from_target_id(
     let target =
         resolve_edit_target_from_session(&paragraph.id, target_id, &full_session, click_page_point);
 
-    resolve_from_target(paragraph, &full_session, target, vector_model, click_page_point)
+    resolve_from_target(
+        paragraph,
+        &full_session,
+        target,
+        vector_model,
+        click_page_point,
+    )
 }
 
 /// Format up to `limit` codepoints of `text` as `U+XXXX(char)` for diagnostics.
@@ -572,7 +654,8 @@ fn resolve_from_target(
     let body_text_plan = build_editor_session_text_plan(&split.body_session);
     let source_body_text = session_source_text(&split.body_session);
     let preliminary_shell_bbox = resolve_shell_bbox(&full_session, &split, &[]);
-    let graphic_markers = detect_graphic_markers(vector_model, &split.body_session, &preliminary_shell_bbox);
+    let graphic_markers =
+        detect_graphic_markers(vector_model, &split.body_session, &preliminary_shell_bbox);
     let shell_bbox = resolve_shell_bbox(&full_session, &split, &graphic_markers);
 
     let body_lines = build_body_line_plans(&split.body_session, &body_text_plan);

@@ -19,7 +19,7 @@ use crate::editor::workflow::{
 use crate::page::page_store::with_page_state;
 use crate::zoom::zoom_store;
 use pdf_viewer_core::models::BoundingBox;
-use pdf_viewer_core::persistence::models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::{PersistableRegionPatch, PersistableSemanticOperation};
 use pdf_viewer_core::text::list_semantics::ListMarkerKind;
 
 fn summarize_object_ids<'a>(ids: impl Iterator<Item = &'a String>) -> String {
@@ -323,6 +323,36 @@ pub fn build_patch(new_text: String) -> Option<PersistableRegionPatch> {
                 "listKind" => format!("{:?}", active_list_kind),
                 "targetIndicesLen" => patch.target_indices.len(),
             );
+        }
+        if let Some(block_id) = patch
+            .semantic_block
+            .as_ref()
+            .map(|summary| summary.block_id.clone())
+        {
+            if active_list_kind != active_state.source_list_kind() {
+                patch
+                    .semantic_ops
+                    .push(PersistableSemanticOperation::SetListKind {
+                        block_id: block_id.clone(),
+                        list_kind: active_list_kind,
+                        marker_text: patch.new_marker_text.clone(),
+                    });
+            }
+            let source_marker = active_state.source_marker_text().unwrap_or("").trim();
+            let next_marker = patch
+                .new_marker_text
+                .as_deref()
+                .or(patch.marker_text.as_deref())
+                .unwrap_or("")
+                .trim();
+            if source_marker != next_marker && !next_marker.is_empty() {
+                patch
+                    .semantic_ops
+                    .push(PersistableSemanticOperation::SetListMarker {
+                        block_id,
+                        marker_text: next_marker.to_string(),
+                    });
+            }
         }
         patch.snapshot = Some(build_edit_replacement_snapshot(
             active_state.target.clone(),

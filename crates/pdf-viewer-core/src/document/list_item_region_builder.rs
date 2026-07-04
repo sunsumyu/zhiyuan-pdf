@@ -125,7 +125,10 @@ fn split_runs_at(
                     "split-marker-run".to_string(),
                     vec![
                         crate::common::trace::field("runIdx", run_index),
-                        crate::common::trace::field("text", chars[..marker_count].iter().collect::<String>()),
+                        crate::common::trace::field(
+                            "text",
+                            chars[..marker_count].iter().collect::<String>(),
+                        ),
                         crate::common::trace::field("charOrigins", format!("{:?}", marker_origins)),
                         crate::common::trace::field("width", run.width),
                     ],
@@ -137,7 +140,7 @@ fn split_runs_at(
                     end: marker_count,
                     style: run.style.clone(),
                     width: run.width,
-                    char_origins: marker_origins,  // 保持原始值
+                    char_origins: marker_origins, // 保持原始值
                     char_widths: run.char_widths.iter().copied().take(marker_count).collect(),
                     object_ids: run.object_ids.clone(),
                     object_indices: run.object_indices.clone(),

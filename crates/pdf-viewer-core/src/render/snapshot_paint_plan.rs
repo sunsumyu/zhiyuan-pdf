@@ -209,7 +209,10 @@ where
                     "start".to_string(),
                     vec![
                         crate::common::trace::field("lineLeft", line.left),
-                        crate::common::trace::field("bodyLeft", line.body_left.unwrap_or(line.left)),
+                        crate::common::trace::field(
+                            "bodyLeft",
+                            line.body_left.unwrap_or(line.left),
+                        ),
                         crate::common::trace::field("markerRunCount", marker_runs.len()),
                     ],
                 );
@@ -224,7 +227,10 @@ where
                             crate::common::trace::field("runIdx", run_idx),
                             crate::common::trace::field("runText", run.text.as_str()),
                             crate::common::trace::field("runWidth", run.width),
-                            crate::common::trace::field("runCharOrigins", format!("{:?}", run.char_origins)),
+                            crate::common::trace::field(
+                                "runCharOrigins",
+                                format!("{:?}", run.char_origins),
+                            ),
                             crate::common::trace::field("lineLeft", line.left),
                             crate::common::trace::field("markerCursorLeft", marker_cursor_left),
                             crate::common::trace::field("layoutAbsoluteLeft", layout.absolute_left),

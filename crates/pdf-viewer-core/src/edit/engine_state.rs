@@ -1,7 +1,7 @@
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::models::LayoutAlignment;
+use crate::models::{LayoutAlignment, SemanticBlockKind};
 use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind};
 use serde::{Deserialize, Serialize};
 
@@ -90,22 +90,22 @@ fn derive_next_marker_text(
 
 impl LiveEditorParagraphState {
     pub fn new(target: ActiveEditorTarget) -> Self {
-        let source_text = target.source_body_text().to_string();
+        let semantic_block = target.semantic_block();
+        let source_text = semantic_block.body.text.clone();
         let style_mapper =
-            StyleMapper::from_paragraph_text(&target.scene.body_session().paragraph, &source_text);
-        let list_kind = target
-            .scene
-            .marker()
-            .map(|marker| marker.kind)
-            .unwrap_or(ListMarkerKind::None);
+            StyleMapper::from_paragraph_text(&semantic_block.body.session.paragraph, &source_text);
+        let list_kind = match &semantic_block.kind {
+            SemanticBlockKind::ListItem(list_item) => list_item.source_list_kind(),
+            _ => ListMarkerKind::None,
+        };
         Self {
             text_model: EditorTextModel::new(source_text),
             style_mapper,
             list_kind,
-            source_alignment: target.scene.body_session().paragraph.style.align,
-            source_line_height: target
-                .scene
-                .body_session()
+            source_alignment: semantic_block.body.session.paragraph.style.align,
+            source_line_height: semantic_block
+                .body
+                .session
                 .paragraph
                 .style
                 .line_height
