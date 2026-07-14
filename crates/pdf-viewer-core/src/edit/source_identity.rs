@@ -189,6 +189,7 @@ mod tests {
             text: "•".to_string(),
             advance: 0.0,
             runs: vec![test_run("marker-run", "marker-object", 41)],
+            is_cross_paragraph: false,
         });
 
         let object_ids = collect_target_source_object_ids(&target);

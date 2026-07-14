@@ -53,6 +53,7 @@ fn semantic_summary_from_scene(scene: &ParagraphEditorScene) -> PersistableSeman
         body_object_indices: block.provenance.body_object_indices,
         marker_object_indices: block.provenance.marker_object_indices,
         graphic_marker_object_indices: block.provenance.graphic_marker_object_indices,
+        is_cross_paragraph: scene.document_plan.is_cross_paragraph,
     }
 }
 

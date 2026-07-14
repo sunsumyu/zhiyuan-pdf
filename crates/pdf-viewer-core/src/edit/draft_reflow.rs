@@ -1,7 +1,10 @@
 //! Draft reflow — 核心重排计算子模块。
 
-use crate::common::debug::truncate_debug_text;
-use crate::edit::debug_trace::{
+
+//! 此模块负责处理编辑器中的文本布局和重排逻辑，包括段落渲染计划、
+//! 光标位置计算、标记处理等功能。
+use crate::common::debug::truncate_debug_text; // 用于调试时截断文本显示
+use crate::edit::debug_trace::{ // 调试追踪相关功能
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::edit::document_plan::{EditContext, ParagraphEditorMarker};
@@ -69,7 +72,8 @@ pub(super) fn build_draft_paragraph(
     )
 }
 
-pub(super) fn rebuild_layout_pipeline<F>(
+/// [resolve] 技能：解析段落正文折行与几何定位 (原 rebuild_layout_pipeline)
+pub fn resolve_layout<F>(
     paragraph: LayoutParagraph,
     document_plan: &EditContext,
     draft_text: &str,
@@ -117,11 +121,22 @@ fn marker_render_run(
     let template = marker.runs.first()?;
     let marker_left = marker_bbox_left(marker).unwrap_or(template.origin_x);
     let mut marker_run = template.clone();
-    marker_run.text = marker.text.clone();
+    
+    let is_symbolic = crate::typography::font_resolver::looks_like_symbolic_font(&marker_run.style.font_name);
+    
+    // 如果是符号字体，保留原 PDF runs 里的原始特殊编码字符（例如 Wingdings 专属编码），
+    // 否则（如常规数字 "1."）采用编辑后的 marker.text
+    if !is_symbolic {
+        marker_run.text = marker.text.clone();
+    }
+    
     marker_run.id = format!("{}-marker", paragraph_id);
     marker_run.origin_x = marker_left - body_anchor_left;
     marker_run.origin_y = 0.0;
-    if !marker_run.char_origins.is_empty() {
+
+    // 只有非符号字体我们才对 char_origins 进行重映射归一化；
+    // 符号字体保持原 runs 里的 origins 分布以 100% 契合原始 PDF 排版字距
+    if !is_symbolic && !marker_run.char_origins.is_empty() {
         let first_origin = marker_run.char_origins.first().copied().unwrap_or(0.0);
         marker_run.char_origins = marker_run
             .char_origins
@@ -201,7 +216,7 @@ fn prepend_marker_to_first_line(line: &mut VisualLine, marker_run: LayoutRun, ma
     line.runs.insert(0, marker_run);
 }
 
-fn inject_fixed_marker<F>(
+pub fn execute_marker_injection<F>(
     plan: &mut EditorDraftRenderPlan,
     document_plan: &EditContext,
     measure_width: &F,
@@ -232,8 +247,8 @@ fn inject_fixed_marker<F>(
     }
 }
 
-/// 构建 draft 渲染计划 — 编辑器 active editing 模式的核心入口。
-pub fn build_draft_render_plan<F>(
+/// [build] 技能：构建编辑态的排版布局 (原 build_draft_render_plan)
+pub fn build_edit_layout<F>(
     document_plan: &EditContext,
     draft_text: &str,
     measure_width: F,
@@ -287,20 +302,7 @@ where
     }
 
     let paragraph = build_draft_paragraph(document_plan, draft_text, &measure_width);
-    let mut layout = layout_paragraph(&paragraph, paragraph.wrap_width, &measure_width);
-    align_layout_baseline(&mut layout, source_baseline_y(document_plan));
-    let mut caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
-    let draft_runs_text: String = paragraph.runs.iter().map(|r| r.text.as_str()).collect();
-    remap_caret_indices_to_draft_space(
-        &mut caret_lines,
-        document_plan,
-        &draft_runs_text,
-        draft_text,
-    );
-    let plan = EditorDraftRenderPlan {
-        layout,
-        caret_lines,
-    };
+    let plan = resolve_layout(paragraph, document_plan, draft_text, &measure_width);
 
     dbg_event(
         "render-plan",
@@ -325,8 +327,8 @@ where
     plan
 }
 
-/// 构建 persisted overlay 渲染计划 — 用于提交/持久化编辑后的渲染。
-pub fn build_persisted_overlay_render_plan<F>(
+/// [build] 技能：构建用于持久化渲染的覆盖排版 (原 build_persisted_overlay_render_plan)
+pub fn build_save_layout<F>(
     document_plan: &EditContext,
     draft_text: &str,
     measure_width: F,
@@ -365,8 +367,8 @@ where
         );
     }
 
-    let mut plan = rebuild_layout_pipeline(paragraph, document_plan, draft_text, &measure_width);
-    inject_fixed_marker(&mut plan, document_plan, &measure_width);
+    let mut plan = resolve_layout(paragraph, document_plan, draft_text, &measure_width);
+    execute_marker_injection(&mut plan, document_plan, &measure_width);
     dbg_event(
         "unified-layout",
         "plan-built",

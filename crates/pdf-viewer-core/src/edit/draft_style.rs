@@ -14,7 +14,7 @@ use crate::text::style_mapper::should_preserve_editor_underline;
 use crate::typography::font_resolver::looks_like_symbolic_font;
 
 use super::draft_text_diff::{
-    body_runs_match_source_text, body_runs_text, build_index_map, compute_text_diff,
+    build_index_map, compute_text_diff,
 };
 
 pub(super) fn shell_width(session: &ParagraphEditContext) -> f32 {
@@ -265,7 +265,39 @@ pub(super) fn build_styles(
     preserve_underline: bool,
 ) -> Vec<LayoutRun> {
     let source_text = document_plan.source_body_text();
-    let source_runs_match_text = body_runs_match_source_text(document_plan);
+    let marker_run_ids: std::collections::HashSet<&str> = match &document_plan.marker {
+        Some(marker) => marker.runs.iter().map(|r| r.id.as_str()).collect(),
+        None => std::collections::HashSet::new(),
+    };
+    let source_runs: Vec<LayoutRun> = document_plan
+        .body_session
+        .paragraph
+        .runs
+        .iter()
+        .filter(|run| {
+            if marker_run_ids.contains(run.id.as_str()) {
+                return false; // 过滤
+            }
+            if let Some(marker) = &document_plan.marker {
+                let trimmed_run = run.text.trim();
+                let trimmed_marker = marker.text.trim();
+                if !trimmed_marker.is_empty() && trimmed_run == trimmed_marker {
+                    // 如果正文文本并不以该 marker 字符开头，说明该字符在正文中是多余的 Marker 遗留物
+                    if !document_plan.source_body_text().trim_start().starts_with(trimmed_run) {
+                        return false; // 过滤
+                    }
+                    // 兜底：如果它的 X 坐标位于整个段落包围盒的最左侧附近，说明它是行首老项目符号
+                    if (run.bbox.left - document_plan.body_session.anchor_bbox.left).abs() < 5.0 {
+                        return false; // 过滤
+                    }
+                }
+            }
+            true
+        })
+        .cloned()
+        .collect();
+    let runs_text: String = source_runs.iter().map(|r| r.text.as_str()).collect();
+    let source_runs_match_text = runs_text == source_text;
 
     let diff = compute_text_diff(source_text, draft_text);
     let source_len = diff.source_len;
@@ -283,8 +315,6 @@ pub(super) fn build_styles(
     // 用 `build_index_map` 把 prefix/suffix 边界换算到 raw runs 索引空间。
     // 当 `source_runs_match_text == true`（runs 与 source_text 完全一致），mapping 是恒等映射，
     // 行为与旧实现一致；当为 false（含合成空格），mapping 跳过合成位置正确切片。
-    let source_runs = &document_plan.body_session.paragraph.runs;
-    let runs_text = body_runs_text(document_plan);
     let runs_total_chars = runs_text.chars().count();
     let mapping = if source_runs_match_text {
         Vec::new() // 不需要 — 走恒等路径
@@ -306,7 +336,7 @@ pub(super) fn build_styles(
     let suffix_runs_start = map_to_runs_index(source_len.saturating_sub(suffix_len));
 
     let mut runs = Vec::new();
-    runs.extend(slice_runs_by_char_range(source_runs, 0, prefix_runs_end));
+    runs.extend(slice_runs_by_char_range(&source_runs, 0, prefix_runs_end));
 
     if diff.has_inserted() {
         let anchor_source_index = prefix_len
@@ -315,7 +345,7 @@ pub(super) fn build_styles(
         let anchor_runs_index = map_to_runs_index(anchor_source_index);
         let mut template = select_style(
             document_plan,
-            source_runs,
+            &source_runs,
             anchor_runs_index,
             preserve_underline,
         );
@@ -328,7 +358,7 @@ pub(super) fn build_styles(
     }
 
     runs.extend(slice_runs_by_char_range(
-        source_runs,
+        &source_runs,
         suffix_runs_start,
         runs_total_chars,
     ));

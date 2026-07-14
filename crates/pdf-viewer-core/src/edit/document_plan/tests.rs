@@ -6,6 +6,7 @@ use crate::models::{
     VectorPageModel, VectorPathObject, VectorPathSegment, VectorRenderObject, VectorTextObject,
     VisualMarkerContent,
 };
+use crate::persistence::models::PersistableSemanticBlockSummary;
 use crate::text::glyph_layout::build_editor_session_text_plan;
 
 const CANONICAL_MIXED_TEXT: &str =
@@ -346,6 +347,43 @@ fn semantic_block_adapter_keeps_marker_out_of_body() {
 }
 
 #[test]
+fn persisted_semantic_override_restores_marker_after_inference_loss() {
+    // Simulate reparse where marker inference produced no marker (e.g. PDF run order
+    // put body before marker). The persisted summary must win.
+    let session = session_from_runs(vec![test_layout_run("body", "Body", 0.0, 40.0)]);
+    let plan = EditContext {
+        target_id: "list-item-1".to_string(),
+        base_paragraph_id: "paragraph-1".to_string(),
+        shell_bbox: session.anchor_bbox,
+        source_body_text: "Body".to_string(),
+        body_text_plan: build_editor_session_text_plan(&session),
+        body_session: session,
+        marker: None,
+        ..Default::default()
+    };
+
+    let summary = PersistableSemanticBlockSummary {
+        block_id: "list-item-1".to_string(),
+        region_id: "list-item-1".to_string(),
+        kind: "list-item".to_string(),
+        body_text: "Body".to_string(),
+        marker_text: Some("●".to_string()),
+        body_object_indices: vec![2],
+        marker_object_indices: vec![1],
+        graphic_marker_object_indices: Vec::new(),
+        is_cross_paragraph: false,
+    };
+
+    let restored = apply_persisted_semantic_override(plan, Some(&summary));
+    assert_eq!(restored.source_body_text, "Body");
+    let marker = restored
+        .marker
+        .as_ref()
+        .expect("override must restore marker");
+    assert_eq!(marker.text, "●");
+}
+
+#[test]
 fn marker_split_maps_visual_body_start_to_raw_index() {
     let session = session_from_runs(vec![
         test_layout_run("marker", "1.", 0.0, 10.0),
@@ -355,7 +393,7 @@ fn marker_split_maps_visual_body_start_to_raw_index() {
     let full_text_plan = build_editor_session_text_plan(&session);
     let paragraph = paragraph_from_session(session.clone());
 
-    let split = resolve_marker_split(&paragraph, &session, &full_source_text, &full_text_plan);
+    let split = resolve_marker_split(&paragraph, &session, &full_source_text, &full_text_plan, None);
     let marker = split.marker.expect("numbering marker should split");
     let body_text = split
         .body_session

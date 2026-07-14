@@ -15,7 +15,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::draft_layout::build_draft_render_plan;
+use crate::editor::draft_layout::build_edit_layout;
 use crate::editor::session::ActiveEditorTarget;
 
 pub fn measure_text_width(ctx: &CanvasRenderingContext2d, text: &str, run: &LayoutRun) -> f32 {
@@ -144,7 +144,7 @@ fn build_unified_draft_caret_lines(
 ) -> Option<Vec<CaretLine>> {
     let document_plan = &active_target.scene.document_plan;
     let ctx = create_measure_context()?;
-    let render_plan = build_draft_render_plan(document_plan, draft_text, |text, run| {
+    let render_plan = build_edit_layout(document_plan, draft_text, |text, run| {
         measure_text_width(&ctx, text, run)
     });
     Some(convert_render_plan_caret_lines(render_plan))

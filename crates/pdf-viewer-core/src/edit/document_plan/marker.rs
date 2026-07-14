@@ -6,6 +6,7 @@ use crate::edit::debug_trace::{
 use crate::geometry::source_geometry::compute_bbox_from_runs;
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, LayoutParagraph, LayoutRun, ParagraphEditContext,
+    VectorPageModel, VectorRenderObject, VectorTextObject,
 };
 use crate::text::glyph_layout::EditorSessionTextPlan;
 use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind};
@@ -20,6 +21,12 @@ pub struct ParagraphEditorMarker {
     pub advance: f32,
     #[serde(default)]
     pub runs: Vec<LayoutRun>,
+    /// Whether this marker was detected from a separate paragraph region
+    /// (via `synthesize_cross_paragraph_marker`). When true, the marker and
+    /// body live in different PDF content-stream objects and must be treated
+    /// separately during save/commit.
+    #[serde(default)]
+    pub is_cross_paragraph: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -153,6 +160,7 @@ pub fn split_editor_session(
             text: marker_text,
             advance: marker_advance,
             runs: marker_runs,
+            is_cross_paragraph: false,
         }),
     })
 }
@@ -252,6 +260,145 @@ pub fn synthesize_marker_from_paragraph(
         text,
         advance,
         runs: candidates,
+        is_cross_paragraph: false,
+    })
+}
+
+/// Strategy 4: Cross-paragraph geometric synthesis — when the current paragraph has no
+/// inline marker, look at sibling paragraphs on the same page that share the same
+/// Y-coordinate and treat them as a list-item pair (marker paragraph + body paragraph).
+///
+/// This handles PDFs where the bullet ("●") and the body text ("分布式：...") are
+/// parsed as separate objects/regions but visually form a single list item line.
+pub fn synthesize_cross_paragraph_marker(
+    _paragraph: &GlyphPaintParagraph,
+    body_session: &ParagraphEditContext,
+    vector_model: Option<&VectorPageModel>,
+) -> Option<ParagraphEditorMarker> {
+    let vm = vector_model?;
+    
+    let body_runs = &body_session.paragraph.runs;
+    let body_first = body_runs.iter().find(|run| !run.text.is_empty())?;
+    let body_y = body_first.origin_y;
+    let body_x = body_first.origin_x;
+    let body_font_size = body_first.style.font_size.max(1.0);
+    let line_tolerance = (body_font_size * 0.9).max(4.0);
+
+    dbg_event(
+        "cross-paragraph-marker",
+        "search",
+        vec![
+            dbg_field("bodyY", body_y),
+            dbg_field("bodyX", body_x),
+            dbg_field("lineTolerance", line_tolerance),
+            dbg_field("vectorObjectCount", vm.objects.len()),
+        ],
+    );
+
+    // Walk all objects in the page model looking for text runs that:
+    // 1. Are on the same horizontal line (within line_tolerance of body_y)
+    // 2. Are to the left of the body text (right edge <= body_x + 1.0)
+    // 3. Look like a bullet or symbol font marker
+    let mut candidates: Vec<LayoutRun> = Vec::new();
+    for (_obj_index, obj) in vm.objects.iter().enumerate() {
+        let VectorRenderObject::Text(VectorTextObject { id: _, runs, z_index: _ }) = obj else {
+            continue;
+        };
+        for run in runs {
+            // Skip empty runs
+            if run.text.trim().is_empty() {
+                continue;
+            }
+            // Check same Y-line (StyledRun uses ty, which is Y-Down after flip_y)
+            let dy = (run.ty - body_y).abs();
+            if dy > line_tolerance {
+                continue;
+            }
+            // Check to the left of body text (tx + width <= body_x + 1.0)
+            if run.tx + run.width > body_x + 1.0 {
+                continue;
+            }
+            // Check if it looks like a bullet/symbol
+            let first_char = run.text.trim_start().chars().next();
+            let is_bullet = first_char
+                .map(|c| matches!(c, '•' | '●' | '▪' | '◦' | '·' | '○' | '-' | '▶' | '➤'))
+                .unwrap_or(false);
+            let is_symbol_font = looks_like_symbolic_font(&run.font_name);
+            if !is_bullet && !is_symbol_font {
+                continue;
+            }
+            // Convert StyledRun to LayoutRun for consistent downstream handling
+            let candidate = LayoutRun {
+                id: run.object_id.clone().unwrap_or_default(),
+                text: run.text.clone(),
+                origin_x: run.tx,
+                origin_y: run.ty,
+                bbox: BoundingBox {
+                    left: run.tx,
+                    top: run.ty - run.font_size,
+                    right: run.tx + run.width,
+                    bottom: run.ty + run.font_size * 0.2,
+                },
+                style: crate::models::layout::RunStyle {
+                    font_name: run.font_name.clone(),
+                    font_size: run.font_size,
+                    color: run.color.clone(),
+                    is_bold: run.is_bold,
+                    is_italic: run.is_italic,
+                    is_underline: run.is_underline,
+                    char_spacing: run.char_spacing,
+                    scale_x: run.horizontal_scaling,
+                },
+                char_origins: run.char_origins.clone(),
+                char_widths: run.char_widths.clone(),
+                object_ids: run.object_id.clone().into_iter().collect(),
+                object_indices: vec![run.z_index],  // Use the specific StyledRun's z_index, not the VectorTextObject's
+            };
+            candidates.push(candidate);
+        }
+    }
+
+    dbg_event(
+        "cross-paragraph-marker",
+        "candidates-found",
+        vec![
+            dbg_field("count", candidates.len()),
+        ],
+    );
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    // Sort candidates by X position (leftmost first)
+    candidates.sort_by(|a, b| a.origin_x.partial_cmp(&b.origin_x).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Compute advance from body start to first body run
+    let advance = (body_x - body_session.anchor_bbox.left).max(0.0);
+    let text: String = candidates.iter().map(|r| r.text.clone()).collect();
+    let kind = derive_list_text_semantics(&text).kind;
+    let kind = if kind == ListMarkerKind::None {
+        ListMarkerKind::Bullet
+    } else {
+        kind
+    };
+
+    dbg_event(
+        "cross-paragraph-marker",
+        "found",
+        vec![
+            dbg_field("markerText", &text),
+            dbg_field("kind", format!("{:?}", kind)),
+            dbg_field("advance", advance),
+        ],
+    );
+
+    Some(ParagraphEditorMarker {
+        kind,
+        text,
+        advance,
+        runs: candidates,
+        is_cross_paragraph: true,
     })
 }
 
@@ -260,16 +407,17 @@ pub fn resolve_marker_split(
     full_session: &ParagraphEditContext,
     full_source_text: &str,
     full_text_plan: &EditorSessionTextPlan,
+    vector_model: Option<&VectorPageModel>,
 ) -> SessionSplit {
     let semantics = derive_list_text_semantics(full_source_text);
     dbg_event(
         "document-plan.marker-detect",
         "start",
         vec![
-            dbg_field("paragraphId", full_session.paragraph.id.as_str()),
+            dbg_field("paragraphId", paragraph.id.as_str()),
             dbg_field("hasMarker", semantics.has_marker),
             dbg_field("bodyCharStart", semantics.body_char_start),
-            dbg_field("runCount", full_session.paragraph.runs.len()),
+            dbg_field("runCount", paragraph.runs.len()),
             dbg_field("fullTextLen", full_source_text.len()),
         ],
     );
@@ -305,6 +453,15 @@ pub fn resolve_marker_split(
     if split.marker.is_none() {
         if let Some(marker) = synthesize_marker_from_paragraph(paragraph, &split.body_session) {
             strategy = "geometric";
+            split.marker = Some(marker);
+        }
+    }
+
+    // Strategy 4: cross-paragraph geometric synthesis — when a bullet and its body
+    // text were parsed as separate regions on the same visual line.
+    if split.marker.is_none() {
+        if let Some(marker) = synthesize_cross_paragraph_marker(paragraph, &split.body_session, vector_model) {
+            strategy = "cross-paragraph";
             split.marker = Some(marker);
         }
     }

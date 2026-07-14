@@ -16,6 +16,11 @@ pub struct PersistableSemanticBlockSummary {
     pub marker_object_indices: Vec<usize>,
     #[serde(default)]
     pub graphic_marker_object_indices: Vec<usize>,
+    /// Whether this marker was detected from a separate paragraph region.
+    /// When true, the marker and body live in different PDF content-stream objects
+    /// and must be treated separately during save/commit.
+    #[serde(default)]
+    pub is_cross_paragraph: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

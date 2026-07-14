@@ -21,13 +21,13 @@ mod draft_text_diff;
 #[path = "draft_types.rs"]
 mod draft_types;
 
-pub use draft_reflow::{build_draft_render_plan, build_persisted_overlay_render_plan};
+pub use draft_reflow::{build_edit_layout, build_save_layout};
 pub use draft_types::{DraftCaretLine, DraftCaretStop, EditorDraftRenderPlan};
 
 #[cfg(test)]
 mod tests {
     use super::draft_style::build_source_layout;
-    use super::{build_draft_render_plan, build_persisted_overlay_render_plan};
+    use super::{build_edit_layout, build_save_layout};
     use crate::edit::document_plan::EditContext;
     use crate::models::{
         BoundingBox, LayoutAlignment, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle,
@@ -194,7 +194,7 @@ mod tests {
             ..Default::default()
         };
 
-        let plan = build_persisted_overlay_render_plan(
+        let plan = build_save_layout(
             &document_plan,
             "编程语言: Rust",
             |text, run| text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5,
@@ -219,7 +219,7 @@ mod tests {
         let document_plan = changed_text_document_plan();
         let draft_text = "智能合约: Anchor Framwork, Solana Program Library (SPL), ERC-20/721";
 
-        let plan = build_draft_render_plan(&document_plan, draft_text, |text, run| {
+        let plan = build_edit_layout(&document_plan, draft_text, |text, run| {
             text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
         });
 
@@ -238,7 +238,7 @@ mod tests {
         let document_plan = changed_text_document_plan();
         let draft_text = "智能合约: Anchor Framwork, Solana Program Library (SPL), ERC-20/721";
 
-        let plan = build_persisted_overlay_render_plan(&document_plan, draft_text, |text, run| {
+        let plan = build_save_layout(&document_plan, draft_text, |text, run| {
             text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
         });
 
@@ -286,7 +286,7 @@ mod tests {
         // 用户在 visual 文本基础上把 "Framework" 改成 "Framwork"（删一个 e）。
         let draft_text = "智能合约: Anchor Framwork, Solana Program Library (SPL), ERC-20/721";
 
-        let plan = build_persisted_overlay_render_plan(&document_plan, draft_text, |text, run| {
+        let plan = build_save_layout(&document_plan, draft_text, |text, run| {
             text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
         });
 
@@ -328,7 +328,7 @@ mod tests {
             ..Default::default()
         };
 
-        let plan = build_draft_render_plan(&document_plan, "Anchor", |text, _run| {
+        let plan = build_edit_layout(&document_plan, "Anchor", |text, _run| {
             // Deliberately wrong measurement: if active edit mode reflows the
             // split runs, "nchor" moves to x=20 and the visual gap regresses.
             if text == "A" {
@@ -413,6 +413,7 @@ mod tests {
             text: "•".to_string(),
             advance: 10.0, // body 相对 anchor 左边界偏移 10px
             runs: vec![test_run("marker-1", "•", 40.0, 50.0, false)],
+            is_cross_paragraph: false,
         };
 
         let document_plan = EditContext {
@@ -425,7 +426,7 @@ mod tests {
 
         // 删除部分文字后
         let draft_text = "Anchor Framework";
-        let plan = build_persisted_overlay_render_plan(&document_plan, draft_text, |text, run| {
+        let plan = build_save_layout(&document_plan, draft_text, |text, run| {
             text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
         });
 
@@ -483,6 +484,7 @@ mod tests {
             text: "•".to_string(),
             advance: 20.0,
             runs: vec![marker_test_run("marker", "•", 40.0, 8.0)],
+            is_cross_paragraph: false,
         };
         let document_plan = EditContext {
             source_body_text: body_text,
@@ -493,7 +495,7 @@ mod tests {
         };
 
         let draft_text = "Shoes are boring. Wear sneakers. 用王表达你的态度。";
-        let plan = build_persisted_overlay_render_plan(&document_plan, draft_text, |text, _run| {
+        let plan = build_save_layout(&document_plan, draft_text, |text, _run| {
             text.chars().count() as f32 * 5.0
         });
 
@@ -533,6 +535,7 @@ mod tests {
             text: "•".to_string(),
             advance: 0.0,
             runs: vec![marker_test_run("marker", "•", 42.0, 8.0)],
+            is_cross_paragraph: false,
         };
         let document_plan = EditContext {
             source_body_text: body_text,
@@ -543,7 +546,7 @@ mod tests {
         };
 
         let draft_text = "你的最爱，由你定制。释放奇思想";
-        let plan = build_persisted_overlay_render_plan(&document_plan, draft_text, |text, _run| {
+        let plan = build_save_layout(&document_plan, draft_text, |text, _run| {
             text.chars().count() as f32 * 5.0
         });
 
@@ -587,6 +590,7 @@ mod tests {
             text: "•".to_string(),
             advance: 0.0,
             runs: vec![marker_test_run("marker-1", "•", 42.0, 8.0)],
+            is_cross_paragraph: false,
         };
 
         let document_plan = EditContext {
@@ -597,7 +601,7 @@ mod tests {
             ..Default::default()
         };
 
-        let plan = build_persisted_overlay_render_plan(&document_plan, &body_text, |text, _run| {
+        let plan = build_save_layout(&document_plan, &body_text, |text, _run| {
             if text == "•" {
                 40.0
             } else {
@@ -642,6 +646,7 @@ mod tests {
             text: "•".to_string(),
             advance: 0.0,
             runs: vec![test_run("marker-1", "•", 42.0, 50.0, false)],
+            is_cross_paragraph: false,
         };
 
         let document_plan = EditContext {
@@ -652,7 +657,7 @@ mod tests {
             ..Default::default()
         };
 
-        let plan = build_persisted_overlay_render_plan(&document_plan, &body_text, |text, _run| {
+        let plan = build_save_layout(&document_plan, &body_text, |text, _run| {
             if text == "•" {
                 40.0
             } else {
@@ -697,6 +702,7 @@ mod tests {
             text: "10. ".to_string(),
             advance: 20.0,
             runs: vec![test_run("marker-1", "10. ", 30.0, 48.0, false)],
+            is_cross_paragraph: false,
         };
 
         let document_plan = EditContext {
@@ -707,7 +713,7 @@ mod tests {
             ..Default::default()
         };
 
-        let plan = build_persisted_overlay_render_plan(&document_plan, &body_text, |text, _run| {
+        let plan = build_save_layout(&document_plan, &body_text, |text, _run| {
             text.chars().count() as f32 * 5.0
         });
 
@@ -756,6 +762,7 @@ mod tests {
             text: "•".to_string(),
             advance: 10.0,
             runs: vec![test_run("marker-1", "•", 40.0, 50.0, false)],
+            is_cross_paragraph: false,
         };
 
         let document_plan = EditContext {
@@ -766,7 +773,7 @@ mod tests {
             ..Default::default()
         };
 
-        let plan = build_persisted_overlay_render_plan(&document_plan, &body_text, |text, run| {
+        let plan = build_save_layout(&document_plan, &body_text, |text, run| {
             text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
         });
 

@@ -5,7 +5,8 @@
 //! 运行时所有读取必须通过 accessor 方法走 document_plan，消除状态分叉。
 
 use crate::edit::document_plan::{
-    from_paragraph, from_target_id, EditContext, ParagraphEditorMarker,
+    apply_persisted_semantic_override, from_paragraph, from_target_id, EditContext,
+    ParagraphEditorMarker,
 };
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, ParagraphEditContext,
@@ -79,6 +80,7 @@ impl<'de> Deserialize<'de> for ParagraphEditorScene {
                 marker: helper.marker,
                 graphic_markers: Vec::new(),
                 original_runs: helper.original_runs.unwrap_or_default(),
+                is_cross_paragraph: false,
             }
         };
 
@@ -179,6 +181,14 @@ pub fn build_target_scene(
 ) -> Option<ParagraphEditorScene> {
     let document_plan: EditContext =
         from_target_id(paragraph, vector_model, target_id, click_page_point)?;
+    let document_plan = match crate::persistence::patch_store::GLOBAL_PATCH_STATE.read() {
+        Ok(state) => apply_persisted_semantic_override(
+            document_plan,
+            crate::persistence::patch_store::lookup_persisted_semantic_block(&state, target_id)
+                .as_ref(),
+        ),
+        Err(_) => document_plan,
+    };
     paragraph_editor_scene_from_plan(document_plan)
 }
 
@@ -201,6 +211,7 @@ mod tests {
             text: "•".to_string(),
             advance: 10.0,
             runs: Vec::new(),
+            is_cross_paragraph: false,
         });
 
         let scene = ParagraphEditorScene {

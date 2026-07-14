@@ -9,7 +9,7 @@ use crate::editor::bridge::build_rich_patch;
 use crate::editor::edit_target::get_base_paragraph_id;
 use crate::editor::engine_state::LiveEditorParagraphState;
 use crate::ui_state_store::{with_patch_state, GlobalPatchState};
-use pdf_viewer_core::persistence::models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::{PersistableRegionPatch, PersistableSemanticOperation};
 
 #[derive(Debug, Clone, Default)]
 struct EffectiveListState {
@@ -91,11 +91,20 @@ pub fn reconcile_numbering_patches(
             if let Some(existing_patch) = paragraph_patches.get_mut(existing_index) {
                 if existing_patch.new_marker_text.as_deref() != Some(desired_marker_text.as_str()) {
                     existing_patch.new_marker_text = Some(desired_marker_text.clone());
+                    push_set_list_marker_op(
+                        &mut existing_patch.semantic_ops,
+                        &existing_patch.region_id,
+                        &desired_marker_text,
+                    );
                 }
             }
             continue;
         }
 
+        // Only emit a derived patch when the body text actually differs from source.
+        // Pure numbering-only changes on untouched list items are represented as
+        // semantic SetListMarker ops and must not synthesize body patches that
+        // would reflow unchanged body text.
         let source_text = paragraph
             .runs
             .iter()
@@ -115,13 +124,37 @@ pub fn reconcile_numbering_patches(
         ) else {
             continue;
         };
-        derived_patch.new_marker_text = Some(desired_marker_text);
+        derived_patch.new_marker_text = Some(desired_marker_text.clone());
+        push_set_list_marker_op(
+            &mut derived_patch.semantic_ops,
+            &derived_patch.region_id,
+            &desired_marker_text,
+        );
         patch_index_by_base.insert(base_paragraph_id, paragraph_patches.len());
         paragraph_patches.push(derived_patch);
     }
 
     paragraph_patches.extend(auxiliary_patches);
     paragraph_patches
+}
+
+fn push_set_list_marker_op(
+    semantic_ops: &mut Vec<PersistableSemanticOperation>,
+    block_id: &str,
+    marker_text: &str,
+) {
+    let block_id = block_id.to_string();
+    let marker_text = marker_text.to_string();
+    semantic_ops.retain(|op| match op {
+        PersistableSemanticOperation::SetListMarker {
+            block_id: existing, ..
+        } if existing == &block_id => false,
+        _ => true,
+    });
+    semantic_ops.push(PersistableSemanticOperation::SetListMarker {
+        block_id,
+        marker_text,
+    });
 }
 
 fn build_numbering_override_map(
@@ -275,4 +308,47 @@ fn resolve_patch_for_base_paragraph<'a>(
             .values()
             .find(|patch| get_base_paragraph_id(&patch.region_id) == base_paragraph_id)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_set_list_marker_op_dedupes_existing_op_for_same_block() {
+        let mut ops = vec![PersistableSemanticOperation::SetListMarker {
+            block_id: "p1".to_string(),
+            marker_text: "1.".to_string(),
+        }];
+
+        push_set_list_marker_op(&mut ops, "p1", "2.");
+
+        let count = ops
+            .iter()
+            .filter(|op| {
+                matches!(
+                    op,
+                    PersistableSemanticOperation::SetListMarker { block_id, .. } if block_id == "p1"
+                )
+            })
+            .count();
+        assert_eq!(count, 1, "duplicate SetListMarker op must be replaced");
+        if let Some(PersistableSemanticOperation::SetListMarker { marker_text, .. }) = ops.last() {
+            assert_eq!(marker_text, "2.");
+        } else {
+            panic!("expected SetListMarker op");
+        }
+    }
+
+    #[test]
+    fn push_set_list_marker_op_keeps_other_block_ops() {
+        let mut ops = vec![PersistableSemanticOperation::SetListMarker {
+            block_id: "p2".to_string(),
+            marker_text: "1.".to_string(),
+        }];
+
+        push_set_list_marker_op(&mut ops, "p1", "3.");
+
+        assert_eq!(ops.len(), 2, "ops for different blocks must be preserved");
+    }
 }

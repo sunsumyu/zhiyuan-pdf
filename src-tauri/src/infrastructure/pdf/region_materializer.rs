@@ -499,6 +499,52 @@ fn materialize_list_item_patch_to_text_reflow(
             },
         );
     }
+    
+    // Check if this is a cross-region marker (marker and body in different PDF objects)
+    // If so, only patch the body and preserve the original marker
+    let is_cross_region_marker = patch.semantic_block.as_ref().map_or(false, |summary| {
+        summary.is_cross_paragraph
+            && !summary.marker_object_indices.is_empty()
+            && !summary.body_object_indices.is_empty()
+    });
+    
+    if is_cross_region_marker {
+        // Cross-region marker: only patch the body, preserve the original marker
+        let summary = patch.semantic_block.as_ref().unwrap();
+        let body_text = patch
+            .snapshot
+            .as_ref()
+            .and_then(|value| value.get("bodyText"))
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| patch.new_text.clone());
+        
+        // Only create a patch for the body
+        let mut body_indices = summary.body_object_indices.clone();
+        body_indices.sort_unstable();
+        
+        return (
+            vec![TextReflowPatch {
+                page_index: patch.page_index,
+                target_indices: body_indices,
+                new_text: normalize_region_text(body_text),
+                new_runs: patch.new_runs.clone(),
+                alignment: patch.align,
+                line_height: patch.line_height,
+                displacement_y: patch.displacement_y,
+                wrap_width: patch.wrap_width,
+                char_spacing: patch.char_spacing,
+                horizontal_scaling: patch.horizontal_scaling,
+            }],
+            RegionMaterializationDecision {
+                region_id: patch.region_id.clone(),
+                source: patch.source.clone(),
+                status: "materialized",
+                reason: "cross-region-marker-preserve-original".to_string(),
+            },
+        );
+    }
+    
     if let Some(semantic_result) = semantic_list_item_unit_text_reflow(patch) {
         return semantic_result;
     }
@@ -714,6 +760,7 @@ mod tests {
             body_object_indices: vec![2],
             marker_object_indices: vec![1],
             graphic_marker_object_indices: Vec::new(),
+            is_cross_paragraph: false, // normal list item, not cross-paragraph
         });
         patch.new_runs = Some(Vec::new());
         patch
@@ -730,6 +777,7 @@ mod tests {
             body_object_indices: vec![2],
             marker_object_indices: Vec::new(),
             graphic_marker_object_indices: vec![1],
+            is_cross_paragraph: false,
         });
         patch
     }

@@ -64,8 +64,7 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
     const ctx: EditorContext = {
         state,
         deps,
-        ensureNodes: () => {
-            if (!cachedNodes) {
+        ensureNodes: () => {            if (!cachedNodes) {
                 const handlers = createInputHandlers(ctx);
                 cachedNodes = ensureEditorHostView({
                     readCaretIndex: readTextareaCaret,
@@ -98,7 +97,7 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
         },
     };
 
-    return {
+    const host: EditorHost = {
         syncTargets: (displayZoom: number) => {
             try {
                 syncTargets(ctx, displayZoom);
@@ -168,4 +167,16 @@ export function createEditorHost(deps: EditorHostDeps): EditorHost {
             }
         },
     };
+
+    // Test-only hook: expose a read-only editor snapshot for e2e assertions.
+    // This does not carry any business logic; it merely reflects active editor state.
+    (globalThis as any).__readEditorSnapshot = () => {
+        try {
+            return readLegacySnapshot(ctx);
+        } catch {
+            return null;
+        }
+    };
+
+    return host;
 }

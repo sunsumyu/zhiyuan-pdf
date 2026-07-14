@@ -2,7 +2,7 @@ use crate::common::debug::truncate_debug_text;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::draft_layout::build_persisted_overlay_render_plan;
+use crate::editor::draft_layout::build_save_layout;
 use crate::editor::paragraph_overlay::ParagraphRenderOverlay;
 use crate::editor::replacement_region::build_region;
 use crate::editor::session::ActiveEditorTarget;
@@ -262,7 +262,7 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
     draw_graphic_markers(renderer, document_plan, vector_model, image_provider);
 
     let render_plan =
-        build_persisted_overlay_render_plan(document_plan, draft_text, |text, run| {
+        build_save_layout(document_plan, draft_text, |text, run| {
             measure_text_width_shared(&renderer.ctx, text, run)
         });
 
@@ -295,13 +295,14 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
         let baseline_y = session.anchor_bbox.top + line.baseline_y;
         for (_run_idx, run) in line.runs.iter().enumerate() {
             let run_x = session.anchor_bbox.left + line.offset_x + run.origin_x;
+            let resolved_font = pdf_viewer_core::typography::font_resolver::resolve_font_face(&run.style.font_name, None);
             renderer.draw_text_run(
                 &run.text,
                 run_x,
                 baseline_y,
                 run.style.font_size,
                 &run.style.color,
-                &run.style.font_name,
+                &resolved_font.render_family,
                 if run.style.is_bold { "bold" } else { "normal" },
                 if run.style.is_italic {
                     "italic"

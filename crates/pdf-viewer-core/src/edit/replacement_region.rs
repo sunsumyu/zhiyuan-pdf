@@ -231,6 +231,7 @@ mod tests {
             text: "•".to_string(),
             advance: 0.0,
             runs: vec![marker_run],
+            is_cross_paragraph: false,
         });
         target
     }

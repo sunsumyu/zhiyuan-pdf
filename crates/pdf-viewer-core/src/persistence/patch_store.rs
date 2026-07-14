@@ -7,7 +7,9 @@ use crate::document::page_region_models::ParagraphRegionSnapshot;
 use crate::edit::active_target::ActiveEditorTarget;
 use crate::geometry::layout_engine::ParagraphLayout;
 use crate::models::{PaginationAction, PaginationCommand};
-use crate::persistence::models::{PersistableRegionPatch, PersistableSemanticOperation};
+use crate::persistence::models::{
+    PersistableRegionPatch, PersistableSemanticBlockSummary, PersistableSemanticOperation,
+};
 
 #[derive(Default)]
 pub struct GlobalPatchState {
@@ -16,6 +18,7 @@ pub struct GlobalPatchState {
     pub paragraph_layout_snapshots: HashMap<String, ParagraphLayout>,
     pub paragraph_patches: HashMap<String, PersistableRegionPatch>,
     pub semantic_ops: HashMap<String, Vec<PersistableSemanticOperation>>,
+    pub persisted_semantic_blocks: HashMap<String, PersistableSemanticBlockSummary>,
     pub paragraph_replacement_targets: HashMap<String, ActiveEditorTarget>,
     pub field_group_texts: HashMap<String, String>,
     pub field_group_snapshots: HashMap<String, serde_json::Value>,
@@ -107,6 +110,9 @@ pub fn apply_patch_maps(state: &mut GlobalPatchState, patch: &PersistableRegionP
                 .semantic_ops
                 .insert(patch.region_id.clone(), patch.semantic_ops.clone());
         }
+        if let Some(summary) = patch.semantic_block.clone() {
+            remember_persisted_semantic_block(state, summary);
+        }
         if let Some(target) = patch
             .snapshot
             .as_ref()
@@ -153,6 +159,38 @@ pub fn collect_semantic_ops(state: &GlobalPatchState) -> Vec<PersistableSemantic
         .values()
         .flat_map(|ops| ops.iter().cloned())
         .collect()
+}
+
+/// Record a durable semantic-block summary that survives `clear_persistable_patches`.
+/// Used by the reload/reparse reconciliation to prefer the user's persisted
+/// list-item/marker/body intent over heuristic re-inference from PDF run order.
+pub fn remember_persisted_semantic_block(
+    state: &mut GlobalPatchState,
+    summary: PersistableSemanticBlockSummary,
+) {
+    state
+        .persisted_semantic_blocks
+        .insert(summary.region_id.clone(), summary);
+}
+
+pub fn lookup_persisted_semantic_block(
+    state: &GlobalPatchState,
+    region_id: &str,
+) -> Option<PersistableSemanticBlockSummary> {
+    state
+        .persisted_semantic_blocks
+        .get(region_id)
+        .or_else(|| {
+            state
+                .persisted_semantic_blocks
+                .values()
+                .find(|block| block.block_id == region_id)
+        })
+        .cloned()
+}
+
+pub fn clear_persisted_semantic_blocks(state: &mut GlobalPatchState) {
+    state.persisted_semantic_blocks.clear();
 }
 
 pub fn capture_existing_patch(

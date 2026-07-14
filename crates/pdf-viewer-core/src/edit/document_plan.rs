@@ -22,6 +22,7 @@ use crate::models::{
     ParagraphEditContext, SemanticBlock, SemanticListItem, SemanticListLayout, SemanticMarker,
     SemanticTextBody, VectorPageModel, VectorRenderObject, VisualMarker,
 };
+use crate::persistence::models::PersistableSemanticBlockSummary;
 use crate::text::glyph_layout::{
     build_editor_session_text_plan, is_decorative_text, EditorSessionTextPlan,
 };
@@ -55,6 +56,9 @@ pub struct EditContext {
     pub graphic_markers: Vec<VisualMarker>,
     #[serde(default)]
     pub original_runs: Vec<GlyphPaintRun>,
+    /// Whether the marker was detected from a separate paragraph region
+    #[serde(default)]
+    pub is_cross_paragraph: bool,
 }
 
 impl Default for EditContext {
@@ -75,6 +79,7 @@ impl Default for EditContext {
             marker: None,
             graphic_markers: Vec::new(),
             original_runs: Vec::new(),
+            is_cross_paragraph: false,
         }
     }
 }
@@ -390,6 +395,7 @@ pub fn build_editor_document_plan_from_session(session: &ParagraphEditContext) -
         marker: None,
         graphic_markers: Vec::new(),
         original_runs: Vec::new(),
+        is_cross_paragraph: false,
     }
 }
 
@@ -649,7 +655,7 @@ fn resolve_from_target(
 
     // Marker resolution is a three-step strategy chain (semantics -> symbol-font -> geometric
     // synthesis); the chain and its trace events live in `resolve_marker_split`.
-    let split = resolve_marker_split(paragraph, &full_session, &full_source_text, &full_text_plan);
+    let split = resolve_marker_split(paragraph, &full_session, &full_source_text, &full_text_plan, vector_model);
 
     let body_text_plan = build_editor_session_text_plan(&split.body_session);
     let source_body_text = session_source_text(&split.body_session);
@@ -687,7 +693,9 @@ fn resolve_from_target(
 
     let original_runs = target_paint_runs(paragraph, &split.body_session, &target);
 
-    Some(EditContext {
+    let is_cross_paragraph = split.marker.as_ref().map_or(false, |m| m.is_cross_paragraph);
+
+    let edit_context = EditContext {
         target_id,
         base_paragraph_id,
         shell_bbox,
@@ -705,7 +713,65 @@ fn resolve_from_target(
         }),
         graphic_markers,
         original_runs,
-    })
+        is_cross_paragraph,
+    };
+
+    Some(edit_context)
+}
+
+/// Reconcile an inferred [`EditContext`] against a persisted semantic summary.
+///
+/// Reload/refresh re-parses the PDF and re-derives marker/body from physical run order, which is
+/// what caused markers to drift to the paragraph tail. When a durable semantic summary exists
+/// (recorded at commit time and surviving `clear_persistable_patches`), prefer it: restore the
+/// marker text/body split as the user committed it instead of trusting re-inferred heuristics.
+pub fn apply_persisted_semantic_override(
+    mut context: EditContext,
+    override_summary: Option<&PersistableSemanticBlockSummary>,
+) -> EditContext {
+    let Some(summary) = override_summary else {
+        return context;
+    };
+    if summary.kind != "list-item" {
+        return context;
+    }
+    let marker_text = summary
+        .marker_text
+        .clone()
+        .or_else(|| context.marker.as_ref().map(|marker| marker.text.clone()))
+        .unwrap_or_default();
+    if marker_text.is_empty() {
+        return context;
+    }
+
+    // Body text from the persisted summary wins over re-derived body text when available.
+    if !summary.body_text.is_empty() {
+        context.source_body_text = summary.body_text.clone();
+    }
+
+    let existing_marker = context.marker.take();
+    let kind = existing_marker
+        .as_ref()
+        .map(|marker| marker.kind)
+        .filter(|kind| *kind != ListMarkerKind::None)
+        .unwrap_or_else(|| derive_list_text_semantics(&marker_text).kind);
+    let advance = existing_marker
+        .as_ref()
+        .map(|marker| marker.advance)
+        .unwrap_or_default();
+    let runs = existing_marker
+        .map(|marker| marker.runs)
+        .unwrap_or_default();
+
+    context.marker = Some(ParagraphEditorMarker {
+        kind,
+        text: marker_text,
+        advance,
+        runs,
+        is_cross_paragraph: false,
+    });
+
+    context
 }
 
 // --- 兼容别名（deprecated）---
