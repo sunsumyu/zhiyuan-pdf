@@ -15,9 +15,16 @@ fn paint_mode_from_render_mode(render_mode: i64) -> PaintMode {
 }
 
 fn resolve_run_font(run: &LayoutRun) -> ResolvedFontFace {
+    let weight = if run.style.font_weight_numeric > 0 {
+        run.style.font_weight_numeric as i32
+    } else if run.style.is_bold {
+        700
+    } else {
+        400
+    };
     let hints = FontHints {
         flags: 0,
-        weight: if run.style.is_bold { 700 } else { 400 },
+        weight,
         italic_angle: if run.style.is_italic { -12.0 } else { 0.0 },
         ascent: run.style.font_size,
         descent: 0.0,

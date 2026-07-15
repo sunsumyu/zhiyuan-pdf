@@ -79,6 +79,7 @@ impl GlyphPaintRun {
                 is_underline: self.is_underline,
                 char_spacing: 0.0,
                 scale_x: self.scale_x,
+                font_weight_numeric: self.resolved_font.identity.weight as u16,
             },
             object_ids: self.object_ids.clone(),
         }

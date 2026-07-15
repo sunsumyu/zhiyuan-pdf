@@ -277,6 +277,15 @@ pub fn parse_content_stream(
                             .unwrap_or_default()
                     };
 
+                    let (is_bold, is_italic) = if let Some(ref h) = font.hints {
+                        (
+                            h.weight >= 600 || h.is_bold,
+                            h.italic_angle.abs() > 0.1 || h.is_italic,
+                        )
+                    } else {
+                        (false, false)
+                    };
+
                     let trm = multiply_matrices(state.ctm, state.tm);
                     // char_origins and char_widths from resolve_glyph_geom are in TEXT
                     // SPACE (pre-matrix).  The rest of the pipeline (LayoutRun, caret
@@ -298,14 +307,27 @@ pub fn parse_content_stream(
                         pdf_char_codes: codes,
                         z_index: *obj_counter,
                         color: state.fill_color.clone().unwrap_or("#000000".into()),
+                        stroke_color: state.stroke_color.clone(),
+                        stroke_width: state.line_width,
                         a: trm[0],
                         b: trm[1],
                         c: trm[2],
                         d: trm[3],
+                        is_bold,
+                        is_italic,
+                        is_underline: false,
                         horizontal_scaling: state.horizontal_scaling,
                         char_spacing: state.char_spacing,
                         word_spacing: state.word_spacing,
                         render_mode: state.render_mode,
+                        font_hints: font.hints.clone(),
+                        font_post_script_name: font.post_script_name.clone(),
+                        font_family_hint: font.family_hint.clone(),
+                        font_subtype: font.font_subtype.clone(),
+                        embedded_font_key: font.embedded_font_key.clone(),
+                        has_embedded_font_program: font.has_embedded_program,
+                        has_to_unicode_cmap: font.has_to_unicode_cmap,
+                        object_id: Some(format!("text_{}", *obj_counter)),
                         ..Default::default()
                     });
                     // Tm update uses the original text-space advance (not page-scaled)

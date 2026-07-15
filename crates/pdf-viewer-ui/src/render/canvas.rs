@@ -211,7 +211,7 @@ impl CanvasRenderer {
         font_size: f32,
         color: &str,
         font_name: &str,
-        font_weight: &str,
+        font_weight: u16,
         font_style: &str,
         is_underline: bool,
         scale_x: f32,
@@ -443,7 +443,7 @@ pub(crate) fn draw_text_run_core(
     font_size: f32,
     color: &str,
     font_name: &str,
-    font_weight: &str,
+    font_weight: u16,
     font_style: &str,
     is_underline: bool,
     scale_x: f32,
@@ -459,12 +459,12 @@ pub(crate) fn draw_text_run_core(
         CoordinateMode::PageSpace => 1.0,
         CoordinateMode::EditorLocal => 1.0,
     };
-    let effective_weight = if font_weight == "bold" { "600" } else { "400" };
+    let weight_str = font_weight.to_string();
 
     ctx.save();
     ctx.set_font(&format!(
         "{} {} {}px {}",
-        font_style, effective_weight, font_size, font_name
+        font_style, weight_str, font_size, font_name
     ));
     ctx.set_fill_style_str(color);
     ctx.set_stroke_style_str(color);

@@ -303,7 +303,13 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
                 run.style.font_size,
                 &run.style.color,
                 &resolved_font.render_family,
-                if run.style.is_bold { "bold" } else { "normal" },
+                if run.style.font_weight_numeric > 0 {
+                    run.style.font_weight_numeric
+                } else if run.style.is_bold {
+                    700
+                } else {
+                    400
+                },
                 if run.style.is_italic {
                     "italic"
                 } else {

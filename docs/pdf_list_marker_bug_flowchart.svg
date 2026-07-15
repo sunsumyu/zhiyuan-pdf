@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 580" width="100%" height="100%">
+  <!-- Style Definitions -->
+  <style>
+    .bg { fill: #0f172a; }
+    .border { stroke: #1e293b; stroke-width: 2; fill: none; }
+    .title { font-family: system-ui, -apple-system, sans-serif; font-size: 22px; font-weight: bold; fill: #f8fafc; }
+    .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; fill: #94a3b8; }
+    
+    /* Process Card Styles */
+    .step-num { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; font-weight: bold; fill: #0ea5e9; }
+    .step-card { fill: #1e293b; stroke: #334155; stroke-width: 1.5; rx: 6; ry: 6; }
+    .step-title { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: bold; fill: #f8fafc; }
+    .step-desc { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #94a3b8; }
+    
+    /* Code/Data Box Styles */
+    .data-box { fill: #0f172a; stroke: #475569; stroke-width: 1; rx: 4; ry: 4; }
+    .data-text { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; fill: #cbd5e1; }
+    .highlight-marker { fill: #f43f5e; font-weight: bold; }
+    .highlight-new { fill: #10b981; font-weight: bold; }
+    .highlight-text { fill: #38bdf8; }
+    
+    /* Line and Arrow Styles */
+    .connector-line { stroke: #0ea5e9; stroke-width: 1.5; fill: none; }
+    .arrow { fill: #0ea5e9; }
+    
+    /* Warning/RCA Alert Styles */
+    .alert-bg { fill: #7f1d1d; fill-opacity: 0.3; stroke: #b91c1c; stroke-width: 1.5; rx: 6; ry: 6; }
+    .alert-title { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: bold; fill: #fca5a5; }
+    .alert-text { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #f8fafc; }
+  </style>
+
+  <!-- Background -->
+  <rect class="bg" width="900" height="580" />
+  <rect class="border" x="5" y="5" width="890" height="570" rx="10" ry="10" />
+
+  <!-- Title -->
+  <text class="title" x="30" y="40">列表项段落双 Marker Bug 产生链路剖析</text>
+  <text class="subtitle" x="30" y="62">当 PDF 内容流物理顺序不规范（正文在前，Marker 在后）时，编辑重排引起的冲突过程</text>
+
+  <!-- STEP 1 -->
+  <g transform="translate(30, 90)">
+    <rect class="step-card" width="240" height="150" />
+    <text class="step-num" x="15" y="22">01 / PDF 物理存储 (Content Stream)</text>
+    <text class="step-title" x="15" y="42">物理数据流顺序不规范</text>
+    <text class="step-desc" x="15" y="60">物理数组上，正文在前，蓝点项目符号在后：</text>
+    
+    <rect class="data-box" x="15" y="75" width="210" height="60" />
+    <text class="data-text" x="25" y="95">runs[0]: <tspan class="highlight-text">"分布式: ..."</tspan> (X=30)</text>
+    <text class="data-text" x="25" y="120">runs[1]: <tspan class="highlight-marker">"•"</tspan> (X=10)</text>
+  </g>
+
+  <!-- Arrow 1➔2 -->
+  <path class="connector-line" d="M 270, 165 L 310, 165" />
+  <polygon class="arrow" points="315,165 307,161 307,169" />
+
+  <!-- STEP 2 -->
+  <g transform="translate(320, 90)">
+    <rect class="step-card" width="240" height="150" />
+    <text class="step-num" x="15" y="22">02 / 编辑重建切片 (build_styles)</text>
+    <text class="step-title" x="15" y="42">老 Marker 字符被误保留</text>
+    <text class="step-desc" x="15" y="60">对比草稿与正文，切片未对 Marker 过滤：</text>
+    
+    <rect class="data-box" x="15" y="75" width="210" height="60" />
+    <text class="data-text" x="25" y="95">sliced_runs = [</text>
+    <text class="data-text" x="35" y="112">  "分布式: ...",</text>
+    <text class="data-text" x="35" y="127">  <tspan class="highlight-marker">"•"</tspan> <tspan class="step-desc">(← 原始 Marker 混入正文)</tspan></text>
+    <text class="data-text" x="25" y="142">]</text>
+  </g>
+
+  <!-- Arrow 2➔3 -->
+  <path class="connector-line" d="M 560, 165 L 600, 165" />
+  <polygon class="arrow" points="605,165 597,161 597,169" />
+
+  <!-- STEP 3 -->
+  <g transform="translate(610, 90)">
+    <rect class="step-card" width="240" height="150" />
+    <text class="step-num" x="15" y="22">03 / 折行排版 (layout_paragraph)</text>
+    <text class="step-title" x="15" y="42">老 Marker 被重排至行尾</text>
+    <text class="step-desc" x="15" y="60">排版引擎按 runs 数组的物理顺序折行：</text>
+    
+    <rect class="data-box" x="15" y="75" width="210" height="60" />
+    <text class="data-text" x="25" y="98">排版结果 (单行):</text>
+    <text class="data-text" x="25" y="122">"分布式: ..." ➔ <tspan class="highlight-marker">"•"</tspan></text>
+  </g>
+
+  <!-- Vertical Loop Down Arrow (3 ➔ 4) -->
+  <path class="connector-line" d="M 730, 240 L 730, 275 L 150, 275 L 150, 310" />
+  <polygon class="arrow" points="150,315 146,307 154,307" />
+
+  <!-- STEP 4 -->
+  <g transform="translate(30, 330)">
+    <rect class="step-card" width="240" height="150" />
+    <text class="step-num" x="15" y="22">04 / 强行插入 (inject_fixed_marker)</text>
+    <text class="step-title" x="15" y="42">行首重新注入新 Marker</text>
+    <text class="step-desc" x="15" y="60">因为是 ListItem，在第一行行首插入：</text>
+    
+    <rect class="data-box" x="15" y="75" width="210" height="60" />
+    <text class="data-text" x="25" y="98">insert(0, <tspan class="highlight-new">"•"</tspan>)</text>
+    <text class="data-text" x="25" y="122">Line: [<tspan class="highlight-new">"•"</tspan>, "分布式...", <tspan class="highlight-marker">"•"</tspan>]</text>
+  </g>
+
+  <!-- Arrow 4➔5 -->
+  <path class="connector-line" d="M 270, 405 L 310, 405" />
+  <polygon class="arrow" points="315,405 307,401 307,409" />
+
+  <!-- STEP 5 -->
+  <g transform="translate(320, 330)">
+    <rect class="step-card" width="530" height="150" style="fill: #111827; stroke: #e11d48; stroke-width: 2;" />
+    <text class="step-num" x="15" y="22" fill="#ef4444">05 / 最终 Canvas 渲染像素 (灾难现场)</text>
+    <text class="step-title" x="15" y="42" fill="#ef4444">行首行尾各绘制出一个 Marker (双 Marker Bug)</text>
+    <text class="step-desc" x="15" y="60">首部由于 inject_fixed_marker 呈现新 Marker，尾部由于 runs 排序物理残留老 Marker：</text>
+    
+    <!-- Render Demo Box -->
+    <rect x="15" y="75" width="500" height="60" rx="4" ry="4" fill="#0f172a" stroke="#ef4444" stroke-dasharray="4" />
+    <circle cx="35" cy="105" r="5" fill="#0ea5e9" />
+    <text class="node-text" x="50" y="109" font-size="12">分布式: Seata 分布式事务、Redis (持久化、集群、Lua 脚本)...</text>
+    <circle cx="490" cy="105" r="5" fill="#0ea5e9" />
+    
+    <!-- Callouts -->
+    <text class="step-num" x="25" y="152" fill="#10b981">➔ 行首：注入的新 Marker</text>
+    <text class="step-num" x="320" y="152" fill="#f43f5e">➔ 行尾：不规范 PDF 物理残留的老 Marker</text>
+  </g>
+
+  <!-- ROOT CAUSE ANALYSIS (RCA) -->
+  <g transform="translate(30, 500)">
+    <rect class="alert-bg" width="840" height="60" />
+    <text class="alert-title" x="20" y="22">💡 根本原因 (RCA) 与修复方案</text>
+    <text class="alert-text" x="20" y="42">【漏洞点】正文切片 rebuild 逻辑未实现与 Marker 管理的彻底隔离。 【修复】在 build_styles 中切片段落正文时，检查如果 EditContext 含有 marker，过滤剔除原始 runs 中的 Marker 项。</text>
+  </g>
+</svg>

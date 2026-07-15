@@ -130,6 +130,8 @@ pub struct RunStyle {
     pub char_spacing: f32,
     #[serde(default = "default_scale")]
     pub scale_x: f32,
+    #[serde(default)]
+    pub font_weight_numeric: u16,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
@@ -1119,6 +1121,11 @@ impl TextRun {
                 is_underline: run.is_underline,
                 char_spacing: run.char_spacing,
                 scale_x: run.horizontal_scaling / 100.0,
+                font_weight_numeric: run
+                    .font_hints
+                    .as_ref()
+                    .map(|h| h.weight as u16)
+                    .unwrap_or(if run.is_bold { 700 } else { 400 }),
             },
             object_ids: run.object_id.clone().map(|id| vec![id]).unwrap_or_default(),
         }
