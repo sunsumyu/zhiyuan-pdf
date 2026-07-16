@@ -9,7 +9,7 @@ use crate::edit::debug_trace::{
 };
 use crate::edit::paragraph_overlay::{ParagraphRenderOverlay, ParagraphRenderOverlayOwner};
 use crate::edit::replacement_region::{build_region, ParagraphReplacementRegion};
-use crate::edit::source_identity::{collect_object_index_set, collect_target_source_object_ids};
+use crate::edit::source_identity::{object_ids, object_indices_set};
 use crate::models::{BoundingBox, VectorPageModel, VectorRenderObject};
 use crate::render::prepared_scene::PreparedPageScene;
 use crate::render::viewport_culling::{path_bbox, run_bbox, vector_object_intersects_viewport};
@@ -41,11 +41,11 @@ pub(super) struct PreparedOverlay {
 // --- Overlay 属性查询 ---
 
 pub(super) fn overlay_paragraph_object_ids(overlay: &ParagraphRenderOverlay) -> HashSet<String> {
-    collect_target_source_object_ids(&overlay.target)
+    object_ids(&overlay.target)
 }
 
 pub(super) fn overlay_paragraph_object_indices(overlay: &ParagraphRenderOverlay) -> HashSet<usize> {
-    let mut object_indices = collect_object_index_set(&overlay.target);
+    let mut object_indices = object_indices_set(&overlay.target);
     object_indices.extend(overlay.source_object_indices.iter().copied());
     object_indices
 }

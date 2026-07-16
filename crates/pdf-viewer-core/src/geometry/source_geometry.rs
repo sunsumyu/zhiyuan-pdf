@@ -92,6 +92,7 @@ mod tests {
                 is_underline: false,
                 char_spacing: 0.0,
                 scale_x: 1.0,
+            font_weight_numeric: 400,
             },
             bbox: BoundingBox {
                 left,

@@ -13,10 +13,10 @@ use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::edit::edit_target::{
-    collect_edit_targets_from_session, resolve_edit_target_from_session, EditorEditTarget,
+    build_targets, resolve_target, EditorEditTarget,
 };
-use crate::edit::source_runs::{resolve_preferred_editor_session, target_paint_runs};
-use crate::edit::source_text::session_source_text;
+use crate::edit::source_runs::{resolve_source_context, target_paint_runs};
+use crate::edit::source_text::source_text;
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, GraphicType, LayoutParagraph, LayoutRun,
     ParagraphEditContext, SemanticBlock, SemanticListItem, SemanticListLayout, SemanticMarker,
@@ -378,16 +378,18 @@ fn detect_graphic_markers(
     markers
 }
 
-pub fn build_editor_document_plan_from_session(session: &ParagraphEditContext) -> EditContext {
-    let body_text_plan = build_editor_session_text_plan(session);
-    let body_lines = build_body_line_plans(session, &body_text_plan);
-    let draft_template_run = select_draft_template_run(session, &body_lines);
+pub fn build_context(
+    context: &ParagraphEditContext,
+) -> EditContext {
+    let body_text_plan = build_editor_session_text_plan(context);
+    let body_lines = build_body_line_plans(context, &body_text_plan);
+    let draft_template_run = select_draft_template_run(context, &body_lines);
     EditContext {
-        target_id: session.paragraph.id.clone(),
-        base_paragraph_id: session.paragraph.id.clone(),
-        shell_bbox: session.anchor_bbox,
-        body_session: session.clone(),
-        source_body_text: session_source_text(session),
+        target_id: context.paragraph.id.clone(),
+        base_paragraph_id: context.paragraph.id.clone(),
+        shell_bbox: context.anchor_bbox,
+        body_session: context.clone(),
+        source_body_text: source_text(context),
         body_text_plan,
         draft_template_run,
         body_lines,
@@ -503,9 +505,9 @@ pub fn collect_all(
     paragraph: &GlyphPaintParagraph,
     vector_model: Option<&VectorPageModel>,
 ) -> Vec<EditContext> {
-    let full_session = resolve_preferred_editor_session(paragraph, vector_model)
+    let full_session = resolve_source_context(paragraph, vector_model)
         .unwrap_or_else(|| paragraph.editor_session.clone());
-    collect_edit_targets_from_session(&paragraph.id, &full_session)
+    build_targets(&paragraph.id, &full_session)
         .into_iter()
         .filter_map(|target| {
             resolve_from_target(paragraph, &full_session, target, vector_model, None)
@@ -520,10 +522,10 @@ pub fn from_target_id(
     target_id: &str,
     click_page_point: Option<(f32, f32)>,
 ) -> Option<EditContext> {
-    let full_session = resolve_preferred_editor_session(paragraph, vector_model)
+    let full_session = resolve_source_context(paragraph, vector_model)
         .unwrap_or_else(|| paragraph.editor_session.clone());
     let target =
-        resolve_edit_target_from_session(&paragraph.id, target_id, &full_session, click_page_point);
+        resolve_target(&paragraph.id, target_id, &full_session, click_page_point);
 
     resolve_from_target(
         paragraph,
@@ -647,7 +649,7 @@ fn resolve_from_target(
     let target_id = target.target_id.clone();
     let base_paragraph_id = target.base_paragraph_id.clone();
     let full_session = target.session.clone();
-    let full_source_text = session_source_text(&full_session);
+    let full_source_text = source_text(&full_session);
     let full_text_plan = build_editor_session_text_plan(&full_session);
     if full_source_text.trim().is_empty() {
         return None;
@@ -658,7 +660,7 @@ fn resolve_from_target(
     let split = resolve_marker_split(paragraph, &full_session, &full_source_text, &full_text_plan, vector_model);
 
     let body_text_plan = build_editor_session_text_plan(&split.body_session);
-    let source_body_text = session_source_text(&split.body_session);
+    let source_body_text = source_text(&split.body_session);
     let preliminary_shell_bbox = resolve_shell_bbox(&full_session, &split, &[]);
     let graphic_markers =
         detect_graphic_markers(vector_model, &split.body_session, &preliminary_shell_bbox);

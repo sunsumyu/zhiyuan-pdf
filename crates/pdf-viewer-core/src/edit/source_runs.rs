@@ -116,7 +116,7 @@ fn summarize_layout_runs(runs: &[LayoutRun]) -> String {
         .join(" || ")
 }
 
-pub fn resolve_preferred_editor_session(
+pub fn resolve_source_context(
     paragraph: &GlyphPaintParagraph,
     vector_model: Option<&VectorPageModel>,
 ) -> Option<ParagraphEditContext> {

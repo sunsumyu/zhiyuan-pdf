@@ -544,7 +544,7 @@ mod tests {
     use super::*;
     use crate::edit::active_target::ActiveEditorTarget;
     use crate::edit::document_plan::EditContext;
-    use crate::edit::paragraph_scene::paragraph_editor_scene_from_plan;
+    use crate::edit::paragraph_scene::from_context;
     use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
     use crate::text::glyph_layout::build_editor_session_text_plan;
 
@@ -558,6 +558,7 @@ mod tests {
             is_underline: false,
             char_spacing: 0.0,
             scale_x: 1.0,
+            font_weight_numeric: 400,
         }
     }
 
@@ -610,7 +611,7 @@ mod tests {
             body_initial_caret: caret_index,
             ..Default::default()
         };
-        let scene = paragraph_editor_scene_from_plan(document_plan).expect("scene should build");
+        let scene = from_context(document_plan).expect("scene should build");
         let target = ActiveEditorTarget {
             paragraph_id: "p-engine-state".to_string(),
             region_id: "region-engine-state".to_string(),

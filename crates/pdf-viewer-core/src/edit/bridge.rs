@@ -1,6 +1,6 @@
 use crate::edit::active_target::ActiveEditorTarget;
 use crate::edit::document_plan::collect_all;
-use crate::edit::edit_target::get_base_paragraph_id;
+use crate::edit::edit_target::base_paragraph_id;
 use crate::edit::paragraph_scene::build_target_scene;
 use crate::edit::paragraph_scene::ParagraphEditorScene;
 use crate::edit::replacement_snapshot::build_edit_replacement_snapshot;
@@ -57,7 +57,7 @@ fn semantic_summary_from_scene(scene: &ParagraphEditorScene) -> PersistableSeman
     }
 }
 
-pub fn collect_paragraph_interaction_targets(
+pub fn interaction_targets(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
 ) -> Vec<ParagraphInteractionTarget> {
@@ -89,7 +89,7 @@ pub fn collect_paragraph_interaction_targets(
     targets
 }
 
-pub fn build_paragraph_patch(
+pub fn build_patch(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
     paragraph_id: &str,
@@ -105,10 +105,10 @@ pub fn build_rich_patch(
     new_text: String,
     new_runs: Option<Vec<crate::models::LayoutRun>>,
 ) -> Option<PersistableRegionPatch> {
-    let base_paragraph_id = get_base_paragraph_id(paragraph_id);
+    let base = base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
-            if paragraph.id != base_paragraph_id {
+            if paragraph.id != base {
                 continue;
             }
             let scene = build_target_scene(paragraph, vector_model, paragraph_id, None)?;
@@ -236,17 +236,17 @@ fn active_editor_target_from_scene(
     }
 }
 
-pub fn build_editor_target(
+pub fn build_target_at_point(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
     paragraph_id: &str,
     click_page_x: f32,
     click_page_y: f32,
 ) -> Option<ActiveEditorTarget> {
-    let base_paragraph_id = get_base_paragraph_id(paragraph_id);
+    let base = base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
-            if paragraph.id != base_paragraph_id {
+            if paragraph.id != base {
                 continue;
             }
             let scene = build_target_scene(
@@ -279,15 +279,15 @@ pub fn build_editor_target(
     None
 }
 
-pub fn build_paragraph_render_target(
+pub fn build_render_target(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
     paragraph_id: &str,
 ) -> Option<ActiveEditorTarget> {
-    let base_paragraph_id = get_base_paragraph_id(paragraph_id);
+    let base = base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
-            if paragraph.id != base_paragraph_id {
+            if paragraph.id != base {
                 continue;
             }
             let scene = build_target_scene(paragraph, vector_model, paragraph_id, None)?;
@@ -315,14 +315,14 @@ pub fn build_paragraph_render_target(
     None
 }
 
-pub fn resolve_paragraph_shell_bbox(
+pub fn paragraph_shell_bbox(
     plan: &GlyphPaintPlan,
     paragraph_id: &str,
 ) -> Option<crate::models::BoundingBox> {
-    let base_paragraph_id = get_base_paragraph_id(paragraph_id);
+    let base = base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
-            if paragraph.id != base_paragraph_id {
+            if paragraph.id != base {
                 continue;
             }
             let scene = build_target_scene(paragraph, None, paragraph_id, None)?;

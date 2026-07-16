@@ -6,7 +6,7 @@ use pdf_viewer_core::geometry::coordinate_transform::{
 use pdf_viewer_core::models::BoundingBox;
 
 use crate::document::patch_persistence::{has_persistable_patches, save_persistable_patches};
-use crate::editor::bridge::{collect_paragraph_interaction_targets, ParagraphInteractionTarget};
+use crate::editor::bridge::{interaction_targets, ParagraphInteractionTarget};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
@@ -130,7 +130,7 @@ fn resolve_target_at_page_point(page_x: f32, page_y: f32) -> Option<ParagraphInt
         state
             .paint_plan
             .as_ref()
-            .map(|plan| collect_paragraph_interaction_targets(plan, state.vector_model.as_ref()))
+            .map(|plan| interaction_targets(plan, state.vector_model.as_ref()))
             .unwrap_or_default()
     });
     if targets.is_empty() {

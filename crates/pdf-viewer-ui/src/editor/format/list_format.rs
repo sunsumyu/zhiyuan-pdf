@@ -6,7 +6,7 @@ use pdf_viewer_core::text::list_semantics::{
 };
 
 use crate::editor::bridge::build_rich_patch;
-use crate::editor::edit_target::get_base_paragraph_id;
+use crate::editor::edit_target::base_paragraph_id;
 use crate::editor::engine_state::LiveEditorParagraphState;
 use crate::ui_state_store::{with_patch_state, GlobalPatchState};
 use pdf_viewer_core::persistence::models::{PersistableRegionPatch, PersistableSemanticOperation};
@@ -31,7 +31,7 @@ pub fn resolve_marker_text(
 ) -> Option<String> {
     let overrides = collect_marker_overrides(page_state.paint_plan.as_ref(), Some(active_state));
     overrides
-        .get(get_base_paragraph_id(active_state.paragraph_id()))
+        .get(base_paragraph_id(active_state.paragraph_id()))
         .cloned()
         .flatten()
 }
@@ -70,8 +70,8 @@ pub fn reconcile_numbering_patches(
             patch.source.as_str(),
             "paragraph-region" | "list-item-region"
         ) {
-            let base_paragraph_id = get_base_paragraph_id(&patch.region_id).to_string();
-            patch_index_by_base.insert(base_paragraph_id, paragraph_patches.len());
+            let base_id = base_paragraph_id(&patch.region_id).to_string();
+            patch_index_by_base.insert(base_id, paragraph_patches.len());
             paragraph_patches.push(patch);
         } else {
             auxiliary_patches.push(patch);
@@ -79,15 +79,15 @@ pub fn reconcile_numbering_patches(
     }
 
     for paragraph in ordered_paragraphs {
-        let base_paragraph_id = get_base_paragraph_id(&paragraph.id).to_string();
-        let Some(desired_marker_text) = overrides.get(&base_paragraph_id).cloned().flatten() else {
+        let base_id = base_paragraph_id(&paragraph.id).to_string();
+        let Some(desired_marker_text) = overrides.get(&base_id).cloned().flatten() else {
             continue;
         };
         if derive_list_text_semantics(&desired_marker_text).kind != ListMarkerKind::Numbering {
             continue;
         }
 
-        if let Some(existing_index) = patch_index_by_base.get(&base_paragraph_id).copied() {
+        if let Some(existing_index) = patch_index_by_base.get(&base_id).copied() {
             if let Some(existing_patch) = paragraph_patches.get_mut(existing_index) {
                 if existing_patch.new_marker_text.as_deref() != Some(desired_marker_text.as_str()) {
                     existing_patch.new_marker_text = Some(desired_marker_text.clone());
@@ -130,7 +130,7 @@ pub fn reconcile_numbering_patches(
             &derived_patch.region_id,
             &desired_marker_text,
         );
-        patch_index_by_base.insert(base_paragraph_id, paragraph_patches.len());
+        patch_index_by_base.insert(base_id, paragraph_patches.len());
         paragraph_patches.push(derived_patch);
     }
 
@@ -165,7 +165,7 @@ fn build_numbering_override_map(
     let mut numbering_template: Option<String> = None;
 
     for context in contexts {
-        let base_paragraph_id = context.base_paragraph_id.clone();
+        let base_id = context.base_paragraph_id.clone();
         match context.effective.kind {
             ListMarkerKind::Numbering => {
                 let explicit_number = parse_numbering_value(&context.effective.marker_text);
@@ -187,7 +187,7 @@ fn build_numbering_override_map(
                 let marker_text = format_numbering_marker(next_value, template.as_deref());
                 numbering_sequence = Some(next_value);
                 numbering_template = Some(marker_text.clone());
-                overrides.insert(base_paragraph_id, Some(marker_text));
+                overrides.insert(base_id, Some(marker_text));
             }
             ListMarkerKind::Bullet | ListMarkerKind::Symbol | ListMarkerKind::Custom => {
                 numbering_sequence = None;
@@ -196,12 +196,12 @@ fn build_numbering_override_map(
                     context.effective.marker_text.as_str(),
                     context.source_marker_text.as_deref(),
                 );
-                overrides.insert(base_paragraph_id, Some(marker_text));
+                overrides.insert(base_id, Some(marker_text));
             }
             ListMarkerKind::None => {
                 numbering_sequence = None;
                 numbering_template = None;
-                overrides.insert(base_paragraph_id, None);
+                overrides.insert(base_id, None);
             }
         }
     }
@@ -214,9 +214,9 @@ fn build_paragraph_list_context<'a>(
     paragraph: &'a GlyphPaintParagraph,
     active_state: Option<&LiveEditorParagraphState>,
 ) -> ParagraphListContext<'a> {
-    let base_paragraph_id = get_base_paragraph_id(&paragraph.id).to_string();
+    let base_id = base_paragraph_id(&paragraph.id).to_string();
     let active_marker = active_state
-        .filter(|active| get_base_paragraph_id(active.paragraph_id()) == base_paragraph_id);
+        .filter(|active| base_paragraph_id(active.paragraph_id()) == base_id);
 
     let source_semantics = derive_list_text_semantics(
         &paragraph
@@ -239,7 +239,7 @@ fn build_paragraph_list_context<'a>(
                 .map(|marker| marker.text.clone())
                 .unwrap_or_default(),
         }
-    } else if let Some(patch) = resolve_patch_for_base_paragraph(state, &base_paragraph_id) {
+    } else if let Some(patch) = resolve_patch_for_base_paragraph(state, &base_id) {
         let marker_text = patch
             .new_marker_text
             .clone()
@@ -258,7 +258,7 @@ fn build_paragraph_list_context<'a>(
     };
 
     ParagraphListContext {
-        base_paragraph_id,
+        base_paragraph_id: base_id,
         effective,
         source_marker_text,
         _paragraph: paragraph,
@@ -300,13 +300,13 @@ fn collect_ordered_page_paragraphs(plan: &GlyphPaintPlan) -> Vec<&GlyphPaintPara
 
 fn resolve_patch_for_base_paragraph<'a>(
     state: &'a GlobalPatchState,
-    base_paragraph_id: &str,
+    base_id: &str,
 ) -> Option<&'a pdf_viewer_core::persistence::models::PersistableRegionPatch> {
-    state.paragraph_patches.get(base_paragraph_id).or_else(|| {
+    state.paragraph_patches.get(base_id).or_else(|| {
         state
             .paragraph_patches
             .values()
-            .find(|patch| get_base_paragraph_id(&patch.region_id) == base_paragraph_id)
+            .find(|patch| base_paragraph_id(&patch.region_id).to_string() == base_id)
     })
 }
 

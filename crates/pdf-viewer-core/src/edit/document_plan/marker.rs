@@ -348,6 +348,7 @@ pub fn synthesize_cross_paragraph_marker(
                     is_underline: run.is_underline,
                     char_spacing: run.char_spacing,
                     scale_x: run.horizontal_scaling,
+                    font_weight_numeric: if run.is_bold { 700 } else { 400 },
                 },
                 char_origins: run.char_origins.clone(),
                 char_widths: run.char_widths.clone(),

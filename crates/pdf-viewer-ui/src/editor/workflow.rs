@@ -3,9 +3,9 @@ use wasm_bindgen::JsValue;
 
 use super::target_resolution::{is_supported_region_kind, resolve_region_target};
 use crate::editor::bridge::{
-    build_editor_target, build_paragraph_patch as core_build_paragraph_patch,
-    collect_paragraph_interaction_targets,
-    resolve_paragraph_shell_bbox as bridge_resolve_shell_bbox,
+    build_target_at_point, build_patch as core_build_patch,
+    interaction_targets,
+    paragraph_shell_bbox as bridge_resolve_shell_bbox,
 };
 use crate::editor::session::{is_edit_enabled, ActiveEditorTarget};
 use pdf_viewer_core::models::BoundingBox;
@@ -20,7 +20,7 @@ pub fn build_interaction_targets(page_state: &PageState, editing_enabled: bool) 
             .paint_plan
             .as_ref()
             .map(|plan| {
-                collect_paragraph_interaction_targets(plan, page_state.vector_model.as_ref())
+                interaction_targets(plan, page_state.vector_model.as_ref())
             })
             .unwrap_or_default(),
     )
@@ -38,7 +38,7 @@ pub fn open_paragraph_editor(
         return None;
     }
     page_state.paint_plan.as_ref().and_then(|plan| {
-        build_editor_target(
+        build_target_at_point(
             plan,
             page_state.vector_model.as_ref(),
             paragraph_id,
@@ -65,7 +65,7 @@ pub fn build_paragraph_patch(
         page_state.vector_model.as_ref(),
     ) {
         (Some(plan), vector_model) => {
-            core_build_paragraph_patch(plan, vector_model, paragraph_id, new_text)
+            core_build_patch(plan, vector_model, paragraph_id, new_text)
         }
         _ => None,
     }

@@ -177,10 +177,10 @@ fn run_text_with_visual_spaces(run: &LayoutRun) -> String {
     normalize_compact_pdf_text(&text)
 }
 
-pub fn session_source_text(session: &ParagraphEditContext) -> String {
+pub fn source_text(context: &ParagraphEditContext) -> String {
     let mut text = String::new();
     let mut previous_text_run: Option<&LayoutRun> = None;
-    for run in &session.paragraph.runs {
+    for run in &context.paragraph.runs {
         if let Some(previous) = previous_text_run {
             if should_insert_run_space(previous, run) {
                 text.push(' ');

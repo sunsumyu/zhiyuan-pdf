@@ -21,53 +21,53 @@ pub fn build_segment_id(base_paragraph_id: &str, segment_key: &str) -> String {
     format!("{base_paragraph_id}{EDIT_SEGMENT_DELIMITER}{segment_key}")
 }
 
-pub fn get_base_paragraph_id(target_id: &str) -> &str {
+pub fn base_paragraph_id(target_id: &str) -> &str {
     target_id
         .split_once(EDIT_SEGMENT_DELIMITER)
         .map(|(base, _)| base)
         .unwrap_or(target_id)
 }
 
-pub fn get_segment_key(target_id: &str) -> Option<&str> {
+pub fn segment_key(target_id: &str) -> Option<&str> {
     target_id
         .split_once(EDIT_SEGMENT_DELIMITER)
         .map(|(_, segment_key)| segment_key)
 }
 
-pub fn collect_edit_targets_from_session(
+pub fn build_targets(
     base_paragraph_id: &str,
-    session: &ParagraphEditContext,
+    context: &ParagraphEditContext,
 ) -> Vec<EditorEditTarget> {
-    let segments = build_visual_segments(session);
+    let segments = build_visual_segments(context);
     if segments.is_empty() {
-        return vec![create_from_session(base_paragraph_id, session)];
+        return vec![create_from_context(base_paragraph_id, context)];
     }
 
-    let full_run_count = session
+    let full_run_count = context
         .paragraph
         .runs
         .iter()
         .filter(|run| !run.text.is_empty())
         .count();
     if segments.len() == 1 && segments[0].run_indices.len() == full_run_count {
-        return vec![create_from_session(base_paragraph_id, session)];
+        return vec![create_from_context(base_paragraph_id, context)];
     }
 
     segments
         .into_iter()
-        .filter_map(|segment| build_segment_target(base_paragraph_id, session, segment))
+        .filter_map(|segment| build_segment_target(base_paragraph_id, context, segment))
         .collect()
 }
 
-pub fn resolve_edit_target_from_session(
+pub fn resolve_target(
     base_paragraph_id: &str,
     requested_target_id: &str,
-    session: &ParagraphEditContext,
+    context: &ParagraphEditContext,
     click_page_point: Option<(f32, f32)>,
 ) -> EditorEditTarget {
-    let targets = collect_edit_targets_from_session(base_paragraph_id, session);
+    let targets = build_targets(base_paragraph_id, context);
     if targets.is_empty() {
-        return create_from_session(base_paragraph_id, session);
+        return create_from_context(base_paragraph_id, context);
     }
 
     // 调用者是否显式指定了某个 segment（带 ::edit-segment::xxx 后缀）。
@@ -75,19 +75,19 @@ pub fn resolve_edit_target_from_session(
     // 否则当点击落在两个 segment 的视觉间隙时，会被打分到错误的 segment，
     // 导致 shell 错位、后续点击全部下沉到 root → openBlock 而不是 shell → moveCaret，
     // 表现为"必须点击两次"。
-    let explicit_segment_key = get_segment_key(requested_target_id);
+    let explicit_segment_key = segment_key(requested_target_id);
 
-    if let Some(segment_key) = explicit_segment_key {
+    if let Some(key) = explicit_segment_key {
         if let Some(target) = targets
             .iter()
-            .find(|target| get_segment_key(&target.target_id) == Some(segment_key))
+            .find(|target| segment_key(&target.target_id) == Some(key))
         {
             return target.clone();
         }
         // 显式 segment_key 未命中（通常是 segment 编号在两次计算间漂移）：
-        // 退化为"按 click 选最接近的 segment"也不安全，故直接落到 whole_session
+        // 退化为"按 click 选最接近的 segment"也不安全，故直接落到 whole_context
         // 以保证 shell 至少覆盖完整段落，让用户的二次点击能进 shell 路径。
-        return create_from_session(base_paragraph_id, session);
+        return create_from_context(base_paragraph_id, context);
     }
 
     if requested_target_id == base_paragraph_id && targets.len() == 1 {
@@ -110,7 +110,7 @@ pub fn resolve_edit_target_from_session(
     targets
         .into_iter()
         .find(|target| target.target_id == requested_target_id)
-        .unwrap_or_else(|| create_from_session(base_paragraph_id, session))
+        .unwrap_or_else(|| create_from_context(base_paragraph_id, context))
 }
 
 #[derive(Debug, Clone)]
@@ -121,8 +121,8 @@ struct VisualSegment {
 
 type IndexedRunRef<'a> = (usize, &'a LayoutRun);
 
-fn build_visual_segments(session: &ParagraphEditContext) -> Vec<VisualSegment> {
-    let mut indexed_runs = session
+fn build_visual_segments(context: &ParagraphEditContext) -> Vec<VisualSegment> {
+    let mut indexed_runs = context
         .paragraph
         .runs
         .iter()
@@ -251,20 +251,20 @@ fn visual_segment_from_indices(run_indices: Vec<usize>) -> VisualSegment {
 
 fn build_segment_target(
     base_paragraph_id: &str,
-    session: &ParagraphEditContext,
+    context: &ParagraphEditContext,
     segment: VisualSegment,
 ) -> Option<EditorEditTarget> {
     let runs = segment
         .run_indices
         .iter()
-        .filter_map(|index| session.paragraph.runs.get(*index).cloned())
+        .filter_map(|index| context.paragraph.runs.get(*index).cloned())
         .collect::<Vec<_>>();
     if runs.is_empty() {
         return None;
     }
 
     let anchor_bbox = bbox_from_layout_runs(&runs)?;
-    let mut paragraph = session.paragraph.clone();
+    let mut paragraph = context.paragraph.clone();
     paragraph.id = build_segment_id(base_paragraph_id, &segment.key);
     paragraph.runs = runs;
     normalize_paragraph_to_bbox(&mut paragraph, anchor_bbox);
@@ -287,13 +287,13 @@ fn build_segment_target(
     })
 }
 
-fn create_from_session(
+fn create_from_context(
     base_paragraph_id: &str,
-    session: &ParagraphEditContext,
+    context: &ParagraphEditContext,
 ) -> EditorEditTarget {
-    let mut session = session.clone();
-    session.paragraph.id = base_paragraph_id.to_string();
-    let source_object_ids = session
+    let mut context = context.clone();
+    context.paragraph.id = base_paragraph_id.to_string();
+    let source_object_ids = context
         .paragraph
         .runs
         .iter()
@@ -302,9 +302,9 @@ fn create_from_session(
     EditorEditTarget {
         target_id: base_paragraph_id.to_string(),
         base_paragraph_id: base_paragraph_id.to_string(),
-        source_run_indices: (0..session.paragraph.runs.len()).collect(),
+        source_run_indices: (0..context.paragraph.runs.len()).collect(),
         source_object_ids,
-        session,
+        session: context,
     }
 }
 
@@ -374,7 +374,7 @@ fn target_hit_score(bbox: &BoundingBox, click_x: f32, click_y: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::collect_edit_targets_from_session;
+    use super::build_targets;
     use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
 
     fn test_run(id: &str, text: &str, left: f32, baseline_y: f32) -> LayoutRun {
@@ -391,6 +391,7 @@ mod tests {
                 is_underline: false,
                 char_spacing: 0.0,
                 scale_x: 1.0,
+            font_weight_numeric: 400,
             },
             bbox: BoundingBox {
                 left,
@@ -426,7 +427,7 @@ mod tests {
             },
         };
 
-        let targets = collect_edit_targets_from_session("p1", &session);
+        let targets = build_targets("p1", &session);
 
         assert_eq!(targets.len(), 2);
         assert_eq!(targets[0].session.anchor_bbox.top, 100.0);

@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashSet};
 use crate::edit::active_target::ActiveEditorTarget;
 use crate::models::{GlyphPaintRun, VectorPageModel, VectorRenderObject};
 
-pub fn collect_target_source_object_ids(target: &ActiveEditorTarget) -> HashSet<String> {
+pub fn object_ids(target: &ActiveEditorTarget) -> HashSet<String> {
     let mut object_ids = target
         .scene
         .original_runs()
@@ -54,7 +54,7 @@ pub fn collect_target_source_object_ids(target: &ActiveEditorTarget) -> HashSet<
     object_ids
 }
 
-pub fn collect_object_index_set(target: &ActiveEditorTarget) -> HashSet<usize> {
+pub fn object_indices_set(target: &ActiveEditorTarget) -> HashSet<usize> {
     let mut object_indices = target
         .scene
         .original_runs()
@@ -102,8 +102,8 @@ pub fn collect_object_index_set(target: &ActiveEditorTarget) -> HashSet<usize> {
     object_indices
 }
 
-pub fn collect_target_source_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
-    let ordered = collect_object_index_set(target)
+pub fn sorted_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
+    let ordered = object_indices_set(target)
         .into_iter()
         .collect::<BTreeSet<_>>();
     ordered.into_iter().collect()
@@ -146,7 +146,7 @@ pub fn collect_run_indices(
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_object_index_set, collect_target_source_object_ids};
+    use super::{object_ids, object_indices_set};
     use crate::edit::active_target::ActiveEditorTarget;
     use crate::edit::document_plan::ParagraphEditorMarker;
     use crate::models::{BoundingBox, LayoutRun, RunStyle};
@@ -165,6 +165,7 @@ mod tests {
                 is_underline: false,
                 char_spacing: 0.0,
                 scale_x: 1.0,
+            font_weight_numeric: 400,
             },
             bbox: BoundingBox {
                 left: 40.0,
@@ -192,8 +193,8 @@ mod tests {
             is_cross_paragraph: false,
         });
 
-        let object_ids = collect_target_source_object_ids(&target);
-        let object_indices = collect_object_index_set(&target);
+        let object_ids = object_ids(&target);
+        let object_indices = object_indices_set(&target);
 
         assert!(object_ids.contains("marker-object"));
         assert!(object_indices.contains(&41));

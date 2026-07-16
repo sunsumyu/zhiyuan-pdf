@@ -22,6 +22,7 @@ fn test_style() -> RunStyle {
         is_underline: false,
         char_spacing: 0.0,
         scale_x: 1.0,
+            font_weight_numeric: 400,
     }
 }
 
@@ -131,7 +132,7 @@ fn preserves_canonical_source() {
     assert!(reconstructed.contains("S PL"));
     assert!(reconstructed.contains("ER C -20"));
 
-    let document_plan = build_editor_document_plan_from_session(&session);
+    let document_plan = build_context(&session);
 
     assert_eq!(document_plan.source_body_text(), CANONICAL_MIXED_TEXT);
     assert!(!document_plan.source_body_text().contains("A nchor"));
@@ -152,7 +153,7 @@ fn restores_visual_gaps() {
         test_layout_run("r8", "ERC-20/721", 326.0, 54.0),
     ]);
 
-    let document_plan = build_editor_document_plan_from_session(&session);
+    let document_plan = build_context(&session);
 
     assert_eq!(
         document_plan.source_body_text(),
@@ -196,7 +197,7 @@ fn restores_run_spaces() {
         widths,
     )]);
 
-    let document_plan = build_editor_document_plan_from_session(&session);
+    let document_plan = build_context(&session);
 
     assert_eq!(
         document_plan.source_body_text(),

@@ -409,6 +409,7 @@ mod coordinate_system_tests {
                 is_underline: false,
                 char_spacing: 0.0,
                 scale_x: 1.0,
+                font_weight_numeric: 400,
             },
             object_ids: vec!["obj1".to_string()],
         }
@@ -455,6 +456,7 @@ mod coordinate_system_tests {
                 is_underline: false,
                 char_spacing: 0.0,
                 scale_x: 1.0,
+                font_weight_numeric: 400,
             },
             object_ids: vec![],
         };

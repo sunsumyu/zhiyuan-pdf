@@ -845,14 +845,14 @@ fn resolve_target_at_page_point(
     page_x: f32,
     page_y: f32,
 ) -> Option<crate::editor::bridge::ParagraphInteractionTarget> {
-    use crate::editor::bridge::collect_paragraph_interaction_targets;
+    use crate::editor::bridge::interaction_targets;
     use crate::page::page_store::with_page_state;
 
     let targets = with_page_state(|state| {
         state
             .paint_plan
             .as_ref()
-            .map(|plan| collect_paragraph_interaction_targets(plan, state.vector_model.as_ref()))
+            .map(|plan| interaction_targets(plan, state.vector_model.as_ref()))
             .unwrap_or_default()
     });
 
@@ -872,7 +872,7 @@ fn resolve_target_at_page_point(
 }
 
 fn collect_text_blocks() -> Vec<TextBlockInfo> {
-    use crate::editor::bridge::collect_paragraph_interaction_targets;
+    use crate::editor::bridge::interaction_targets;
     use crate::page::page_store::with_page_state;
 
     with_page_state(|state| {
@@ -880,7 +880,7 @@ fn collect_text_blocks() -> Vec<TextBlockInfo> {
             .paint_plan
             .as_ref()
             .map(|plan| {
-                collect_paragraph_interaction_targets(plan, state.vector_model.as_ref())
+                interaction_targets(plan, state.vector_model.as_ref())
                     .into_iter()
                     .map(|t| TextBlockInfo {
                         id: t.paragraph_id,

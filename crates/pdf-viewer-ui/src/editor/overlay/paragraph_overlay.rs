@@ -2,16 +2,16 @@ use std::collections::BTreeMap;
 
 use pdf_viewer_core::models::{GlyphPaintPlan, VectorPageModel};
 
-use crate::editor::bridge::build_paragraph_render_target;
+use crate::editor::bridge::build_render_target;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::edit_target::get_base_paragraph_id;
+use crate::editor::edit_target::base_paragraph_id;
 use crate::editor::list_format::{collect_marker_overrides, resolve_marker_text};
 use crate::editor::mode::read_state;
 use crate::editor::replacement_snapshot::find_target;
 use crate::editor::session::ActiveEditorTarget;
-use crate::editor::source_identity::collect_target_source_object_indices;
+use crate::editor::source_identity::sorted_object_indices;
 use crate::page::page_store::with_page_state;
 use crate::ui_state_store::with_patch_state;
 
@@ -21,7 +21,7 @@ pub use pdf_viewer_core::edit::paragraph_overlay::{
 };
 
 fn target_source_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
-    collect_target_source_object_indices(target)
+    sorted_object_indices(target)
 }
 
 fn persisted_patch_source_indices(
@@ -74,7 +74,7 @@ pub fn collect_overlays(
                 .get(paragraph_id)
                 .cloned()
                 .or_else(|| find_target(patch))
-                .or_else(|| build_paragraph_render_target(plan, vector_model, paragraph_id))
+                .or_else(|| build_render_target(plan, vector_model, paragraph_id))
             else {
                 dbg_event(
                     "overlay.collect",
@@ -88,7 +88,7 @@ pub fn collect_overlays(
                 "target-resolved",
                 vec![dbg_field("paragraphId", paragraph_id)],
             );
-            let base_paragraph_id = get_base_paragraph_id(&target.paragraph_id).to_string();
+            let base_id = base_paragraph_id(&target.paragraph_id).to_string();
             let source_object_indices = persisted_patch_source_indices(
                 &patch.target_indices,
                 &patch.full_target_indices,
@@ -121,7 +121,7 @@ pub fn collect_overlays(
                     marker_text_override: patch
                         .new_marker_text
                         .clone()
-                        .or_else(|| marker_overrides.get(&base_paragraph_id).cloned().flatten()),
+                        .or_else(|| marker_overrides.get(&base_id).cloned().flatten()),
                 },
             );
         }
@@ -129,7 +129,7 @@ pub fn collect_overlays(
 
     if let Some(active_state) = active_state {
         let marker_text_override = marker_overrides
-            .get(get_base_paragraph_id(active_state.paragraph_id()))
+            .get(base_paragraph_id(active_state.paragraph_id()))
             .cloned()
             .flatten()
             .or_else(|| {
@@ -144,10 +144,10 @@ pub fn collect_overlays(
         // ── diagnostic: active overlay identity ──
         {
             use pdf_viewer_core::edit::source_identity::{
-                collect_object_index_set, collect_target_source_object_ids,
+                object_ids, object_indices_set,
             };
-            let obj_ids = collect_target_source_object_ids(&active_state.target);
-            let obj_indices = collect_object_index_set(&active_state.target);
+            let obj_ids = object_ids(&active_state.target);
+            let obj_indices = object_indices_set(&active_state.target);
             let orig_run_count = active_state.target.scene.original_runs().len();
             let body_run_count = active_state
                 .target

@@ -47,6 +47,7 @@ mod tests {
                 is_underline: underline,
                 char_spacing: 0.0,
                 scale_x: 1.0,
+            font_weight_numeric: 400,
             },
             bbox: BoundingBox {
                 left,
@@ -253,7 +254,7 @@ mod tests {
     #[test]
     fn preserves_origins() {
         // 真实 PDF 场景回归：raw runs 文本 = compact "智能合约:AnchorFramework,..."（无空格），
-        // session_source_text 注入合成空格 → "智能合约: Anchor Framework, ..."。
+        // source_text 注入合成空格 → "智能合约: Anchor Framework, ..."。
         // 旧实现因 body_runs_match_source_text==false 直接走 reconstructed-fallback，
         // 整段单 run 无 char_origins，触发字体漂移。
         // 新实现通过 source→runs 索引映射继续走 slicing，保留前后缀 PDF 度量。

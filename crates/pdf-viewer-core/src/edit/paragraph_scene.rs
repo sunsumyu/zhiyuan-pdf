@@ -153,7 +153,7 @@ impl Default for ParagraphEditorScene {
 }
 
 /// 从 EditContext 构造 ParagraphEditorScene（纯数据组装，无副作用）。
-pub fn paragraph_editor_scene_from_plan(
+pub fn from_context(
     document_plan: EditContext,
 ) -> Option<ParagraphEditorScene> {
     Some(ParagraphEditorScene {
@@ -164,13 +164,13 @@ pub fn paragraph_editor_scene_from_plan(
     })
 }
 
-pub fn build_paragraph_editor_scene(
+pub fn build_scene(
     paragraph: &GlyphPaintParagraph,
     vector_model: Option<&VectorPageModel>,
     click_page_point: Option<(f32, f32)>,
 ) -> Option<ParagraphEditorScene> {
     let document_plan: EditContext = from_paragraph(paragraph, vector_model, click_page_point)?;
-    paragraph_editor_scene_from_plan(document_plan)
+    from_context(document_plan)
 }
 
 pub fn build_target_scene(
@@ -189,7 +189,7 @@ pub fn build_target_scene(
         ),
         Err(_) => document_plan,
     };
-    paragraph_editor_scene_from_plan(document_plan)
+    from_context(document_plan)
 }
 
 #[cfg(test)]

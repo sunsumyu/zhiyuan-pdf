@@ -308,7 +308,7 @@ pub(super) fn build_styles(
     let inserted_end = diff.inserted_end();
 
     // 架构关键点：切片索引必须基于 raw runs 的字符空间，而非 `source_body_text` 的可视空间。
-    // `session_source_text` 注入的合成空格在 runs 中并不存在；若直接用 source_text 的索引切片
+    // `source_text` 注入的合成空格在 runs 中并不存在；若直接用 source_text 的索引切片
     // 会导致越界或错位，进而触发 reconstructed-fallback，丢失 PDF char_origins，
     // 用户即看到"删除后字体显示有变化"。
     //
