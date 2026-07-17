@@ -1,11 +1,11 @@
 //! Draft init — 初始与模板化子模块。
 
 use super::draft_style::{resolve_draft_template_run, source_baseline_y};
-use super::draft_types::{DraftCaretLine, DraftCaretStop, EditorDraftRenderPlan};
+use super::draft_types::{DraftCaretLine, DraftCaretStop, DraftLayout};
 use crate::edit::document_plan::EditContext;
 use crate::geometry::layout_engine::{ParagraphLayout, VisualLine};
 
-pub(super) fn build_empty_render_plan(document_plan: &EditContext) -> EditorDraftRenderPlan {
+pub(super) fn create_empty_draft_layout(document_plan: &EditContext) -> DraftLayout {
     let template_run = resolve_draft_template_run(document_plan);
     let baseline_y = source_baseline_y(document_plan);
     let height = template_run.style.font_size.max(1.0);
@@ -25,7 +25,7 @@ pub(super) fn build_empty_render_plan(document_plan: &EditContext) -> EditorDraf
             left: 0.0,
         }],
     };
-    EditorDraftRenderPlan {
+    DraftLayout {
         layout: ParagraphLayout {
             lines: vec![line],
             height: baseline_y + height,

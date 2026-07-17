@@ -1,7 +1,7 @@
 //! Draft layout — 编辑器 draft 渲染计划的核心入口。
 //!
 //! 模块拆分：
-//! - `draft_types`: 核心类型定义（DraftCaretStop, DraftCaretLine, EditorDraftRenderPlan, TextDiff）
+//! - `draft_types`: 核心类型定义（DraftCaretStop, DraftCaretLine, DraftLayout, TextDiff）
 //! - `draft_text_diff`: 文本差异计算和索引映射
 //! - `draft_style`: 样式构建、源布局、run 切片
 //! - `draft_init`: 空段落初始化
@@ -22,7 +22,7 @@ mod draft_text_diff;
 mod draft_types;
 
 pub use draft_reflow::{build_edit_layout, build_save_layout};
-pub use draft_types::{DraftCaretLine, DraftCaretStop, EditorDraftRenderPlan};
+pub use draft_types::{DraftCaretLine, DraftCaretStop, DraftLayout};
 
 #[cfg(test)]
 mod tests {
@@ -111,7 +111,7 @@ mod tests {
         }
     }
 
-    fn rendered_text(plan: &super::EditorDraftRenderPlan) -> String {
+    fn rendered_text(plan: &super::DraftLayout) -> String {
         plan.layout
             .lines
             .iter()
@@ -119,7 +119,7 @@ mod tests {
             .collect::<String>()
     }
 
-    fn plan_has_source_char_origins(plan: &super::EditorDraftRenderPlan) -> bool {
+    fn plan_has_source_char_origins(plan: &super::DraftLayout) -> bool {
         plan.layout
             .lines
             .iter()

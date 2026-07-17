@@ -11,16 +11,16 @@ use crate::edit::document_plan::{EditContext, ParagraphEditorMarker};
 use crate::geometry::layout_engine::{layout_paragraph, VisualLine};
 use crate::models::{LayoutParagraph, LayoutRun};
 
-use super::draft_geometry::{align_layout_baseline, build_editor_draft_caret_plan_from_layout};
-use super::draft_init::build_empty_render_plan;
+use super::draft_geometry::{align_layout_baseline, compute_draft_caret_lines};
+use super::draft_init::create_empty_draft_layout;
 use super::draft_style::{
     build_draft_paragraph_with_policy, build_source_layout, paragraph_preserve_underline,
     source_baseline_y,
 };
 use super::draft_text_diff::{body_runs_match_source_text, remap_caret_indices_to_draft_space};
-use super::draft_types::EditorDraftRenderPlan;
+use super::draft_types::DraftLayout;
 
-fn summarize_render_plan_lines(plan: &EditorDraftRenderPlan) -> String {
+fn summarize_layout_lines(plan: &DraftLayout) -> String {
     plan.layout
         .lines
         .iter()
@@ -78,13 +78,13 @@ pub fn resolve_layout<F>(
     document_plan: &EditContext,
     draft_text: &str,
     measure_width: &F,
-) -> EditorDraftRenderPlan
+) -> DraftLayout
 where
     F: Fn(&str, &LayoutRun) -> f32,
 {
     let mut layout = layout_paragraph(&paragraph, paragraph.wrap_width, measure_width);
     align_layout_baseline(&mut layout, source_baseline_y(document_plan));
-    let mut caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
+    let mut caret_lines = compute_draft_caret_lines(&layout, measure_width);
     let draft_runs_text: String = paragraph.runs.iter().map(|r| r.text.as_str()).collect();
     remap_caret_indices_to_draft_space(
         &mut caret_lines,
@@ -92,7 +92,7 @@ where
         &draft_runs_text,
         draft_text,
     );
-    EditorDraftRenderPlan {
+    DraftLayout {
         layout,
         caret_lines,
     }
@@ -217,7 +217,7 @@ fn prepend_marker_to_first_line(line: &mut VisualLine, marker_run: LayoutRun, ma
 }
 
 pub fn execute_marker_injection<F>(
-    plan: &mut EditorDraftRenderPlan,
+    plan: &mut DraftLayout,
     document_plan: &EditContext,
     measure_width: &F,
 ) where
@@ -252,15 +252,15 @@ pub fn build_edit_layout<F>(
     document_plan: &EditContext,
     draft_text: &str,
     measure_width: F,
-) -> EditorDraftRenderPlan
+) -> DraftLayout
 where
     F: Fn(&str, &LayoutRun) -> f32,
 {
     if draft_text == document_plan.source_body_text() && body_runs_match_source_text(document_plan)
     {
         let layout = build_source_layout(document_plan);
-        let caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
-        let plan = EditorDraftRenderPlan {
+        let caret_lines = compute_draft_caret_lines(&layout, measure_width);
+        let plan = DraftLayout {
             layout,
             caret_lines,
         };
@@ -271,7 +271,7 @@ where
                 dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
                 dbg_field("draftText", draft_text),
                 dbg_field("bodyText", document_plan.source_body_text()),
-                dbg_field("lineSummary", summarize_render_plan_lines(&plan)),
+                dbg_field("lineSummary", summarize_layout_lines(&plan)),
                 dbg_field("visualLineCount", plan.layout.lines.len()),
                 dbg_field("caretLineCount", plan.caret_lines.len()),
                 dbg_field(
@@ -287,7 +287,7 @@ where
     }
 
     if draft_text.is_empty() {
-        let plan = build_empty_render_plan(document_plan);
+        let plan = create_empty_draft_layout(document_plan);
         dbg_event(
             "render-plan",
             "uniform-layout-empty",
@@ -295,7 +295,7 @@ where
                 dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
                 dbg_field("draftText", draft_text),
                 dbg_field("bodyText", document_plan.source_body_text()),
-                dbg_field("lineSummary", summarize_render_plan_lines(&plan)),
+                dbg_field("lineSummary", summarize_layout_lines(&plan)),
             ],
         );
         return plan;
@@ -311,7 +311,7 @@ where
             dbg_field("paragraphId", &document_plan.body_session.paragraph.id),
             dbg_field("draftText", draft_text),
             dbg_field("bodyText", document_plan.source_body_text()),
-            dbg_field("lineSummary", summarize_render_plan_lines(&plan)),
+            dbg_field("lineSummary", summarize_layout_lines(&plan)),
             dbg_field("visualLineCount", plan.layout.lines.len()),
             dbg_field("caretLineCount", plan.caret_lines.len()),
             dbg_field(
@@ -332,7 +332,7 @@ pub fn build_save_layout<F>(
     document_plan: &EditContext,
     draft_text: &str,
     measure_width: F,
-) -> EditorDraftRenderPlan
+) -> DraftLayout
 where
     F: Fn(&str, &LayoutRun) -> f32,
 {
@@ -346,7 +346,7 @@ where
     );
 
     if draft_text.is_empty() && document_plan.marker.is_none() {
-        let plan = build_empty_render_plan(document_plan);
+        let plan = create_empty_draft_layout(document_plan);
         return plan;
     }
 

@@ -17,7 +17,7 @@ pub(super) fn align_layout_baseline(layout: &mut ParagraphLayout, target_baselin
     }
 }
 
-pub(super) fn build_editor_draft_caret_plan_from_layout<F>(
+pub(super) fn compute_draft_caret_lines<F>(
     layout: &ParagraphLayout,
     measure_width: F,
 ) -> Vec<DraftCaretLine>

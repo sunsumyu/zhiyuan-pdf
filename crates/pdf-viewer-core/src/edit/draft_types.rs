@@ -19,10 +19,10 @@ pub struct DraftCaretLine {
     pub stops: Vec<DraftCaretStop>,
 }
 
-/// 编辑器 draft 渲染计划 — 包含布局和光标信息。
+/// 编辑器 draft 布局结果 — 包含排版几何和光标行。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EditorDraftRenderPlan {
+pub struct DraftLayout {
     pub layout: crate::geometry::layout_engine::ParagraphLayout,
     pub caret_lines: Vec<DraftCaretLine>,
 }
