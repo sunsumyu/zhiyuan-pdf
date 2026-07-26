@@ -64,27 +64,95 @@ pub fn parse_content_stream(
                     state.miter_limit = v;
                 }
             }
+            "g" => {
+                if let Ok(p) = operands_to_f32(&op.operands) {
+                    if let Some(&gray) = p.first() {
+                        let val = (gray.clamp(0.0, 1.0) * 255.0) as u8;
+                        state.fill_color = Some(format!("#{:02x}{:02x}{:02x}", val, val, val));
+                    }
+                }
+            }
+            "G" => {
+                if let Ok(p) = operands_to_f32(&op.operands) {
+                    if let Some(&gray) = p.first() {
+                        let val = (gray.clamp(0.0, 1.0) * 255.0) as u8;
+                        state.stroke_color = Some(format!("#{:02x}{:02x}{:02x}", val, val, val));
+                    }
+                }
+            }
+            "k" => {
+                if let Ok(p) = operands_to_f32(&op.operands) {
+                    if p.len() >= 4 {
+                        let c = p[0].clamp(0.0, 1.0);
+                        let m = p[1].clamp(0.0, 1.0);
+                        let y = p[2].clamp(0.0, 1.0);
+                        let k = p[3].clamp(0.0, 1.0);
+                        let r = ((1.0 - c) * (1.0 - k) * 255.0) as u8;
+                        let g = ((1.0 - m) * (1.0 - k) * 255.0) as u8;
+                        let b = ((1.0 - y) * (1.0 - k) * 255.0) as u8;
+                        state.fill_color = Some(format!("#{:02x}{:02x}{:02x}", r, g, b));
+                    }
+                }
+            }
+            "K" => {
+                if let Ok(p) = operands_to_f32(&op.operands) {
+                    if p.len() >= 4 {
+                        let c = p[0].clamp(0.0, 1.0);
+                        let m = p[1].clamp(0.0, 1.0);
+                        let y = p[2].clamp(0.0, 1.0);
+                        let k = p[3].clamp(0.0, 1.0);
+                        let r = ((1.0 - c) * (1.0 - k) * 255.0) as u8;
+                        let g = ((1.0 - m) * (1.0 - k) * 255.0) as u8;
+                        let b = ((1.0 - y) * (1.0 - k) * 255.0) as u8;
+                        state.stroke_color = Some(format!("#{:02x}{:02x}{:02x}", r, g, b));
+                    }
+                }
+            }
             "rg" | "sc" | "scn" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
-                    if p.len() >= 3 {
+                    if p.len() == 1 {
+                        let val = (p[0].clamp(0.0, 1.0) * 255.0) as u8;
+                        state.fill_color = Some(format!("#{:02x}{:02x}{:02x}", val, val, val));
+                    } else if p.len() == 3 {
                         state.fill_color = Some(format!(
                             "#{:02x}{:02x}{:02x}",
-                            (p[0] * 255.0) as u8,
-                            (p[1] * 255.0) as u8,
-                            (p[2] * 255.0) as u8
+                            (p[0].clamp(0.0, 1.0) * 255.0) as u8,
+                            (p[1].clamp(0.0, 1.0) * 255.0) as u8,
+                            (p[2].clamp(0.0, 1.0) * 255.0) as u8
                         ));
+                    } else if p.len() >= 4 {
+                        let c = p[0].clamp(0.0, 1.0);
+                        let m = p[1].clamp(0.0, 1.0);
+                        let y = p[2].clamp(0.0, 1.0);
+                        let k = p[3].clamp(0.0, 1.0);
+                        let r = ((1.0 - c) * (1.0 - k) * 255.0) as u8;
+                        let g = ((1.0 - m) * (1.0 - k) * 255.0) as u8;
+                        let b = ((1.0 - y) * (1.0 - k) * 255.0) as u8;
+                        state.fill_color = Some(format!("#{:02x}{:02x}{:02x}", r, g, b));
                     }
                 }
             }
             "RG" | "SC" | "SCN" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
-                    if p.len() >= 3 {
+                    if p.len() == 1 {
+                        let val = (p[0].clamp(0.0, 1.0) * 255.0) as u8;
+                        state.stroke_color = Some(format!("#{:02x}{:02x}{:02x}", val, val, val));
+                    } else if p.len() == 3 {
                         state.stroke_color = Some(format!(
                             "#{:02x}{:02x}{:02x}",
-                            (p[0] * 255.0) as u8,
-                            (p[1] * 255.0) as u8,
-                            (p[2] * 255.0) as u8
+                            (p[0].clamp(0.0, 1.0) * 255.0) as u8,
+                            (p[1].clamp(0.0, 1.0) * 255.0) as u8,
+                            (p[2].clamp(0.0, 1.0) * 255.0) as u8
                         ));
+                    } else if p.len() >= 4 {
+                        let c = p[0].clamp(0.0, 1.0);
+                        let m = p[1].clamp(0.0, 1.0);
+                        let y = p[2].clamp(0.0, 1.0);
+                        let k = p[3].clamp(0.0, 1.0);
+                        let r = ((1.0 - c) * (1.0 - k) * 255.0) as u8;
+                        let g = ((1.0 - m) * (1.0 - k) * 255.0) as u8;
+                        let b = ((1.0 - y) * (1.0 - k) * 255.0) as u8;
+                        state.stroke_color = Some(format!("#{:02x}{:02x}{:02x}", r, g, b));
                     }
                 }
             }
@@ -197,6 +265,31 @@ pub fn parse_content_stream(
                 state.tm = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
                 state.tlm = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
             }
+            "TL" => {
+                if let Some(v) = op.operands.get(0).and_then(|o| o.as_float().ok().or_else(|| o.as_i64().ok().map(|i| i as f32))) {
+                    state.tl = v;
+                }
+            }
+            "Tc" => {
+                if let Some(v) = op.operands.get(0).and_then(|o| o.as_float().ok().or_else(|| o.as_i64().ok().map(|i| i as f32))) {
+                    state.char_spacing = v;
+                }
+            }
+            "Tw" => {
+                if let Some(v) = op.operands.get(0).and_then(|o| o.as_float().ok().or_else(|| o.as_i64().ok().map(|i| i as f32))) {
+                    state.word_spacing = v;
+                }
+            }
+            "Tz" => {
+                if let Some(v) = op.operands.get(0).and_then(|o| o.as_float().ok().or_else(|| o.as_i64().ok().map(|i| i as f32))) {
+                    state.horizontal_scaling = v;
+                }
+            }
+            "Ts" => {
+                if let Some(v) = op.operands.get(0).and_then(|o| o.as_float().ok().or_else(|| o.as_i64().ok().map(|i| i as f32))) {
+                    state.text_rise = v;
+                }
+            }
             "Tf" => {
                 if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
                     let size = op
@@ -239,6 +332,19 @@ pub fn parse_content_stream(
                         state.tm = state.tlm;
                     }
                 }
+            }
+            "TD" => {
+                if let Ok(p) = operands_to_f32(&op.operands) {
+                    if p.len() >= 2 {
+                        state.tl = -p[1];
+                        state.tlm = multiply_matrices(state.tlm, [1.0, 0.0, 0.0, 1.0, p[0], p[1]]);
+                        state.tm = state.tlm;
+                    }
+                }
+            }
+            "T*" => {
+                state.tlm = multiply_matrices(state.tlm, [1.0, 0.0, 0.0, 1.0, 0.0, -state.tl]);
+                state.tm = state.tlm;
             }
             "Tm" => {
                 if let Ok(m) = operands_to_f32(&op.operands) {

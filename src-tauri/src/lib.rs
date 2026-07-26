@@ -102,6 +102,7 @@ pub fn run() {
             interfaces::pdf::read_glyph_plan,
             interfaces::pdf::read_images,
             interfaces::pdf::diagnose_page,
+            interfaces::pdf::render_page_to_image,
             interfaces::pdf::create_demo,
             interfaces::pdf::set_log_level,
             interfaces::pdf::terminal_log,

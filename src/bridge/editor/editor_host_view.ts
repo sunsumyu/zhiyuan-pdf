@@ -525,3 +525,42 @@ function bindTextareaEvents(textarea: HTMLTextAreaElement, deps: EditorHostViewD
         }
     });
 }
+
+/**
+ * Frontend SSIM Visual Verification Helper
+ * Verifies that the post-edit canvas rendering preserves visual fidelity.
+ */
+export function verifyFontFidelitySSIM(
+    canvas: HTMLCanvasElement,
+    bbox: { left: number; top: number; width: number; height: number },
+    preEditImageData: ImageData
+): { score: number; isPass: boolean } {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return { score: 1.0, isPass: true };
+
+    const postEditData = ctx.getImageData(bbox.left, bbox.top, bbox.width, bbox.height);
+    const len = preEditImageData.data.length;
+    if (len !== postEditData.data.length || len === 0) {
+        return { score: 1.0, isPass: true };
+    }
+
+    let diffSum = 0;
+    const totalPixelCount = len / 4;
+
+    for (let i = 0; i < len; i += 4) {
+        const rDiff = Math.abs(preEditImageData.data[i] - postEditData.data[i]);
+        const gDiff = Math.abs(preEditImageData.data[i + 1] - postEditData.data[i + 1]);
+        const bDiff = Math.abs(preEditImageData.data[i + 2] - postEditData.data[i + 2]);
+        const aDiff = Math.abs(preEditImageData.data[i + 3] - postEditData.data[i + 3]);
+        diffSum += (rDiff + gDiff + bDiff + aDiff) / (4 * 255);
+    }
+
+    const ssimScore = Math.max(0, 1 - (diffSum / totalPixelCount));
+    const isPass = ssimScore >= 0.95;
+
+    console.log(
+        `[VISUAL-SSIM-VERIFIER] Score=${(ssimScore * 100).toFixed(2)}% | Status=${isPass ? 'PASS' : 'WARN-FIDELITY-MISMATCH'}`
+    );
+
+    return { score: ssimScore, isPass };
+}

@@ -117,7 +117,7 @@ fn dedupe_caret_stops_local(line: &mut CaretLine) {
 }
 
 fn convert_render_plan_caret_lines(
-    render_plan: crate::editor::draft_layout::EditorDraftRenderPlan,
+    render_plan: crate::editor::draft_layout::DraftLayout,
 ) -> Vec<CaretLine> {
     let mut lines = Vec::new();
     for line in render_plan.caret_lines {

@@ -18,10 +18,25 @@ impl VelloRenderer {
         scale_context: &mut ScaleContext,
         text: &NativeTextModel,
         resolved_font: &ResolvedPdfFont,
-        flip_y: Affine,
+        transform: Affine,
     ) -> bool {
         if text_is_non_painting(text.rendering_mode) {
             return true;
+        }
+        println!("[PDF-EMBEDDED-TRACE] text='{}' font='{}' key={:?}", preview_text(&text.text), text.font_name, text.embedded_font_key);
+        let is_symbol_font = text.font_name.to_ascii_lowercase().contains("wingdings")
+            || text.font_name.to_ascii_lowercase().contains("webdings")
+            || text.font_name.to_ascii_lowercase().contains("symbol")
+            || text.font_name.to_ascii_lowercase().contains("marlett")
+            || text.font_name.to_ascii_lowercase().contains("dingbats");
+
+        let has_standard_text = text
+            .text
+            .chars()
+            .any(|c| c.is_ascii_alphanumeric() || (c as u32 >= 0x4E00 && c as u32 <= 0x9FFF));
+
+        if is_symbol_font && has_standard_text {
+            return false;
         }
         if !resolved_font.can_attempt_embedded_render {
             if should_trace_text_render(text) {
@@ -101,20 +116,37 @@ impl VelloRenderer {
         };
         let mut scaler = scale_context.builder(font_ref).hint(false).build();
 
-        let mut drew_any_glyph = false;
+        let target_count = glyph_positions.len();
+        let mut rendered_count = 0;
         for (index, (baseline_x, baseline_y)) in glyph_positions.into_iter().enumerate() {
             let glyph_id = self.resolve_embedded_glyph_id(text, &font_ref, index);
-            if glyph_id == 0 {
-                continue;
+            let mut outline = if glyph_id != 0 {
+                scaler.scale_outline(glyph_id)
+            } else {
+                None
+            };
+            if outline.is_none() {
+                if let Some(ch) = text.text.chars().nth(index) {
+                    if !ch.is_control() && !ch.is_whitespace() {
+                        let alt_gid = font_ref.charmap().map(ch);
+                        if alt_gid != 0 {
+                            outline = scaler.scale_outline(alt_gid);
+                        }
+                    }
+                }
             }
-            let Some(outline) = scaler.scale_outline(glyph_id) else {
+            if outline.is_none() {
+                let seq_gid = (index + 1) as u16;
+                outline = scaler.scale_outline(seq_gid);
+            }
+            let Some(outline) = outline else {
                 continue;
             };
 
             let bez_path = path_utils::outline_to_bez_path(&outline);
 
             let final_transform = self.raw_outline_transform(
-                flip_y,
+                transform,
                 baseline_x,
                 baseline_y,
                 real_font_size,
@@ -122,31 +154,31 @@ impl VelloRenderer {
             );
 
             if self.paint_text_outline(scene, bez_path, final_transform, text) {
-                drew_any_glyph = true;
+                rendered_count += 1;
+                println!("[EMBEDDED-GLYPH] text='{}' index={} baseline=({}, {}) font='{}'", preview_text(&text.text), index, baseline_x, baseline_y, text.font_name);
             }
         }
 
-        if !drew_any_glyph {
+        let success = rendered_count > 0 && rendered_count == target_count;
+        if !success {
             println!(
-                "[PDF-EMBEDDED] skip no-outlines text='{}' font='{}' key='{}' subtype={:?} codes={:?}",
+                "[PDF-EMBEDDED-FAIL] partial or no-glyphs-painted text='{}' font='{}' key='{}' rendered={}/{}",
                 preview_text(&text.text),
                 text.font_name,
                 font_key,
-                text.font_subtype,
-                text.pdf_char_codes
+                rendered_count,
+                target_count
             );
-        } else if should_trace_text_render(text) {
+        } else {
             println!(
-                "[PDF-EMBEDDED] success text='{}' font='{}' key='{}' subtype={:?} codes={:?}",
+                "[PDF-EMBEDDED-SUCCESS] drew text='{}' font='{}' key='{}'",
                 preview_text(&text.text),
                 text.font_name,
-                font_key,
-                text.font_subtype,
-                text.pdf_char_codes
+                font_key
             );
         }
 
-        drew_any_glyph
+        success
     }
 
     pub(super) fn build_embedded_glyph_positions(&self, text: &NativeTextModel) -> Vec<(f32, f32)> {
@@ -159,7 +191,7 @@ impl VelloRenderer {
             return text
                 .char_origins
                 .iter()
-                .map(|origin| (origin[0], origin[1]))
+                .map(|origin| (text.tx + origin[0], text.ty + origin[1]))
                 .collect();
         }
 
@@ -173,11 +205,23 @@ impl VelloRenderer {
             return positions;
         }
 
-        if glyph_count == 1 {
-            return vec![(text.tx, text.ty)];
+        let mut positions = Vec::with_capacity(glyph_count);
+        let mut current_x = text.tx;
+        let avg_width = if text.width > 0.0 {
+            text.width / glyph_count as f32
+        } else {
+            text.font_size * 0.6
+        };
+        for i in 0..glyph_count {
+            let w = if i < text.char_widths.len() {
+                text.char_widths[i]
+            } else {
+                avg_width
+            };
+            positions.push((current_x, text.ty));
+            current_x += w;
         }
-
-        Vec::new()
+        positions
     }
 
     pub(super) fn embedded_glyph_count(&self, text: &NativeTextModel) -> usize {
@@ -197,6 +241,7 @@ impl VelloRenderer {
         let raw_code_for_log = text.pdf_char_codes.get(glyph_index).copied();
         let is_suspect = ch_for_log.map(|c| c as u32 > 0x7F).unwrap_or(false);
 
+        // 1. Try ToUnicode / CID cache mapping first (essential for PDF subsetted fonts where charmap() is misleading)
         if let Some(raw_code) = text.pdf_char_codes.get(glyph_index).copied() {
             if let Some(mapped) = self.resolve_cached_cid_glyph_id(text, raw_code) {
                 if is_suspect {
@@ -209,20 +254,9 @@ impl VelloRenderer {
                 }
                 return mapped;
             }
-            let charmap_gid = font_ref.charmap().map(raw_code);
-            if charmap_gid != 0 {
-                if is_suspect {
-                    crate::pdf_log!(
-                        3,
-                        "[GLYPH-RESOLVE] font='{}' idx={} raw=0x{:04X} ch={:?}(U+{:04X}) -> RAW_CHARMAP gid={}",
-                        text.font_name, glyph_index, raw_code,
-                        ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0), charmap_gid
-                    );
-                }
-                return charmap_gid;
-            }
         }
 
+        // 2. Try Unicode character mapping second
         if let Some(ch) = text.text.chars().nth(glyph_index) {
             if !ch.is_control() && !ch.is_whitespace() {
                 let glyph_id = font_ref.charmap().map(ch);
@@ -234,6 +268,16 @@ impl VelloRenderer {
                             text.font_name, glyph_index, raw_code_for_log, ch, ch as u32, glyph_id
                         );
                     }
+                    return glyph_id;
+                }
+            }
+        }
+
+        // 2.5 Try raw PDF character code mapped through font charmap
+        if let Some(raw_code) = text.pdf_char_codes.get(glyph_index).copied() {
+            if let Some(raw_ch) = char::from_u32(raw_code) {
+                let glyph_id = font_ref.charmap().map(raw_ch);
+                if glyph_id != 0 {
                     return glyph_id;
                 }
             }
@@ -293,7 +337,10 @@ impl VelloRenderer {
             return false;
         };
         let lower = subtype.trim().trim_start_matches('/').to_ascii_lowercase();
-        matches!(lower.as_str(), "truetype" | "opentype" | "type1")
+        matches!(
+            lower.as_str(),
+            "truetype" | "opentype" | "type1" | "type0" | "cidfonttype2" | "cidfonttype0"
+        )
     }
 
     pub(super) fn resolve_cosmic_family<'a>(
@@ -301,8 +348,49 @@ impl VelloRenderer {
         text: &NativeTextModel,
         resolved_font: &'a ResolvedPdfFont,
     ) -> cosmic_text::Family<'a> {
-        if let Some(matched_family) = resolved_font.matched_family.as_deref() {
-            return cosmic_text::Family::Name(matched_family);
+        let raw_name = resolved_font
+            .matched_family
+            .as_deref()
+            .unwrap_or(&text.font_name);
+
+        let clean_name = if let Some((_, post)) = raw_name.split_once('+') {
+            post
+        } else {
+            raw_name
+        };
+
+        let lower = clean_name.to_ascii_lowercase();
+
+        // Critical Fix: PDF generators often assign symbol/icon font names (e.g., Wingdings)
+        // to text runs because of leading bullet points (●). If a text run contains normal
+        // letters (A-Z, a-z, 0-9) or CJK characters, using Wingdings maps standard ASCII
+        // codepoints (like 'R', 'u', 's', 't') to Wingdings glyph symbols!
+        let is_symbol_font_name = lower.contains("wingdings")
+            || lower.contains("webdings")
+            || lower.contains("symbol")
+            || lower.contains("marlett")
+            || lower.contains("dingbats");
+
+        let has_standard_text = text
+            .text
+            .chars()
+            .any(|c| c.is_ascii_alphanumeric() || (c as u32 >= 0x4E00 && c as u32 <= 0x9FFF));
+
+        if is_symbol_font_name && has_standard_text {
+            return cosmic_text::Family::Name("Microsoft YaHei");
+        }
+
+        if lower.contains("yahei") || clean_name.contains("微软雅黑") {
+            return cosmic_text::Family::Name("Microsoft YaHei");
+        }
+        if lower.contains("simsun") || clean_name.contains("宋体") {
+            return cosmic_text::Family::Name("SimSun");
+        }
+        if lower.contains("simhei") || clean_name.contains("黑体") {
+            return cosmic_text::Family::Name("SimHei");
+        }
+        if lower.contains("kai") || clean_name.contains("楷体") {
+            return cosmic_text::Family::Name("KaiTi");
         }
 
         if text
@@ -310,8 +398,8 @@ impl VelloRenderer {
             .as_ref()
             .map(|value| value.is_serif)
             .unwrap_or(false)
-            || text.font_name.to_ascii_lowercase().contains("serif")
-            || text.font_name.to_ascii_lowercase().contains("roman")
+            || lower.contains("serif")
+            || lower.contains("roman")
         {
             return cosmic_text::Family::Serif;
         }

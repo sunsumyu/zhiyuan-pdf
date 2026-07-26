@@ -241,12 +241,10 @@ export function applyViewportCanvasFrame(
         useViewportTile,
         deferVisibleFrame,
     });
-    if (!deferVisibleFrame) {
-        refs.container.style.width = `${frame.displayWidth}px`;
-        refs.container.style.height = `${frame.displayHeight}px`;
-        applyCanvasCssBox(refs.mainCanvas, 0, 0, frame.displayWidth, frame.displayHeight);
-        applyCanvasCssBox(refs.backCanvas, frame.viewportLeft, frame.viewportTop, frame.viewportWidth, frame.viewportHeight);
-    }
+    refs.container.style.width = `${frame.displayWidth}px`;
+    refs.container.style.height = `${frame.displayHeight}px`;
+    applyCanvasCssBox(refs.mainCanvas, 0, 0, frame.displayWidth, frame.displayHeight);
+    applyCanvasCssBox(refs.backCanvas, frame.viewportLeft, frame.viewportTop, frame.viewportWidth, frame.viewportHeight);
 
     const baseScale =
         frame.displayZoom > 0.0001

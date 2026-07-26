@@ -35,6 +35,7 @@ impl PdfDocExt for Document {
         let mut obj_counter = 0;
         if patch_content_recursive(
             self,
+            page_id,
             &mut content,
             &resources,
             &mut cache,
@@ -246,6 +247,7 @@ impl PdfDocExt for Document {
 
 fn patch_content_recursive(
     doc: &mut Document,
+    page_id: lopdf::ObjectId,
     content: &mut Content,
     resources: &FlatResources,
     cache: &mut ResourceCache,
@@ -257,6 +259,7 @@ fn patch_content_recursive(
 ) -> Result<bool, String> {
     let mut modified = false;
     let mut current_font: Option<Arc<ParsedFont>> = None;
+    let mut font_alias: Vec<u8> = Vec::new();
     let mut font_size = 12.0;
     let mut char_spacing = 0.0;
     let mut word_spacing = 0.0;
@@ -266,6 +269,7 @@ fn patch_content_recursive(
         match op.operator.as_str() {
             "Tf" => {
                 if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
+                    font_alias = name.to_vec();
                     font_size = op
                         .operands
                         .get(1)
@@ -287,35 +291,24 @@ fn patch_content_recursive(
                 }
             }
             "Tc" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| {
-                    o.as_float()
-                        .ok()
-                        .or_else(|| o.as_i64().ok().map(|i| i as f32))
-                }) {
-                    char_spacing = v;
+                if let Some(val) = op.operands.get(0).and_then(|o| o.as_float().ok().or_else(|| o.as_i64().ok().map(|i| i as f32))) {
+                    char_spacing = val;
                 }
             }
             "Tw" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| {
-                    o.as_float()
-                        .ok()
-                        .or_else(|| o.as_i64().ok().map(|i| i as f32))
-                }) {
-                    word_spacing = v;
+                if let Some(val) = op.operands.get(0).and_then(|o| o.as_float().ok().or_else(|| o.as_i64().ok().map(|i| i as f32))) {
+                    word_spacing = val;
                 }
             }
             "Tz" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| {
-                    o.as_float()
-                        .ok()
-                        .or_else(|| o.as_i64().ok().map(|i| i as f32))
-                }) {
-                    h_scaling = v;
+                if let Some(val) = op.operands.get(0).and_then(|o| o.as_float().ok().or_else(|| o.as_i64().ok().map(|i| i as f32))) {
+                    h_scaling = val;
                 }
             }
-            "Tj" | "TJ" => {
-                *obj_counter += 1;
-                if target_index.map_or(true, |t| *obj_counter == t) {
+            "Tj" | "TJ" | "'" | "\"" => {
+                *obj_counter = obj_counter.wrapping_add(1);
+                let should_patch = target_index.map_or(true, |idx| idx == *obj_counter);
+                if should_patch && !op.operands.is_empty() {
                     let decoded = if let Some(ref font) = current_font {
                         if op.operator == "Tj" {
                             resolve_glyph_geom(
@@ -353,17 +346,25 @@ fn patch_content_recursive(
                     };
 
                     if decoded == old_text {
-                        let replacement = if let Some(ref font) = current_font {
-                            font.encode_text(new_text)
+                        let font_info = resolve_text_write_font(
+                            doc,
+                            page_id,
+                            &font_alias,
+                            current_font.as_ref().map(|f| f.as_ref()),
+                            new_text,
+                        )?;
+                        let replacement = font_info.encode_text(new_text)?;
+                        let string_format = if matches!(font_info.source_label(), s if s.starts_with("original-pdf-font")) {
+                            StringFormat::Literal
                         } else {
-                            new_text.as_bytes().to_vec()
+                            StringFormat::Hexadecimal
                         };
                         if op.operator == "Tj" {
-                            op.operands[0] = Object::String(replacement, StringFormat::Literal);
+                            op.operands[0] = Object::String(replacement, string_format);
                         } else {
                             op.operands[0] = Object::Array(vec![Object::String(
                                 replacement,
-                                StringFormat::Literal,
+                                string_format,
                             )]);
                         }
                         modified = true;
@@ -389,6 +390,7 @@ fn patch_content_recursive(
                                         let sub_res = read_resources(doc, id);
                                         if patch_content_recursive(
                                             doc,
+                                            page_id,
                                             &mut sub,
                                             &sub_res,
                                             cache,
@@ -502,6 +504,20 @@ fn emit_text_line_ops(
         ));
     }
 
+    if run.render_mode != 0 {
+        ops.push(lopdf::content::Operation::new(
+            "Tr",
+            vec![Object::Integer(run.render_mode as i64)],
+        ));
+        if run.render_mode == 2 || run.render_mode == 1 {
+            let bold_stroke = (adj_font_size * 0.03).max(0.3);
+            ops.push(lopdf::content::Operation::new(
+                "w",
+                vec![Object::Real(bold_stroke)],
+            ));
+        }
+    }
+
     ops.push(lopdf::content::Operation::new(
         "Tm",
         vec![
@@ -527,6 +543,12 @@ fn emit_text_line_ops(
             lopdf::StringFormat::Hexadecimal,
         )],
     ));
+    if run.render_mode != 0 {
+        ops.push(lopdf::content::Operation::new(
+            "Tr",
+            vec![Object::Integer(0)],
+        ));
+    }
 
     let underline = if run.is_underline && adj_width > 0.0 {
         Some(UnderlineSpec {
@@ -666,16 +688,53 @@ fn patch_atomic_reflow_recursive(
                             &patch.new_text,
                         )?;
                         let active_font = Arc::new(font_info.parsed_font.clone());
+                        let target_wrap = patch.wrap_width.unwrap_or(0.0);
+                        let mut effective_h_scaling = patch.horizontal_scaling;
+                        let mut effective_char_spacing = patch.char_spacing;
+
+                        // Calculate natural layout width to check for physical width discrepancy
+                        let initial_layout = break_text_into_lines(
+                            &patch.new_text,
+                            patch.new_runs.as_ref(),
+                            &active_font,
+                            state.font_size,
+                            target_wrap,
+                            patch.alignment,
+                            patch.line_height,
+                            patch.char_spacing,
+                            patch.horizontal_scaling,
+                        );
+
+                        // If wrap_width is specified and single line natural width differs from target_wrap,
+                        // apply micro-adjustment scaling (Tc / Tz accommodation) for seamless fit
+                        if target_wrap > 1.0 && initial_layout.lines.len() == 1 {
+                            let nat_w = initial_layout.lines[0].width;
+                            if nat_w > 0.1 && (nat_w - target_wrap).abs() > 0.5 {
+                                let ratio = target_wrap / nat_w;
+                                // If discrepancy is within ±15%, apply gentle horizontal scaling adjustment (Tz)
+                                if ratio >= 0.85 && ratio <= 1.15 {
+                                    effective_h_scaling *= ratio;
+                                } else {
+                                    // Otherwise distribute subtle character-spacing delta (Tc)
+                                    let char_count = patch.new_text.chars().count();
+                                    if char_count > 1 {
+                                        let delta = (target_wrap - nat_w) / ((char_count - 1) as f32);
+                                        effective_char_spacing += delta;
+                                    }
+                                }
+                            }
+                        }
+
                         let layout = break_text_into_lines(
                             &patch.new_text,
                             patch.new_runs.as_ref(),
                             &active_font,
                             state.font_size,
-                            patch.wrap_width.unwrap_or(0.0),
+                            target_wrap,
                             patch.alignment,
                             patch.line_height,
-                            patch.char_spacing,
-                            patch.horizontal_scaling,
+                            effective_char_spacing,
+                            effective_h_scaling,
                         );
 
                         let trm = multiply_matrices(state.ctm, state.last_tm);
@@ -703,7 +762,8 @@ fn patch_atomic_reflow_recursive(
                                 width: line.width * psx,
                                 color: super::helpers::resolve_line_color(line),
                                 is_underline: super::helpers::resolve_line_underline(line),
-                                horizontal_scaling: patch.horizontal_scaling,
+                                horizontal_scaling: effective_h_scaling * (state.horizontal_scaling / 100.0),
+                                render_mode: state.render_mode,
                                 patch_idx: target_idx,
                                 line_seq: idx,
                             });

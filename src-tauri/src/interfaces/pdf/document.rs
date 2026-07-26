@@ -15,6 +15,7 @@ pub async fn open_pdf(
         "document.open",
         vec![("pathHash", format!("{:x}", md5::compute(&path)))],
     );
+    crate::infrastructure::pdf::cache::invalidate_pdf_page_cache(&state, &path);
     let page_count = PdfDocumentService::open_pdf(app_handle, state, &path).await?;
     span.finish("accepted", vec![("pageCount", page_count.to_string())]);
     Ok(page_count)

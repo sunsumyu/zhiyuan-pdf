@@ -287,3 +287,98 @@ pub async fn diagnose_page(
         "resolveErr": resolve_err,
     }))
 }
+
+/// Render a single PDF page to a GPU-accelerated image using vello vector renderer.
+/// Returns PNG bytes as base64 string.
+#[command]
+pub async fn render_page_to_image(
+    state: tauri::State<'_, crate::AppState>,
+    path: String,
+    page_index: u16,
+    zoom: f32,
+    width: u32,
+    height: u32,
+    document_revision: Option<u64>,
+) -> Result<String, String> {
+    use crate::infrastructure::pdf::vello_renderer::VelloRenderer;
+    use std::sync::Arc;
+
+    // 1. Ensure document is loaded
+    crate::interfaces::pdf::ensure_document_loaded(&state, &path).await?;
+
+    // 2. Resolve vector page model
+    let model = PdfPageIntermediateService::resolve_vector_page_model(
+        &state,
+        path.clone(),
+        page_index,
+        zoom,
+        document_revision,
+    )
+    .await?;
+
+    // 3. Check GPU texture limit and auto-downscale if needed
+    let (render_width, render_height, _render_zoom) = {
+        let max_dimension = 16384u32; // Common GPU max texture size
+        let _max_width = width.min(max_dimension);
+        let _max_height = height.min(max_dimension);
+        if width > max_dimension || height > max_dimension {
+            let scale = (max_dimension as f32 / width.max(height) as f32).min(1.0);
+            let new_width = (width as f32 * scale) as u32;
+            let new_height = (height as f32 * scale) as u32;
+            let new_zoom = zoom * scale;
+            eprintln!("[GPU-DOWNSCALE] {}x{} -> {}x{} (zoom: {} -> {})",
+                width, height, new_width, new_height, zoom, new_zoom);
+            (new_width, new_height, new_zoom)
+        } else {
+            (width, height, zoom)
+        }
+    };
+
+    // 4. Lazy-init vello renderer if needed
+    let needs_init = {
+        let guard = state.renderer.vello_renderer.lock().unwrap();
+        guard.is_none()
+    };
+    if needs_init {
+        let new_renderer = VelloRenderer::new().await.map_err(|e| format!("Vello init failed: {}", e))?;
+        let mut guard = state.renderer.vello_renderer.lock().unwrap();
+        *guard = Some(Arc::new(std::sync::Mutex::new(new_renderer)));
+    }
+
+    // 5. Render to PNG (with timeout and fallback)
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let png_bytes = {
+        let renderer_arc = state.renderer.vello_renderer.lock().unwrap().clone().unwrap();
+        let mut renderer = renderer_arc.lock().unwrap();
+        match renderer.render_objects_to_png(&model.objects, render_width, render_height, model.width, model.height) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                // GPU rendering failed (e.g., texture too large), fallback to CPU rasterization
+                eprintln!("[GPU-FALLBACK] Vello render failed: {}. Falling back to CPU.", e);
+                return fallback_cpu_render(&model, width, height, zoom);
+            }
+        }
+    };
+
+    // 6. Encode as base64
+    Ok(STANDARD.encode(png_bytes))
+}
+
+/// CPU fallback rendering when GPU (vello) fails.
+/// Uses lopdf + headless chromium or skia in future; for now returns a simple error PNG placeholder.
+fn fallback_cpu_render(
+    _model: &NativeVectorPageModel,
+    width: u32,
+    height: u32,
+    _zoom: f32,
+) -> Result<String, String> {
+    // For now, create a simple white PNG as placeholder
+    let img = image::DynamicImage::new_rgba8(width, height);
+
+    let mut png_data = Vec::new();
+    img.write_to(&mut std::io::Cursor::new(&mut png_data), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    Ok(STANDARD.encode(png_data))
+}

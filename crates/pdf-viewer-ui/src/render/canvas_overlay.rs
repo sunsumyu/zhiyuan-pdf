@@ -35,7 +35,7 @@ pub(crate) fn path_bbox_summary(
 }
 
 fn summarize_overlay_render_plan(
-    plan: &crate::editor::draft_layout::EditorDraftRenderPlan,
+    plan: &crate::editor::draft_layout::DraftLayout,
 ) -> String {
     plan.layout
         .lines
@@ -75,7 +75,7 @@ fn summarize_overlay_render_plan(
 }
 
 fn count_overlay_underline_runs(
-    plan: &crate::editor::draft_layout::EditorDraftRenderPlan,
+    plan: &crate::editor::draft_layout::DraftLayout,
 ) -> usize {
     plan.layout
         .lines

@@ -100,12 +100,27 @@ export function createPdfKeyboardShortcutHandler(
             deps.toggleUnderline();
             return;
         }
+
+        // --- Undo (Ctrl+Z) & Redo (Ctrl+Y / Ctrl+Shift+Z) ---
         const wantsUndo = key === 'z' && !event.shiftKey;
         const wantsRedo = key === 'y' || (key === 'z' && event.shiftKey);
         if (!wantsUndo && !wantsRedo) return;
 
-        if (!deps.isTextEditEnabled() && isPlainEditableTarget(event.target)) return;
-        if (!isPdfViewerKeyboardScope(deps.getScrollContainer)) return;
+        const targetEl = event.target as HTMLElement | null;
+        if (targetEl && (targetEl.id === 'search-input' || targetEl.closest('#pdf-find-bar') || targetEl.closest('#find-container'))) {
+            return;
+        }
+
+        const scrollContainer = deps.getScrollContainer();
+        const active = document.activeElement as HTMLElement | null;
+        const inScope = !active || active === document.body ||
+            active.closest(`#${VECTOR_CONTAINER_ID}`) ||
+            active.closest('#pdf-content-wrapper') ||
+            active.closest('#pdf-scroll-container') ||
+            active.closest('[data-plugin-id="pdf-viewer"]') ||
+            (scrollContainer && scrollContainer.contains(active));
+
+        if (!inScope) return;
 
         event.preventDefault();
         event.stopPropagation();
@@ -116,4 +131,3 @@ export function createPdfKeyboardShortcutHandler(
         }
     };
 }
-

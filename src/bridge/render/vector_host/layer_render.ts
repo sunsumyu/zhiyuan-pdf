@@ -1,5 +1,6 @@
 import { ensureWasmInitialized, getWasmApi } from '../../shared/wasm_loader';
 import { resolveVectorPageBundle } from '../vector_page_bundle';
+import { renderGpuPage, findGpuPageInCache, asyncReRenderGpuPage } from '../gpu_page_renderer';
 import { updateTextLayer } from '../text_layer';
 import {
     applyViewportCanvasFrame,
@@ -322,9 +323,7 @@ export async function renderVectorPageWithPlan(
             );
         }
 
-        const isOverlayRender =
-            (plan as any).renderReason === 'editorVisibility' ||
-            (plan as any).renderReason === 'documentMutation';
+        const isOverlayRender = (plan as any).renderReason === 'editorVisibility';
         const cachedFrame = isOverlayRender ? null : readViewportFrameCache(layerCacheKey);
         if (cachedFrame) {
             const cacheKnown = renderApi.touchFrameCacheEntry(
@@ -404,6 +403,7 @@ export async function renderVectorPageWithPlan(
             layerViewportHeight,
             bundle.documentRevision,
             isOverlayRender,
+            (plan as any).renderReason,
         );
 
         if (progressiveResult?.aborted) {
@@ -598,6 +598,7 @@ async function renderViewportProgressiveIfNeeded(
     viewportHeight?: number,
     revision?: number,
     isOverlayRender?: boolean,
+    renderReason?: string,
 ): Promise<{ aborted?: boolean } | null> {
     const isProgressivePipelineStale = (): boolean => {
         if (path === undefined || pageIndex === undefined) return false;
@@ -623,6 +624,86 @@ async function renderViewportProgressiveIfNeeded(
         | null
         | undefined;
     const renderTarget = getRenderBufferCanvas(refs, useViewportTile);
+
+    // GPU vector rendering: for base layer and document mutation (commit) renders
+    if (!isOverlayRender && path !== undefined && pageIndex !== undefined) {
+        try {
+            // 对于 documentMutation，使用异步重新渲染策略：先显示旧图，后台重新渲染
+            const isDocumentMutation = renderReason === 'documentMutation';
+
+            if (isDocumentMutation) {
+                // 1. 先尝试从缓存获取旧位图
+                const cachedBitmap = findGpuPageInCache(
+                    path, pageIndex, renderTarget.width, renderTarget.height,
+                    zoom ?? 1.0, revision,
+                );
+
+                // 2. 显示旧位图（如果有），避免白屏
+                if (cachedBitmap) {
+                    const ctx = renderTarget.getContext('2d', { alpha: false });
+                    if (ctx) {
+                        ctx.clearRect(0, 0, renderTarget.width, renderTarget.height);
+                        ctx.drawImage(cachedBitmap, 0, 0);
+                    }
+                    logRenderChain('ts.layer.gpu-reuse-cached', {
+                        pageIndex,
+                        width: renderTarget.width,
+                        height: renderTarget.height,
+                    });
+                }
+
+                // 3. 后台异步重新渲染
+                asyncReRenderGpuPage(path, pageIndex, renderTarget.width, renderTarget.height, zoom ?? 1.0, revision)
+                    .then((newBitmap) => {
+                        if (!newBitmap) return;
+                        // 使用 requestAnimationFrame 平滑替换
+                        requestAnimationFrame(() => {
+                            const ctx = renderTarget.getContext('2d', { alpha: false });
+                            if (ctx) {
+                                ctx.clearRect(0, 0, renderTarget.width, renderTarget.height);
+                                ctx.drawImage(newBitmap, 0, 0);
+                            }
+                            logRenderChain('ts.layer.gpu-async-replaced', {
+                                pageIndex,
+                                width: renderTarget.width,
+                                height: renderTarget.height,
+                            });
+                        });
+                    })
+                    .catch((e) => {
+                        console.error('[GPU-RENDER] Async re-render failed:', e);
+                    });
+
+                return null;
+            }
+
+            // 常规渲染（非 documentMutation）
+            const gpuBitmap = await renderGpuPage(
+                path,
+                pageIndex,
+                renderTarget.width,
+                renderTarget.height,
+                zoom ?? 1.0,
+                frameToken,
+                revision,
+            );
+            if (gpuBitmap) {
+                const ctx = renderTarget.getContext('2d', { alpha: false });
+                if (ctx) {
+                    ctx.clearRect(0, 0, renderTarget.width, renderTarget.height);
+                    ctx.drawImage(gpuBitmap, 0, 0);
+                }
+                logRenderChain('ts.layer.gpu-rendered', {
+                    pageIndex,
+                    width: renderTarget.width,
+                    height: renderTarget.height,
+                });
+                return null;
+            }
+        } catch (e) {
+            console.error('[GPU-RENDER] Failed in renderViewportProgressiveIfNeeded:', e);
+        }
+    }
 
     if (
         isProgressivePipelineStale() || (

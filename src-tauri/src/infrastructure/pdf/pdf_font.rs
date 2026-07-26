@@ -6,8 +6,8 @@ pub use pdf_viewer_core::models::FontHints;
 
 #[derive(Debug, Clone, Default)]
 pub struct CMap {
-    pub mappings: HashMap<u16, String>,
-    pub rev_mappings: HashMap<String, u16>,
+    pub mappings: HashMap<u32, String>,
+    pub rev_mappings: HashMap<String, u32>,
 }
 
 impl CMap {
@@ -15,7 +15,7 @@ impl CMap {
         Self::default()
     }
 
-    pub fn from_codepoint_pairs(pairs: Vec<(u16, String)>) -> Self {
+    pub fn from_codepoint_pairs(pairs: Vec<(u32, String)>) -> Self {
         let mut mappings = HashMap::new();
         let mut rev_mappings = HashMap::new();
         for (code, s) in pairs {
@@ -108,7 +108,7 @@ impl ParsedFont {
                 cmap.rev_mappings
                     .get(&c.to_string())
                     .copied()
-                    .unwrap_or(c as u32 as u16) as u32
+                    .unwrap_or(c as u32)
             } else {
                 c as u32
             };
@@ -168,13 +168,17 @@ pub fn resolve_glyph_geom(
             let cmap_hit = font
                 .cmap
                 .as_ref()
-                .and_then(|m| m.mappings.get(&(code as u16)))
+                .and_then(|m| m.mappings.get(&code))
                 .cloned();
             let had_hit = cmap_hit.is_some();
             unicode = cmap_hit.unwrap_or_else(|| {
-                char::from_u32(code)
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| format!("[0x{:04X}]", code))
+                if font.is_multibyte() {
+                    "".to_string()
+                } else {
+                    char::from_u32(code)
+                        .map(|c| c.to_string())
+                        .unwrap_or_default()
+                }
             });
             crate::pdf_log!(
                 2,
@@ -190,7 +194,7 @@ pub fn resolve_glyph_geom(
             let cmap_hit = font
                 .cmap
                 .as_ref()
-                .and_then(|m| m.mappings.get(&(code as u16)))
+                .and_then(|m| m.mappings.get(&code))
                 .cloned();
             let had_hit = cmap_hit.is_some();
             unicode = cmap_hit.unwrap_or_else(|| {
@@ -302,7 +306,7 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                 let parts: Vec<&str> = mapping_line.split_whitespace().collect();
                 if parts.len() >= 2 {
                     let code =
-                        u16::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
+                        u32::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
                             .unwrap_or(0);
                     let val = hex_to_string(parts[1].trim_matches(|c| c == '<' || c == '>'));
                     cmap.rev_mappings.insert(val.clone(), code);
@@ -318,10 +322,10 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                 let parts: Vec<&str> = mapping_line.split_whitespace().collect();
                 if parts.len() >= 3 {
                     let start =
-                        u16::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
+                        u32::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
                             .unwrap_or(0);
                     let end =
-                        u16::from_str_radix(parts[1].trim_matches(|c| c == '<' || c == '>'), 16)
+                        u32::from_str_radix(parts[1].trim_matches(|c| c == '<' || c == '>'), 16)
                             .unwrap_or(0);
                     if parts[2].starts_with('[') {
                         let array_content = parts[2..].join(" ");
@@ -330,27 +334,30 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                             .split_whitespace()
                             .collect();
                         for (idx, v_hex) in items.iter().enumerate() {
-                            let code = start + idx as u16;
+                            let code = start + idx as u32;
                             if code <= end {
-                                cmap.mappings.insert(
-                                    code,
-                                    hex_to_string(v_hex.trim_matches(|c| c == '<' || c == '>')),
-                                );
+                                let val = hex_to_string(v_hex.trim_matches(|c| c == '<' || c == '>'));
+                                cmap.rev_mappings.insert(val.clone(), code);
+                                cmap.mappings.insert(code, val);
                             }
                         }
                     } else {
-                        let base_val = u16::from_str_radix(
-                            parts[2].trim_matches(|c| c == '<' || c == '>'),
-                            16,
-                        )
-                        .unwrap_or(0);
-                        for code in start..=end {
-                            let mapped_val = base_val + (code - start);
-                            let val = char::from_u32(mapped_val as u32)
-                                .map(|c| c.to_string())
-                                .unwrap_or_default();
-                            cmap.rev_mappings.insert(val.clone(), code);
-                            cmap.mappings.insert(code, val);
+                        let hex_str = parts[2].trim_matches(|c| c == '<' || c == '>');
+                        if let Ok(base_val) = u32::from_str_radix(hex_str, 16) {
+                            for code in start..=end {
+                                let mapped_val = base_val + (code - start);
+                                let val = char::from_u32(mapped_val)
+                                    .map(|c| c.to_string())
+                                    .unwrap_or_else(|| hex_to_string(&format!("{:04X}", mapped_val)));
+                                cmap.rev_mappings.insert(val.clone(), code);
+                                cmap.mappings.insert(code, val);
+                            }
+                        } else {
+                            let val = hex_to_string(hex_str);
+                            for code in start..=end {
+                                cmap.rev_mappings.insert(val.clone(), code);
+                                cmap.mappings.insert(code, val.clone());
+                            }
                         }
                     }
                 }
@@ -362,12 +369,18 @@ pub fn read_cmap(data: &[u8]) -> CMap {
 
 fn hex_to_string(hex: &str) -> String {
     let mut res = String::new();
+    let mut u16_units = Vec::new();
     for i in (0..hex.len()).step_by(4) {
         if i + 4 <= hex.len() {
             if let Ok(u) = u16::from_str_radix(&hex[i..i + 4], 16) {
-                if let Some(c) = char::from_u32(u as u32) {
-                    res.push(c);
-                }
+                u16_units.push(u);
+            }
+        }
+    }
+    if !u16_units.is_empty() {
+        for c in std::char::decode_utf16(u16_units.iter().copied()) {
+            if let Ok(ch) = c {
+                res.push(ch);
             }
         }
     }

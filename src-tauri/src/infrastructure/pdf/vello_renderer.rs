@@ -81,11 +81,96 @@ impl VelloRenderer {
         )
         .map_err(|e| e.to_string())?;
 
+        let mut font_system = FontSystem::new();
+        font_system.db_mut().load_system_fonts();
+
+        // Also explicitly load common CJK font files in case load_system_fonts misses them.
+        let cjk_font_paths = vec![
+            r"C:\Windows\Fonts\msyh.ttc",
+            r"C:\Windows\Fonts\msyhbd.ttc",
+            r"C:\Windows\Fonts\simsun.ttc",
+            r"C:\Windows\Fonts\msjh.ttc",
+            r"C:\Windows\Fonts\simhei.ttf",
+            r"C:\Windows\Fonts\simfang.ttf",
+            r"C:\Windows\Fonts\simkai.ttf",
+            r"C:\Windows\Fonts\simli.ttf",
+            r"C:\Windows\Fonts\simyou.ttf",
+        ];
+        for path in &cjk_font_paths {
+            if std::path::Path::new(path).exists() {
+                if let Ok(bytes) = std::fs::read(path) {
+                    font_system.db_mut().load_font_data(bytes);
+                    println!("[VELLO-FONT] Loaded CJK font binary data: {}", path);
+                }
+            }
+        }
+
+        // Remove symbol/icon fonts from fontdb so fallback never resolves to Marlett/Wingdings/Symbol/MDL2
+        let face_ids_to_remove: Vec<_> = font_system
+            .db()
+            .faces()
+            .filter(|face| {
+                face.families.iter().any(|(name, _)| {
+                    let n = name.to_lowercase();
+                    n.contains("marlett")
+                        || n.contains("webdings")
+                        || n.contains("wingding")
+                        || n.contains("symbol")
+                        || n.contains("mdl2")
+                        || n.contains("fluent icon")
+                        || n.contains("dingbat")
+                        || n.contains("bookshelf")
+                })
+            })
+            .map(|face| face.id)
+            .collect();
+        for id in face_ids_to_remove {
+            font_system.db_mut().remove_face(id);
+        }
+
+        // Diagnostic: print all font families in fontdb to verify CJK fonts are registered
+        println!("[VELLO-FONT] ===== All font families in fontdb =====");
+        let mut family_names: Vec<String> = font_system.db().faces()
+            .flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
+            .collect();
+        family_names.sort();
+        family_names.dedup();
+        for name in &family_names {
+            println!("[VELLO-FONT]   Family: {}", name);
+        }
+        println!("[VELLO-FONT] Total {} unique font families", family_names.len());
+
+        // Set fallback families to actual existing CJK fonts
+        // Try both English and Chinese names since fontdb may register under either
+        let has_msyh = family_names.iter().any(|n| n.contains("Microsoft YaHei") || n.contains("微软雅黑"));
+        let has_simsun = family_names.iter().any(|n| n.contains("SimSun") || n.contains("宋体"));
+        if has_msyh {
+            font_system.db_mut().set_sans_serif_family("Microsoft YaHei");
+            println!("[VELLO-FONT] Set sans-serif fallback to Microsoft YaHei");
+        } else if family_names.iter().any(|n| n.contains("微软雅黑")) {
+            font_system.db_mut().set_sans_serif_family("微软雅黑");
+            println!("[VELLO-FONT] Set sans-serif fallback to 微软雅黑");
+        }
+        if has_simsun {
+            font_system.db_mut().set_serif_family("SimSun");
+            font_system.db_mut().set_monospace_family("SimSun");
+            eprintln!("[VELLO-FONT] Set serif/monospace fallback to SimSun");
+        } else if family_names.iter().any(|n| n.contains("宋体")) {
+            font_system.db_mut().set_serif_family("宋体");
+            font_system.db_mut().set_monospace_family("宋体");
+            eprintln!("[VELLO-FONT] Set serif/monospace fallback to 宋体");
+        }
+
+        eprintln!(
+            "[VELLO-FONT] Total {} font faces loaded into cosmic_text",
+            font_system.db().faces().count()
+        );
+
         Ok(Self {
             device: Arc::new(device),
             queue: Arc::new(queue),
             renderer,
-            font_system: FontSystem::new(),
+            font_system,
             swash_cache: SwashCache::new(),
             font_file_cache: HashMap::new(),
             font_matcher: crate::infrastructure::pdf::font::matching::PdfSystemFontMatcher::new(
@@ -103,17 +188,26 @@ impl VelloRenderer {
         objects: &[RenderObject],
         width: u32,
         height: u32,
-        zoom: f32,
+        page_width: f32,
+        page_height: f32,
     ) -> Result<Vec<u8>, String> {
         let mut scene = Scene::new();
         let mut scale_context = ScaleContext::new();
-        let mut vector_rendered_text_ids = HashSet::new();
+        let mut vector_rendered_indices = HashSet::new();
 
-        // ── Standard PDF Coordinate Transform (Flip Y + Zoom) ──
-        let flip_y = Affine::scale_non_uniform(zoom as f64, -zoom as f64)
-            .then_translate(vello::kurbo::Vec2::new(0.0, height as f64));
+        let scale_x = if page_width > 0.0 {
+            width as f64 / page_width as f64
+        } else {
+            1.0
+        };
+        let scale_y = if page_height > 0.0 {
+            height as f64 / page_height as f64
+        } else {
+            1.0
+        };
+        let transform = Affine::scale_non_uniform(scale_x, scale_y);
 
-        for object in objects {
+        for (idx, object) in objects.iter().enumerate() {
             match object {
                 RenderObject::Path(path) => {
                     let bez_path = path_utils::path_segments_to_bez_path(&path.segments);
@@ -123,7 +217,7 @@ impl VelloRenderer {
                             path.fill_color.as_deref().unwrap_or("#000000"),
                             path.alpha,
                         );
-                        scene.fill(Fill::NonZero, flip_y, color, None, &bez_path);
+                        scene.fill(Fill::NonZero, transform, color, None, &bez_path);
                     }
                     if path.stroke {
                         let color = color_utils::parse_hex_vello_color(
@@ -132,7 +226,7 @@ impl VelloRenderer {
                         );
                         scene.stroke(
                             &Stroke::new(path.stroke_width as f64),
-                            flip_y,
+                            transform,
                             color,
                             None,
                             &bez_path,
@@ -140,34 +234,36 @@ impl VelloRenderer {
                     }
                 }
                 RenderObject::Text(text) => {
-                    if self.draw_text_vector(&mut scene, &mut scale_context, text, flip_y) {
-                        if !text.id.is_empty() {
-                            vector_rendered_text_ids.insert(text.id.clone());
-                        }
+                    if self.draw_text_vector(&mut scene, &mut scale_context, text, transform) {
+                        vector_rendered_indices.insert(idx);
                     }
                 }
                 _ => {}
             }
         }
 
-        let rgba_data = self.perform_vello_render_raw(&scene, width, height)?;
+        let target_width = width.max(1);
+        let target_height = height.max(1);
+
+        let rgba_data = self.perform_vello_render_raw(&scene, target_width, target_height)?;
 
         // ── Phase 2: CPU overlay for text + legacy images ──
-        let mut img = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, rgba_data)
+        let mut img = ImageBuffer::<Rgba<u8>, _>::from_raw(target_width, target_height, rgba_data)
             .ok_or("Failed to create image buffer from Vello output")?;
 
-        for object in objects {
+        let scale_f32_x = scale_x as f32;
+        let scale_f32_y = scale_y as f32;
+
+        for (idx, object) in objects.iter().enumerate() {
             match object {
                 RenderObject::Text(text_model) => {
-                    if !text_model.id.is_empty()
-                        && vector_rendered_text_ids.contains(&text_model.id)
-                    {
+                    if vector_rendered_indices.contains(&idx) {
                         continue;
                     }
-                    self.draw_text_bitmap_deprecated(&mut img, text_model, zoom, width, height);
+                    self.draw_text_bitmap_deprecated(&mut img, text_model, scale_f32_x, width, height);
                 }
                 RenderObject::Image(image_model) => {
-                    self.draw_image_cpu(&mut img, image_model, zoom, width, height);
+                    self.draw_image_cpu(&mut img, image_model, scale_f32_x, scale_f32_y, width, height);
                 }
                 _ => {}
             }
@@ -188,7 +284,8 @@ impl VelloRenderer {
         &mut self,
         img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
         model: &crate::infrastructure::pdf::models::NativeImageModel,
-        zoom: f32,
+        scale_x: f32,
+        scale_y: f32,
         canvas_w: u32,
         canvas_h: u32,
     ) {
@@ -215,15 +312,15 @@ impl VelloRenderer {
             Err(_) => return,
         };
 
-        let target_w = (model.width * zoom).abs() as u32;
-        let target_h = (model.height * zoom).abs() as u32;
+        let target_w = (model.width * scale_x).abs() as u32;
+        let target_h = (model.height * scale_y).abs() as u32;
 
         if target_w == 0 || target_h == 0 {
             return;
         }
 
-        let target_x = (model.x * zoom) as i32;
-        let target_y = (canvas_h as f32 - (model.y + model.height) * zoom) as i32;
+        let target_x = (model.x * scale_x) as i32;
+        let target_y = (model.y * scale_y) as i32;
 
         let resized = if src_img.width() != target_w || src_img.height() != target_h {
             image::imageops::resize(
@@ -270,6 +367,7 @@ impl VelloRenderer {
         canvas_w: u32,
         canvas_h: u32,
     ) {
+        println!("[CALL-BITMAP-TEXT] text='{}' rendering_mode={:?}", text.text, text.rendering_mode);
         if text_is_non_painting(text.rendering_mode) {
             return;
         }
@@ -288,12 +386,6 @@ impl VelloRenderer {
                 1.0
             },
         );
-        let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(
-            &mut self.font_system,
-            Some(canvas_w as f32),
-            Some(canvas_h as f32),
-        );
         let mut attrs = cosmic_text::Attrs::new();
         if text.is_bold {
             attrs = attrs.weight(cosmic_text::Weight::BOLD);
@@ -302,7 +394,8 @@ impl VelloRenderer {
             attrs = attrs.style(cosmic_text::Style::Italic);
         }
         let resolved_font = self.resolve_pdf_font(text);
-        attrs = attrs.family(self.resolve_cosmic_family(text, &resolved_font));
+        let family = self.resolve_cosmic_family(text, &resolved_font);
+        attrs = attrs.family(family);
 
         let (cr, cg, cb) = color_utils::parse_hex_color_rgb(if text.color.is_empty() {
             "#000000"
@@ -311,44 +404,39 @@ impl VelloRenderer {
         });
 
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
+        buffer.set_size(
+            &mut self.font_system,
+            Some(canvas_w as f32),
+            Some(canvas_h as f32),
+        );
         buffer.set_text(&mut self.font_system, &text.text, attrs, Shaping::Advanced);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let mut matched_font = "Unknown".to_string();
-        for run in buffer.layout_runs() {
-            for glyph in run.glyphs {
-                if let Some(font) = self.font_system.db().face(glyph.font_id) {
-                    matched_font = format!("{:?} {:?}", font.families, font.weight);
-                    break;
-                }
-            }
-        }
-        if should_trace_text_render(text) {
-            println!(
-                "[FONT-MATCH] REQ: '{}' | MATCHED: '{}' | RENDER_MODE: {} | TEXT: '{}'",
-                text.font_name,
-                matched_font,
-                text.rendering_mode,
-                if text.text.len() > 10 {
-                    format!("{}...", &text.text[..10])
-                } else {
-                    text.text.clone()
-                }
-            );
-        }
-
         let base_x = text.tx * zoom;
-        let base_y = canvas_h as f32 - text.ty * zoom;
+        let base_y = text.ty * zoom;
 
         for run in buffer.layout_runs() {
             for glyph in run.glyphs {
-                let physical = glyph.physical((0., 0.), 1.0);
+                let physical = glyph.physical((0.0, 0.0), 1.0);
+                if let Some(font_face) = self.font_system.db().face(physical.cache_key.font_id) {
+                    println!(
+                        "[VELLO-GLYPH] text='{}' font_name='{}' font_id={:?} face_families={:?} glyph_id={}",
+                        preview_text(&text.text),
+                        text.font_name,
+                        physical.cache_key.font_id,
+                        font_face.families,
+                        glyph.glyph_id
+                    );
+                }
                 if let Some(glyph_img) = self
                     .swash_cache
                     .get_image_uncached(&mut self.font_system, physical.cache_key)
                 {
                     let gx = base_x as i32 + physical.x + glyph_img.placement.left;
-                    let gy = base_y as i32 + physical.y - glyph_img.placement.top;
+                    let gy = (base_y as i32) - glyph_img.placement.top;
+                    if glyph_img.placement.width > 0 && glyph_img.placement.height > 0 {
+                        println!("    [BITMAP-TEXT] '{}' glyph at gx={}, gy={} (canvas {}x{})", text.text, gx, gy, canvas_w, canvas_h);
+                    }
                     self.composite_glyph(img, &glyph_img, gx, gy, cr, cg, cb, canvas_w, canvas_h);
                 }
             }
@@ -373,6 +461,8 @@ impl VelloRenderer {
         if gw == 0 || gh == 0 {
             return;
         }
+
+        println!("    [DATA-LEN] content={:?} len={} gw*gh={} (gw={}, gh={})", glyph_img.content, glyph_img.data.len(), gw * gh, gw, gh);
 
         match glyph_img.content {
             cosmic_text::SwashContent::Mask => {
@@ -497,11 +587,12 @@ impl VelloRenderer {
         path.apply_affine(transform);
 
         let mut painted = false;
+        let fill_color = self.text_fill_color(text);
         if text_fill_enabled(text.rendering_mode) {
             scene.fill(
-                Fill::NonZero,
+                Fill::EvenOdd,
                 Affine::IDENTITY,
-                self.text_fill_color(text),
+                fill_color,
                 None,
                 &path,
             );
@@ -522,7 +613,7 @@ impl VelloRenderer {
     }
     fn raw_outline_transform(
         &self,
-        flip_y: Affine,
+        transform: Affine,
         baseline_x: f32,
         baseline_y: f32,
         font_size: f32,
@@ -533,9 +624,9 @@ impl VelloRenderer {
         } else {
             1.0
         };
-        flip_y
+        transform
             * Affine::translate(Vec2::new(baseline_x as f64, baseline_y as f64))
-            * Affine::scale(scale)
+            * Affine::scale_non_uniform(scale, -scale)
     }
 
     /// GPU render paths/images via Vello, returns raw RGBA pixel data
@@ -643,7 +734,7 @@ impl VelloRenderer {
                 unpadded.extend_from_slice(&padded_data[start..end]);
             }
             unpadded
-        } else {
+                        } else {
             padded_data.to_vec()
         };
         drop(padded_data);
@@ -657,7 +748,7 @@ impl VelloRenderer {
         scene: &mut Scene,
         scale_context: &mut ScaleContext,
         text: &NativeTextModel,
-        flip_y: Affine,
+        transform: Affine,
     ) -> bool {
         let resolved_font = self.resolve_pdf_font(text);
         if should_trace_text_render(text) {
@@ -675,7 +766,7 @@ impl VelloRenderer {
                 text.stroke_color
             );
         }
-        if self.draw_embedded_text_vector(scene, scale_context, text, &resolved_font, flip_y) {
+        if self.draw_embedded_text_vector(scene, scale_context, text, &resolved_font, transform) {
             if should_trace_text_render(text) {
                 crate::pdf_log!(
                     3,
@@ -733,6 +824,18 @@ impl VelloRenderer {
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let layout_runs: Vec<_> = buffer.layout_runs().collect();
+        let total_glyphs: usize = layout_runs.iter().map(|r| r.glyphs.len()).sum();
+        println!(
+            "[TEXT-VECTOR-TRACE] text='{}' font='{}' runs={} glyphs={} color='{}' mode={} tx={:.2} ty={:.2}",
+            preview_text(&text.text),
+            text.font_name,
+            layout_runs.len(),
+            total_glyphs,
+            text.color,
+            text.rendering_mode,
+            text.tx,
+            text.ty
+        );
         let mut matched_font = "Unknown".to_string();
         for run in &layout_runs {
             for glyph in run.glyphs {
@@ -745,19 +848,8 @@ impl VelloRenderer {
                 break;
             }
         }
-        if should_trace_text_render(text) {
-            crate::pdf_log!(
-                3,
-                "[FONT-MATCH] REQ: '{}' | MATCHED: '{}' | RENDER_MODE: {} | TEXT: '{}'",
-                text.font_name,
-                matched_font,
-                text.rendering_mode,
-                if text.text.len() > 10 {
-                    format!("{}...", &text.text[..10])
-                } else {
-                    text.text.clone()
-                }
-            );
+        if text.text.contains("Rust") || text.text.contains("编程语言") {
+            println!("[COSMIC-SHAPE-DEBUG] text='{}' req_font='{}' matched_font='{}'", text.text, text.font_name, matched_font);
         }
         let mut drew_any_glyph = false;
 
@@ -765,6 +857,9 @@ impl VelloRenderer {
             for glyph in run.glyphs {
                 let font_id = glyph.font_id;
                 if let Some(font_face) = self.font_system.db().face(font_id) {
+                    if text.text.contains("Rust") {
+                        println!("[GLYPH-POS-DEBUG] text='{}' gid={} gx={} gy={} tx={} ty={}", text.text, glyph.glyph_id, glyph.x, glyph.y, text.tx, text.ty);
+                    }
                     let index = font_face.index;
                     let source = &font_face.source;
 
@@ -783,9 +878,6 @@ impl VelloRenderer {
                                 None => {
                                     if let Ok(bytes) = std::fs::read(path) {
                                         let arc = Arc::new(bytes);
-                                        // Cache it
-                                        // Wait, self is not mut in this context but self is mut in draw_text_vector
-                                        // self.font_file_cache.insert(path.clone(), arc.clone());
                                         arc
                                     } else {
                                         continue;
@@ -808,7 +900,7 @@ impl VelloRenderer {
                         let bez_path = path_utils::outline_to_bez_path(&outline);
 
                         let final_transform = self.raw_outline_transform(
-                            flip_y,
+                            transform,
                             text.tx + glyph.x,
                             text.ty,
                             real_font_size,

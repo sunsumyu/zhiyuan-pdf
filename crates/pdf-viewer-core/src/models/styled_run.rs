@@ -235,7 +235,7 @@ impl NativeTextModel {
         self.baseline_y = h - self.baseline_y;
         self.top = h - self.top - self.height;
         for origin in &mut self.char_origins {
-            origin[1] = h - origin[1];
+            origin[1] = -origin[1];
         }
         for run in &mut self.runs {
             run.ty = h - run.ty;

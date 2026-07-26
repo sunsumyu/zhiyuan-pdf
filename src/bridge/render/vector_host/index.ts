@@ -17,6 +17,7 @@ import { emitPdfDiagnostic } from '../../shared/diagnostics';
 import { createRenderWasmApi } from '../render_wasm_api';
 import { clearWorkerLastState } from './worker_client';
 import { renderVectorPageWithPlan } from './layer_render';
+import { clearGpuPageCache } from '../gpu_page_renderer';
 
 export { invalidateVectorPageCache };
 export { VECTOR_CANVAS_ID, VECTOR_CONTAINER_ID };
@@ -32,6 +33,7 @@ export function clearVectorHost(): void {
         renderApi.resetFrameCache();
     } catch {}
     clearVectorCanvasHost();
+    clearGpuPageCache();
     invalidateVectorPageCache();
     clearVectorFrameCache();
     clearWorkerLastState();
@@ -44,6 +46,7 @@ export function invalidateVectorRenderCache(): void {
         renderApi.cancelProgressiveRender();
         renderApi.resetFrameCache();
     } catch {}
+    clearGpuPageCache();
     invalidateVectorPageCache();
     clearVectorFrameCache();
     clearWorkerLastState();
@@ -60,37 +63,50 @@ export function commitVectorRenderResult(result: any, options: any = {}): void {
     const prepareVisibleFrame = (): void => {
         if (preparedVisibleFrame) return;
         preparedVisibleFrame = true;
-        options.beforePresent?.();
+        const refs = ensureVectorCanvasHost();
+        if (!refs) return;
+
+        if (result.mainLayer) {
+            presentViewportCanvasFromSource(
+                refs,
+                result.mainLayer.canvas,
+                result.mainLayer.destWidth,
+                result.mainLayer.destHeight,
+                false,
+                result.mainLayer.destX,
+                result.mainLayer.destY,
+            );
+        }
+
+        for (const present of pendingPresents) {
+            presentViewportCanvasFromSource(
+                refs,
+                present.sourceCanvas,
+                present.viewportWidth,
+                present.viewportHeight,
+                present.useViewportTile,
+                present.viewportLeft,
+                present.viewportTop,
+            );
+            presentViewportCanvas(refs, {
+                showDetailOverlay: present.showDetailOverlay,
+                retainDetailOverlay: present.retainDetailOverlay,
+            });
+        }
     };
 
-    if (pendingPresents.length === 0) {
-        prepareVisibleFrame();
-        return;
-    }
-
-    const refs = getExistingVectorCanvasHost();
-    if (!refs) return;
-
-    prepareVisibleFrame();
-    for (const pending of pendingPresents) {
-        presentViewportCanvasFromSource(
-            refs,
-            pending.sourceCanvas,
-            pending.viewportWidth,
-            pending.viewportHeight,
-            pending.useViewportTile,
-            pending.viewportLeft,
-            pending.viewportTop,
-        );
-        presentViewportCanvas(refs, {
-            showDetailOverlay: pending.showDetailOverlay,
-            retainDetailOverlay: pending.retainDetailOverlay,
+    if (pendingPresents.length > 0) {
+        options.onPendingPresent?.({
+            pendingCount: pendingPresents.length,
+            prepareVisibleFrame,
         });
     }
 
-    emitPdfDiagnostic('render-chain', 'ts.deferred-present.commit', {
-        layerCount: pendingPresents.length,
-        width: result.width,
-        height: result.height,
-    }, { verboseOnly: true });
+    prepareVisibleFrame();
+
+    for (const present of pendingPresents) {
+        if (present.target === 'preview') {
+            options.onPreviewPresent?.(present);
+        }
+    }
 }

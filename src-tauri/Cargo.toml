@@ -5,6 +5,7 @@ description = "Standalone PDF Viewer and Editor"
 authors = ["PDF Viewer Team"]
 license = "MIT"
 edition = "2021"
+default-run = "pdf-viewer-standalone"
 
 [lib]
 name = "pdf_viewer_standalone"
@@ -13,6 +14,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "pdf-viewer-standalone"
 path = "src/main.rs"
+
+[[bin]]
+name = "diagnose-pdf"
+path = "src/bin/diagnose_pdf.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

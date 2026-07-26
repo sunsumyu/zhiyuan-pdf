@@ -76,10 +76,41 @@ pub fn resolve_text_write_font(
         }
     }
 
+    let target_weight = if let Some(font) = current_font {
+        if font.name.to_lowercase().contains("bold")
+            || font.hints.as_ref().map_or(false, |h| h.weight >= 600)
+        {
+            Weight::BOLD
+        } else {
+            Weight::NORMAL
+        }
+    } else {
+        Weight::NORMAL
+    };
+
     let preferred_names = build_preferred_font_names(current_font);
-    let resolved = resolve_full_font_program(&preferred_names, text)?;
+    let resolved = resolve_full_font_program(&preferred_names, text, target_weight)?;
     let alias = ensure_resolved_font_in_page(doc, page_id, &resolved, text)?;
     let parsed_font = parsed_font_from_resolved_program(&resolved);
+
+    let is_exact_match = if let Some(font) = current_font {
+        let clean_orig = strip_subset_prefix(&font.name).to_lowercase();
+        let clean_resolved = resolved.family_name.to_lowercase();
+        clean_resolved.contains(&clean_orig) || clean_orig.contains(&clean_resolved)
+    } else {
+        true
+    };
+
+    if !is_exact_match {
+        let orig_name = current_font.map(|f| f.name.as_str()).unwrap_or("unknown");
+        println!(
+            "[PDF-FONT-FALLBACK-WARNING] Original font '{}' missing glyphs for text '{}'. System fallback to '{}' ({})",
+            orig_name,
+            truncate_log(text, 50),
+            resolved.family_name,
+            resolved.source_label
+        );
+    }
 
     println!(
         "[PDF-WRITE-FONT][resolved] alias={} source={} family='{}' ps='{}' text='{}'",
@@ -127,11 +158,11 @@ fn build_preferred_font_names(current_font: Option<&ParsedFont>) -> Vec<String> 
 
     for fallback in [
         "Microsoft YaHei",
-        "寰蒋闆呴粦",
+        "微软雅黑",
         "SimSun",
-        "瀹嬩綋",
+        "宋体",
         "SimHei",
-        "榛戜綋",
+        "黑体",
         "Noto Sans CJK SC",
         "Source Han Sans SC",
         "Arial Unicode MS",
@@ -153,18 +184,18 @@ fn push_font_name_variants(out: &mut Vec<String>, name: &str) {
     push_unique(out, stripped.replace(' ', ""));
 
     let lower = stripped.to_ascii_lowercase();
-    if lower.contains("microsoftyahei") || lower.contains("msyh") || stripped == "寰蒋闆呴粦"
+    if lower.contains("microsoftyahei") || lower.contains("msyh") || stripped == "微软雅黑"
     {
         push_unique(out, "Microsoft YaHei".to_string());
-        push_unique(out, "寰蒋闆呴粦".to_string());
+        push_unique(out, "微软雅黑".to_string());
     }
-    if lower.contains("simsun") || stripped == "瀹嬩綋" {
+    if lower.contains("simsun") || stripped == "宋体" {
         push_unique(out, "SimSun".to_string());
-        push_unique(out, "瀹嬩綋".to_string());
+        push_unique(out, "宋体".to_string());
     }
-    if lower.contains("simhei") || stripped == "榛戜綋" {
+    if lower.contains("simhei") || stripped == "黑体" {
         push_unique(out, "SimHei".to_string());
-        push_unique(out, "榛戜綋".to_string());
+        push_unique(out, "黑体".to_string());
     }
 }
 fn push_unique(out: &mut Vec<String>, value: String) {
@@ -191,6 +222,7 @@ fn strip_subset_prefix(name: &str) -> &str {
 fn resolve_full_font_program(
     preferred_names: &[String],
     text: &str,
+    target_weight: Weight,
 ) -> Result<ResolvedFontProgram, String> {
     let mut db = Database::new();
     db.load_system_fonts();
@@ -199,7 +231,7 @@ fn resolve_full_font_program(
     let mut tried = Vec::new();
     for family in preferred_names {
         tried.push(family.clone());
-        if let Some(resolved) = resolve_family_from_db(&db, family, text) {
+        if let Some(resolved) = resolve_family_from_db(&db, family, text, target_weight) {
             return Ok(resolved);
         }
     }
@@ -224,11 +256,11 @@ fn load_managed_font_dirs(db: &mut Database) {
         }
     }
 }
-fn resolve_family_from_db(db: &Database, family: &str, text: &str) -> Option<ResolvedFontProgram> {
+fn resolve_family_from_db(db: &Database, family: &str, text: &str, target_weight: Weight) -> Option<ResolvedFontProgram> {
     let families = [Family::Name(family)];
     let query = Query {
         families: &families,
-        weight: Weight::NORMAL,
+        weight: target_weight,
         stretch: Stretch::Normal,
         style: Style::Normal,
     };
@@ -249,19 +281,20 @@ fn try_known_font_files(
 ) -> Option<ResolvedFontProgram> {
     let lower = family.to_ascii_lowercase();
     let mut paths = Vec::<PathBuf>::new();
-    if lower.contains("yahei") || family == "寰蒋闆呴粦" || lower.contains("microsoft") {
+    if lower.contains("yahei") || family == "微软雅黑" || lower.contains("microsoft") {
         paths.extend([
+            PathBuf::from(r"C:\Windows\Fonts\msyhbd.ttc"),
             PathBuf::from(r"C:\Windows\Fonts\msyh.ttc"),
             PathBuf::from(r"C:\Windows\Fonts\msyh.ttf"),
         ]);
     }
-    if lower.contains("simsun") || family == "瀹嬩綋" {
+    if lower.contains("simsun") || family == "宋体" {
         paths.extend([
             PathBuf::from(r"C:\Windows\Fonts\simsun.ttc"),
             PathBuf::from(r"C:\Windows\Fonts\simsun.ttf"),
         ]);
     }
-    if lower.contains("simhei") || family == "榛戜綋" {
+    if lower.contains("simhei") || family == "黑体" {
         paths.push(PathBuf::from(r"C:\Windows\Fonts\simhei.ttf"));
     }
 
@@ -419,7 +452,7 @@ fn parsed_font_from_resolved_program(resolved: &ResolvedFontProgram) -> ParsedFo
     for (ch, gid, width) in &resolved.glyphs {
         widths.insert(*gid as u32, *width);
         widths.insert(*ch as u32, *width);
-        pairs.push((*gid, ch.to_string()));
+        pairs.push((*gid as u32, ch.to_string()));
     }
     ParsedFont {
         name: resolved.family_name.clone(),
