@@ -310,44 +310,19 @@ pub fn resolve_wheel_zoom_request(
             page_height,
         )
     });
-    let fallback_anchor_page_x = layout_anchor
-        .map(|(x, _)| x)
-        .unwrap_or(clamp_unit((scroll_left + viewport_content_x) / content_width) * page_width);
-    let fallback_anchor_page_y = layout_anchor
-        .map(|(_, y)| y)
-        .unwrap_or(clamp_unit((scroll_top + viewport_content_y) / content_height) * page_height);
-    let anchor_page_x = request
-        .anchor_page_x
-        .filter(|value: &f32| value.is_finite())
-        .or_else(|| {
-            request
-                .page_ratio_x
-                .filter(|value: &f32| value.is_finite())
-                .map(|ratio: f32| clamp_unit(ratio) * page_width)
-        })
-        .unwrap_or(fallback_anchor_page_x)
-        .max(0.0)
-        .min(page_width);
-    let anchor_page_y = request
-        .anchor_page_y
-        .filter(|value: &f32| value.is_finite())
-        .or_else(|| {
-            request
-                .page_ratio_y
-                .filter(|value: &f32| value.is_finite())
-                .map(|ratio: f32| clamp_unit(ratio) * page_height)
-        })
-        .unwrap_or(fallback_anchor_page_y)
-        .max(0.0)
-        .min(page_height);
+    // Always use page center as zoom anchor
+    let anchor_page_x = page_width / 2.0;
+    let anchor_page_y = page_height / 2.0;
     let anchor_pdf_x = clamp_unit(anchor_page_x / page_width);
     let anchor_pdf_y = clamp_unit(anchor_page_y / page_height);
+    let anchor_viewport_x = viewport_width / 2.0;
+    let anchor_viewport_y = viewport_height / 2.0;
     let result = WheelZoomResult {
         target_zoom: next_zoom,
         anchor_pdf_x,
         anchor_pdf_y,
-        anchor_viewport_x: viewport_x,
-        anchor_viewport_y: viewport_y,
+        anchor_viewport_x,
+        anchor_viewport_y,
         transform_origin_x: anchor_pdf_x * content_width,
         transform_origin_y: anchor_pdf_y * content_height,
     };
@@ -356,8 +331,8 @@ pub fn resolve_wheel_zoom_request(
         anchor_page_y,
         page_width,
         page_height,
-        viewport_x: result.anchor_viewport_x,
-        viewport_y: result.anchor_viewport_y,
+        viewport_x: anchor_viewport_x,
+        viewport_y: anchor_viewport_y,
     };
     (result, pending_anchor)
 }
