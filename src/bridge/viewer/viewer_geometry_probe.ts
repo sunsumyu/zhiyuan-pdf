@@ -108,9 +108,6 @@ function applyRenderPlan(
     if (!container || !scrollContainer) return;
 
     deps.syncLayoutBox(displayZoom, renderZoom, plan ?? null);
-    const cssScale = renderZoom > 0 ? displayZoom / renderZoom : 1.0;
-    container.style.transformOrigin = '0 0';
-    container.style.transform = Math.abs(cssScale - 1.0) < 0.001 ? '' : `scale(${cssScale})`;
 
     if (plan) {
         scrollContainer.scrollLeft = plan.scrollLeft;
