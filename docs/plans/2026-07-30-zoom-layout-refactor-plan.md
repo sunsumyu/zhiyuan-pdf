@@ -233,12 +233,13 @@ git commit -m "refactor(zoom): simplify TS layout sync to use Rust domWidth and 
 - [x] **Step 1: Build Wasm/Rust UI crates**
 
 Run: `npm run build:wasm` or `cargo build --package pdf-viewer-ui`
-Expected: Build succeeds cleanly. (2026-08-04: `cargo test --package pdf-viewer-ui` compiled the crate successfully — 19 tests passed)
+Expected: Build succeeds cleanly.
+(2026-08-04: `npm run wasm:pdf-viewer-ui` via wasm-pack — exit 0, pkg published to `crates/pdf-viewer-ui/pkg`. `cargo test -p pdf-viewer-ui` 19 passed. `cargo test -p pdf-viewer-core` 119 passed. `npm run build` (tsc + vite) exit 0 → `dist/` produced.)
 
 - [x] **Step 2: Verify Zoom via Dropdown & Buttons**
 
-Automated evidence (2026-08-04): Rust unit tests in `crates/pdf-viewer-ui/src/platform/layout.rs` assert the core cancellation guarantee `dom_width * css_scale == display_width` for preview (100→125%) and committed (identity) states, plus a guard against the quadratic double-scaling flash.
-Manual E2E (dropdown 100% → 125% → 150%, observe no transient double-scaling flash): **still pending — requires interactive desktop app run.**
+Automated evidence (2026-08-04): Rust unit tests in `crates/pdf-viewer-ui/src/platform/layout.rs` assert the core cancellation guarantee `dom_width * css_scale == display_width` for preview (100→125%) and committed (identity) states, plus a guard against the quadratic double-scaling flash. WASM build + `npm run build` pass.
+Manual E2E (dropdown 100% → 125% → 150%, observe no transient double-scaling flash): **still pending — requires interactive desktop app run. Follow `docs/runbooks/manual-zoom-e2e-verification.md`.**
 
 - [ ] **Step 3: Verify Wheel Zoom (Ctrl + Mouse Wheel)**
 - Perform Ctrl + Wheel zoom.
