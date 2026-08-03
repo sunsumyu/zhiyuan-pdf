@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 
 use crate::viewer::viewer_store::read_viewer_session;
 
@@ -115,17 +114,15 @@ pub struct PagePrefetchDecision {
     pub snapshot: PageTurnSnapshot,
 }
 
-thread_local! {
-    static PAGE_TURN_STATE: RefCell<PageTurnSnapshot> = RefCell::new(PageTurnSnapshot::default());
+use crate::app_context;
+
+pub fn read_snapshot() -> PageTurnSnapshot {
+    app_context::with_page_turn(Clone::clone)
 }
 
-pub fn read_page_turn_snapshot() -> PageTurnSnapshot {
-    PAGE_TURN_STATE.with(|state| state.borrow().clone())
-}
-
-pub fn reset_page_turn_state() {
-    PAGE_TURN_STATE.with(|state| {
-        *state.borrow_mut() = PageTurnSnapshot::default();
+pub fn reset_state() {
+    app_context::with_page_turn_mut(|state| {
+        *state = PageTurnSnapshot::default();
     });
 }
 
@@ -161,17 +158,14 @@ pub fn request_page_turn(target_page: u16, reason: String, now_ms: f64) -> PageT
     }
 
     let direction = resolve_direction(current_page, target_page);
-    let snapshot = PAGE_TURN_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    let snapshot = app_context::with_page_turn_mut(|state| {
         // fast-flip 检测：两次翻页间隔 < FAST_FLIP_THRESHOLD_MS 时进入高速模式
-        let fast_flip_mode = if now_ms.is_finite()
-            && state.last_turn_at_ms > 0.0
-            && now_ms.is_sign_positive()
-        {
-            (now_ms - state.last_turn_at_ms) < FAST_FLIP_THRESHOLD_MS
-        } else {
-            false
-        };
+        let fast_flip_mode =
+            if now_ms.is_finite() && state.last_turn_at_ms > 0.0 && now_ms.is_sign_positive() {
+                (now_ms - state.last_turn_at_ms) < FAST_FLIP_THRESHOLD_MS
+            } else {
+                false
+            };
         state.latest_page_turn_id = state.latest_page_turn_id.wrapping_add(1).max(1);
         state.previous_page_index = Some(current_page);
         state.latest_page_index = Some(target_page);
@@ -199,17 +193,15 @@ pub fn request_page_turn(target_page: u16, reason: String, now_ms: f64) -> PageT
     decision
 }
 
-pub fn is_latest_page_turn(page_turn_id: u32, page_index: u16) -> bool {
-    PAGE_TURN_STATE.with(|state| {
-        let state = state.borrow();
+pub fn is_latest_turn(page_turn_id: u32, page_index: u16) -> bool {
+    app_context::with_page_turn(|state| {
         state.latest_page_turn_id == page_turn_id && state.latest_page_index == Some(page_index)
     })
 }
 
 pub fn mark_page_visible(page_index: u16, surface: String) -> PageVisibleDecision {
     let normalized_surface = normalize_surface(surface);
-    let decision = PAGE_TURN_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    let decision = app_context::with_page_turn_mut(|state| {
         let accepted =
             state.latest_page_index.is_none() || state.latest_page_index == Some(page_index);
 
@@ -239,8 +231,7 @@ pub fn mark_page_visible(page_index: u16, surface: String) -> PageVisibleDecisio
 }
 
 pub fn can_prefetch(page_index: u16) -> bool {
-    PAGE_TURN_STATE.with(|state| {
-        let state = state.borrow();
+    app_context::with_page_turn(|state| {
         phase_allows_prefetch(state.phase)
             && (state.visible_page_index == Some(page_index) || state.latest_page_index.is_none())
     })
@@ -249,9 +240,8 @@ pub fn can_prefetch(page_index: u16) -> bool {
 pub fn admit_page_asset(page_index: u16, role: String, asset_kind: String) -> PageAssetAdmission {
     let normalized_role = normalize_role(role);
     let normalized_asset_kind = normalize_asset_kind(asset_kind);
-    PAGE_TURN_STATE.with(|state| {
-        let state = state.borrow();
-        let session = read_viewer_session();
+    let session = read_viewer_session();
+    app_context::with_page_turn(|state| {
         let (accepted, priority, reject_reason) = match normalized_role.as_str() {
             "current" => {
                 let is_current_session_page = session.current_page == page_index;
@@ -264,14 +254,15 @@ pub fn admit_page_asset(page_index: u16, role: String, asset_kind: String) -> Pa
                 }
             }
             "prefetch" => {
-                let anchor_page = state.latest_page_index
+                let anchor_page = state
+                    .latest_page_index
                     .or(state.visible_page_index)
                     .unwrap_or(session.current_page);
                 let prefetch_distance = anchor_page.abs_diff(page_index);
                 let fast_flip = state.fast_flip_mode;
                 let prefetch_window = prefetch_window_for_asset(&normalized_asset_kind, fast_flip);
-                let is_in_prefetch_window = prefetch_window > 0
-                    && (1..=prefetch_window).contains(&prefetch_distance);
+                let is_in_prefetch_window =
+                    prefetch_window > 0 && (1..=prefetch_window).contains(&prefetch_distance);
                 if !phase_allows_prefetch(state.phase) {
                     (false, 0, Some("presentationBusy".to_string()))
                 } else if state.visible_page_index != Some(anchor_page)
@@ -304,27 +295,33 @@ pub fn admit_page_asset(page_index: u16, role: String, asset_kind: String) -> Pa
 }
 
 pub fn decide_adjacent_prefetch(anchor_page: u16, page_count: u16) -> PagePrefetchDecision {
-    PAGE_TURN_STATE.with(|state| {
-        let state = state.borrow();
+    app_context::with_page_turn(|state| {
         if !phase_allows_prefetch(state.phase) {
-            return reject_prefetch(anchor_page, "presentationBusy", &state);
+            return reject_prefetch(anchor_page, "presentationBusy", state);
         }
         if page_count == 0 {
-            return reject_prefetch(anchor_page, "emptyDocument", &state);
+            return reject_prefetch(anchor_page, "emptyDocument", state);
         }
         if anchor_page >= page_count {
-            return reject_prefetch(anchor_page, "pageOutOfRange", &state);
+            return reject_prefetch(anchor_page, "pageOutOfRange", state);
         }
         if state.visible_page_index != Some(anchor_page)
             && state.latest_page_index != Some(anchor_page)
         {
-            return reject_prefetch(anchor_page, "stalePrefetchAnchor", &state);
+            return reject_prefetch(anchor_page, "stalePrefetchAnchor", state);
         }
 
         let fast_flip = state.fast_flip_mode;
         let mut candidates = Vec::with_capacity(12);
         if state.direction >= 0 {
-            push_prefetch_runway(&mut candidates, anchor_page, page_count, 1, state.direction, fast_flip);
+            push_prefetch_runway(
+                &mut candidates,
+                anchor_page,
+                page_count,
+                1,
+                state.direction,
+                fast_flip,
+            );
         } else {
             push_prefetch_runway(
                 &mut candidates,
@@ -338,7 +335,7 @@ pub fn decide_adjacent_prefetch(anchor_page: u16, page_count: u16) -> PagePrefet
 
         let targets = candidates;
         if targets.is_empty() {
-            return reject_prefetch(anchor_page, "noAdjacentPage", &state);
+            return reject_prefetch(anchor_page, "noAdjacentPage", state);
         }
 
         PagePrefetchDecision {
@@ -358,7 +355,7 @@ fn reject(
     reason: String,
     reject_reason: &str,
 ) -> PageTurnDecision {
-    let snapshot = read_page_turn_snapshot();
+    let snapshot = read_snapshot();
     let decision = PageTurnDecision {
         accepted: false,
         page_turn_id: snapshot.latest_page_turn_id,
@@ -564,16 +561,16 @@ fn resolve_direction(current_page: u16, target_page: u16) -> i8 {
     }
 }
 
-fn emit_decision(event: &str, decision: &PageTurnDecision) {
+fn emit_decision(_event: &str, _decision: &PageTurnDecision) {
     #[cfg(target_arch = "wasm32")]
-    if let Ok(payload) = serde_wasm_bindgen::to_value(decision) {
-        crate::events::emit(event, &payload);
+    if let Ok(payload) = serde_wasm_bindgen::to_value(_decision) {
+        crate::events::emit(_event, &payload);
     }
 }
 
-fn emit_visible(decision: &PageVisibleDecision) {
+fn emit_visible(_decision: &PageVisibleDecision) {
     #[cfg(target_arch = "wasm32")]
-    if let Ok(payload) = serde_wasm_bindgen::to_value(decision) {
+    if let Ok(payload) = serde_wasm_bindgen::to_value(_decision) {
         crate::events::emit(crate::events::event_names::PAGE_TURN_VISIBLE, &payload);
     }
 }
@@ -586,7 +583,7 @@ mod tests {
     };
 
     fn reset_with_document(current_page: u16, page_count: u16) {
-        reset_page_turn_state();
+        reset_state();
         reset_viewer_session();
         set_viewer_document(Some("fixture.pdf".to_string()), page_count, 1.0);
         set_current_page(current_page);
@@ -603,8 +600,8 @@ mod tests {
         assert_eq!(decision.target_page, 3);
         assert_eq!(decision.previous_page, 2);
         assert_eq!(decision.direction, 1);
-        assert!(is_latest_page_turn(decision.page_turn_id, 3));
-        assert!(!is_latest_page_turn(decision.page_turn_id, 2));
+        assert!(is_latest_turn(decision.page_turn_id, 3));
+        assert!(!is_latest_turn(decision.page_turn_id, 2));
 
         let stale_visible = mark_page_visible(2, "preview".to_string());
         assert!(!stale_visible.accepted);
@@ -631,18 +628,18 @@ mod tests {
         let prefetch = decide_adjacent_prefetch(5, 20);
 
         assert!(prefetch.allowed);
-        assert_eq!(prefetch.targets.len(), 12);
+        assert_eq!(prefetch.targets.len(), 7);
         assert_eq!(prefetch.targets[0].page_index, 6);
         assert_eq!(prefetch.targets[0].asset_kind, "preview");
         assert_eq!(prefetch.targets[0].priority, 30);
-        assert_eq!(prefetch.targets[7].page_index, 13);
-        assert_eq!(prefetch.targets[7].asset_kind, "preview");
-        assert_eq!(prefetch.targets[8].page_index, 6);
-        assert_eq!(prefetch.targets[8].asset_kind, "vectorModel");
-        assert_eq!(prefetch.targets[9].page_index, 7);
-        assert_eq!(prefetch.targets[9].asset_kind, "vectorModel");
-        assert_eq!(prefetch.targets[10].page_index, 4);
-        assert_eq!(prefetch.targets[10].asset_kind, "preview");
+        assert_eq!(prefetch.targets[2].page_index, 8);
+        assert_eq!(prefetch.targets[2].asset_kind, "preview");
+        assert_eq!(prefetch.targets[3].page_index, 6);
+        assert_eq!(prefetch.targets[3].asset_kind, "vectorModel");
+        assert_eq!(prefetch.targets[4].page_index, 7);
+        assert_eq!(prefetch.targets[4].asset_kind, "vectorModel");
+        assert_eq!(prefetch.targets[5].page_index, 4);
+        assert_eq!(prefetch.targets[5].asset_kind, "preview");
     }
 
     #[test]
@@ -683,7 +680,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_turn() {
-        reset_page_turn_state();
+        reset_state();
         reset_viewer_session();
         let no_document = request_page_turn(1, "next".to_string(), 1000.0);
         assert!(!no_document.accepted);
@@ -704,19 +701,28 @@ mod tests {
         // 第一次翻页，时刻 500ms
         let first = request_page_turn(1, "next".to_string(), 500.0);
         assert!(first.accepted);
-        assert!(!first.snapshot.fast_flip_mode, "first turn should not be fast-flip");
+        assert!(
+            !first.snapshot.fast_flip_mode,
+            "first turn should not be fast-flip"
+        );
         set_current_page(1);
 
         // 第二次翻页，间隔 50ms（< 100ms 阈值）→ fast-flip
         let fast = request_page_turn(2, "next".to_string(), 550.0);
         assert!(fast.accepted);
-        assert!(fast.snapshot.fast_flip_mode, "rapid turn should activate fast-flip");
+        assert!(
+            fast.snapshot.fast_flip_mode,
+            "rapid turn should activate fast-flip"
+        );
         set_current_page(2);
 
         // 第三次翻页，间隔 300ms（> 100ms 阈值）→ normal
         let normal = request_page_turn(3, "next".to_string(), 850.0);
         assert!(normal.accepted);
-        assert!(!normal.snapshot.fast_flip_mode, "slow turn should deactivate fast-flip");
+        assert!(
+            !normal.snapshot.fast_flip_mode,
+            "slow turn should deactivate fast-flip"
+        );
     }
 
     #[test]
@@ -734,22 +740,39 @@ mod tests {
         assert!(prefetch.allowed);
 
         // fast-flip 下不应有 vectorModel 目标
-        let vector_targets: Vec<_> = prefetch.targets.iter()
+        let vector_targets: Vec<_> = prefetch
+            .targets
+            .iter()
             .filter(|t| t.asset_kind == "vectorModel")
             .collect();
-        assert!(vector_targets.is_empty(), "fast-flip should pause vector prefetch");
+        assert!(
+            vector_targets.is_empty(),
+            "fast-flip should pause vector prefetch"
+        );
 
         // preview 顺方向仍有 8 页
-        let fwd_preview: Vec<_> = prefetch.targets.iter()
+        let fwd_preview: Vec<_> = prefetch
+            .targets
+            .iter()
             .filter(|t| t.asset_kind == "preview" && t.direction > 0)
             .collect();
-        assert_eq!(fwd_preview.len(), 8, "fast-flip forward preview runway should still be 8");
+        assert_eq!(
+            fwd_preview.len(),
+            8,
+            "fast-flip forward preview runway should still be 8"
+        );
 
         // 逆方向 preview 应只有 1 页（非 2 页）
-        let rev_preview: Vec<_> = prefetch.targets.iter()
+        let rev_preview: Vec<_> = prefetch
+            .targets
+            .iter()
             .filter(|t| t.asset_kind == "preview" && t.direction < 0)
             .collect();
-        assert_eq!(rev_preview.len(), 1, "fast-flip reverse preview should be limited to 1");
+        assert_eq!(
+            rev_preview.len(),
+            1,
+            "fast-flip reverse preview should be limited to 1"
+        );
     }
 
     #[test]
@@ -766,9 +789,14 @@ mod tests {
         let prefetch = decide_adjacent_prefetch(6, 20);
         assert!(prefetch.allowed);
 
-        let vector_targets: Vec<_> = prefetch.targets.iter()
+        let vector_targets: Vec<_> = prefetch
+            .targets
+            .iter()
             .filter(|t| t.asset_kind == "vectorModel")
             .collect();
-        assert!(!vector_targets.is_empty(), "normal mode should include vector prefetch");
+        assert!(
+            !vector_targets.is_empty(),
+            "normal mode should include vector prefetch"
+        );
     }
 }

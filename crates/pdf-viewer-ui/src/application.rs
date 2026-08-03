@@ -24,9 +24,10 @@
 //! call, so the TS bridge can drive conditional UI without N individual reads.
 
 use serde::Serialize;
-use serde_wasm_bindgen::{from_value, to_value};
+use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
+use crate::document::document_types::parse_request;
 use crate::document::host_pipeline::{
     close_document_pipeline, open_document_pipeline, CloseDocumentPipelineResult,
     OpenDocumentPipelineRequest, OpenDocumentPipelineResult,
@@ -35,10 +36,10 @@ use crate::editor::editor_store;
 use crate::editor::editor_types::SessionState as EditorSessionState;
 use crate::find::find_store;
 use crate::find::find_store::FindSessionState;
-use crate::presentation::page_turn::{read_page_turn_snapshot, PageTurnSnapshot};
+use crate::presentation::page_turn::{read_snapshot as read_page_turn_snapshot, PageTurnSnapshot};
 use crate::review::review_api::{read_review_state, ReviewSessionState};
 use crate::viewer::viewer_store::{read_viewer_state, ViewerSessionState};
-use crate::zoom::zoom_store::{read_zoom_session_state, ZoomSessionState};
+use crate::zoom::zoom_store::{read_session_state as read_zoom_session_state, ZoomSessionState};
 
 // ── Aggregated state snapshot ───────────────────────────────────
 
@@ -114,7 +115,7 @@ impl Application {
         // (Viewing state) but the find controller keeps is_open + last_result.
         reset_find_controller();
 
-        let request: OpenDocumentPipelineRequest = from_value(request_js).unwrap_or_default();
+        let request: OpenDocumentPipelineRequest = parse_request(request_js, "Application.open")?;
         let path_for_event = request.path.clone();
         let result: OpenDocumentPipelineResult = open_document_pipeline(request).await?;
 
@@ -163,6 +164,7 @@ impl Application {
         reset_find_controller(); // close the find controller gap
         use crate::zoom::zoom_controller::reset_zoom_runtime;
         reset_zoom_runtime(1.0);
+        crate::events::clear_all();
     }
 
     /// Aggregated state snapshot from every domain's explicit state enum.
@@ -172,12 +174,6 @@ impl Application {
     #[wasm_bindgen(js_name = "readState")]
     pub fn read_state(&self) -> JsValue {
         to_value(&snapshot_state()).unwrap_or(JsValue::NULL)
-    }
-
-    #[wasm_bindgen(js_name = "getState")]
-    #[deprecated(since = "0.2.0", note = "Use readState instead")]
-    pub fn get_state(&self) -> JsValue {
-        self.read_state()
     }
 
     // ── Event system (Nutrient borrowing #1) ────────────────────

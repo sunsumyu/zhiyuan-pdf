@@ -8,9 +8,8 @@
 //! in `interfaces/pdf/mod.rs`.
 
 use crate::infrastructure::pdf::commands::PdfEditCommand;
-use crate::infrastructure::pdf::engine::PdfDocumentService;
 use crate::log_step;
-use pdf_viewer_core::persistence::models::PersistableRegionPatch;
+use pdf_viewer_core::persistence::models::{PersistableRegionPatch, PersistableSemanticOperation};
 
 pub(crate) async fn ensure_document_loaded(
     app_state: &crate::AppState,
@@ -23,10 +22,10 @@ pub(crate) async fn ensure_document_loaded(
         }
     }
 
-    let working_path = PdfDocumentService::resolve_working_path(path);
+    let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(path);
     let path_for_load = path.to_string();
     let loaded_doc = tokio::task::spawn_blocking(move || {
-        crate::infrastructure::pdf::document_service::load_pdf_public(&working_path)
+        crate::infrastructure::pdf::document_service::load_public(&working_path)
             .map(std::sync::Arc::new)
             .map_err(|e| format!("Lopdf Load Error for {}: {}", path_for_load, e))
     })
@@ -44,8 +43,9 @@ pub(crate) async fn execute_region_patches(
     path: String,
     page_index: u16,
     patches: Vec<PersistableRegionPatch>,
+    semantic_ops: Vec<PersistableSemanticOperation>,
 ) -> Result<(), String> {
-    use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan;
+    use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan_v2;
 
     for patch in &patches {
         log_step!(
@@ -58,7 +58,7 @@ pub(crate) async fn execute_region_patches(
         );
     }
 
-    let materialization_plan = build_region_materialization_plan(&patches, &[]);
+    let materialization_plan = build_region_materialization_plan_v2(&patches, &semantic_ops, &[]);
     let mut commands: Vec<Box<dyn PdfEditCommand>> = Vec::new();
 
     if !materialization_plan.effective_text_reflows.is_empty() {
@@ -202,9 +202,7 @@ pub(crate) async fn execute_commands(
             .get(&save_path)
             .ok_or_else(|| "Document not found in cache".to_string())?;
         let doc_clone = (**current_doc).clone();
-        crate::infrastructure::pdf::save_engine::apply_pdf_commands(
-            doc_clone, page_index, commands,
-        )?
+        crate::infrastructure::pdf::save_engine::apply_commands(doc_clone, page_index, commands)?
     };
 
     // 3. Save to disk

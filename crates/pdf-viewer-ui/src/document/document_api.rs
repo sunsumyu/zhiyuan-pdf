@@ -11,18 +11,20 @@
 //! backward compatibility with the TS bridge; new TS code should
 //! construct `DocumentSession` and call its methods directly.
 
-use serde_wasm_bindgen::{from_value, to_value};
+use serde::{Deserialize, Serialize};
+use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
+use crate::document::document_types::parse_request;
 use crate::document::host_pipeline::{
     close_document_pipeline, open_document_pipeline, redo_document_pipeline,
     rotate_document_pipeline, undo_document_pipeline, OpenDocumentPipelineRequest,
 };
 use crate::document::mutation_pipeline::request_document_refresh;
 use crate::document::patch_persistence::apply_document_patch;
-use crate::editor::editor_controller::build_region_text_patch;
+use crate::editor::editor_controller::build_text_patch;
 use crate::editor::orchestrator::replace_pipeline::{
-    apply_region_text_replacements_tx, RegionTextReplaceRequest,
+    apply_replacements_tx, RegionTextReplaceRequest,
 };
 use crate::present::plan_builder::FramePlanRequest;
 
@@ -43,7 +45,7 @@ impl DocumentSession {
     /// Open a PDF from a known source (path / bytes / URL).
     #[wasm_bindgen(js_name = "open")]
     pub async fn open(&self, request_js: JsValue) -> Result<JsValue, JsValue> {
-        let request: OpenDocumentPipelineRequest = from_value(request_js).unwrap_or_default();
+        let request: OpenDocumentPipelineRequest = parse_request(request_js, "open")?;
         let result = open_document_pipeline(request).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
@@ -88,11 +90,7 @@ impl DocumentSession {
     /// Equivalent to Nutrient's `instance.hasUnsavedChanges()`.
     #[wasm_bindgen(js_name = "hasUnsavedChanges")]
     pub fn has_unsaved_changes(&self) -> bool {
-        use crate::ui_state_store::{has_visible_patches, read_patch_state};
-        read_patch_state()
-            .read()
-            .map(|state| has_visible_patches(&state))
-            .unwrap_or(false)
+        crate::ui_state_store::has_unsaved_changes()
     }
 
     /// Number of persistable patches currently in memory.
@@ -121,10 +119,14 @@ impl DocumentSession {
     /// Called by the JS bridge's `refreshDocument` flow to note the mutation
     /// in the viewer store and schedule a render frame for the updated content.
     #[wasm_bindgen(js_name = "requestRefresh")]
-    pub fn request_refresh(&self, source: &str, frame_request_js: JsValue) -> JsValue {
-        let frame_request: FramePlanRequest = from_value(frame_request_js).unwrap_or_default();
+    pub fn request_refresh(
+        &self,
+        source: &str,
+        frame_request_js: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let frame_request: FramePlanRequest = parse_request(frame_request_js, "requestRefresh")?;
         let result = request_document_refresh(source, frame_request);
-        to_value(&result).unwrap_or(JsValue::NULL)
+        Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
 
     // ── Patches ─────────────────────────────────────────────────
@@ -145,13 +147,7 @@ impl DocumentSession {
         original_text: String,
         new_text: String,
     ) -> JsValue {
-        let patch = build_region_text_patch(
-            page_index,
-            &region_id,
-            &kind,
-            &original_text,
-            new_text,
-        );
+        let patch = build_text_patch(page_index, &region_id, &kind, &original_text, new_text);
         to_value(&patch).unwrap_or(JsValue::NULL)
     }
 
@@ -161,17 +157,88 @@ impl DocumentSession {
         &self,
         replacements_js: JsValue,
         frame_request_js: JsValue,
-    ) -> JsValue {
+    ) -> Result<JsValue, JsValue> {
         let replacements: Vec<RegionTextReplaceRequest> =
-            from_value(replacements_js).unwrap_or_default();
-        let frame_request: FramePlanRequest = from_value(frame_request_js).unwrap_or_default();
-        let result = apply_region_text_replacements_tx(replacements, frame_request);
-        to_value(&result).unwrap_or(JsValue::NULL)
+            parse_request(replacements_js, "applyRegionReplacements.replacements")?;
+        let frame_request: FramePlanRequest =
+            parse_request(frame_request_js, "applyRegionReplacements.frameRequest")?;
+        let result = apply_replacements_tx(replacements, frame_request);
+        Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
 }
 
 impl Default for DocumentSession {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ── Cache metadata MRU coordinator ──────────────────────────────
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvictionResult {
+    pub evicted_key: Option<String>,
+}
+
+#[wasm_bindgen]
+pub struct PageBundleCacheCoordinator {
+    max_size: usize,
+    // entries as (key, revision)
+    entries: Vec<(String, u32)>,
+}
+
+#[wasm_bindgen]
+impl PageBundleCacheCoordinator {
+    #[wasm_bindgen(constructor)]
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            max_size,
+            entries: Vec::new(),
+        }
+    }
+
+    #[wasm_bindgen(js_name = "touchOrEvictStale")]
+    pub fn touch_or_evict_stale(
+        &mut self,
+        key: String,
+        current_revision: u32,
+        entry_revision: u32,
+    ) -> JsValue {
+        let idx = self.entries.iter().position(|(k, _)| k == &key);
+        if let Some(i) = idx {
+            if entry_revision != current_revision {
+                self.entries.remove(i);
+                return to_value(&EvictionResult {
+                    evicted_key: Some(key),
+                })
+                .unwrap_or(JsValue::NULL);
+            }
+            let item = self.entries.remove(i);
+            self.entries.insert(0, item);
+        }
+        to_value(&EvictionResult { evicted_key: None }).unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(js_name = "insertAndCheckEviction")]
+    pub fn insert_and_check_eviction(&mut self, key: String, current_revision: u32) -> JsValue {
+        if let Some(i) = self.entries.iter().position(|(k, _)| k == &key) {
+            self.entries.remove(i);
+        }
+        self.entries.insert(0, (key, current_revision));
+
+        let mut evicted_key = None;
+        if self.entries.len() > self.max_size {
+            if let Some((k, _)) = self.entries.pop() {
+                evicted_key = Some(k);
+            }
+        }
+
+        to_value(&EvictionResult { evicted_key }).unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(js_name = "clear")]
+    pub fn clear(&mut self) {
+        self.entries.clear();
     }
 }

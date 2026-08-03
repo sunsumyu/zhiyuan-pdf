@@ -23,7 +23,34 @@ type VectorPageBundleResolution = {
 };
 
 const PAGE_CACHE_MAX = 15;
-const pageBundleCache: VectorPageBundle[] = [];
+const pageBundleCacheMap = new Map<string, VectorPageBundle>();
+let cacheCoordinator: any = null;
+
+function getCacheCoordinator(): any {
+    if (!cacheCoordinator) {
+        const wasm = getWasmApi() as any;
+        if (wasm?.PageBundleCacheCoordinator) {
+            cacheCoordinator = new wasm.PageBundleCacheCoordinator(PAGE_CACHE_MAX);
+        }
+    }
+    return cacheCoordinator;
+}
+
+function evictBundle(key: string): void {
+    const hit = pageBundleCacheMap.get(key);
+    if (hit) {
+        if (hit.imageCacheMap) {
+            for (const bitmap of hit.imageCacheMap.values()) {
+                try {
+                    bitmap.close();
+                } catch {}
+            }
+            hit.imageCacheMap.clear();
+        }
+        pageBundleCacheMap.delete(key);
+    }
+}
+
 let pagePresentationRuntime: PagePresentationRuntimeAdapter = createPagePresentationRuntimeAdapter({
     getWasmApi: () => getWasmApi(),
 });
@@ -82,43 +109,72 @@ function admitPageAsset(pageIndex: number, role: 'current' | 'prefetch', assetKi
 }
 
 export function findCachedBundle(path: string, pageIndex: number, currentRevision: number): VectorPageBundle | null {
-    const idx = pageBundleCache.findIndex(b => b.path === path && b.pageIndex === pageIndex);
-    if (idx < 0) return null;
-    
-    const hit = pageBundleCache[idx];
-    if (hit.documentRevision !== currentRevision) {
-        // Revision mismatch! Document has been mutated. Evict stale cache.
-        pageBundleCache.splice(idx, 1);
-        logPdfLayoutTrace('page-bundle.evict-stale-revision', {
-            path,
-            pageIndex,
-            staleRevision: hit.documentRevision,
-            currentRevision,
-        });
-        return null;
+    const key = `${path}::${pageIndex}`;
+    const hit = pageBundleCacheMap.get(key);
+    if (!hit) return null;
+
+    const coord = getCacheCoordinator();
+    if (coord) {
+        const res = coord.touchOrEvictStale(key, currentRevision, hit.documentRevision);
+        if (res && res.evictedKey) {
+            evictBundle(res.evictedKey);
+            logPdfLayoutTrace('page-bundle.evict-stale-revision', {
+                path,
+                pageIndex,
+                staleRevision: hit.documentRevision,
+                currentRevision,
+            });
+            return null;
+        }
+        return hit;
+    } else {
+        if (hit.documentRevision !== currentRevision) {
+            evictBundle(key);
+            logPdfLayoutTrace('page-bundle.evict-stale-revision', {
+                path,
+                pageIndex,
+                staleRevision: hit.documentRevision,
+                currentRevision,
+            });
+            return null;
+        }
+        return hit;
     }
-    
-    // Move to front (most recently used)
-    pageBundleCache.splice(idx, 1);
-    pageBundleCache.unshift(hit);
-    return hit;
 }
 
 function insertCachedBundle(bundle: VectorPageBundle): void {
-    // Remove existing entry for same page if present
-    const idx = pageBundleCache.findIndex(b => b.path === bundle.path && b.pageIndex === bundle.pageIndex);
-    if (idx >= 0) pageBundleCache.splice(idx, 1);
-    pageBundleCache.unshift(bundle);
-    while (pageBundleCache.length > PAGE_CACHE_MAX) {
-        pageBundleCache.pop();
+    const key = `${bundle.path}::${bundle.pageIndex}`;
+    pageBundleCacheMap.set(key, bundle);
+
+    const coord = getCacheCoordinator();
+    if (coord) {
+        const res = coord.insertAndCheckEviction(key, bundle.documentRevision);
+        if (res && res.evictedKey) {
+            evictBundle(res.evictedKey);
+        }
+    } else {
+        const keys = Array.from(pageBundleCacheMap.keys());
+        const idx = keys.indexOf(key);
+        if (idx >= 0) keys.splice(idx, 1);
+        keys.unshift(key);
+        while (keys.length > PAGE_CACHE_MAX) {
+            const last = keys.pop();
+            if (last) evictBundle(last);
+        }
     }
 }
 
 export function invalidateVectorPageCache(): void {
     logPdfLayoutTrace('page-bundle.invalidate', {
-        cacheSize: pageBundleCache.length,
+        cacheSize: pageBundleCacheMap.size,
     });
-    pageBundleCache.length = 0;
+    for (const key of pageBundleCacheMap.keys()) {
+        evictBundle(key);
+    }
+    const coord = getCacheCoordinator();
+    if (coord) {
+        coord.clear();
+    }
 }
 
 function summarizeText(value: unknown, limit = 48): string {
@@ -217,39 +273,45 @@ async function loadImageCacheMapForPage(
                         if (res.ok) {
                             const blob = await res.blob();
                             
-                            // Downsample high-resolution images based on target viewport size to optimize memory
                             const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
                             const zoom = viewerSession.read().currentZoom || 1.0;
-                            // Add a safety multiplier of 1.5 to prevent pixelation on small zoom/panning
-                            const scaleFactor = zoom * dpr * 1.5;
-                            const targetWidth = Math.max(1, Math.round(obj.width * scaleFactor));
-                            const targetHeight = Math.max(1, Math.round(obj.height * scaleFactor));
-                            
                             const tempBitmap = await createImageBitmap(blob);
                             const originalWidth = tempBitmap.width;
                             const originalHeight = tempBitmap.height;
                             
                             let bitmap = tempBitmap;
-                            if (originalWidth > targetWidth && originalHeight > targetHeight) {
-                                try {
-                                    const resized = await createImageBitmap(blob, {
-                                        resizeWidth: targetWidth,
-                                        resizeHeight: targetHeight,
-                                        resizeQuality: 'medium',
-                                    });
-                                    tempBitmap.close();
-                                    bitmap = resized;
-                                    logPdfLayoutTrace('page-bundle.image.downsampled', {
-                                        id,
-                                        originalWidth,
-                                        originalHeight,
-                                        targetWidth,
-                                        targetHeight,
-                                        zoom,
-                                        dpr,
-                                    });
-                                } catch (err) {
-                                    console.warn('[PDF-DOWN] Failed to downsample image, falling back to original', err);
+                            const wasm = getWasmApi() as any;
+                            if (wasm?.GeometryApi) {
+                                const geo = new wasm.GeometryApi();
+                                const decision = geo.resolveDownsampleDecision(
+                                    obj.width,
+                                    obj.height,
+                                    originalWidth,
+                                    originalHeight,
+                                    zoom,
+                                    dpr
+                                );
+                                if (decision?.shouldDownsample) {
+                                    try {
+                                        const resized = await createImageBitmap(blob, {
+                                            resizeWidth: decision.targetWidth,
+                                            resizeHeight: decision.targetHeight,
+                                            resizeQuality: 'medium',
+                                        });
+                                        tempBitmap.close();
+                                        bitmap = resized;
+                                        logPdfLayoutTrace('page-bundle.image.downsampled', {
+                                            id,
+                                            originalWidth,
+                                            originalHeight,
+                                            targetWidth: decision.targetWidth,
+                                            targetHeight: decision.targetHeight,
+                                            zoom,
+                                            dpr,
+                                        });
+                                    } catch (err) {
+                                        console.warn('[PDF-DOWN] Failed to downsample image, falling back to original', err);
+                                    }
                                 }
                             }
                             imageCacheMap.set(id, bitmap);
@@ -286,7 +348,7 @@ export async function resolveVectorPageBundle(
         logPdfLayoutTrace('page-bundle.load.before', {
             path,
             pageIndex,
-            cacheSize: pageBundleCache.length,
+            cacheSize: pageBundleCacheMap.size,
         });
 
         const assetRole = resolveAssetRole(pageIndex, frameToken, explicitRole);
@@ -456,7 +518,9 @@ export function prefetchVectorPage(path: string, pageIndex: number): void {
 }
 
 export function isPageBundleCached(path: string, pageIndex: number): boolean {
-    return pageBundleCache.some(b => b.path === path && b.pageIndex === pageIndex && b.documentRevision === viewerSession.read().documentRevision);
+    const key = `${path}::${pageIndex}`;
+    const hit = pageBundleCacheMap.get(key);
+    return !!(hit && hit.documentRevision === viewerSession.read().documentRevision);
 }
 
 

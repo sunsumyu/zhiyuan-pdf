@@ -1,72 +1,8 @@
 use crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE;
 use crate::infrastructure::pdf::models::{LightPageKind, LightPageModel};
+use crate::infrastructure::pdf::pdf_utils;
 use lopdf::{Document, ObjectId};
 use std::sync::Arc;
-fn page_dimensions(doc: &Document, page_id: ObjectId) -> Result<(f32, f32), String> {
-    let page_dict = doc.get_dictionary(page_id).map_err(|e| e.to_string())?;
-    let media_box = page_dict
-        .get(b"MediaBox")
-        .and_then(|o| o.as_array())
-        .map_err(|e| e.to_string())?;
-    if media_box.len() < 4 {
-        return Ok((595.0, 842.0));
-    }
-
-    let x0 = media_box[0]
-        .as_float()
-        .ok()
-        .or_else(|| media_box[0].as_i64().ok().map(|v| v as f32))
-        .unwrap_or(0.0);
-    let y0 = media_box[1]
-        .as_float()
-        .ok()
-        .or_else(|| media_box[1].as_i64().ok().map(|v| v as f32))
-        .unwrap_or(0.0);
-    let x1 = media_box[2]
-        .as_float()
-        .ok()
-        .or_else(|| media_box[2].as_i64().ok().map(|v| v as f32))
-        .unwrap_or(595.0);
-    let y1 = media_box[3]
-        .as_float()
-        .ok()
-        .or_else(|| media_box[3].as_i64().ok().map(|v| v as f32))
-        .unwrap_or(842.0);
-
-    let mut w = (x1 - x0).abs();
-    let mut h = (y1 - y0).abs();
-
-    // Support inherited /Rotate attribute in page dictionary tree
-    let mut rotation = 0i64;
-    let mut current_id = page_id;
-    while let Ok(dict) = doc.get_dictionary(current_id) {
-        if let Ok(rotate_obj) = dict.get(b"Rotate") {
-            if let Ok(r) = rotate_obj.as_i64() {
-                rotation = r;
-                break;
-            }
-        }
-        if let Ok(parent_id) = dict.get(b"Parent").and_then(|o| o.as_reference()) {
-            current_id = parent_id;
-        } else {
-            break;
-        }
-    }
-
-    // Normalize rotation to 0, 90, 180, 270
-    let normalized_rotation = ((rotation % 360) + 360) % 360;
-    if normalized_rotation == 90 || normalized_rotation == 270 {
-        std::mem::swap(&mut w, &mut h);
-        crate::log_step!(
-            "[PDF][preview] swapped page size due to {} deg rotation. final={}x{}",
-            normalized_rotation,
-            w,
-            h
-        );
-    }
-
-    Ok((w, h))
-}
 fn collect_page_xobjects(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
     let mut result = Vec::new();
     let mut current_id = page_id;
@@ -118,12 +54,18 @@ fn collect_page_xobjects(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
                                 if let Ok(other_dict) = doc.get_dictionary(other_page_id) {
                                     if let Ok(res_obj) = other_dict.get(b"Resources") {
                                         if let Ok(res_dict) = res_obj.as_dict().or_else(|_| {
-                                            res_obj.as_reference().and_then(|id| doc.get_dictionary(id))
+                                            res_obj
+                                                .as_reference()
+                                                .and_then(|id| doc.get_dictionary(id))
                                         }) {
                                             if let Ok(xobject_obj) = res_dict.get(b"XObject") {
-                                                if let Ok(xobject_dict) = xobject_obj.as_dict().or_else(|_| {
-                                                    xobject_obj.as_reference().and_then(|id| doc.get_dictionary(id))
-                                                }) {
+                                                if let Ok(xobject_dict) =
+                                                    xobject_obj.as_dict().or_else(|_| {
+                                                        xobject_obj
+                                                            .as_reference()
+                                                            .and_then(|id| doc.get_dictionary(id))
+                                                    })
+                                                {
                                                     if let Ok(val) = xobject_dict.get(name) {
                                                         if let Ok(id) = val.as_reference() {
                                                             if !result.contains(&id) {
@@ -192,7 +134,12 @@ fn page_has_text_operators(doc: &Document, page_id: ObjectId) -> bool {
     })
 }
 
-fn cache_image_asset(doc: &Document, xobj_stream: &lopdf::Stream, width: i64, height: i64) -> Option<String> {
+fn cache_image_asset(
+    doc: &Document,
+    xobj_stream: &lopdf::Stream,
+    width: i64,
+    height: i64,
+) -> Option<String> {
     // Determine the effective image filter, handling both single name and array forms.
     // Common patterns:
     //   Filter: /DCTDecode               → raw JPEG in stream.content
@@ -299,7 +246,10 @@ pub fn build_light_page_model(doc: &Document, page_index: u16) -> Result<LightPa
         .get(&(page_index as u32 + 1))
         .ok_or_else(|| format!("Page not found: {}", page_index))?;
 
-    let (width, height) = page_dimensions(doc, page_id)?;
+    let page_size = pdf_utils::read_page_size(doc, page_id);
+    let rotation = pdf_utils::read_page_rotation(doc, page_id);
+    let (width, height) =
+        pdf_utils::apply_rotation(page_size.width, page_size.effective_height(), rotation);
     let has_text_content = page_has_text_operators(doc, page_id);
     let has_font_resources = page_has_font_resources(doc, page_id);
     let has_text = has_text_content || has_font_resources;
@@ -416,14 +366,23 @@ mod tests {
         for page_index in 0..4 {
             let page_id = doc.page_iter().nth(page_index).unwrap();
             let xobjects = collect_page_xobjects(&doc, page_id);
-            println!("Page {} ID: {:?} xobjects collected: {:?}", page_index, page_id, xobjects);
+            println!(
+                "Page {} ID: {:?} xobjects collected: {:?}",
+                page_index, page_id, xobjects
+            );
             if page_index == 0 {
-                assert!(!xobjects.is_empty(), "Page 0 must collect at least one XObject image");
-                
+                assert!(
+                    !xobjects.is_empty(),
+                    "Page 0 must collect at least one XObject image"
+                );
+
                 // Assert that our preview extraction does NOT resolve a preview image URL for a vector page
                 let model = build_light_page_model(&doc, page_index as u16).unwrap();
                 assert!(model.preview_image_url.is_none(), "Page 0 is a vector page and must NOT resolve a template graphic as a page preview image");
-                println!("Page 0 resolved preview image URL: {:?}", model.preview_image_url);
+                println!(
+                    "Page 0 resolved preview image URL: {:?}",
+                    model.preview_image_url
+                );
             }
         }
     }
@@ -452,35 +411,69 @@ mod tests {
             println!("--- Page {} (ID: {:?}) ---", page_index, page_id);
             let has_text_content = page_has_text_operators(&doc, page_id);
             let has_font_resources = page_has_font_resources(&doc, page_id);
-            println!("has_text_content: {}, has_font_resources: {}", has_text_content, has_font_resources);
-            
+            println!(
+                "has_text_content: {}, has_font_resources: {}",
+                has_text_content, has_font_resources
+            );
+
             let xobjects = collect_page_xobjects(&doc, page_id);
             println!("xobjects count: {}", xobjects.len());
             for (idx, xid) in xobjects.iter().enumerate() {
                 if let Ok(stream) = doc.get_object(*xid).and_then(|o| o.as_stream()) {
-                    let subtype = stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()).unwrap_or(b"");
-                    let width = stream.dict.get(b"Width").and_then(|o| o.as_i64()).unwrap_or(0);
-                    let height = stream.dict.get(b"Height").and_then(|o| o.as_i64()).unwrap_or(0);
-                    let filter = stream.dict.get(b"Filter").ok().map(|o| format!("{:?}", o)).unwrap_or_else(|| "None".to_string());
-                    println!("  [{}] ID: {:?} Subtype: {} Size: {}x{} Filter: {}", 
-                        idx, xid, String::from_utf8_lossy(subtype), width, height, filter
+                    let subtype = stream
+                        .dict
+                        .get(b"Subtype")
+                        .ok()
+                        .and_then(|o| o.as_name().ok())
+                        .unwrap_or(b"");
+                    let width = stream
+                        .dict
+                        .get(b"Width")
+                        .and_then(|o| o.as_i64())
+                        .unwrap_or(0);
+                    let height = stream
+                        .dict
+                        .get(b"Height")
+                        .and_then(|o| o.as_i64())
+                        .unwrap_or(0);
+                    let filter = stream
+                        .dict
+                        .get(b"Filter")
+                        .ok()
+                        .map(|o| format!("{:?}", o))
+                        .unwrap_or_else(|| "None".to_string());
+                    println!(
+                        "  [{}] ID: {:?} Subtype: {} Size: {}x{} Filter: {}",
+                        idx,
+                        xid,
+                        String::from_utf8_lossy(subtype),
+                        width,
+                        height,
+                        filter
                     );
                 }
             }
-            
+
             let model = build_light_page_model(&doc, page_index as u16).unwrap();
-            println!("Resolved model: kind={:?}, width={}, height={}, preview_image_url={:?}", 
+            println!(
+                "Resolved model: kind={:?}, width={}, height={}, preview_image_url={:?}",
                 model.kind, model.width, model.height, model.preview_image_url
             );
 
-            let vector_model = crate::infrastructure::pdf::pdf_read::extract_vector_page_model(&doc, page_index as u16).unwrap();
+            let vector_model = crate::infrastructure::pdf::pdf_read::extract_vector_page_model(
+                &doc,
+                page_index as u16,
+            )
+            .unwrap();
             for obj in &vector_model.objects {
                 if let crate::infrastructure::pdf::models::RenderObject::Image(img) = obj {
-                    println!("  Vector image object: id={}, data_url={}, size={}x{}", img.id, img.data_url, img.width, img.height);
+                    println!(
+                        "  Vector image object: id={}, data_url={}, size={}x{}",
+                        img.id, img.data_url, img.width, img.height
+                    );
                     assert!(img.data_url.starts_with("http://pdfasset.localhost/"));
                 }
             }
         }
-        panic!("Show stdout output"); // intentionally panic to see print statements
     }
 }

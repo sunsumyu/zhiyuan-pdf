@@ -10,37 +10,129 @@ fn chars_count(text: &str) -> usize {
     text.chars().count()
 }
 
-fn split_runs_by_body_start(
+fn style_run_right(run: &StyleRunSnapshot) -> f32 {
+    if let Some(last_origin) = run.char_origins.last().copied() {
+        let last_width = run
+            .char_widths
+            .get(run.char_origins.len().saturating_sub(1))
+            .copied()
+            .unwrap_or_default();
+        (last_origin + last_width).max(run.width)
+    } else {
+        run.width
+    }
+}
+
+/// 在指定位置分割 runs，返回 (marker_runs, body_runs)
+/// 类似 Rust std 的 slice.split_at() 命名惯例
+/// split_index: marker 部分的结束位置（body 开始位置）
+fn split_runs_at(
     runs: &[StyleRunSnapshot],
-    body_char_start: usize,
+    split_index: usize,
     line_key: &str,
 ) -> (Vec<StyleRunSnapshot>, Vec<StyleRunSnapshot>) {
     let mut marker_runs = Vec::new();
     let mut body_runs = Vec::new();
     let mut global_cursor = 0usize;
+    let body_base_origin = runs
+        .iter()
+        .scan(0usize, |cursor, run| {
+            let run_len = chars_count(&run.text);
+            let run_start = *cursor;
+            *cursor += run_len;
+            Some((run_start, run))
+        })
+        .find_map(|(run_start, run)| {
+            let run_len = chars_count(&run.text);
+            let run_end = run_start + run_len;
+            if split_index < run_end {
+                let local_index = split_index.saturating_sub(run_start);
+                run.char_origins.get(local_index).copied()
+            } else if run_start >= split_index {
+                run.char_origins.first().copied()
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            runs.iter()
+                .scan(0usize, |cursor, run| {
+                    let run_len = chars_count(&run.text);
+                    let run_start = *cursor;
+                    *cursor += run_len;
+                    Some((run_start, run))
+                })
+                .find_map(|(run_start, run)| {
+                    let run_len = chars_count(&run.text);
+                    let run_end = run_start + run_len;
+                    (split_index == run_end).then(|| style_run_right(run))
+                })
+        })
+        .unwrap_or(0.0);
 
     for (run_index, run) in runs.iter().enumerate() {
         let run_len = chars_count(&run.text);
         let run_start = global_cursor;
         let run_end = global_cursor + run_len;
 
-        if run_end <= body_char_start {
+        if run_end <= split_index {
+            // 完全在 marker 区的 run：保持原始绝对坐标，不归零
+            // resolve_run_layout会用 line_left + origin 计算绝对位置
+            crate::common::trace::emit(
+                crate::common::trace::TraceLevel::Debug,
+                "marker-split".to_string(),
+                "full-marker-run".to_string(),
+                vec![
+                    crate::common::trace::field("runIdx", run_index),
+                    crate::common::trace::field("text", run.text.as_str()),
+                    crate::common::trace::field("charOrigins", format!("{:?}", run.char_origins)),
+                    crate::common::trace::field("width", run.width),
+                ],
+            );
             let mut cloned = run.clone();
             cloned.id = format!("{line_key}::marker::{run_index}");
             cloned.start = 0;
             cloned.end = run_len;
             marker_runs.push(cloned);
-        } else if run_start >= body_char_start {
+        } else if run_start >= split_index {
+            // 完全在 body 区的 run：转成相对 body_left 的坐标
             let mut cloned = run.clone();
             cloned.id = format!("{line_key}::body::{run_index}");
             cloned.start = 0;
             cloned.end = run_len;
+            cloned.char_origins = cloned
+                .char_origins
+                .into_iter()
+                .map(|value| value - body_base_origin)
+                .collect();
             body_runs.push(cloned);
         } else {
-            let marker_count = body_char_start.saturating_sub(run_start);
+            // 跨越分割点的 run：需要拆分
+            let marker_count = split_index.saturating_sub(run_start);
             let chars = run.text.chars().collect::<Vec<_>>();
 
             if marker_count > 0 {
+                let marker_origins = run
+                    .char_origins
+                    .iter()
+                    .copied()
+                    .take(marker_count)
+                    .collect::<Vec<_>>();
+                // 保持 marker 的原始绝对坐标，不归零
+                crate::common::trace::emit(
+                    crate::common::trace::TraceLevel::Debug,
+                    "marker-split".to_string(),
+                    "split-marker-run".to_string(),
+                    vec![
+                        crate::common::trace::field("runIdx", run_index),
+                        crate::common::trace::field(
+                            "text",
+                            chars[..marker_count].iter().collect::<String>(),
+                        ),
+                        crate::common::trace::field("charOrigins", format!("{:?}", marker_origins)),
+                        crate::common::trace::field("width", run.width),
+                    ],
+                );
                 marker_runs.push(StyleRunSnapshot {
                     id: format!("{line_key}::marker::{run_index}"),
                     text: chars[..marker_count].iter().collect(),
@@ -48,12 +140,7 @@ fn split_runs_by_body_start(
                     end: marker_count,
                     style: run.style.clone(),
                     width: run.width,
-                    char_origins: run
-                        .char_origins
-                        .iter()
-                        .copied()
-                        .take(marker_count)
-                        .collect(),
+                    char_origins: marker_origins, // 保持原始值
                     char_widths: run.char_widths.iter().copied().take(marker_count).collect(),
                     object_ids: run.object_ids.clone(),
                     object_indices: run.object_indices.clone(),
@@ -67,7 +154,6 @@ fn split_runs_by_body_start(
                     .copied()
                     .skip(marker_count)
                     .collect::<Vec<_>>();
-                let first_origin = body_origins.first().copied().unwrap_or_default();
                 body_runs.push(StyleRunSnapshot {
                     id: format!("{line_key}::body::{run_index}"),
                     text: chars[marker_count..].iter().collect(),
@@ -77,7 +163,7 @@ fn split_runs_by_body_start(
                     width: run.width,
                     char_origins: body_origins
                         .into_iter()
-                        .map(|value| value - first_origin)
+                        .map(|value| value - body_base_origin)
                         .collect(),
                     char_widths: run.char_widths.iter().copied().skip(marker_count).collect(),
                     object_ids: run.object_ids.clone(),
@@ -94,10 +180,10 @@ fn split_runs_by_body_start(
 
 fn resolve_body_left(
     line: &ParagraphLineOutput,
-    body_char_start: usize,
+    marker_char_end: usize,
     marker_runs: &[StyleRunSnapshot],
 ) -> f32 {
-    if let Some(origin) = line.char_origins.get(body_char_start) {
+    if let Some(origin) = line.char_origins.get(marker_char_end) {
         return line.left + *origin;
     }
 
@@ -180,8 +266,20 @@ pub(crate) fn build_list_item_region(
     };
 
     let semantics = derive_list_text_semantics(&text);
+    crate::common::trace::emit(
+        crate::common::trace::TraceLevel::Debug,
+        "marker-detect".to_string(),
+        "semantics".to_string(),
+        vec![
+            crate::common::trace::field("text", text.as_str()),
+            crate::common::trace::field("hasMarker", semantics.has_marker),
+            crate::common::trace::field("markerText", semantics.marker_text.as_str()),
+            crate::common::trace::field("bodyCharStart", semantics.body_char_start),
+            crate::common::trace::field("markerKind", format!("{:?}", semantics.kind)),
+        ],
+    );
     let (marker_runs, body_runs) = if semantics.has_marker {
-        split_runs_by_body_start(&raw_style_runs, semantics.body_char_start, &line_key)
+        split_runs_at(&raw_style_runs, semantics.body_char_start, &line_key)
     } else {
         (vec![], raw_style_runs.clone())
     };

@@ -105,7 +105,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
     function readZoomState(): ZoomStateSnapshot {
         try {
             const wasm = getWasmApi();
-            const state = wasm.getZoomState?.();
+            const state = wasm.readZoomState?.();
             const session = viewerSession.read();
             return {
                 currentZoom: state?.currentZoom ?? session.currentZoom,
@@ -239,7 +239,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         resetZoomPreviewState: () => {
             try {
                 const wasm = getWasmApi();
-                wasm.clear_zoom_preview_host_state?.(false);
+                wasm.clearZoomPreviewHostState?.(false);
             } catch {
             }
         },

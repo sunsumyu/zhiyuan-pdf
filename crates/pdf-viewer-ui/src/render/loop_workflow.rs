@@ -5,14 +5,14 @@ use crate::viewer::viewer_controller::set_zoom;
 use crate::zoom::host::{resolve_render_follow_up_decision, RenderFollowUpDecision};
 use crate::zoom::zoom_controller::read_zoom_state;
 
-pub fn resolve_render_follow_up_runtime(
+pub fn resolve_follow_up(
     rendered_display_zoom: f32,
     current_target_zoom: f32,
 ) -> RenderFollowUpDecision {
     resolve_render_follow_up_decision(rendered_display_zoom, current_target_zoom)
 }
 
-pub fn schedule_render_follow_up_runtime(
+pub fn schedule_follow_up(
     rendered_display_zoom: f32,
     request: &FramePlanRequest,
 ) -> Option<RenderFrameEnvelope> {

@@ -31,12 +31,15 @@ import type {
 
 let _session: EditorSession | null = null;
 
-function getSession(): EditorSession | null {
+function getSession(): EditorSession {
     if (!_session) {
         const api = getWasmApi();
         if (typeof api?.EditorSession === 'function') {
             _session = new api.EditorSession();
         }
+    }
+    if (!_session) {
+        throw new Error('EditorSession WASM API is unavailable');
     }
     return _session;
 }
@@ -71,9 +74,6 @@ export function discard(): EditorResponse<void> | null {
     return getSession()?.discard() ?? null;
 }
 
-export function getSnapshot(displayZoom: number): EditorResponse<SnapshotResult> | null {
-    return getSession()?.getSnapshot(displayZoom) ?? null;
-}
 
 export function isActive(): boolean {
     return !!getSession()?.isActive();
@@ -136,13 +136,7 @@ export function applyFormat(action: EditorFormatAction): EditorResponse<CommitRe
     return getSession()?.applyFormat(action) ?? null;
 }
 
-export function getTextBlocks(pageIndex: number): EditorResponse<TextBlockInfo[]> | null {
-    return getSession()?.getTextBlocks(pageIndex) ?? null;
-}
 
-export function getFormatState(): unknown {
-    return getSession()?.getFormatState() ?? null;
-}
 
 // ── Region editor ───────────────────────────────────────────────
 
@@ -199,11 +193,11 @@ export function paste(text: string): EditorResponse | null {
     return getSession()?.paste(text) ?? null;
 }
 
-export function undo(): EditorResponse | null {
+export function undo(): EditorResponse<SyncInputResult> | null {
     return getSession()?.undo() ?? null;
 }
 
-export function redo(): EditorResponse | null {
+export function redo(): EditorResponse<SyncInputResult> | null {
     return getSession()?.redo() ?? null;
 }
 

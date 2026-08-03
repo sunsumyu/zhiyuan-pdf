@@ -167,4 +167,3 @@ pub struct TextLineDto {
     pub bbox: crate::models::BoundingBox,
     pub char_count: u32,
 }
-

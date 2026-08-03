@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 
+use crate::app_controller::smart_invoke;
 use crate::review::review_store::{
-    read_comment_review_session, select_comment_review_comment, set_comment_review_panel_open,
-    set_comment_review_query, set_comment_review_scope, toggle_comment_review_panel,
+    read_review_session as read_comment_review_session,
+    select_comment as select_comment_review_comment,
+    set_panel_open as set_comment_review_panel_open, set_query as set_comment_review_query,
+    set_scope as set_comment_review_scope, toggle_panel as toggle_comment_review_panel,
     HostCommentReviewScope, HostCommentReviewSession,
 };
-use crate::runtime::smart_invoke;
 
 pub use pdf_viewer_core::annotation::{
     CommentBoxRect, CommentPercentFrame, PdfCommentOverlayDisplay, PdfCommentOverlayMarker,

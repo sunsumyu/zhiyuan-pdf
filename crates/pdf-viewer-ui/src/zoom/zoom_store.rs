@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 
 // Re-export pure data structures from core.
 pub use pdf_viewer_core::render::zoom_state::*;
@@ -35,10 +34,11 @@ impl ZoomSessionState {
     }
 }
 
+use crate::app_context;
+
 /// Snapshot of the current zoom state.
-pub fn read_zoom_session_state() -> ZoomSessionState {
-    ZOOM_STATE.with(|state| {
-        let s = state.borrow();
+pub fn read_session_state() -> ZoomSessionState {
+    app_context::with_zoom(|s| {
         if s.preview_transform.is_some() {
             ZoomSessionState::Previewing
         } else if (s.current_zoom - s.target_zoom).abs() > f32::EPSILON {
@@ -49,27 +49,22 @@ pub fn read_zoom_session_state() -> ZoomSessionState {
     })
 }
 
-thread_local! {
-    pub static ZOOM_STATE: RefCell<HostZoomState> =
-        RefCell::new(HostZoomState::default());
-}
-
 pub fn read_zoom_state() -> HostZoomState {
-    ZOOM_STATE.with(|state| state.borrow().clone())
+    app_context::with_zoom(Clone::clone)
 }
 
 pub fn with_zoom_state<R>(f: impl FnOnce(&HostZoomState) -> R) -> R {
-    ZOOM_STATE.with(|state| f(&state.borrow()))
+    app_context::with_zoom(f)
 }
 
 pub fn with_zoom_state_mut<R>(f: impl FnOnce(&mut HostZoomState) -> R) -> R {
-    ZOOM_STATE.with(|state| f(&mut state.borrow_mut()))
+    app_context::with_zoom_mut(f)
 }
 
 pub fn reset_zoom_state(initial_zoom: f32) {
     let zoom = sanitize_zoom(initial_zoom);
-    ZOOM_STATE.with(|state| {
-        *state.borrow_mut() = HostZoomState {
+    app_context::with_zoom_mut(|state| {
+        *state = HostZoomState {
             current_zoom: zoom,
             target_zoom: zoom,
             visual_zoom: zoom,

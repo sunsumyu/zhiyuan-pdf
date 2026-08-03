@@ -1,24 +1,19 @@
-use std::cell::RefCell;
-
 // Re-export pure data structures from core.
 pub use pdf_viewer_core::render::scheduler::*;
 
-thread_local! {
-    pub static RENDER_STATE: RefCell<HostRenderState<serde_json::Value>> =
-        RefCell::new(HostRenderState::default());
-}
+use crate::app_context;
 
 pub fn reset_render_state() {
-    RENDER_STATE.with(|state| {
-        *state.borrow_mut() = HostRenderState::default();
+    app_context::with_render_mut(|render| {
+        *render = HostRenderState::default();
     });
 }
 
-pub fn is_render_frame_current(frame_token: u32) -> bool {
+pub fn is_frame_current(frame_token: u32) -> bool {
     if frame_token == 0 {
         return false;
     }
-    RENDER_STATE.with(|state| state.borrow().active_frame_token == frame_token)
+    app_context::with_render(|render| render.active_frame_token == frame_token)
 }
 
 pub fn schedule_render_frame<TPlan: Clone>(
@@ -33,8 +28,7 @@ pub fn schedule_render_frame<TPlan: Clone>(
         return None;
     }
 
-    RENDER_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    app_context::with_render_mut(|state| {
         crate::chain_trace!(
             "schedule.enter",
             "inFlightToken" => state.in_flight_frame_token,
@@ -61,7 +55,7 @@ pub fn schedule_render_frame<TPlan: Clone>(
         }
 
         if state.in_flight_frame_token == 0 {
-            let token = allocate_render_frame_token(&mut state);
+            let token = allocate_render_frame_token(state);
             state.in_flight_frame_token = token;
             state.active_frame_token = token;
             state.in_flight_frame_plan = Some(to_value_plan(frame_plan));
@@ -70,7 +64,7 @@ pub fn schedule_render_frame<TPlan: Clone>(
                 frame_plan: frame_plan.clone(),
             })
         } else {
-            let token = allocate_render_frame_token(&mut state);
+            let token = allocate_render_frame_token(state);
             state.queued_frame_token = token;
             state.queued_frame_plan = Some(to_value_plan(frame_plan));
             state.active_frame_token = token;
@@ -87,8 +81,7 @@ pub fn settle_render_frame<TPlan: Clone>(
         return RenderFrameTransition::default();
     }
 
-    RENDER_STATE.with(|state| {
-        let mut state = state.borrow_mut();
+    app_context::with_render_mut(|state| {
         if state.in_flight_frame_token != frame_token {
             return RenderFrameTransition::default();
         }

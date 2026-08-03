@@ -1,5 +1,7 @@
 # PDF Viewer 全面命名规范
 
+> ⚠️ 已整合到 [../naming-conventions.md](../naming-conventions.md)。本文档保留作为历史参考。
+
 ## 1. 核心原则
 
 1. **动词 + 名词** - 清楚表达"做什么" + "对什么做"

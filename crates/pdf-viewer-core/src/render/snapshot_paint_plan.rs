@@ -121,11 +121,16 @@ fn build_snapshot_paint_run(
 }
 
 pub struct RunLayout {
-    pub left: f32,
+    /// run 的绝对页面 X 坐标（不再相对于 line_left）
+    pub absolute_left: f32,
     pub width: f32,
-    pub char_origins: Vec<f32>,
+    /// glyph 的绝对页面 X 坐标（不再归零）
+    pub absolute_glyph_positions: Vec<f32>,
 }
 
+/// 计算 run 的绝对坐标布局
+/// 输入：StyleRunSnapshot.char_origins 是相对于 line_left 的偏移
+/// 输出：RunLayout.absolute_left 和 absolute_glyph_positions 都是绝对页面坐标
 pub fn resolve_run_layout<F>(
     line_left: f32,
     cursor_left: f32,
@@ -144,11 +149,16 @@ where
     );
 
     if !run.char_origins.is_empty() {
-        let first_origin = run.char_origins[0];
-        let normalized_origins: Vec<f32> =
-            run.char_origins.iter().map(|o| o - first_origin).collect();
-        let last_index = normalized_origins.len() - 1;
-        let last_origin = normalized_origins[last_index];
+        // 直接转换为绝对坐标，不再归零
+        let absolute_glyph_positions: Vec<f32> = run
+            .char_origins
+            .iter()
+            .map(|origin| line_left + *origin)
+            .collect();
+
+        let absolute_left = absolute_glyph_positions[0];
+        let last_index = absolute_glyph_positions.len() - 1;
+        let last_glyph_x = absolute_glyph_positions[last_index];
         let last_width = if last_index < run.char_widths.len() {
             run.char_widths[last_index]
         } else {
@@ -161,19 +171,20 @@ where
         let final_width = run
             .width
             .max(measured_width)
-            .max(last_origin + last_width)
+            .max(last_glyph_x + last_width - absolute_left)
             .max(1.0);
         return RunLayout {
-            left: line_left + first_origin,
+            absolute_left,
             width: final_width,
-            char_origins: normalized_origins,
+            absolute_glyph_positions,
         };
     }
 
+    // 没有 char_origins 时，使用 cursor_left 作为起点
     RunLayout {
-        left: cursor_left,
+        absolute_left: cursor_left,
         width: run.width.max(measured_width).max(1.0),
-        char_origins: vec![],
+        absolute_glyph_positions: vec![],
     }
 }
 
@@ -192,23 +203,62 @@ where
         if let Some(marker_runs) = &line.marker_runs {
             if !marker_runs.is_empty() {
                 let mut marker_cursor_left = line.left;
-                for run in marker_runs {
+                crate::common::trace::emit(
+                    crate::common::trace::TraceLevel::Debug,
+                    "marker-render".to_string(),
+                    "start".to_string(),
+                    vec![
+                        crate::common::trace::field("lineLeft", line.left),
+                        crate::common::trace::field(
+                            "bodyLeft",
+                            line.body_left.unwrap_or(line.left),
+                        ),
+                        crate::common::trace::field("markerRunCount", marker_runs.len()),
+                    ],
+                );
+                for (run_idx, run) in marker_runs.iter().enumerate() {
                     let layout =
                         resolve_run_layout(line.left, marker_cursor_left, run, measure_text);
+                    crate::common::trace::emit(
+                        crate::common::trace::TraceLevel::Debug,
+                        "marker-render".to_string(),
+                        "run-layout".to_string(),
+                        vec![
+                            crate::common::trace::field("runIdx", run_idx),
+                            crate::common::trace::field("runText", run.text.as_str()),
+                            crate::common::trace::field("runWidth", run.width),
+                            crate::common::trace::field(
+                                "runCharOrigins",
+                                format!("{:?}", run.char_origins),
+                            ),
+                            crate::common::trace::field("lineLeft", line.left),
+                            crate::common::trace::field("markerCursorLeft", marker_cursor_left),
+                            crate::common::trace::field("layoutAbsoluteLeft", layout.absolute_left),
+                            crate::common::trace::field("layoutWidth", layout.width),
+                        ],
+                    );
+                    // 使用绝对坐标构建 GlyphPaintRun
                     let mut synth_run = run.clone();
                     synth_run.width = layout.width;
-                    synth_run.char_origins = layout.char_origins.clone();
+                    // char_origins 存储绝对坐标（相对于 origin_x 的偏移 = 绝对坐标 - origin_x）
+                    let absolute_left = layout.absolute_left;
+                    synth_run.char_origins = layout
+                        .absolute_glyph_positions
+                        .iter()
+                        .map(|x| x - absolute_left)
+                        .collect();
                     runs.push(build_snapshot_paint_run(
                         page_index,
                         &snapshot.region_id,
                         &format!("{}::marker", paragraph_id),
                         &line.object_ids,
                         &run.text,
-                        layout.left,
+                        layout.absolute_left,
                         line.bottom,
                         &synth_run,
                     ));
-                    marker_cursor_left = marker_cursor_left.max(layout.left + layout.width);
+                    marker_cursor_left =
+                        marker_cursor_left.max(layout.absolute_left + layout.width);
                 }
             }
         }
@@ -218,20 +268,26 @@ where
             let mut cursor_left = body_left;
             for run in &line.style_runs {
                 let layout = resolve_run_layout(body_left, cursor_left, run, measure_text);
+                // 使用绝对坐标构建 GlyphPaintRun
                 let mut synth_run = run.clone();
                 synth_run.width = layout.width;
-                synth_run.char_origins = layout.char_origins.clone();
+                let absolute_left = layout.absolute_left;
+                synth_run.char_origins = layout
+                    .absolute_glyph_positions
+                    .iter()
+                    .map(|x| x - absolute_left)
+                    .collect();
                 runs.push(build_snapshot_paint_run(
                     page_index,
                     &snapshot.region_id,
                     &paragraph_id,
                     &line.object_ids,
                     &run.text,
-                    layout.left,
+                    layout.absolute_left,
                     line.bottom,
                     &synth_run,
                 ));
-                cursor_left = cursor_left.max(layout.left + layout.width);
+                cursor_left = cursor_left.max(layout.absolute_left + layout.width);
             }
             continue;
         }

@@ -1,12 +1,12 @@
 // Re-export pure data structures and functions from core.
 pub use pdf_viewer_core::render::plan_builder::*;
 
+use crate::common::sanitize::sanitize_positive;
 use crate::present::plan::{preview_is_settled, quantize_cache_zoom, resolve_present_policy};
 use crate::render::tile_cache::{
     build_base_cache_key, build_detail_cache_key, find_reusable_base_layer,
     find_reusable_detail_tile, HostPresentState,
 };
-use crate::common::sanitize::sanitize_positive;
 use crate::viewer::viewer_store::HostViewerSession;
 use crate::zoom::zoom_store::HostZoomState;
 
@@ -107,13 +107,17 @@ pub fn build_frame_plan_result(
                 viewport_width,
                 viewport_height,
             );
+            // Keep scrollLeft consistent with anchor layout to prevent flicker
+            // when pending_anchor is cleared and the branch switches.
+            let centered_scroll_left = (display_width - viewport_width).max(0.0) * 0.5;
+            let centered_scroll_top = (display_height - viewport_height).max(0.0) * 0.5;
             (
                 layout.host_width,
                 layout.host_height,
                 layout.content_left,
                 layout.content_top,
-                request.scroll_left.max(0.0),
-                request.scroll_top.max(0.0),
+                centered_scroll_left,
+                centered_scroll_top,
             )
         };
 

@@ -12,14 +12,14 @@ const PDF_EVENT_LOG_LIMIT: usize = 512;
 static PDF_EVENT_LOG: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
 pub static PDF_EVENT_LOG_MUTEX: Mutex<()> = Mutex::new(());
 
-pub fn set_pdf_log_level(level: u8) {
+pub fn set_log_level(level: u8) {
     PDF_LOG_LEVEL.store(level, Ordering::SeqCst);
 }
-pub fn get_pdf_log_level() -> u8 {
+pub fn get_log_level() -> u8 {
     PDF_LOG_LEVEL.load(Ordering::SeqCst)
 }
 
-pub fn clear_pdf_event_log() {
+pub fn clear_event_log() {
     let mut events = PDF_EVENT_LOG
         .get_or_init(|| Mutex::new(VecDeque::new()))
         .lock()
@@ -27,7 +27,7 @@ pub fn clear_pdf_event_log() {
     events.clear();
 }
 
-pub fn read_pdf_event_log() -> Vec<String> {
+pub fn read_event_log() -> Vec<String> {
     let events = PDF_EVENT_LOG
         .get_or_init(|| Mutex::new(VecDeque::new()))
         .lock()
@@ -141,8 +141,8 @@ fn record_pdf_event(line: String) {
     events.push_back(line);
 }
 
-pub fn log_pdf_event(level: u8, event: &str, fields: &[(&str, String)]) {
-    if get_pdf_log_level() < level {
+pub fn log_event(level: u8, event: &str, fields: &[(&str, String)]) {
+    if get_log_level() < level {
         return;
     }
     let label = level_label(level);
@@ -174,7 +174,7 @@ impl PdfEventSpan {
             finished: false,
         };
         let event_name = format!("{}.begin", span.event);
-        log_pdf_event(span.level, &event_name, &span.fields);
+        log_event(span.level, &event_name, &span.fields);
         span
     }
 
@@ -185,7 +185,7 @@ impl PdfEventSpan {
         fields.push(("elapsedMs", self.start.elapsed().as_millis().to_string()));
         fields.extend(extra_fields);
         let event_name = format!("{}.end", self.event);
-        log_pdf_event(self.level, &event_name, &fields);
+        log_event(self.level, &event_name, &fields);
     }
 }
 
@@ -198,14 +198,14 @@ impl Drop for PdfEventSpan {
         fields.push(("result", "aborted".to_string()));
         fields.push(("elapsedMs", self.start.elapsed().as_millis().to_string()));
         let event_name = format!("{}.end", self.event);
-        log_pdf_event(self.level, &event_name, &fields);
+        log_event(self.level, &event_name, &fields);
     }
 }
 
 #[macro_export]
 macro_rules! pdf_log {
     ($level:expr, $($arg:tt)*) => {{
-        if $crate::infrastructure::pdf::log_service::get_pdf_log_level() >= $level {
+        if $crate::infrastructure::pdf::log_service::get_log_level() >= $level {
             eprintln!($($arg)*);
         }
     }};
@@ -239,7 +239,7 @@ impl ProfileSpan {
 impl Drop for ProfileSpan {
     fn drop(&mut self) {
         let elapsed = self.start.elapsed();
-        if get_pdf_log_level() >= 1 {
+        if get_log_level() >= 1 {
             eprintln!("[PROF][SPAN] {} took {:?}", self.name, elapsed);
         }
     }
@@ -261,7 +261,7 @@ macro_rules! prof_span {
 
 use pdf_viewer_core::common::trace::{TraceEvent, TraceLevel, TraceSubscriber};
 
-/// Adapter that forwards core trace events into this module's log_pdf_event.
+/// Adapter that forwards core trace events into this module's log_event.
 pub struct LogServiceSubscriber;
 
 fn level_to_u8(level: TraceLevel) -> u8 {
@@ -276,7 +276,7 @@ impl TraceSubscriber for LogServiceSubscriber {
     fn on_event(&self, event: &TraceEvent) {
         // node + action form the dotted event name (e.g. "doc.open.begin").
         let event_name = format!("{}.{}", event.node, event.action);
-        // Borrow fields as (&str, String) for the existing log_pdf_event API.
+        // Borrow fields as (&str, String) for the existing log_event API.
         // The owned Strings live in `owned` for the duration of this call.
         let owned: Vec<String> = event.fields.iter().map(|f| f.key.to_string()).collect();
         let pairs: Vec<(&str, String)> = owned
@@ -284,7 +284,7 @@ impl TraceSubscriber for LogServiceSubscriber {
             .zip(event.fields.iter().map(|f| f.value.clone()))
             .map(|(k, v)| (k.as_str(), v))
             .collect();
-        log_pdf_event(level_to_u8(event.level), &event_name, &pairs);
+        log_event(level_to_u8(event.level), &event_name, &pairs);
     }
 }
 

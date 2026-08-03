@@ -5,7 +5,7 @@ use crate::document::history::{redo_document_edit, undo_document_edit};
 use crate::document::io::{
     open_pdf_file, pick_pdf_file, rotate_current_page, OpenPdfFileResult, RotateCurrentPageResult,
 };
-use crate::host::command::{
+use crate::platform::command::{
     open_document_session, reset_host_document_session, HostActionResult,
     OpenDocumentSessionRequest,
 };

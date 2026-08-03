@@ -6,8 +6,8 @@ pub use pdf_viewer_core::models::FontHints;
 
 #[derive(Debug, Clone, Default)]
 pub struct CMap {
-    pub mappings: HashMap<u16, String>,
-    pub rev_mappings: HashMap<String, u16>,
+    pub mappings: HashMap<u32, String>,
+    pub rev_mappings: HashMap<String, u32>,
 }
 
 impl CMap {
@@ -15,7 +15,7 @@ impl CMap {
         Self::default()
     }
 
-    pub fn from_codepoint_pairs(pairs: Vec<(u16, String)>) -> Self {
+    pub fn from_codepoint_pairs(pairs: Vec<(u32, String)>) -> Self {
         let mut mappings = HashMap::new();
         let mut rev_mappings = HashMap::new();
         for (code, s) in pairs {
@@ -108,7 +108,7 @@ impl ParsedFont {
                 cmap.rev_mappings
                     .get(&c.to_string())
                     .copied()
-                    .unwrap_or(c as u32 as u16) as u32
+                    .unwrap_or(c as u32)
             } else {
                 c as u32
             };
@@ -168,13 +168,17 @@ pub fn resolve_glyph_geom(
             let cmap_hit = font
                 .cmap
                 .as_ref()
-                .and_then(|m| m.mappings.get(&(code as u16)))
+                .and_then(|m| m.mappings.get(&code))
                 .cloned();
             let had_hit = cmap_hit.is_some();
             unicode = cmap_hit.unwrap_or_else(|| {
-                char::from_u32(code)
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| format!("[0x{:04X}]", code))
+                if font.is_multibyte() {
+                    "".to_string()
+                } else {
+                    char::from_u32(code)
+                        .map(|c| c.to_string())
+                        .unwrap_or_default()
+                }
             });
             crate::pdf_log!(
                 2,
@@ -190,7 +194,7 @@ pub fn resolve_glyph_geom(
             let cmap_hit = font
                 .cmap
                 .as_ref()
-                .and_then(|m| m.mappings.get(&(code as u16)))
+                .and_then(|m| m.mappings.get(&code))
                 .cloned();
             let had_hit = cmap_hit.is_some();
             unicode = cmap_hit.unwrap_or_else(|| {
@@ -302,7 +306,7 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                 let parts: Vec<&str> = mapping_line.split_whitespace().collect();
                 if parts.len() >= 2 {
                     let code =
-                        u16::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
+                        u32::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
                             .unwrap_or(0);
                     let val = hex_to_string(parts[1].trim_matches(|c| c == '<' || c == '>'));
                     cmap.rev_mappings.insert(val.clone(), code);
@@ -318,10 +322,10 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                 let parts: Vec<&str> = mapping_line.split_whitespace().collect();
                 if parts.len() >= 3 {
                     let start =
-                        u16::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
+                        u32::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
                             .unwrap_or(0);
                     let end =
-                        u16::from_str_radix(parts[1].trim_matches(|c| c == '<' || c == '>'), 16)
+                        u32::from_str_radix(parts[1].trim_matches(|c| c == '<' || c == '>'), 16)
                             .unwrap_or(0);
                     if parts[2].starts_with('[') {
                         let array_content = parts[2..].join(" ");
@@ -330,27 +334,30 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                             .split_whitespace()
                             .collect();
                         for (idx, v_hex) in items.iter().enumerate() {
-                            let code = start + idx as u16;
+                            let code = start + idx as u32;
                             if code <= end {
-                                cmap.mappings.insert(
-                                    code,
-                                    hex_to_string(v_hex.trim_matches(|c| c == '<' || c == '>')),
-                                );
+                                let val = hex_to_string(v_hex.trim_matches(|c| c == '<' || c == '>'));
+                                cmap.rev_mappings.insert(val.clone(), code);
+                                cmap.mappings.insert(code, val);
                             }
                         }
                     } else {
-                        let base_val = u16::from_str_radix(
-                            parts[2].trim_matches(|c| c == '<' || c == '>'),
-                            16,
-                        )
-                        .unwrap_or(0);
-                        for code in start..=end {
-                            let mapped_val = base_val + (code - start);
-                            let val = char::from_u32(mapped_val as u32)
-                                .map(|c| c.to_string())
-                                .unwrap_or_default();
-                            cmap.rev_mappings.insert(val.clone(), code);
-                            cmap.mappings.insert(code, val);
+                        let hex_str = parts[2].trim_matches(|c| c == '<' || c == '>');
+                        if let Ok(base_val) = u32::from_str_radix(hex_str, 16) {
+                            for code in start..=end {
+                                let mapped_val = base_val + (code - start);
+                                let val = char::from_u32(mapped_val)
+                                    .map(|c| c.to_string())
+                                    .unwrap_or_else(|| hex_to_string(&format!("{:04X}", mapped_val)));
+                                cmap.rev_mappings.insert(val.clone(), code);
+                                cmap.mappings.insert(code, val);
+                            }
+                        } else {
+                            let val = hex_to_string(hex_str);
+                            for code in start..=end {
+                                cmap.rev_mappings.insert(val.clone(), code);
+                                cmap.mappings.insert(code, val.clone());
+                            }
                         }
                     }
                 }
@@ -362,12 +369,18 @@ pub fn read_cmap(data: &[u8]) -> CMap {
 
 fn hex_to_string(hex: &str) -> String {
     let mut res = String::new();
+    let mut u16_units = Vec::new();
     for i in (0..hex.len()).step_by(4) {
         if i + 4 <= hex.len() {
             if let Ok(u) = u16::from_str_radix(&hex[i..i + 4], 16) {
-                if let Some(c) = char::from_u32(u as u32) {
-                    res.push(c);
-                }
+                u16_units.push(u);
+            }
+        }
+    }
+    if !u16_units.is_empty() {
+        for c in std::char::decode_utf16(u16_units.iter().copied()) {
+            if let Ok(ch) = c {
+                res.push(ch);
             }
         }
     }
@@ -655,7 +668,10 @@ pub fn parse_font_from_dict(
             })
         });
 
-    if let Some(font_desc) = font_desc_dict {
+    let mut embedded_font_key = None;
+    let mut has_embedded_program = false;
+
+    if let Some(font_desc) = font_desc_dict.as_ref() {
         family_hint = font_desc
             .get(b"FontFamily")
             .ok()
@@ -674,8 +690,22 @@ pub fn parse_font_from_dict(
             is_italic: (flags & 64) != 0,
             is_fixed_pitch: (flags & 1) != 0,
             is_serif: (flags & 2) != 0,
+            weight,
             ..Default::default()
         });
+
+        if let Some(program_key) = extract_and_cache_embedded_font_program(
+            doc,
+            font_id,
+            font_desc,
+            font_subtype.as_deref(),
+        ) {
+            if let Some(descendant) = descendant_dict.as_ref() {
+                extract_and_cache_cid_to_gid_map(doc, descendant, &program_key);
+            }
+            embedded_font_key = Some(program_key);
+            has_embedded_program = true;
+        }
     }
 
     let mut cmap = None;
@@ -704,8 +734,104 @@ pub fn parse_font_from_dict(
         hints,
         post_script_name,
         family_hint,
-        embedded_font_key: None,
-        has_embedded_program: false,
+        embedded_font_key,
+        has_embedded_program,
         has_to_unicode_cmap,
     })
 }
+
+fn read_pdf_stream_bytes(stream: &lopdf::Stream) -> Option<Vec<u8>> {
+    stream.decompressed_content().ok().or_else(|| {
+        if stream.dict.get(b"Filter").is_err() {
+            Some(stream.content.clone())
+        } else {
+            None
+        }
+    })
+}
+
+fn extract_and_cache_embedded_font_program(
+    doc: &Document,
+    font_id: lopdf::ObjectId,
+    font_desc: &lopdf::Dictionary,
+    font_subtype: Option<&str>,
+) -> Option<String> {
+    for key in [
+        b"FontFile".as_slice(),
+        b"FontFile2".as_slice(),
+        b"FontFile3".as_slice(),
+    ] {
+        let Ok(object) = font_desc.get(key) else {
+            continue;
+        };
+        let stream = object
+            .as_reference()
+            .ok()
+            .and_then(|reference| doc.get_object(reference).ok())
+            .and_then(|value| value.as_stream().ok())
+            .or_else(|| object.as_stream().ok());
+        let Some(stream) = stream else {
+            continue;
+        };
+        let Some(bytes) = read_pdf_stream_bytes(stream) else {
+            continue;
+        };
+        if bytes.is_empty() {
+            continue;
+        }
+        let bytes = crate::infrastructure::pdf::font::embedded_program::normalize_embedded_font_program(bytes);
+
+        let cache_key = format!(
+            "font:{}:{}:{}:{}",
+            font_id.0,
+            font_id.1,
+            String::from_utf8_lossy(key),
+            font_subtype.unwrap_or("unknown")
+        );
+        crate::infrastructure::pdf::cache::PDF_FONT_PROGRAM_CACHE
+            .lock()
+            .ok()?
+            .insert(cache_key.clone(), Arc::new(bytes));
+        return Some(cache_key);
+    }
+
+    None
+}
+
+fn extract_and_cache_cid_to_gid_map(
+    doc: &Document,
+    descendant_font: &lopdf::Dictionary,
+    cache_key: &str,
+) {
+    let cid_to_gid = descendant_font.get(b"CIDToGIDMap").ok();
+    let mut glyph_map = crate::infrastructure::pdf::models::EmbeddedGlyphMap::default();
+
+    if let Some(object) = cid_to_gid {
+        if let Ok(name) = object.as_name() {
+            if name == b"Identity" {
+                glyph_map.identity = true;
+            }
+        } else if let Some(stream) = object.as_stream().ok().cloned().or_else(|| {
+            object
+                .as_reference()
+                .ok()
+                .and_then(|reference| doc.get_object(reference).ok())
+                .and_then(|value| value.as_stream().ok())
+                .cloned()
+        }) {
+            if let Ok(bytes) = stream.decompressed_content() {
+                for (cid, chunk) in bytes.chunks_exact(2).enumerate() {
+                    let gid = u16::from_be_bytes([chunk[0], chunk[1]]);
+                    if gid != 0 {
+                        glyph_map.cid_to_gid.insert(cid as u32, gid);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Ok(mut cache) = crate::infrastructure::pdf::cache::PDF_FONT_GLYPH_MAP_CACHE.lock() {
+        cache.insert(cache_key.to_string(), Arc::new(glyph_map));
+    }
+}
+

@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 
-use crate::bridge::target_invoke;
 use crate::viewer::viewer_controller::read_session;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -18,13 +17,11 @@ pub struct RotateCurrentPageResult {
 }
 
 pub async fn open_pdf_file(path: String) -> Result<OpenPdfFileResult, JsValue> {
-    let page_count = target_invoke(
-        "open_pdf".into(),
-        serde_wasm_bindgen::to_value(&serde_json::json!({ "path": path })).unwrap_or(JsValue::NULL),
-    )
-    .await?;
+    let page_count_js =
+        crate::app_controller::raw_invoke("open_pdf", &serde_json::json!({ "path": path })).await?;
+    let page_count: u16 = serde_wasm_bindgen::from_value(page_count_js)
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
 
-    let page_count = serde_wasm_bindgen::from_value::<u16>(page_count).unwrap_or(0);
     Ok(OpenPdfFileResult {
         page_count,
         opened: page_count > 0,
@@ -32,13 +29,7 @@ pub async fn open_pdf_file(path: String) -> Result<OpenPdfFileResult, JsValue> {
 }
 
 pub async fn pick_pdf_file() -> Result<Option<String>, JsValue> {
-    let picked = target_invoke(
-        "pick_file".into(),
-        serde_wasm_bindgen::to_value(&serde_json::json!({})).unwrap_or(JsValue::NULL),
-    )
-    .await?;
-
-    Ok(serde_wasm_bindgen::from_value::<Option<String>>(picked).unwrap_or(None))
+    crate::app_controller::smart_invoke("pick_file", &serde_json::json!({})).await
 }
 
 pub async fn rotate_current_page(delta: i32) -> Result<RotateCurrentPageResult, JsValue> {
@@ -47,9 +38,9 @@ pub async fn rotate_current_page(delta: i32) -> Result<RotateCurrentPageResult, 
         return Ok(RotateCurrentPageResult { rotated: false });
     };
 
-    target_invoke(
-        "save_pdf".into(),
-        serde_wasm_bindgen::to_value(&serde_json::json!({
+    let _: JsValue = crate::app_controller::raw_invoke(
+        "save_pdf",
+        &serde_json::json!({
             "path": path,
             "modifications": {
                 "rotations": {
@@ -58,8 +49,7 @@ pub async fn rotate_current_page(delta: i32) -> Result<RotateCurrentPageResult, 
                 "regionPatches": [],
                 "textReflows": [],
             },
-        }))
-        .unwrap_or(JsValue::NULL),
+        }),
     )
     .await?;
 

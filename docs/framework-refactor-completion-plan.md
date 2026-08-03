@@ -386,7 +386,33 @@ Phase F (测试/文档)         ← 持续，A/B 每完成一批就补对应测�
 - ❌ 不引入 ECS / Actor / 重型事件总线
 - ❌ 不重写 TS 层为框架化（React/Solid），当前 vanilla TS + DOM 合理
 - ❌ 不引入 trait 抽象层（PDF 查看器不需要可插拔后端）
-- ❌ 不把 thread_local 改为 Arc&lt;Mutex&gt;（WASM 单线程）
+- ❌ 不把 thread_local 改为 Arc<Mutex>（WASM 单线程）
 - ❌ 不做微服务化拆分
 - ❌ 不大规模移动 src-tauri 基础设施到 crates（暂缓）
 - ❌ 不在重构期间扩展新功能（Word/论文工作台等）
+
+---
+
+## 10. A2 拆分、build_index_map 算法修复与列表光标修正落实记录（2026-06-24）
+
+已成功推进重构计划中 **A2 批次大文件拆分**、**第一步及第四步/第五步算法与光标偏移动态修正**：
+
+1. **A2 `draft_layout.rs` 大文件拆分与 Facade 重映射完成**：
+   - 原 ~800 行的排版计划核心模块已成功解耦并拆分为 `draft_init.rs` (初始空模版构造)、`draft_geometry.rs` (基线对齐与物理光标坐标转换) 和 `draft_reflow.rs` (重排/重算 pipeline 驱动)。
+   - 原 `draft_layout.rs` 仅作为 router 重导出所有公共 API，保持外部 100% 兼容。
+   - 彻底将 `EditorDocumentPlan` 替换为 `EditContext`，移除了整个业务模块中所有的弃用（Deprecated）警告。
+   - 清理了 `replacement_region.rs`、`document_plan/marker.rs`、`paragraph_scene.rs` 等文件中未使用的变量和冗余导入。
+
+2. **双指针映射算法 `build_index_map` 重构（Step 5 算法修复）完成**：
+   - 重构 `draft_text_diff.rs` 中的 `build_index_map` 算法，在双指针匹配时能够精确区分合成空格与物理真实空格。
+   - 引入非空字符不匹配时的局部回溯重新对齐机制，彻底修复了用户在段落中途删除/插入字符时因匹配位置向后偏移导致的 caret 跳跃与“字距粘连/漂移”问题。
+
+3. **列表项目符号光标偏移修正（Step 4 光标修正）完成**：
+   - 修复了在编辑含有列表项目符号的段落时，光标水平位置偏左错绘在项目符号上的缺陷。
+   - 修改了 `crates/pdf-viewer-ui/src/editor/overlay/visual.rs` 中的 `body_left_offset`，动态检测当前编辑目标是否存在 marker，并在存在时累加 `marker_advance` 宽度，使光标基准精准对齐至正文起点。
+
+4. **测试加固与六大检查点通过**：
+   - 恢复了 `preserves_origins` 回归测试用例（移除了 `#[ignore]` 标志），并补充了 middle deletion, middle insertion, mixed spaces 三组针对增删与混合空格映射的单元测试，78 个测试全部通过。
+   - 重新验证了 tsc、cargo check WASM 目标、Tauri 后端及 standalone 整体二进制构建，全部 100% 成功。
+
+有关本次重构的详细代码级变更和指标验证情况，请参见：[Rust Core & WASM UI 重构实现报告 (2026-06-24)](file:///e:/chain/pdf-viewer-standalone/docs/refactor-implementation-report-2026-06-24.md)。

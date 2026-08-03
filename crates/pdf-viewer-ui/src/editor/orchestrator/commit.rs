@@ -1,35 +1,35 @@
 use crate::document::patch_persistence::apply_document_patch_direct;
-use crate::editor::editor_controller::build_active_editor_patch;
+use crate::editor::editor_controller::build_patch;
 use crate::editor::editor_controller::EditorVisibilityAction;
-use crate::editor::mode::{close_active_editor, read_active_editor_state};
-use crate::editor::session::active_editor_draft_text;
-use crate::ui_state_store::remember_paragraph_replacement_target;
+use crate::editor::mode::{close_active_editor, read_state};
+use crate::editor::session::draft_text;
+use crate::ui_state_store::remember_target as remember_paragraph_replacement_target;
 
 /// 高层入口：若当前有未提交的 live state，强制走 commit 持久化它。
 /// 用于"退出 edit mode / 切换 edit mode / 关闭编辑器"等所有路径，
 /// 保证 Editing → Idle 的迁移必经 Persisting（见 docs/edit-save-architecture.md §4.1）。
 /// 返回 true 表示有 patch 被持久化。
-pub fn commit_pending_edit_if_any() -> bool {
-    let Some(draft_text) = active_editor_draft_text() else {
+pub fn commit_pending() -> bool {
+    let Some(text) = draft_text() else {
         crate::chain_trace!("exit.no-live-state");
         return false;
     };
     crate::chain_trace!(
         "exit.force-commit",
-        "draftLen" => draft_text.chars().count(),
+        "draftLen" => text.chars().count(),
     );
-    let action = commit_active_editor_text(draft_text);
+    let action = commit_text(text);
     action.changed
 }
 
-pub fn commit_active_editor_text(new_text: String) -> EditorVisibilityAction {
-    let active_state = read_active_editor_state();
+pub fn commit_text(new_text: String) -> EditorVisibilityAction {
+    let active_state = read_state();
     crate::chain_trace!(
         "commit.start",
         "newLen" => new_text.chars().count(),
         "hasActive" => active_state.is_some(),
     );
-    let patch_opt = build_active_editor_patch(new_text);
+    let patch_opt = build_patch(new_text);
     let Some(patch) = patch_opt else {
         crate::chain_trace!("commit.build", "ok" => false, "reason" => "noop-or-no-state");
         let changed = close_active_editor();

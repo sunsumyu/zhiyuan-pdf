@@ -27,12 +27,6 @@ pub fn read_zoom_state() -> JsValue {
     to_value(&zoom_controller::read_zoom_state()).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen(js_name = "getZoomState")]
-#[deprecated(since = "0.2.0", note = "Use read_zoom_state instead")]
-pub fn get_zoom_state() -> JsValue {
-    read_zoom_state()
-}
-
 #[wasm_bindgen(js_name = "setTargetZoom")]
 pub fn set_target_zoom(target_zoom: f32) {
     zoom_controller::set_target_zoom(target_zoom);
@@ -50,7 +44,7 @@ pub fn clear_pending_anchor() {
 
 #[wasm_bindgen(js_name = "applyZoomSelection")]
 pub fn apply_zoom_selection(zoom: f32) -> JsValue {
-    let result = crate::host::command::apply_zoom_selection(zoom);
+    let result = crate::platform::command::apply_zoom_selection(zoom);
     to_value(&result).unwrap_or(JsValue::NULL)
 }
 
@@ -61,7 +55,8 @@ pub fn clear_preview_present() {
 
 #[wasm_bindgen(js_name = "syncHostLayout")]
 pub fn sync_host_layout_wasm(request_js: JsValue) -> JsValue {
-    let request: crate::host::layout::SyncHostLayoutRequest = from_value(request_js).unwrap_or_default();
-    let result = crate::host::layout::sync_host_layout(request);
+    let request: crate::platform::layout::SyncHostLayoutRequest =
+        from_value(request_js).unwrap_or_default();
+    let result = crate::platform::layout::sync_host_layout(request);
     to_value(&result).unwrap_or(JsValue::NULL)
 }

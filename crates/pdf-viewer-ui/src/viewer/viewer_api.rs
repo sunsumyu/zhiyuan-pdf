@@ -31,7 +31,10 @@ impl ViewerSession {
     #[wasm_bindgen(js_name = "read")]
     pub fn read(&self) -> JsValue {
         let session = viewer_store::read_viewer_session();
-        web_sys::console::log_1(&JsValue::from_str(&format!("[WASM-ViewerSession] read() is called. path={:?}, page_count={}", session.path, session.page_count)));
+        web_sys::console::log_1(&JsValue::from_str(&format!(
+            "[WASM-ViewerSession] read() is called. path={:?}, page_count={}",
+            session.path, session.page_count
+        )));
         to_value(&session).unwrap_or(JsValue::NULL)
     }
 
@@ -74,12 +77,6 @@ impl ViewerSession {
         to_value(&viewer_store::read_viewer_state()).unwrap_or(JsValue::NULL)
     }
 
-    #[wasm_bindgen(js_name = "getState")]
-    #[deprecated(since = "0.2.0", note = "Use readState instead")]
-    pub fn get_state(&self) -> JsValue {
-        self.read_state()
-    }
-
     /// Functional (Nutrient-style) atomic state update.
     ///
     /// ```js
@@ -97,7 +94,6 @@ impl ViewerSession {
     /// Returns the resulting snapshot after applying the update.
     #[wasm_bindgen(js_name = "setState")]
     pub fn set_state(&self, updater: &js_sys::Function) -> JsValue {
-        use crate::viewer::viewer_store::VIEWER_SESSION;
         use pdf_viewer_core::render::viewer_session::HostViewerSession;
 
         // 1. Read current snapshot
@@ -117,8 +113,7 @@ impl ViewerSession {
         };
 
         // 4. Apply only mutable fields atomically
-        VIEWER_SESSION.with(|session| {
-            let mut s = session.borrow_mut();
+        viewer_store::update_mutable_fields(|s| {
             s.current_page = updated.current_page;
             s.current_zoom = if updated.current_zoom.is_finite() && updated.current_zoom > 0.0 {
                 updated.current_zoom

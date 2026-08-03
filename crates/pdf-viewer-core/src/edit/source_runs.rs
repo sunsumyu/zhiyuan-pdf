@@ -1,16 +1,16 @@
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, LayoutRun, ParagraphEditContext, StyledRun,
-    VectorPageModel, VectorRenderObject,
+    TextRun, VectorPageModel, VectorRenderObject,
 };
 
+use crate::common::debug::truncate_debug_text;
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::geometry::bbox_ops::{bbox_height, bbox_width};
-use crate::geometry::source_geometry::{source_run_visual_bbox, source_visual_bbox_from_runs};
-use crate::common::debug::truncate_debug_text;
+use crate::geometry::source_geometry::{compute_bbox_from_runs, compute_run_bbox};
 
-pub fn original_paint_runs_for_target(
+pub fn target_paint_runs(
     paragraph: &GlyphPaintParagraph,
     body_session: &ParagraphEditContext,
     target: &crate::edit::edit_target::EditorEditTarget,
@@ -116,7 +116,7 @@ fn summarize_layout_runs(runs: &[LayoutRun]) -> String {
         .join(" || ")
 }
 
-pub fn resolve_preferred_editor_session(
+pub fn resolve_source_context(
     paragraph: &GlyphPaintParagraph,
     vector_model: Option<&VectorPageModel>,
 ) -> Option<ParagraphEditContext> {
@@ -143,7 +143,7 @@ pub fn resolve_preferred_editor_session(
         }
     };
 
-    let anchor_bbox = source_visual_bbox_from_runs(&exact_runs).unwrap_or_else(|| {
+    let anchor_bbox = compute_bbox_from_runs(&exact_runs).unwrap_or_else(|| {
         exact_runs.iter().fold(
             BoundingBox {
                 left: f32::INFINITY,
@@ -292,7 +292,7 @@ fn expand_bbox(bbox: BoundingBox, x_pad: f32, y_pad: f32) -> BoundingBox {
 }
 
 fn vector_run_matches_paragraph_geometry(run: &LayoutRun, target_bbox: BoundingBox) -> bool {
-    let run_bbox = source_run_visual_bbox(run).unwrap_or(run.bbox);
+    let run_bbox = compute_run_bbox(run).unwrap_or(run.bbox);
     let run_height = bbox_height(&run_bbox).max(run.style.font_size.max(1.0));
     let vertical_overlap = bbox_intersection_height(run_bbox, target_bbox);
     if vertical_overlap < (run_height.min(bbox_height(&target_bbox).max(1.0)) * 0.25).max(0.8) {
@@ -396,7 +396,13 @@ fn resolve_glyph_paint_runs(paragraph: &GlyphPaintParagraph) -> Option<Vec<Layou
         .iter()
         .filter(|run| !run.text.is_empty())
         .enumerate()
-        .map(|(run_index, run)| layout_run_from_glyph_paint(run, run_index))
+        .map(|(run_index, run)| {
+            let mut layout_run = run.to_text_run().to_layout_run();
+            if layout_run.id.is_empty() {
+                layout_run.id = format!("paint-run::{run_index}");
+            }
+            layout_run
+        })
         .collect::<Vec<_>>();
     if runs.is_empty() {
         None
@@ -405,12 +411,8 @@ fn resolve_glyph_paint_runs(paragraph: &GlyphPaintParagraph) -> Option<Vec<Layou
     }
 }
 
-fn build_layout(
-    run: &StyledRun,
-    owner_object_id: &str,
-    run_index: usize,
-) -> LayoutRun {
-    let mut layout_run = LayoutRun::from_styled(run);
+fn build_layout(run: &StyledRun, owner_object_id: &str, run_index: usize) -> LayoutRun {
+    let mut layout_run = TextRun::from_styled(run).to_layout_run();
     if layout_run.id.is_empty() {
         layout_run.id = format!("{owner_object_id}::run::{run_index}");
     }
@@ -418,32 +420,4 @@ fn build_layout(
         layout_run.object_ids.push(owner_object_id.to_string());
     }
     layout_run
-}
-
-fn layout_run_from_glyph_paint(run: &GlyphPaintRun, run_index: usize) -> LayoutRun {
-    LayoutRun {
-        id: if run.id.is_empty() {
-            format!("paint-run::{run_index}")
-        } else {
-            run.id.clone()
-        },
-        text: run.text.clone(),
-        style: crate::models::RunStyle {
-            font_name: run.resolved_font.render_family.clone(),
-            font_size: run.font_size,
-            color: run.color.clone(),
-            is_bold: run.is_bold,
-            is_italic: run.is_italic,
-            is_underline: run.is_underline,
-            char_spacing: 0.0,
-            scale_x: run.scale_x.max(0.01),
-        },
-        bbox: run.bbox,
-        origin_x: run.origin_x,
-        origin_y: run.origin_y,
-        char_origins: run.char_origins.clone(),
-        char_widths: Vec::new(),
-        object_ids: run.object_ids.clone(),
-        object_indices: run.object_indices.clone(),
-    }
 }

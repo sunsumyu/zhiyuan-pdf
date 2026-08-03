@@ -1,4 +1,4 @@
-use crate::application::pdf::page_context::build_page_region_context_from_vector_model;
+use crate::application::pdf::page_context::build_region_context;
 use crate::infrastructure::pdf::annotation_store::{read_page_comments, read_page_highlights};
 use crate::infrastructure::pdf::engine::PdfPageIntermediateService;
 use crate::interfaces::pdf::{
@@ -126,7 +126,7 @@ pub(crate) async fn list_page_annotation_targets(
     path: &str,
     page_index: u16,
 ) -> Result<PdfPageAnnotationTargetResult, String> {
-    let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model(
         app_state,
         path.to_string(),
         page_index,
@@ -134,7 +134,7 @@ pub(crate) async fn list_page_annotation_targets(
         None,
     )
     .await?;
-    let page_context = build_page_region_context_from_vector_model(&page_model);
+    let page_context = build_region_context(&page_model);
     Ok(collect_page_annotation_targets(
         &page_context,
         page_index,
@@ -148,7 +148,7 @@ pub(crate) async fn list_page_highlights(
     page_index: u16,
 ) -> Result<PdfPageHighlightList, String> {
     ensure_document_loaded(app_state, path).await?;
-    let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model(
         app_state,
         path.to_string(),
         page_index,
@@ -195,7 +195,7 @@ pub(crate) async fn list_page_comments(
     page_index: u16,
 ) -> Result<PdfPageCommentList, String> {
     ensure_document_loaded(app_state, path).await?;
-    let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model(
         app_state,
         path.to_string(),
         page_index,
@@ -242,7 +242,7 @@ pub(crate) async fn add_region_highlight(
     path: &str,
     request: &PdfRegionHighlightRequest,
 ) -> Result<PdfRegionHighlightResult, String> {
-    let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model(
         app_state,
         path.to_string(),
         request.page_index,
@@ -250,7 +250,7 @@ pub(crate) async fn add_region_highlight(
         None,
     )
     .await?;
-    let page_context = build_page_region_context_from_vector_model(&page_model);
+    let page_context = build_region_context(&page_model);
     let target_box = resolve_region_box(&page_context, &request.region_id, &request.kind)
         .ok_or_else(|| {
             format!(
@@ -300,7 +300,7 @@ pub(crate) async fn add_region_comment(
         return Err("Comment content cannot be empty".to_string());
     }
 
-    let page_model = PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+    let page_model = PdfPageIntermediateService::resolve_vector_page_model(
         app_state,
         path.to_string(),
         request.page_index,
@@ -308,7 +308,7 @@ pub(crate) async fn add_region_comment(
         None,
     )
     .await?;
-    let page_context = build_page_region_context_from_vector_model(&page_model);
+    let page_context = build_region_context(&page_model);
     let target_box = resolve_region_box(&page_context, &request.region_id, &request.kind)
         .ok_or_else(|| {
             format!(

@@ -1,50 +1,42 @@
-use std::cell::{Cell, RefCell};
-
+use crate::app_context;
 use crate::editor::editor_types::SessionState;
 
 // ── Thread-local state ──────────────────────────────────────────
 
-thread_local! {
-    static SESSION_STATE: Cell<SessionState> = Cell::new(SessionState::Viewing);
-    static ACTIVE_BLOCK_ID: RefCell<Option<String>> = RefCell::new(None);
-
-    // ── §14.7 event callbacks ───────────────────────────────────
-    // `STATE_CHANGE_CB` fires only on `SessionState` transitions.
-    // `CHANGE_CB` fires on any session-relevant mutation (state OR active block).
-    // Both are optional and replace any previously registered callback.
-    #[cfg(target_arch = "wasm32")]
-    static STATE_CHANGE_CB: RefCell<Option<js_sys::Function>> = RefCell::new(None);
-    #[cfg(target_arch = "wasm32")]
-    static CHANGE_CB: RefCell<Option<js_sys::Function>> = RefCell::new(None);
-}
+// ── §14.7 event callbacks ───────────────────────────────────
+// `STATE_CHANGE_CB` fires only on `SessionState` transitions.
+// `CHANGE_CB` fires on any session-relevant mutation (state OR active block).
+// Both are optional and replace any previously registered callback.
+// Note: The actual storage has been migrated to AppStores (app_context.rs)
+// for centralized thread-local management. The accessors below delegate
+// to app_context::with_state_change_cb / with_change_cb.
 
 // ── Public accessors ────────────────────────────────────────────
 
 pub fn read_state() -> SessionState {
-    SESSION_STATE.with(|s| s.get())
+    app_context::with_editor_session(|session| session.session_state)
 }
 
 pub fn set_state(state: SessionState) {
-    let prev = SESSION_STATE.with(|s| {
-        let p = s.get();
-        s.set(state);
-        p
+    let changed = app_context::with_editor_session_mut(|session| {
+        let changed = session.session_state != state;
+        session.session_state = state;
+        changed
     });
-    if prev != state {
+    if changed {
         notify_state_change(state);
     }
     notify_change();
 }
 
-pub fn read_active_block_id() -> Option<String> {
-    ACTIVE_BLOCK_ID.with(|id| id.borrow().clone())
+pub fn read_block_id() -> Option<String> {
+    app_context::with_editor_session(|session| session.active_block_id.clone())
 }
 
-pub fn set_active_block_id(block_id: Option<String>) {
-    let changed = ACTIVE_BLOCK_ID.with(|id| {
-        let mut slot = id.borrow_mut();
-        let differs = *slot != block_id;
-        *slot = block_id;
+pub fn set_block_id(block_id: Option<String>) {
+    let changed = app_context::with_editor_session_mut(|session| {
+        let differs = session.active_block_id != block_id;
+        session.active_block_id = block_id;
         differs
     });
     if changed {
@@ -59,21 +51,27 @@ pub fn set_active_block_id(block_id: Option<String>) {
 /// (`"viewing"` / `"editing"` / `"editingBlock"` / `"saving"`).
 #[cfg(target_arch = "wasm32")]
 pub fn set_state_change_callback(cb: Option<js_sys::Function>) {
-    STATE_CHANGE_CB.with(|slot| *slot.borrow_mut() = cb);
+    app_context::with_state_change_cb_mut(|slot| *slot = cb);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn set_state_change_callback(_cb: Option<js_sys::Function>) {}
+
 /// Install a callback fired on any session mutation (state OR active block).
-/// Arity-0; JS reads fresh state via `EditorSession.getSnapshot()` if needed.
+/// Arity-0; JS reads fresh state via `EditorSession.readSnapshot()` if needed.
 #[cfg(target_arch = "wasm32")]
 pub fn set_change_callback(cb: Option<js_sys::Function>) {
-    CHANGE_CB.with(|slot| *slot.borrow_mut() = cb);
+    app_context::with_change_cb_mut(|slot| *slot = cb);
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn set_change_callback(_cb: Option<js_sys::Function>) {}
 
 #[cfg(target_arch = "wasm32")]
 fn notify_state_change(state: SessionState) {
     let arg = wasm_bindgen::JsValue::from_str(state_camel_case(state));
     // Legacy single-slot callback (backward compat)
-    let cb = STATE_CHANGE_CB.with(|slot| slot.borrow().clone());
+    let cb = app_context::with_state_change_cb(|slot| slot.clone());
     if let Some(cb) = cb {
         let _ = cb.call1(&wasm_bindgen::JsValue::NULL, &arg);
     }
@@ -84,7 +82,7 @@ fn notify_state_change(state: SessionState) {
 #[cfg(target_arch = "wasm32")]
 fn notify_change() {
     // Legacy single-slot callback (backward compat)
-    let cb = CHANGE_CB.with(|slot| slot.borrow().clone());
+    let cb = app_context::with_change_cb(|slot| slot.clone());
     if let Some(cb) = cb {
         let _ = cb.call0(&wasm_bindgen::JsValue::NULL);
     }
@@ -121,20 +119,36 @@ pub fn transition_to_editing() {
 }
 
 /// Editing → EditingBlock
-pub fn transition_to_editing_block(block_id: String) {
-    set_active_block_id(Some(block_id));
+pub fn transition_editing(block_id: String) {
+    set_block_id(Some(block_id));
     set_state(SessionState::EditingBlock);
 }
 
 /// EditingBlock → Viewing (close / commit / discard)
 pub fn transition_to_viewing() {
-    set_active_block_id(None);
-    set_state(SessionState::Viewing);
+    reset_session();
+}
+
+/// Reset the public editor session state to its idle shape.
+pub fn reset_session() {
+    let (state_changed, block_changed) = app_context::with_editor_session_mut(|session| {
+        let state_changed = session.session_state != SessionState::Viewing;
+        let block_changed = session.active_block_id.is_some();
+        session.session_state = SessionState::Viewing;
+        session.active_block_id = None;
+        (state_changed, block_changed)
+    });
+    if state_changed {
+        notify_state_change(SessionState::Viewing);
+    }
+    if state_changed || block_changed {
+        notify_change();
+    }
 }
 
 /// EditingBlock(A) → EditingBlock(B) (block switch)
 pub fn transition_switch_block(new_block_id: String) {
-    set_active_block_id(Some(new_block_id));
+    set_block_id(Some(new_block_id));
     // state stays EditingBlock
 }
 
@@ -145,7 +159,7 @@ pub fn transition_to_saving() {
 
 /// Saving → Viewing (save complete)
 pub fn transition_save_complete() {
-    set_active_block_id(None);
+    set_block_id(None);
     set_state(SessionState::Viewing);
 }
 

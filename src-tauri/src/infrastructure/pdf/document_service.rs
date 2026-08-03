@@ -1,13 +1,11 @@
 use crate::infrastructure::pdf::models::PdfModifications;
-use crate::infrastructure::pdf::pdf_read_service::PdfReadService;
-use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan;
+use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan_v2;
 use crate::infrastructure::pdf_read::backend::PdfReadBackend;
 use crate::infrastructure::pdf_read::scanned_backend::ScannedReadBackend;
 use lazy_static::lazy_static;
 use lopdf::Document;
 use std::collections::HashMap;
 use std::fs;
-use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
 
 use super::cache::{
@@ -15,37 +13,13 @@ use super::cache::{
 };
 
 lazy_static! {
-    static ref WORKING_COPIES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
-    static ref COPY_LOCKS: Mutex<HashMap<String, std::sync::Arc<Mutex<()>>>> =
-        Mutex::new(HashMap::new());
     static ref PDF_OPS_LOCK: AsyncMutex<()> = AsyncMutex::new(());
-}
-
-fn release_working_copy(path: &str) {
-    let working_path = {
-        let mut copies = WORKING_COPIES.lock().unwrap();
-        copies.remove(path)
-    };
-
-    {
-        let mut locks = COPY_LOCKS.lock().unwrap();
-        locks.remove(path);
-    }
-
-    if let Some(working_path) = working_path {
-        let _ = fs::remove_file(&working_path);
-        crate::log_step!("[PDF][Release] Removed working copy for {}", path);
-    }
 }
 
 pub struct PdfDocumentService;
 
 impl PdfDocumentService {
-    pub(crate) fn resolve_working_path(original_path: &str) -> String {
-        PdfReadService::resolve_working_path(original_path)
-    }
-
-    pub fn release_pdf_resources(state: &crate::AppState, path: &str) {
+    pub fn release_resources(state: &crate::AppState, path: &str) {
         {
             let mut docs = state.docs.pdf_documents.lock().unwrap();
             docs.remove(path);
@@ -80,18 +54,18 @@ impl PdfDocumentService {
             reports.remove(path);
         }
 
-        release_working_copy(path);
+        crate::infrastructure::pdf::working_copy::release_working_copy(path);
         crate::log_step!("[PDF][Release] Released PDF resources for {}", path);
     }
 
-    pub fn release_all_pdf_resources(state: &crate::AppState) {
+    pub fn release_all_resources(state: &crate::AppState) {
         let paths: Vec<String> = {
             let docs = state.docs.pdf_documents.lock().unwrap();
             docs.keys().cloned().collect()
         };
 
         for path in paths {
-            Self::release_pdf_resources(state, &path);
+            Self::release_resources(state, &path);
         }
 
         {
@@ -127,14 +101,6 @@ impl PdfDocumentService {
             loading.clear();
         }
         {
-            let mut copies = WORKING_COPIES.lock().unwrap();
-            copies.clear();
-        }
-        {
-            let mut locks = COPY_LOCKS.lock().unwrap();
-            locks.clear();
-        }
-        {
             let mut image_cache = crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE
                 .lock()
                 .unwrap();
@@ -143,6 +109,7 @@ impl PdfDocumentService {
         {
             let mut reports = state.cache.pdf_materialization_reports.lock().unwrap();
             reports.clear();
+            crate::infrastructure::pdf::working_copy::clear_working_copies();
         }
 
         crate::log_step!("[PDF][Release] Released all PDF resources");
@@ -176,9 +143,21 @@ impl PdfDocumentService {
 
         let path_for_load = path.to_string();
         let load_start = std::time::Instant::now();
-        let doc = tokio::task::spawn_blocking(move || load_pdf_lenient(&path_for_load))
+        let load_result = tokio::task::spawn_blocking(move || load_pdf_lenient(&path_for_load))
             .await
-            .map_err(|e| e.to_string())??;
+            .map_err(|e| e.to_string())
+            .and_then(|inner| inner);
+        let doc = match load_result {
+            Ok(doc) => doc,
+            Err(err) => {
+                let mut loading = state.docs.loading_docs.lock().unwrap();
+                loading.insert(
+                    path.to_string(),
+                    crate::state::LoadingStatus::Error(err.clone()),
+                );
+                return Err(err);
+            }
+        };
         let load_elapsed = load_start.elapsed();
         let lopdf_count = doc.get_pages().len();
 
@@ -242,8 +221,9 @@ impl PdfDocumentService {
             modifications.region_patches.len(),
             modifications.text_reflows.len()
         );
-        let materialization_plan = build_region_materialization_plan(
+        let materialization_plan = build_region_materialization_plan_v2(
             &modifications.region_patches,
+            &modifications.semantic_ops,
             &modifications.text_reflows,
         );
         let materialization_report = materialization_plan.to_report(
@@ -306,7 +286,7 @@ impl PdfDocumentService {
             );
         }
 
-        let working_path = Self::resolve_working_path(path);
+        let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(path);
         let doc = {
             let mut cache = state.docs.pdf_documents.lock().unwrap();
             if let Some(d) = cache.get(path) {
@@ -363,7 +343,7 @@ impl PdfDocumentService {
         Ok(())
     }
 
-    pub fn read_last_pdf_materialization_report(
+    pub fn read_materialization_report(
         state: tauri::State<'_, crate::AppState>,
         path: &str,
     ) -> Result<Option<crate::infrastructure::pdf::models::PdfMaterializationReport>, String> {
@@ -443,7 +423,7 @@ impl PdfDocumentService {
         Err("No redo transaction history".to_string())
     }
 
-    pub fn generate_demo_pdf(path: &str) -> Result<String, String> {
+    pub fn generate_demo(path: &str) -> Result<String, String> {
         let pdf = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n5 0 obj\n<< /Length 59 >>\nstream\nBT\n/F1 24 Tf\n100 700 Td\n(Demo) Tj\nET\nendstream\nendobj\nxref\n0 6\n0000000000 65535 f\n0000000010 00000 n\ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n415\n%%EOF\n";
         fs::write(path, pdf).map_err(|_| "IO".to_string())?;
         Ok(path.to_string())
@@ -451,7 +431,7 @@ impl PdfDocumentService {
 }
 
 /// Public wrapper for lenient PDF loading (used from other modules).
-pub fn load_pdf_public(path: &str) -> Result<Document, String> {
+pub fn load_public(path: &str) -> Result<Document, String> {
     load_pdf_lenient(path)
 }
 

@@ -1,7 +1,6 @@
 use crate::infrastructure::pdf::models::{LightPageKind, LightPageModel, NativeVectorPageModel};
 
 use super::cache::light_page_cache_key;
-use super::document_service::PdfDocumentService;
 use super::page_intermediate_service::PdfPageIntermediateService;
 
 pub struct PdfPageModelService;
@@ -18,8 +17,8 @@ impl PdfPageModelService {
             let doc = if let Some(d) = cache.get(path) {
                 d.clone()
             } else {
-                let wp = PdfDocumentService::resolve_working_path(path);
-                let d = crate::infrastructure::pdf::document_service::load_pdf_public(&wp)
+                let wp = crate::infrastructure::pdf::working_copy::resolve_working_path(path);
+                let d = crate::infrastructure::pdf::document_service::load_public(&wp)
                     .map_err(|e| format!("Lopdf Load Error: {}", e))?;
                 let d_arc = std::sync::Arc::new(d);
                 cache.insert(path.to_string(), d_arc.clone());
@@ -68,20 +67,14 @@ impl PdfPageModelService {
         Self::read_pdf_metadata_from_app_state(&state, path).await
     }
 
-    pub(crate) async fn resolve_vector_page_model_from_app_state(
+    #[allow(dead_code)]
+    pub(crate) async fn resolve_vector_page_model(
         app_state: &crate::AppState,
         path: String,
         page_index: u16,
         _target_zoom: f32,
     ) -> Result<NativeVectorPageModel, String> {
-        Self::resolve_model_from_state(
-            app_state,
-            path,
-            page_index,
-            _target_zoom,
-            None,
-        )
-        .await
+        Self::resolve_model_from_state(app_state, path, page_index, _target_zoom, None).await
     }
 
     pub(crate) async fn resolve_model_from_state(
@@ -91,7 +84,7 @@ impl PdfPageModelService {
         target_zoom: f32,
         document_revision: Option<u64>,
     ) -> Result<NativeVectorPageModel, String> {
-        PdfPageIntermediateService::resolve_vector_page_model_from_app_state(
+        PdfPageIntermediateService::resolve_vector_page_model(
             app_state,
             path,
             page_index,
@@ -101,15 +94,6 @@ impl PdfPageModelService {
         .await
     }
 
-    pub async fn resolve_vector_page_model(
-        state: tauri::State<'_, crate::AppState>,
-        path: String,
-        page_index: u16,
-        target_zoom: f32,
-    ) -> Result<NativeVectorPageModel, String> {
-        Self::resolve_vector_page_model_from_app_state(&state, path, page_index, target_zoom).await
-    }
-
     pub async fn resolve_model(
         state: tauri::State<'_, crate::AppState>,
         path: String,
@@ -117,14 +101,8 @@ impl PdfPageModelService {
         target_zoom: f32,
         document_revision: Option<u64>,
     ) -> Result<NativeVectorPageModel, String> {
-        Self::resolve_model_from_state(
-            &state,
-            path,
-            page_index,
-            target_zoom,
-            document_revision,
-        )
-        .await
+        Self::resolve_model_from_state(&state, path, page_index, target_zoom, document_revision)
+            .await
     }
 
     pub async fn resolve_light_page_model(

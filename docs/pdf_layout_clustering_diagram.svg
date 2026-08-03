@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="100%" height="100%">
+  <!-- Style Definitions -->
+  <style>
+    .bg { fill: #0f172a; }
+    .border { stroke: #1e293b; stroke-width: 2; fill: none; }
+    .title { font-family: system-ui, -apple-system, sans-serif; font-size: 20px; font-weight: bold; fill: #f8fafc; }
+    .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; fill: #94a3b8; }
+    .card-bg { fill: #1e293b; stroke: #334155; stroke-width: 1.5; rx: 8; ry: 8; }
+    .card-title { font-family: system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 600; fill: #38bdf8; }
+    .node-text { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #e2e8f0; }
+    .node-bold { font-weight: bold; fill: #f43f5e; }
+    .tag-success { fill: #10b981; }
+    .tag-fail { fill: #ef4444; }
+    .line-flow { stroke: #64748b; stroke-dasharray: 4; stroke-width: 2; fill: none; }
+    .line-collision { stroke: #38bdf8; stroke-width: 2; fill: none; }
+    .arrow { fill: #38bdf8; }
+    .arrow-gray { fill: #64748b; }
+    .measure-line { stroke: #f43f5e; stroke-width: 1.5; stroke-dasharray: 3; fill: none; }
+    .measure-text { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #f43f5e; font-weight: bold; }
+  </style>
+
+  <!-- Background -->
+  <rect class="bg" width="800" height="450" />
+  <rect class="border" x="5" y="5" width="790" height="440" rx="10" ry="10" />
+
+  <!-- Document Header -->
+  <text class="title" x="30" y="45">PDF 物理行合并为逻辑段落（SpatialGraph）判定机制</text>
+  <text class="subtitle" x="30" y="70">基于几何间距与连通分量的引力场合并判定规则 (build_adjacency)</text>
+
+  <!-- Scenario 1: Successful Merge -->
+  <g transform="translate(40, 100)">
+    <!-- Boundary Card -->
+    <rect class="card-bg" width="340" height="310" />
+    <rect class="tag-success" x="20" y="20" width="10" height="10" rx="2" />
+    <text class="card-title" x="40" y="30">情况 A：判定为同一个段落 (合并重排)</text>
+
+    <!-- Run A1 Box -->
+    <rect x="30" y="60" width="280" height="36" rx="4" ry="4" fill="#0f172a" stroke="#0ea5e9" stroke-width="1.5" />
+    <text class="node-text" x="45" y="82">Run A1: "Spring生态: SpringBoot、SpringCloud..."</text>
+
+    <!-- Run A2 Box -->
+    <rect x="30" y="140" width="180" height="36" rx="4" ry="4" fill="#0f172a" stroke="#0ea5e9" stroke-width="1.5" />
+    <text class="node-text" x="45" y="162">Run A2: "二级缓存优化)"</text>
+
+    <!-- Dimension Collision Line -->
+    <path class="measure-line" d="M 120, 96 L 120, 140" />
+    <text class="measure-text" x="130" y="122">垂直 Y 轴间距 = 14px ( &lt;= 16px 阈值 )</text>
+
+    <!-- Adjacency Arrow -->
+    <path d="M 220, 110 L 220, 130" stroke="#38bdf8" stroke-width="2" fill="none" />
+    <polygon class="arrow" points="220,132 216,124 224,124" />
+    <text class="node-text" x="235" y="122" fill="#38bdf8" font-size="11">引力场合并 (A1 ➔ A2)</text>
+
+    <!-- Final Output Result Box -->
+    <rect x="30" y="220" width="280" height="65" rx="6" ry="6" fill="#1e293b" stroke="#10b981" stroke-width="2" />
+    <text class="node-text" x="45" y="245" font-weight="bold" fill="#10b981">输出：合并多行段落 (LayoutParagraph)</text>
+    <text class="node-text" fill="#94a3b8" x="45" y="270">在编辑态下支持流畅的自动换行与重组</text>
+  </g>
+
+  <!-- Scenario 2: Split Rows -->
+  <g transform="translate(420, 100)">
+    <!-- Boundary Card -->
+    <rect class="card-bg" width="340" height="310" />
+    <rect class="tag-fail" x="20" y="20" width="10" height="10" rx="2" />
+    <text class="card-title" x="40" y="30" fill="#f43f5e">情况 B：判定为独立单行段落 (物理断开)</text>
+
+    <!-- Run B1 Box -->
+    <rect x="30" y="60" width="280" height="36" rx="4" ry="4" fill="#0f172a" stroke="#e2e8f0" stroke-width="1" />
+    <text class="node-text" x="45" y="82">Run B1: "工具链: Cargo, Rust, Foundry, Remix"</text>
+
+    <!-- Run B2 Box -->
+    <rect x="30" y="160" width="280" height="36" rx="4" ry="4" fill="#0f172a" stroke="#e2e8f0" stroke-width="1" />
+    <text class="node-text" x="45" y="162">Run B2: "数据库: MySQL (索引优化、锁机制..."</text>
+
+    <!-- Dimension Collision Line -->
+    <path class="measure-line" d="M 170, 96 L 170, 160" />
+    <text class="measure-text" x="180" y="132">垂直 Y 轴间距 = 28px ( &gt; 16px 阈值 )</text>
+
+    <!-- Cut Symbol -->
+    <line x1="140" y1="123" x2="160" y2="133" stroke="#f43f5e" stroke-width="2" />
+    <line x1="140" y1="133" x2="160" y2="123" stroke="#f43f5e" stroke-width="2" />
+    <text class="node-bold" x="100" y="133">无连通</text>
+
+    <!-- Output Box 1 -->
+    <rect x="30" y="220" width="280" height="32" rx="4" ry="4" fill="#1e293b" stroke="#f43f5e" stroke-width="1" />
+    <text class="node-text" x="45" y="240" font-size="11" fill="#f43f5e">单行段落 1: "工具链..."</text>
+
+    <!-- Output Box 2 -->
+    <rect x="30" y="260" width="280" height="32" rx="4" ry="4" fill="#1e293b" stroke="#f43f5e" stroke-width="1" />
+    <text class="node-text" x="45" y="280" font-size="11" fill="#f43f5e">单行段落 2: "数据库..."</text>
+  </g>
+</svg>

@@ -8,8 +8,6 @@ import type { DocumentEditApi, PdfRegionTextReplace } from '../document/document
 import {
     findInPageAsync,
     findInDocumentAsync,
-    replaceOne,
-    replaceAll as replaceAllFacade,
     type SearchResult,
     type SearchMatch,
 } from './find_facade';
@@ -55,10 +53,9 @@ export type PdfFindController = {
 
 // ─── FindSession bridge (P2 of session-API plan) ─────────────────────────────
 //
-// Migrated 2025: the legacy `findController*` flat WASM exports are now thin
-// wrappers around `FindSession` (see crates/pdf-viewer-ui/src/find/find_api.rs).
-// Constructing a single `FindSession` per page is fine — it is a zero-sized
-// handle, all state lives in the wasm `HOST_FIND_SESSION` thread_local.
+// `FindSession` is a zero-sized wasm handle. All controller/session state lives
+// in Rust stores; this module only keeps one JS handle to avoid repeated
+// construction and forwards DOM events into the struct-based API.
 
 type FindStateUpdate = {
     state: {
@@ -185,6 +182,26 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
         }
     }
 
+    function resolvePercentageRect(
+        rect: { left: number; top: number; width: number; height: number },
+        pageWidth: number,
+        pageHeight: number,
+    ) {
+        const wasm = deps.getWasmApi() as any;
+        if (wasm?.GeometryApi) {
+            const geo = new wasm.GeometryApi();
+            return geo.toPercentageRect(rect.left, rect.top, rect.width, rect.height, pageWidth, pageHeight);
+        }
+        const pw = Math.max(1, pageWidth);
+        const ph = Math.max(1, pageHeight);
+        return {
+            left: (rect.left / pw) * 100,
+            top: (rect.top / ph) * 100,
+            width: (rect.width / pw) * 100,
+            height: (rect.height / ph) * 100,
+        };
+    }
+
     function renderOverlayFromUpdate(update: FindStateUpdate): void {
         const nodes = getNodes();
         if (!nodes.overlay) return;
@@ -199,10 +216,11 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
             el.style.position = 'absolute';
             el.style.pointerEvents = 'auto';
             el.style.cursor = m.isEditable ? 'text' : 'default';
-            el.style.left = `${(m.boxRect.left / pageWidth) * 100}%`;
-            el.style.top = `${(m.boxRect.top / pageHeight) * 100}%`;
-            el.style.width = `${(m.boxRect.width / pageWidth) * 100}%`;
-            el.style.height = `${(m.boxRect.height / pageHeight) * 100}%`;
+            const pct = resolvePercentageRect(m.boxRect, pageWidth, pageHeight);
+            el.style.left = `${pct.left}%`;
+            el.style.top = `${pct.top}%`;
+            el.style.width = `${pct.width}%`;
+            el.style.height = `${pct.height}%`;
             el.style.borderRadius = '6px';
             el.style.boxSizing = 'border-box';
             if (m.isActive) {
@@ -324,21 +342,10 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
         const session = deps.getViewerSession();
 
         if (scope === 'document') {
-            if (!session.path) return;
-            const requests = callSession<any[]>(findSession(), 'getReplaceRequests', replacement, false, scope) ?? []
+            const requests = callSession<PdfRegionTextReplace[]>(findSession(), 'getReplaceRequests', replacement, false, scope) ?? [];
             if (requests.length === 0) return;
             const req = requests[0];
-            const result = replaceOne({
-                path: session.path,
-                pageIndex: req.pageIndex,
-                regionId: req.regionId,
-                kind: req.kind,
-                originalText: req.originalText,
-                query: req.query,
-                replacement: req.replacement,
-                caseSensitive: false,
-            });
-            if (!result?.applied) return;
+            await deps.documentEdits.replaceRegionTexts([req], 'find-replace');
             await deps.goToPage(req.pageIndex);
             await executeSearch();
             return;
@@ -356,16 +363,9 @@ export function createPdfFindController(deps: CreatePdfFindControllerDeps): PdfF
         const session = deps.getViewerSession();
 
         if (scope === 'document') {
-            if (!session.path) return;
-            const toolbar = callSession<FindToolbarState>(findSession(), 'getToolbarState');
-            if (!toolbar?.hasMatches) return;
-            replaceAllFacade({
-                path: session.path,
-                pageCount: session.pageCount,
-                query: getNodes().input?.value?.trim() ?? '',
-                replacement,
-                caseSensitive: false,
-            });
+            const requests = callSession<PdfRegionTextReplace[]>(findSession(), 'getReplaceRequests', replacement, true, scope) ?? [];
+            if (requests.length === 0) return;
+            await deps.documentEdits.replaceRegionTexts(requests, 'find-replace');
             await deps.goToPage(session.currentPage);
             await executeSearch();
             return;

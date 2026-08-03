@@ -4,13 +4,13 @@
 use std::collections::HashSet;
 
 use crate::edit::paragraph_overlay::ParagraphRenderOverlay;
-use crate::edit::replacement_region::{paragraph_replacement_region, ParagraphReplacementRegion};
+use crate::edit::replacement_region::{build_region, ParagraphReplacementRegion};
 use crate::geometry::bbox_ops::bbox_intersects;
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, StyledRun, VectorRenderObject,
     VectorTextObject,
 };
-use crate::render::viewport_culling::styled_run_bbox;
+use crate::render::viewport_culling::run_bbox;
 
 #[derive(Debug, Clone, Default)]
 pub struct SuppressedVectorTextRuns {
@@ -28,7 +28,7 @@ impl SuppressedVectorTextRuns {
         self.run_indices.extend(other.run_indices);
     }
 
-    pub fn suppressed_count_for_text_object(&self, text: &VectorTextObject) -> usize {
+    pub fn text_suppressed_count(&self, text: &VectorTextObject) -> usize {
         text.runs
             .iter()
             .enumerate()
@@ -54,38 +54,11 @@ fn bbox_overlap_height(left: &BoundingBox, right: &BoundingBox) -> f32 {
     (left.bottom.min(right.bottom) - left.top.max(right.top)).max(0.0)
 }
 
-pub fn run_text_is_list_marker_only(text: &str) -> bool {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return false;
-    }
-    trimmed.chars().all(|c| {
-        matches!(
-            c,
-            '\u{2022}' | // •
-        '\u{25CF}' | // ●
-        '\u{25CB}' | // ○
-        '\u{25E6}' | // ◦
-        '\u{2219}' | // ∙
-        '\u{00B7}' | // ·
-        '\u{25A0}' | // ■
-        '\u{25AA}' | // ▪
-        '\u{2043}' | // ⁃
-        '*' | '-'
-        )
-    })
-}
-
-pub fn text_run_spatially_matches_replacement_region(
+pub fn text_matches_region(
     run: &StyledRun,
     replacement_region: &ParagraphReplacementRegion,
 ) -> bool {
-    // list marker run 永远不通过空间匹配被 suppress；
-    // 这样同一个 PDF 文本对象内的 marker（●）不会因为 body run 的修改而消失
-    if run_text_is_list_marker_only(&run.text) {
-        return false;
-    }
-    let run_bbox = styled_run_bbox(run);
+    let run_bbox = run_bbox(run);
     if !bbox_intersects(&run_bbox, &replacement_region.text_clear_bbox) {
         return false;
     }
@@ -100,7 +73,7 @@ pub fn text_run_spatially_matches_replacement_region(
     overlap_width >= horizontal_threshold && overlap_height >= vertical_threshold
 }
 
-pub fn glyph_run_spatially_matches_replacement_region(
+pub fn glyph_matches_region(
     run: &GlyphPaintRun,
     replacement_region: &ParagraphReplacementRegion,
 ) -> bool {
@@ -124,7 +97,7 @@ fn normalize_source_match_text(text: &str) -> String {
 }
 
 #[allow(dead_code)]
-pub fn text_object_matches_overlay_source_text(
+pub fn text_matches_overlay(
     object: &VectorRenderObject,
     source_text: &str,
     replacement_region: &ParagraphReplacementRegion,
@@ -151,10 +124,10 @@ pub fn text_object_matches_overlay_source_text(
 
     text.runs
         .iter()
-        .any(|run| text_run_spatially_matches_replacement_region(run, replacement_region))
+        .any(|run| text_matches_region(run, replacement_region))
 }
 
-pub fn glyph_paragraph_matches_overlay_source_text(
+pub fn glyph_matches_overlay(
     paragraph: &GlyphPaintParagraph,
     overlay: &ParagraphRenderOverlay,
 ) -> bool {
@@ -175,11 +148,11 @@ pub fn glyph_paragraph_matches_overlay_source_text(
         return false;
     }
 
-    let replacement_region = paragraph_replacement_region(&overlay.target);
+    let replacement_region = build_region(&overlay.target);
     paragraph
         .runs
         .iter()
-        .any(|run| glyph_run_spatially_matches_replacement_region(run, &replacement_region))
+        .any(|run| glyph_matches_region(run, &replacement_region))
 }
 
 pub fn matching_text_run_refs(
@@ -197,7 +170,7 @@ pub fn matching_text_run_refs(
                         continue;
                     }
                 }
-                if text_run_spatially_matches_replacement_region(run, replacement_region) {
+                if text_matches_region(run, replacement_region) {
                     refs.run_indices.insert(run_index);
                 }
             }

@@ -17,7 +17,7 @@ impl LayoutGraphAnalyzer {
         // [V3] 鏍稿績閫昏緫宸蹭笅娌夎嚦 pdf-viewer-core
         let layout_runs = runs
             .iter()
-            .map(pdf_viewer_core::models::LayoutRun::from_styled)
+            .map(|r| pdf_viewer_core::models::TextRun::from_styled(r).to_layout_run())
             .collect();
         self.inner.resolve_regions(layout_runs)
     }

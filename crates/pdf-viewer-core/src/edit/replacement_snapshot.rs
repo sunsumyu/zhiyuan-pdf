@@ -36,10 +36,10 @@ pub fn build_edit_replacement_snapshot(
     marker_text: Option<String>,
     new_marker_text: Option<String>,
 ) -> Value {
-    let object_indices = replacement_object_indices(&replacement_target);
+    let object_indices = collect_object_indices(&replacement_target);
     let wrap_width = replacement_target
         .scene
-        .body_session
+        .body_session()
         .paragraph
         .wrap_width
         .max(replacement_target.scene.shell_bbox.right - replacement_target.scene.shell_bbox.left);
@@ -70,9 +70,7 @@ pub fn build_edit_replacement_snapshot(
     })
 }
 
-pub fn replacement_target_from_patch_snapshot(
-    patch: &PersistableRegionPatch,
-) -> Option<ActiveEditorTarget> {
+pub fn find_target(patch: &PersistableRegionPatch) -> Option<ActiveEditorTarget> {
     let snapshot = patch.snapshot.as_ref()?;
     snapshot
         .get("replacementTarget")
@@ -80,14 +78,14 @@ pub fn replacement_target_from_patch_snapshot(
         .and_then(|value| serde_json::from_value::<ActiveEditorTarget>(value).ok())
 }
 
-fn replacement_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
+fn collect_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
     let mut indices = target
         .scene
-        .original_runs
+        .original_runs()
         .iter()
         .flat_map(|run| run.object_indices.iter().copied())
         .collect::<BTreeSet<_>>();
-    if let Some(marker) = target.scene.marker.as_ref() {
+    if let Some(marker) = target.scene.marker() {
         indices.extend(
             marker
                 .runs
@@ -99,7 +97,7 @@ fn replacement_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
         indices.extend(
             target
                 .scene
-                .body_session
+                .body_session()
                 .paragraph
                 .runs
                 .iter()
@@ -111,7 +109,7 @@ fn replacement_object_indices(target: &ActiveEditorTarget) -> Vec<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_edit_replacement_snapshot, replacement_target_from_patch_snapshot};
+    use super::{build_edit_replacement_snapshot, find_target};
     use crate::edit::active_target::ActiveEditorTarget;
     use crate::models::BoundingBox;
     use crate::persistence::models::PersistableRegionPatch;
@@ -130,7 +128,7 @@ mod tests {
             right: 200.0,
             bottom: 40.0,
         };
-        target.scene.body_session.anchor_bbox = BoundingBox {
+        target.scene.body_session_mut().anchor_bbox = BoundingBox {
             left: 30.0,
             top: 20.0,
             right: 190.0,
@@ -151,7 +149,7 @@ mod tests {
         };
 
         assert!(
-            replacement_target_from_patch_snapshot(&patch).is_none(),
+            find_target(&patch).is_none(),
             "new persisted patch snapshots must not carry the full editor target"
         );
         let snapshot = patch.snapshot.as_ref().expect("snapshot should exist");

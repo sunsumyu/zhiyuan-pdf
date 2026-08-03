@@ -1,12 +1,14 @@
 use crate::edit::active_target::ActiveEditorTarget;
-use crate::edit::document_plan::collect_editor_document_target_plans;
-use crate::edit::edit_target::edit_target_base_paragraph_id;
-use crate::edit::paragraph_scene::build_paragraph_editor_scene_for_target;
+use crate::edit::document_plan::collect_all;
+use crate::edit::edit_target::base_paragraph_id;
+use crate::edit::paragraph_scene::build_target_scene;
 use crate::edit::paragraph_scene::ParagraphEditorScene;
 use crate::edit::replacement_snapshot::build_edit_replacement_snapshot;
-use crate::edit::source_identity::collect_object_indices_from_runs;
-use crate::models::{GlyphPaintParagraph, GlyphPaintPlan, VectorPageModel};
-use crate::persistence::models::PersistableRegionPatch;
+use crate::edit::source_identity::collect_run_indices;
+use crate::models::{GlyphPaintParagraph, GlyphPaintPlan, SemanticBlockKind, VectorPageModel};
+use crate::persistence::models::{
+    PersistableRegionPatch, PersistableSemanticBlockSummary, PersistableSemanticOperation,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -29,7 +31,33 @@ pub struct ParagraphInteractionTarget {
     pub text_decoration: String,
 }
 
-pub fn collect_paragraph_interaction_targets(
+fn semantic_summary_from_scene(scene: &ParagraphEditorScene) -> PersistableSemanticBlockSummary {
+    let block = scene.semantic_block();
+    let (kind, marker_text) = match &block.kind {
+        SemanticBlockKind::ListItem(item) => (
+            "list-item".to_string(),
+            item.marker
+                .as_ref()
+                .and_then(|marker| marker.text_content().map(|text| text.to_string())),
+        ),
+        SemanticBlockKind::Paragraph => ("paragraph".to_string(), None),
+        SemanticBlockKind::FieldRow => ("field-row".to_string(), None),
+        SemanticBlockKind::Unknown => ("unknown".to_string(), None),
+    };
+    PersistableSemanticBlockSummary {
+        block_id: block.id.0,
+        region_id: block.region_id,
+        kind,
+        body_text: block.body.text,
+        marker_text,
+        body_object_indices: block.provenance.body_object_indices,
+        marker_object_indices: block.provenance.marker_object_indices,
+        graphic_marker_object_indices: block.provenance.graphic_marker_object_indices,
+        is_cross_paragraph: scene.document_plan.is_cross_paragraph,
+    }
+}
+
+pub fn interaction_targets(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
 ) -> Vec<ParagraphInteractionTarget> {
@@ -38,7 +66,7 @@ pub fn collect_paragraph_interaction_targets(
         for paragraph in &region.paragraphs {
             let control_style = &paragraph.control_style;
 
-            for document_plan in collect_editor_document_target_plans(paragraph, vector_model) {
+            for document_plan in collect_all(paragraph, vector_model) {
                 let target_indices =
                     resolve_target_indices_from_runs(&document_plan.original_runs, vector_model);
                 targets.push(ParagraphInteractionTarget {
@@ -61,52 +89,47 @@ pub fn collect_paragraph_interaction_targets(
     targets
 }
 
-pub fn build_paragraph_patch(
+pub fn build_patch(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
     paragraph_id: &str,
     new_text: String,
 ) -> Option<PersistableRegionPatch> {
-    build_paragraph_patch_with_runs(plan, vector_model, paragraph_id, new_text, None)
+    build_rich_patch(plan, vector_model, paragraph_id, new_text, None)
 }
 
-pub fn build_paragraph_patch_with_runs(
+pub fn build_rich_patch(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
     paragraph_id: &str,
     new_text: String,
     new_runs: Option<Vec<crate::models::LayoutRun>>,
 ) -> Option<PersistableRegionPatch> {
-    let base_paragraph_id = edit_target_base_paragraph_id(paragraph_id);
+    let base = base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
-            if paragraph.id != base_paragraph_id {
+            if paragraph.id != base {
                 continue;
             }
-            let scene = build_paragraph_editor_scene_for_target(
-                paragraph,
-                vector_model,
-                paragraph_id,
-                None,
-            )?;
+            let scene = build_target_scene(paragraph, vector_model, paragraph_id, None)?;
             let replacement_target = active_editor_target_from_scene(plan, paragraph, &scene);
-            let original_text = scene.document_plan.source_body_text().to_string();
-            let is_list_item = scene.marker.is_some();
-            let full_target_indices = if let Some(marker) = scene.marker.as_ref() {
+            let original_text = scene.body_text().to_string();
+            let is_list_item = scene.marker().is_some();
+            let full_target_indices = if let Some(marker) = scene.marker() {
                 let mut target_indices = marker
                     .runs
                     .iter()
                     .flat_map(|run| run.object_indices.iter().copied())
                     .collect::<BTreeSet<_>>();
                 target_indices.extend(resolve_target_indices_from_runs(
-                    &scene.original_runs,
+                    scene.original_runs(),
                     vector_model,
                 ));
                 target_indices.into_iter().collect::<Vec<_>>()
             } else {
                 Vec::new()
             };
-            let marker_text = scene.marker.as_ref().map(|marker| marker.text.clone());
+            let marker_text = scene.marker().map(|marker| marker.text.clone());
             let snapshot = build_edit_replacement_snapshot(
                 replacement_target,
                 if is_list_item {
@@ -118,6 +141,16 @@ pub fn build_paragraph_patch_with_runs(
                 marker_text.clone(),
                 None,
             );
+            let semantic_summary = semantic_summary_from_scene(&scene);
+            let semantic_ops = if original_text != new_text {
+                vec![PersistableSemanticOperation::ReplaceBodyText {
+                    block_id: semantic_summary.block_id.clone(),
+                    old_text: original_text.clone(),
+                    new_text: new_text.clone(),
+                }]
+            } else {
+                Vec::new()
+            };
             return Some(PersistableRegionPatch {
                 patch_key: format!(
                     "{}:{}",
@@ -153,14 +186,14 @@ pub fn build_paragraph_patch_with_runs(
                 original_value_text: None,
                 new_value_text: None,
                 target_indices: resolve_target_indices_from_runs(
-                    &scene.original_runs,
+                    scene.original_runs(),
                     vector_model,
                 ),
                 full_target_indices,
                 displacement_y: None,
                 wrap_width: Some(
                     scene
-                        .body_session
+                        .body_session()
                         .paragraph
                         .wrap_width
                         .max(scene.shell_bbox.right - scene.shell_bbox.left),
@@ -169,6 +202,8 @@ pub fn build_paragraph_patch_with_runs(
                 line_height: Some(paragraph.style.line_height.max(1.0)),
                 char_spacing: 0.0,
                 horizontal_scaling: 100.0,
+                semantic_block: Some(semantic_summary),
+                semantic_ops,
             });
         }
     }
@@ -184,7 +219,7 @@ fn active_editor_target_from_scene(
         paragraph_id: scene.target_id.clone(),
         region_id: paragraph.region_id.clone(),
         page_index: plan.page_index,
-        text: scene.document_plan.source_body_text().to_string(),
+        text: scene.body_text().to_string(),
         bbox_left: scene.shell_bbox.left,
         bbox_top: scene.shell_bbox.top,
         bbox_right: scene.shell_bbox.right,
@@ -195,26 +230,26 @@ fn active_editor_target_from_scene(
         font_style: paragraph.control_style.font_style.clone(),
         color: paragraph.control_style.color.clone(),
         text_decoration: paragraph.control_style.text_decoration.clone(),
-        initial_caret_index: scene.document_plan.body_initial_caret,
-        editor_session: scene.body_session.clone(),
+        initial_caret_index: scene.body_initial_caret(),
+        editor_session: scene.body_session().clone(),
         scene: scene.clone(),
     }
 }
 
-pub fn build_active_editor_target(
+pub fn build_target_at_point(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
     paragraph_id: &str,
     click_page_x: f32,
     click_page_y: f32,
 ) -> Option<ActiveEditorTarget> {
-    let base_paragraph_id = edit_target_base_paragraph_id(paragraph_id);
+    let base = base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
-            if paragraph.id != base_paragraph_id {
+            if paragraph.id != base {
                 continue;
             }
-            let scene = build_paragraph_editor_scene_for_target(
+            let scene = build_target_scene(
                 paragraph,
                 vector_model,
                 paragraph_id,
@@ -224,7 +259,7 @@ pub fn build_active_editor_target(
                 paragraph_id: scene.target_id.clone(),
                 region_id: paragraph.region_id.clone(),
                 page_index: plan.page_index,
-                text: scene.document_plan.source_body_text().to_string(),
+                text: scene.body_text().to_string(),
                 bbox_left: scene.shell_bbox.left,
                 bbox_top: scene.shell_bbox.top,
                 bbox_right: scene.shell_bbox.right,
@@ -235,8 +270,8 @@ pub fn build_active_editor_target(
                 font_style: paragraph.control_style.font_style.clone(),
                 color: paragraph.control_style.color.clone(),
                 text_decoration: paragraph.control_style.text_decoration.clone(),
-                initial_caret_index: scene.document_plan.body_initial_caret,
-                editor_session: scene.body_session.clone(),
+                initial_caret_index: scene.body_initial_caret(),
+                editor_session: scene.body_session().clone(),
                 scene,
             });
         }
@@ -244,28 +279,23 @@ pub fn build_active_editor_target(
     None
 }
 
-pub fn build_paragraph_render_target(
+pub fn build_render_target(
     plan: &GlyphPaintPlan,
     vector_model: Option<&VectorPageModel>,
     paragraph_id: &str,
 ) -> Option<ActiveEditorTarget> {
-    let base_paragraph_id = edit_target_base_paragraph_id(paragraph_id);
+    let base = base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
-            if paragraph.id != base_paragraph_id {
+            if paragraph.id != base {
                 continue;
             }
-            let scene = build_paragraph_editor_scene_for_target(
-                paragraph,
-                vector_model,
-                paragraph_id,
-                None,
-            )?;
+            let scene = build_target_scene(paragraph, vector_model, paragraph_id, None)?;
             return Some(ActiveEditorTarget {
                 paragraph_id: scene.target_id.clone(),
                 region_id: paragraph.region_id.clone(),
                 page_index: plan.page_index,
-                text: scene.document_plan.source_body_text().to_string(),
+                text: scene.body_text().to_string(),
                 bbox_left: scene.shell_bbox.left,
                 bbox_top: scene.shell_bbox.top,
                 bbox_right: scene.shell_bbox.right,
@@ -276,8 +306,8 @@ pub fn build_paragraph_render_target(
                 font_style: paragraph.control_style.font_style.clone(),
                 color: paragraph.control_style.color.clone(),
                 text_decoration: paragraph.control_style.text_decoration.clone(),
-                initial_caret_index: scene.document_plan.body_initial_caret,
-                editor_session: scene.body_session.clone(),
+                initial_caret_index: scene.body_initial_caret(),
+                editor_session: scene.body_session().clone(),
                 scene,
             });
         }
@@ -285,18 +315,17 @@ pub fn build_paragraph_render_target(
     None
 }
 
-pub fn resolve_paragraph_shell_bbox(
+pub fn paragraph_shell_bbox(
     plan: &GlyphPaintPlan,
     paragraph_id: &str,
 ) -> Option<crate::models::BoundingBox> {
-    let base_paragraph_id = edit_target_base_paragraph_id(paragraph_id);
+    let base = base_paragraph_id(paragraph_id);
     for region in &plan.regions {
         for paragraph in &region.paragraphs {
-            if paragraph.id != base_paragraph_id {
+            if paragraph.id != base {
                 continue;
             }
-            let scene =
-                build_paragraph_editor_scene_for_target(paragraph, None, paragraph_id, None)?;
+            let scene = build_target_scene(paragraph, None, paragraph_id, None)?;
             return Some(scene.shell_bbox);
         }
     }
@@ -307,5 +336,5 @@ fn resolve_target_indices_from_runs(
     runs: &[crate::models::GlyphPaintRun],
     vector_model: Option<&VectorPageModel>,
 ) -> Vec<usize> {
-    collect_object_indices_from_runs(runs, vector_model)
+    collect_run_indices(runs, vector_model)
 }

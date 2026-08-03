@@ -141,6 +141,11 @@ export type LegacyActiveTarget = {
     width: number;
     height: number;
     initialCaretIndex: number;
+    liveCaretIndex?: number;
+    markerText?: string | null;
+    markerKind?: string | null;
+    markerAdvance?: number | null;
+    markerRunCount?: number;
     fontFamily: string;
     fontSizePx: number;
     fontWeight: string;

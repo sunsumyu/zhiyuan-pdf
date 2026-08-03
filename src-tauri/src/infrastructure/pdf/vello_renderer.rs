@@ -1,12 +1,12 @@
 use crate::infrastructure::pdf::models::{NativeTextModel, RenderObject};
+use crate::infrastructure::pdf::{color_utils, path_utils};
 use cosmic_text::{Buffer, FontSystem, Metrics, Shaping, SwashCache};
 use image::{ImageBuffer, Rgba};
-use pdf_viewer_core::typography::models::ResolvedPdfFont;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use swash::proxy::MetricsProxy;
 use swash::scale::ScaleContext;
-use vello::kurbo::{Affine, BezPath, Point, Stroke, Vec2};
+use vello::kurbo::{Affine, BezPath, Stroke, Vec2};
 use vello::peniko::{Color, Fill};
 use vello::{Renderer, RendererOptions, Scene};
 use wgpu::{
@@ -14,15 +14,35 @@ use wgpu::{
     ImageDataLayout, Instance, InstanceDescriptor, Limits, MapMode, PowerPreference,
     RequestAdapterOptions, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
+
+pub mod font_resolver;
+
 pub struct VelloRenderer {
-    device: Arc<wgpu::Device>,
-    queue: Arc<wgpu::Queue>,
-    renderer: Renderer,
-    font_system: FontSystem,
-    swash_cache: SwashCache,
-    font_file_cache: HashMap<std::path::PathBuf, Arc<Vec<u8>>>,
-    font_matcher: crate::infrastructure::pdf::font::matching::PdfSystemFontMatcher,
+    pub(super) device: Arc<wgpu::Device>,
+    pub(super) queue: Arc<wgpu::Queue>,
+    pub(super) renderer: Renderer,
+    pub(super) font_system: FontSystem,
+    pub(super) swash_cache: SwashCache,
+    pub(super) font_file_cache: HashMap<std::path::PathBuf, Arc<Vec<u8>>>,
+    pub(super) font_matcher: crate::infrastructure::pdf::font::matching::PdfSystemFontMatcher,
 }
+
+pub(super) fn text_fill_enabled(render_mode: i32) -> bool {
+    matches!(render_mode, 0 | 2 | 4 | 6)
+}
+pub(super) fn text_stroke_enabled(render_mode: i32) -> bool {
+    matches!(render_mode, 1 | 2 | 5 | 6)
+}
+pub(super) fn text_is_non_painting(render_mode: i32) -> bool {
+    matches!(render_mode, 3 | 7)
+}
+
+/// Whether this text run warrants verbose render-path tracing.
+/// Gate: known diagnostic marker or large font size.
+pub(super) fn should_trace_text_render(text: &NativeTextModel) -> bool {
+    text.text.contains("绠€") || text.font_size > 20.0
+}
+
 impl VelloRenderer {
     pub async fn new() -> Result<Self, String> {
         let instance = Instance::new(InstanceDescriptor {
@@ -61,11 +81,96 @@ impl VelloRenderer {
         )
         .map_err(|e| e.to_string())?;
 
+        let mut font_system = FontSystem::new();
+        font_system.db_mut().load_system_fonts();
+
+        // Also explicitly load common CJK font files in case load_system_fonts misses them.
+        let cjk_font_paths = vec![
+            r"C:\Windows\Fonts\msyh.ttc",
+            r"C:\Windows\Fonts\msyhbd.ttc",
+            r"C:\Windows\Fonts\simsun.ttc",
+            r"C:\Windows\Fonts\msjh.ttc",
+            r"C:\Windows\Fonts\simhei.ttf",
+            r"C:\Windows\Fonts\simfang.ttf",
+            r"C:\Windows\Fonts\simkai.ttf",
+            r"C:\Windows\Fonts\simli.ttf",
+            r"C:\Windows\Fonts\simyou.ttf",
+        ];
+        for path in &cjk_font_paths {
+            if std::path::Path::new(path).exists() {
+                if let Ok(bytes) = std::fs::read(path) {
+                    font_system.db_mut().load_font_data(bytes);
+                    println!("[VELLO-FONT] Loaded CJK font binary data: {}", path);
+                }
+            }
+        }
+
+        // Remove symbol/icon fonts from fontdb so fallback never resolves to Marlett/Wingdings/Symbol/MDL2
+        let face_ids_to_remove: Vec<_> = font_system
+            .db()
+            .faces()
+            .filter(|face| {
+                face.families.iter().any(|(name, _)| {
+                    let n = name.to_lowercase();
+                    n.contains("marlett")
+                        || n.contains("webdings")
+                        || n.contains("wingding")
+                        || n.contains("symbol")
+                        || n.contains("mdl2")
+                        || n.contains("fluent icon")
+                        || n.contains("dingbat")
+                        || n.contains("bookshelf")
+                })
+            })
+            .map(|face| face.id)
+            .collect();
+        for id in face_ids_to_remove {
+            font_system.db_mut().remove_face(id);
+        }
+
+        // Diagnostic: print all font families in fontdb to verify CJK fonts are registered
+        println!("[VELLO-FONT] ===== All font families in fontdb =====");
+        let mut family_names: Vec<String> = font_system.db().faces()
+            .flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
+            .collect();
+        family_names.sort();
+        family_names.dedup();
+        for name in &family_names {
+            println!("[VELLO-FONT]   Family: {}", name);
+        }
+        println!("[VELLO-FONT] Total {} unique font families", family_names.len());
+
+        // Set fallback families to actual existing CJK fonts
+        // Try both English and Chinese names since fontdb may register under either
+        let has_msyh = family_names.iter().any(|n| n.contains("Microsoft YaHei") || n.contains("微软雅黑"));
+        let has_simsun = family_names.iter().any(|n| n.contains("SimSun") || n.contains("宋体"));
+        if has_msyh {
+            font_system.db_mut().set_sans_serif_family("Microsoft YaHei");
+            println!("[VELLO-FONT] Set sans-serif fallback to Microsoft YaHei");
+        } else if family_names.iter().any(|n| n.contains("微软雅黑")) {
+            font_system.db_mut().set_sans_serif_family("微软雅黑");
+            println!("[VELLO-FONT] Set sans-serif fallback to 微软雅黑");
+        }
+        if has_simsun {
+            font_system.db_mut().set_serif_family("SimSun");
+            font_system.db_mut().set_monospace_family("SimSun");
+            eprintln!("[VELLO-FONT] Set serif/monospace fallback to SimSun");
+        } else if family_names.iter().any(|n| n.contains("宋体")) {
+            font_system.db_mut().set_serif_family("宋体");
+            font_system.db_mut().set_monospace_family("宋体");
+            eprintln!("[VELLO-FONT] Set serif/monospace fallback to 宋体");
+        }
+
+        eprintln!(
+            "[VELLO-FONT] Total {} font faces loaded into cosmic_text",
+            font_system.db().faces().count()
+        );
+
         Ok(Self {
             device: Arc::new(device),
             queue: Arc::new(queue),
             renderer,
-            font_system: FontSystem::new(),
+            font_system,
             swash_cache: SwashCache::new(),
             font_file_cache: HashMap::new(),
             font_matcher: crate::infrastructure::pdf::font::matching::PdfSystemFontMatcher::new(
@@ -83,36 +188,45 @@ impl VelloRenderer {
         objects: &[RenderObject],
         width: u32,
         height: u32,
-        zoom: f32,
+        page_width: f32,
+        page_height: f32,
     ) -> Result<Vec<u8>, String> {
         let mut scene = Scene::new();
         let mut scale_context = ScaleContext::new();
-        let mut vector_rendered_text_ids = HashSet::new();
+        let mut vector_rendered_indices = HashSet::new();
 
-        // 鈹€鈹€ Standard PDF Coordinate Transform (Flip Y + Zoom) 鈹€鈹€
-        let flip_y = Affine::scale_non_uniform(zoom as f64, -zoom as f64)
-            .then_translate(vello::kurbo::Vec2::new(0.0, height as f64));
+        let scale_x = if page_width > 0.0 {
+            width as f64 / page_width as f64
+        } else {
+            1.0
+        };
+        let scale_y = if page_height > 0.0 {
+            height as f64 / page_height as f64
+        } else {
+            1.0
+        };
+        let transform = Affine::scale_non_uniform(scale_x, scale_y);
 
-        for object in objects {
+        for (idx, object) in objects.iter().enumerate() {
             match object {
                 RenderObject::Path(path) => {
-                    let bez_path = path_segments_to_bez_path(&path.segments);
+                    let bez_path = path_utils::path_segments_to_bez_path(&path.segments);
 
                     if path.fill {
-                        let color = parse_hex_vello_color(
+                        let color = color_utils::parse_hex_vello_color(
                             path.fill_color.as_deref().unwrap_or("#000000"),
                             path.alpha,
                         );
-                        scene.fill(Fill::NonZero, flip_y, color, None, &bez_path);
+                        scene.fill(Fill::NonZero, transform, color, None, &bez_path);
                     }
                     if path.stroke {
-                        let color = parse_hex_vello_color(
+                        let color = color_utils::parse_hex_vello_color(
                             path.stroke_color.as_deref().unwrap_or("#000000"),
                             path.alpha,
                         );
                         scene.stroke(
                             &Stroke::new(path.stroke_width as f64),
-                            flip_y,
+                            transform,
                             color,
                             None,
                             &bez_path,
@@ -120,40 +234,42 @@ impl VelloRenderer {
                     }
                 }
                 RenderObject::Text(text) => {
-                    if self.draw_text_vector(&mut scene, &mut scale_context, text, flip_y) {
-                        if !text.id.is_empty() {
-                            vector_rendered_text_ids.insert(text.id.clone());
-                        }
+                    if self.draw_text_vector(&mut scene, &mut scale_context, text, transform) {
+                        vector_rendered_indices.insert(idx);
                     }
                 }
                 _ => {}
             }
         }
 
-        let rgba_data = self.perform_vello_render_raw(&scene, width, height)?;
+        let target_width = width.max(1);
+        let target_height = height.max(1);
 
-        // 鈹€鈹€ Phase 2: CPU overlay for text + legacy images 鈹€鈹€
-        let mut img = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, rgba_data)
+        let rgba_data = self.perform_vello_render_raw(&scene, target_width, target_height)?;
+
+        // ── Phase 2: CPU overlay for text + legacy images ──
+        let mut img = ImageBuffer::<Rgba<u8>, _>::from_raw(target_width, target_height, rgba_data)
             .ok_or("Failed to create image buffer from Vello output")?;
 
-        for object in objects {
+        let scale_f32_x = scale_x as f32;
+        let scale_f32_y = scale_y as f32;
+
+        for (idx, object) in objects.iter().enumerate() {
             match object {
                 RenderObject::Text(text_model) => {
-                    if !text_model.id.is_empty()
-                        && vector_rendered_text_ids.contains(&text_model.id)
-                    {
+                    if vector_rendered_indices.contains(&idx) {
                         continue;
                     }
-                    self.draw_text_bitmap_deprecated(&mut img, text_model, zoom, width, height);
+                    self.draw_text_bitmap_deprecated(&mut img, text_model, scale_f32_x, width, height);
                 }
                 RenderObject::Image(image_model) => {
-                    self.draw_image_cpu(&mut img, image_model, zoom, width, height);
+                    self.draw_image_cpu(&mut img, image_model, scale_f32_x, scale_f32_y, width, height);
                 }
                 _ => {}
             }
         }
 
-        // 鈹€鈹€ Phase 3: Encode to PNG 鈹€鈹€
+        // ── Phase 3: Encode to PNG ──
         let mut png_data = Vec::new();
         img.write_to(
             &mut std::io::Cursor::new(&mut png_data),
@@ -168,18 +284,17 @@ impl VelloRenderer {
         &mut self,
         img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
         model: &crate::infrastructure::pdf::models::NativeImageModel,
-        zoom: f32,
+        scale_x: f32,
+        scale_y: f32,
         canvas_w: u32,
         canvas_h: u32,
     ) {
-        // 1. Extract asset ID from local URL
         let asset_id = if let Some(id) = model.data_url.strip_prefix("http://pdfasset.localhost/") {
             id
         } else {
             return;
         };
 
-        // 2. Fetch from cache
         let image_data = {
             let cache = crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE
                 .lock()
@@ -192,27 +307,21 @@ impl VelloRenderer {
             None => return,
         };
 
-        // 3. Decode image
         let src_img = match image::load_from_memory(&raw_bytes) {
             Ok(i) => i.to_rgba8(),
             Err(_) => return,
         };
 
-        // 4. Calculate target rectangle (PDF -> Canvas)
-        // PDF: y-up. Canvas: y-down.
-        let target_w = (model.width * zoom).abs() as u32;
-        let target_h = (model.height * zoom).abs() as u32;
+        let target_w = (model.width * scale_x).abs() as u32;
+        let target_h = (model.height * scale_y).abs() as u32;
 
         if target_w == 0 || target_h == 0 {
             return;
         }
 
-        // Use the transformation matrix (a, b, c, d, e, f) or simplified x, y
-        // For simple icons, x/y + width/height is usually enough
-        let target_x = (model.x * zoom) as i32;
-        let target_y = (canvas_h as f32 - (model.y + model.height) * zoom) as i32;
+        let target_x = (model.x * scale_x) as i32;
+        let target_y = (model.y * scale_y) as i32;
 
-        // 5. Resize and composite
         let resized = if src_img.width() != target_w || src_img.height() != target_h {
             image::imageops::resize(
                 &src_img,
@@ -233,15 +342,15 @@ impl VelloRenderer {
                     let src_pixel = resized.get_pixel(px, py);
                     if src_pixel[3] == 0 {
                         continue;
-                    } // Skip transparent
+                    }
 
                     let dst_pixel = img.get_pixel_mut(fx as u32, fy as u32);
                     let alpha = src_pixel[3] as f32 / 255.0;
 
                     dst_pixel.0 = [
-                        blend(dst_pixel[0], src_pixel[0], alpha),
-                        blend(dst_pixel[1], src_pixel[1], alpha),
-                        blend(dst_pixel[2], src_pixel[2], alpha),
+                        color_utils::blend(dst_pixel[0], src_pixel[0], alpha),
+                        color_utils::blend(dst_pixel[1], src_pixel[1], alpha),
+                        color_utils::blend(dst_pixel[2], src_pixel[2], alpha),
                         255,
                     ];
                 }
@@ -250,10 +359,6 @@ impl VelloRenderer {
     }
 
     /// CPU text rendering using cosmic_text's SwashCache for glyph rasterization.
-    /// This bypasses Vello entirely for text, using proven pixel-based rasterization
-    /// that correctly handles CJK fonts via cosmic_text's font fallback.
-    /// [DEPRECATED] Hardware rasterization was producing fuzzy/thin text.
-    /// Now weuse draw_text_vector instead.
     fn draw_text_bitmap_deprecated(
         &mut self,
         img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
@@ -262,10 +367,10 @@ impl VelloRenderer {
         canvas_w: u32,
         canvas_h: u32,
     ) {
+        println!("[CALL-BITMAP-TEXT] text='{}' rendering_mode={:?}", text.text, text.rendering_mode);
         if text_is_non_painting(text.rendering_mode) {
             return;
         }
-        // --- DYNAMIC FONT SIZE: Handle matrix scale (scale_y) ---
         let real_font_size = if text.scale_y.abs() > 1.0 {
             text.scale_y.abs()
         } else {
@@ -281,14 +386,6 @@ impl VelloRenderer {
                 1.0
             },
         );
-        let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(
-            &mut self.font_system,
-            Some(canvas_w as f32),
-            Some(canvas_h as f32),
-        );
-        // 1. Configure attributes based on PDF metadata.
-        // PDF render mode / faux-bold are paint semantics, not font-face selection hints.
         let mut attrs = cosmic_text::Attrs::new();
         if text.is_bold {
             attrs = attrs.weight(cosmic_text::Weight::BOLD);
@@ -297,59 +394,49 @@ impl VelloRenderer {
             attrs = attrs.style(cosmic_text::Style::Italic);
         }
         let resolved_font = self.resolve_pdf_font(text);
-        attrs = attrs.family(self.resolve_cosmic_family(text, &resolved_font));
+        let family = self.resolve_cosmic_family(text, &resolved_font);
+        attrs = attrs.family(family);
 
-        // 2. Parse text color
-        let (cr, cg, cb) = parse_hex_color_rgb(if text.color.is_empty() {
+        let (cr, cg, cb) = color_utils::parse_hex_color_rgb(if text.color.is_empty() {
             "#000000"
         } else {
             &text.color
         });
 
-        // 3. WHOLE-LINE RENDERING: Restores Hinting and "Solid" Contrast
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
+        buffer.set_size(
+            &mut self.font_system,
+            Some(canvas_w as f32),
+            Some(canvas_h as f32),
+        );
         buffer.set_text(&mut self.font_system, &text.text, attrs, Shaping::Advanced);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        // --- DIAGNOSTIC LOGGING ---
-        let mut matched_font = "Unknown".to_string();
-        for run in buffer.layout_runs() {
-            for glyph in run.glyphs {
-                if let Some(font) = self.font_system.db().face(glyph.font_id) {
-                    matched_font = format!("{:?} {:?}", font.families, font.weight);
-                    break;
-                }
-            }
-        }
-        if should_trace_text_render(text) {
-            println!(
-                "[FONT-MATCH] REQ: '{}' | MATCHED: '{}' | RENDER_MODE: {} | TEXT: '{}'",
-                text.font_name,
-                matched_font,
-                text.rendering_mode,
-                if text.text.len() > 10 {
-                    format!("{}...", &text.text[..10])
-                } else {
-                    text.text.clone()
-                }
-            );
-        }
-
-        // --- POSITIONING FIX: PDF tx/ty are absolute baseline origins ---
         let base_x = text.tx * zoom;
-        let base_y = canvas_h as f32 - text.ty * zoom; // Exact PDF Baseline
+        let base_y = text.ty * zoom;
 
         for run in buffer.layout_runs() {
-            // Glyph 'y' is relative to the baseline.
-            // In cosmic-text, for a single-line buffer, the baseline offset was already handled during shaping.
             for glyph in run.glyphs {
-                let physical = glyph.physical((0., 0.), 1.0);
+                let physical = glyph.physical((0.0, 0.0), 1.0);
+                if let Some(font_face) = self.font_system.db().face(physical.cache_key.font_id) {
+                    println!(
+                        "[VELLO-GLYPH] text='{}' font_name='{}' font_id={:?} face_families={:?} glyph_id={}",
+                        preview_text(&text.text),
+                        text.font_name,
+                        physical.cache_key.font_id,
+                        font_face.families,
+                        glyph.glyph_id
+                    );
+                }
                 if let Some(glyph_img) = self
                     .swash_cache
                     .get_image_uncached(&mut self.font_system, physical.cache_key)
                 {
                     let gx = base_x as i32 + physical.x + glyph_img.placement.left;
-                    let gy = base_y as i32 + physical.y - glyph_img.placement.top;
+                    let gy = (base_y as i32) - glyph_img.placement.top;
+                    if glyph_img.placement.width > 0 && glyph_img.placement.height > 0 {
+                        println!("    [BITMAP-TEXT] '{}' glyph at gx={}, gy={} (canvas {}x{})", text.text, gx, gy, canvas_w, canvas_h);
+                    }
                     self.composite_glyph(img, &glyph_img, gx, gy, cr, cg, cb, canvas_w, canvas_h);
                 }
             }
@@ -375,6 +462,8 @@ impl VelloRenderer {
             return;
         }
 
+        println!("    [DATA-LEN] content={:?} len={} gw*gh={} (gw={}, gh={})", glyph_img.content, glyph_img.data.len(), gw * gh, gw, gh);
+
         match glyph_img.content {
             cosmic_text::SwashContent::Mask => {
                 for py in 0..gh {
@@ -388,11 +477,10 @@ impl VelloRenderer {
                         if fx >= 0 && fx < canvas_w as i32 && fy >= 0 && fy < canvas_h as i32 {
                             let pixel = img.get_pixel_mut(fx as u32, fy as u32);
                             let bg = pixel.0;
-                            // Solid composite (avoid multiple passes if possible, but keep alpha for antialiasing)
                             pixel.0 = [
-                                blend(bg[0], cr, alpha),
-                                blend(bg[1], cg, alpha),
-                                blend(bg[2], cb, alpha),
+                                color_utils::blend(bg[0], cr, alpha),
+                                color_utils::blend(bg[1], cg, alpha),
+                                color_utils::blend(bg[2], cb, alpha),
                                 255,
                             ];
                         }
@@ -419,9 +507,9 @@ impl VelloRenderer {
                             let pixel = img.get_pixel_mut(fx as u32, fy as u32);
                             let bg = pixel.0;
                             pixel.0 = [
-                                blend(bg[0], sr, sa),
-                                blend(bg[1], sg, sa),
-                                blend(bg[2], sb, sa),
+                                color_utils::blend(bg[0], sr, sa),
+                                color_utils::blend(bg[1], sg, sa),
+                                color_utils::blend(bg[2], sb, sa),
                                 255,
                             ];
                         }
@@ -445,9 +533,9 @@ impl VelloRenderer {
                             let pixel = img.get_pixel_mut(fx as u32, fy as u32);
                             let bg = pixel.0;
                             pixel.0 = [
-                                blend(bg[0], cr, alpha),
-                                blend(bg[1], cg, alpha),
-                                blend(bg[2], cb, alpha),
+                                color_utils::blend(bg[0], cr, alpha),
+                                color_utils::blend(bg[1], cg, alpha),
+                                color_utils::blend(bg[2], cb, alpha),
                                 255,
                             ];
                         }
@@ -457,7 +545,7 @@ impl VelloRenderer {
         }
     }
     fn text_fill_color(&self, text: &NativeTextModel) -> Color {
-        parse_hex_vello_color(
+        color_utils::parse_hex_vello_color(
             if text.color.is_empty() {
                 "#000000"
             } else {
@@ -472,7 +560,10 @@ impl VelloRenderer {
         } else {
             &text.color
         };
-        parse_hex_vello_color(text.stroke_color.as_deref().unwrap_or(fallback), text.alpha)
+        color_utils::parse_hex_vello_color(
+            text.stroke_color.as_deref().unwrap_or(fallback),
+            text.alpha,
+        )
     }
     fn text_stroke_width(&self, text: &NativeTextModel) -> f64 {
         let width = if text.stroke_width > 0.0 {
@@ -496,11 +587,12 @@ impl VelloRenderer {
         path.apply_affine(transform);
 
         let mut painted = false;
+        let fill_color = self.text_fill_color(text);
         if text_fill_enabled(text.rendering_mode) {
             scene.fill(
-                Fill::NonZero,
+                Fill::EvenOdd,
                 Affine::IDENTITY,
-                self.text_fill_color(text),
+                fill_color,
                 None,
                 &path,
             );
@@ -521,7 +613,7 @@ impl VelloRenderer {
     }
     fn raw_outline_transform(
         &self,
-        flip_y: Affine,
+        transform: Affine,
         baseline_x: f32,
         baseline_y: f32,
         font_size: f32,
@@ -532,9 +624,9 @@ impl VelloRenderer {
         } else {
             1.0
         };
-        flip_y
+        transform
             * Affine::translate(Vec2::new(baseline_x as f64, baseline_y as f64))
-            * Affine::scale(scale)
+            * Affine::scale_non_uniform(scale, -scale)
     }
 
     /// GPU render paths/images via Vello, returns raw RGBA pixel data
@@ -590,7 +682,6 @@ impl VelloRenderer {
             )
             .map_err(|e| e.to_string())?;
 
-        // wgpu requires bytes_per_row aligned to COPY_BYTES_PER_ROW_ALIGNMENT (256)
         let unpadded_bytes_per_row = width * 4;
         let align = 256u32;
         let padded_bytes_per_row = (unpadded_bytes_per_row + align - 1) / align * align;
@@ -635,7 +726,6 @@ impl VelloRenderer {
 
         let padded_data = slice.get_mapped_range();
 
-        // Strip row padding if needed
         let data = if padded_bytes_per_row != unpadded_bytes_per_row {
             let mut unpadded = Vec::with_capacity((unpadded_bytes_per_row * height) as usize);
             for row in 0..height {
@@ -644,131 +734,21 @@ impl VelloRenderer {
                 unpadded.extend_from_slice(&padded_data[start..end]);
             }
             unpadded
-        } else {
+                        } else {
             padded_data.to_vec()
         };
         drop(padded_data);
 
         Ok(data)
     }
-}
 
-/// Alpha blend: result = bg * (1 - alpha) + fg * alpha
-#[inline]
-fn blend(bg: u8, fg: u8, alpha: f32) -> u8 {
-    ((bg as f32 * (1.0 - alpha)) + (fg as f32 * alpha)) as u8
-}
-fn parse_hex_color_rgb(hex: &str) -> (u8, u8, u8) {
-    if hex.len() < 7 {
-        return (0, 0, 0);
-    }
-    let r = u8::from_str_radix(&hex[1..3], 16).unwrap_or(0);
-    let g = u8::from_str_radix(&hex[3..5], 16).unwrap_or(0);
-    let b = u8::from_str_radix(&hex[5..7], 16).unwrap_or(0);
-    (r, g, b)
-}
-fn parse_hex_vello_color(hex: &str, alpha: f32) -> Color {
-    let (r, g, b) = parse_hex_color_rgb(hex);
-    Color::rgba8(r, g, b, (alpha * 255.0) as u8)
-}
-fn text_fill_enabled(render_mode: i32) -> bool {
-    matches!(render_mode, 0 | 2 | 4 | 6)
-}
-fn text_stroke_enabled(render_mode: i32) -> bool {
-    matches!(render_mode, 1 | 2 | 5 | 6)
-}
-fn text_is_non_painting(render_mode: i32) -> bool {
-    matches!(render_mode, 3 | 7)
-}
-
-/// Convert a swash glyph outline into a vello/kurbo `BezPath`.
-/// Shared by the embedded-font and cosmic_text-fallback render paths.
-fn outline_to_bez_path(outline: &swash::scale::outline::Outline) -> BezPath {
-    use swash::zeno::Verb;
-    let mut bez_path = BezPath::new();
-    let mut points = outline.points().iter();
-    for verb in outline.verbs() {
-        match verb {
-            Verb::MoveTo => {
-                if let Some(p) = points.next() {
-                    bez_path.move_to(Point::new(p.x as f64, p.y as f64));
-                }
-            }
-            Verb::LineTo => {
-                if let Some(p) = points.next() {
-                    bez_path.line_to(Point::new(p.x as f64, p.y as f64));
-                }
-            }
-            Verb::QuadTo => {
-                if let (Some(c), Some(p)) = (points.next(), points.next()) {
-                    bez_path.quad_to(
-                        Point::new(c.x as f64, c.y as f64),
-                        Point::new(p.x as f64, p.y as f64),
-                    );
-                }
-            }
-            Verb::CurveTo => {
-                if let (Some(c1), Some(c2), Some(p)) =
-                    (points.next(), points.next(), points.next())
-                {
-                    bez_path.curve_to(
-                        Point::new(c1.x as f64, c1.y as f64),
-                        Point::new(c2.x as f64, c2.y as f64),
-                        Point::new(p.x as f64, p.y as f64),
-                    );
-                }
-            }
-            Verb::Close => bez_path.close_path(),
-        }
-    }
-    bez_path
-}
-
-/// Convert a `NativePathModel` segment list into a vello/kurbo `BezPath`.
-fn path_segments_to_bez_path(segments: &[crate::infrastructure::pdf::models::PathSegment]) -> BezPath {
-    let mut bez_path = BezPath::new();
-    for seg in segments {
-        match seg.command.as_str() {
-            "move" => {
-                if let Some(p) = seg.points.get(0) {
-                    bez_path.move_to(Point::new(p[0] as f64, p[1] as f64));
-                }
-            }
-            "line" => {
-                if let Some(p) = seg.points.get(0) {
-                    bez_path.line_to(Point::new(p[0] as f64, p[1] as f64));
-                }
-            }
-            "bezier" => {
-                if seg.points.len() == 3 {
-                    bez_path.curve_to(
-                        Point::new(seg.points[0][0] as f64, seg.points[0][1] as f64),
-                        Point::new(seg.points[1][0] as f64, seg.points[1][1] as f64),
-                        Point::new(seg.points[2][0] as f64, seg.points[2][1] as f64),
-                    );
-                }
-            }
-            "close" => bez_path.close_path(),
-            _ => {}
-        }
-    }
-    bez_path
-}
-
-/// Whether this text run warrants verbose render-path tracing.
-/// Gate: known diagnostic marker or large font size.
-fn should_trace_text_render(text: &NativeTextModel) -> bool {
-    text.text.contains("绠€") || text.font_size > 20.0
-}
-impl VelloRenderer {
     /// Render text as sharp vector paths using swash outlines.
-    /// [DEFINITIVE FIX] This implementation correctly normalizes Font Units to Pixels.
     fn draw_text_vector(
         &mut self,
         scene: &mut Scene,
         scale_context: &mut ScaleContext,
         text: &NativeTextModel,
-        flip_y: Affine,
+        transform: Affine,
     ) -> bool {
         let resolved_font = self.resolve_pdf_font(text);
         if should_trace_text_render(text) {
@@ -786,7 +766,7 @@ impl VelloRenderer {
                 text.stroke_color
             );
         }
-        if self.draw_embedded_text_vector(scene, scale_context, text, &resolved_font, flip_y) {
+        if self.draw_embedded_text_vector(scene, scale_context, text, &resolved_font, transform) {
             if should_trace_text_render(text) {
                 crate::pdf_log!(
                     3,
@@ -807,7 +787,6 @@ impl VelloRenderer {
             return true;
         }
 
-        // Stage-3 trace: embedded render failed, falling back to cosmic_text
         let has_suspect = text.text.chars().any(|c| c as u32 > 0x7F);
         if has_suspect {
             crate::pdf_log!(
@@ -845,6 +824,18 @@ impl VelloRenderer {
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let layout_runs: Vec<_> = buffer.layout_runs().collect();
+        let total_glyphs: usize = layout_runs.iter().map(|r| r.glyphs.len()).sum();
+        println!(
+            "[TEXT-VECTOR-TRACE] text='{}' font='{}' runs={} glyphs={} color='{}' mode={} tx={:.2} ty={:.2}",
+            preview_text(&text.text),
+            text.font_name,
+            layout_runs.len(),
+            total_glyphs,
+            text.color,
+            text.rendering_mode,
+            text.tx,
+            text.ty
+        );
         let mut matched_font = "Unknown".to_string();
         for run in &layout_runs {
             for glyph in run.glyphs {
@@ -857,19 +848,8 @@ impl VelloRenderer {
                 break;
             }
         }
-        if should_trace_text_render(text) {
-            crate::pdf_log!(
-                3,
-                "[FONT-MATCH] REQ: '{}' | MATCHED: '{}' | RENDER_MODE: {} | TEXT: '{}'",
-                text.font_name,
-                matched_font,
-                text.rendering_mode,
-                if text.text.len() > 10 {
-                    format!("{}...", &text.text[..10])
-                } else {
-                    text.text.clone()
-                }
-            );
+        if text.text.contains("Rust") || text.text.contains("编程语言") {
+            println!("[COSMIC-SHAPE-DEBUG] text='{}' req_font='{}' matched_font='{}'", text.text, text.font_name, matched_font);
         }
         let mut drew_any_glyph = false;
 
@@ -877,6 +857,9 @@ impl VelloRenderer {
             for glyph in run.glyphs {
                 let font_id = glyph.font_id;
                 if let Some(font_face) = self.font_system.db().face(font_id) {
+                    if text.text.contains("Rust") {
+                        println!("[GLYPH-POS-DEBUG] text='{}' gid={} gx={} gy={} tx={} ty={}", text.text, glyph.glyph_id, glyph.x, glyph.y, text.tx, text.ty);
+                    }
                     let index = font_face.index;
                     let source = &font_face.source;
 
@@ -889,35 +872,35 @@ impl VelloRenderer {
                             data_arc_binary.as_ref().unwrap().as_ref().as_ref()
                         }
                         cosmic_text::fontdb::Source::File(path) => {
-                            if let Some(arc) = self.font_file_cache.get(path) {
-                                data_arc_file = Some(arc.clone());
-                                data_arc_file.as_ref().unwrap().as_ref()
-                            } else {
-                                match std::fs::read(path) {
-                                    Ok(bytes) => {
+                            let cache_entry = self.font_file_cache.get(path).cloned();
+                            let data_arc = match cache_entry {
+                                Some(arc) => arc,
+                                None => {
+                                    if let Ok(bytes) = std::fs::read(path) {
                                         let arc = Arc::new(bytes);
-                                        self.font_file_cache.insert(path.clone(), arc.clone());
-                                        data_arc_file = Some(arc);
-                                        data_arc_file.as_ref().unwrap().as_ref()
+                                        arc
+                                    } else {
+                                        continue;
                                     }
-                                    Err(_) => continue,
                                 }
-                            }
+                            };
+                            data_arc_file = Some(data_arc);
+                            data_arc_file.as_ref().unwrap().as_slice()
                         }
                         _ => continue,
                     };
 
-                    let font_ref = swash::FontRef::from_index(data, index as usize).unwrap();
-                    let units_per_em = MetricsProxy::from_font(&font_ref).units_per_em() as f64;
-                    if units_per_em <= 0.0 {
-                        continue;
-                    }
-                    let mut scaler = scale_context.builder(font_ref).hint(false).build();
+                    if let Some(font_ref) = swash::FontRef::from_index(data, index as usize) {
+                        let units_per_em = MetricsProxy::from_font(&font_ref).units_per_em() as f64;
+                        let mut scaler = scale_context.builder(font_ref).hint(false).build();
+                        let Some(outline) = scaler.scale_outline(glyph.glyph_id) else {
+                            continue;
+                        };
 
-                    if let Some(outline) = scaler.scale_outline(glyph.glyph_id) {
-                        let bez_path = outline_to_bez_path(&outline);
+                        let bez_path = path_utils::outline_to_bez_path(&outline);
+
                         let final_transform = self.raw_outline_transform(
-                            flip_y,
+                            transform,
                             text.tx + glyph.x,
                             text.ty,
                             real_font_size,
@@ -934,307 +917,9 @@ impl VelloRenderer {
 
         drew_any_glyph
     }
-    fn resolve_pdf_font(&mut self, text: &NativeTextModel) -> ResolvedPdfFont {
-        self.font_matcher.resolve_native_text(text)
-    }
-    fn draw_embedded_text_vector(
-        &mut self,
-        scene: &mut Scene,
-        scale_context: &mut ScaleContext,
-        text: &NativeTextModel,
-        resolved_font: &ResolvedPdfFont,
-        flip_y: Affine,
-    ) -> bool {
-        if text_is_non_painting(text.rendering_mode) {
-            return true;
-        }
-        if !resolved_font.can_attempt_embedded_render {
-            if should_trace_text_render(text) {
-                println!(
-                    "[PDF-EMBEDDED] skip can_attempt=false text='{}' font='{}' key={:?} subtype={:?}",
-                    preview_text(&text.text),
-                    text.font_name,
-                    text.embedded_font_key,
-                    text.font_subtype
-                );
-            }
-            return false;
-        }
-
-        let Some(font_key) = text.embedded_font_key.as_deref() else {
-            println!(
-                "[PDF-EMBEDDED] skip missing-key text='{}' font='{}' subtype={:?}",
-                preview_text(&text.text),
-                text.font_name,
-                text.font_subtype
-            );
-            return false;
-        };
-        let font_bytes = {
-            let cache = crate::infrastructure::pdf::cache::PDF_FONT_PROGRAM_CACHE
-                .lock()
-                .unwrap();
-            cache.get(font_key).cloned()
-        };
-        let Some(font_bytes) = font_bytes else {
-            println!(
-                "[PDF-EMBEDDED] skip missing-cache-entry key='{}' text='{}' font='{}'",
-                font_key,
-                preview_text(&text.text),
-                text.font_name
-            );
-            return false;
-        };
-
-        let Some(font_ref) = swash::FontRef::from_index(font_bytes.as_slice(), 0) else {
-            println!(
-                "[PDF-EMBEDDED] skip invalid-font-ref key='{}' text='{}' font='{}'",
-                font_key,
-                preview_text(&text.text),
-                text.font_name
-            );
-            return false;
-        };
-        let units_per_em = MetricsProxy::from_font(&font_ref).units_per_em() as f64;
-        if units_per_em <= 0.0 {
-            println!(
-                "[PDF-EMBEDDED] skip invalid-upem key='{}' text='{}' font='{}'",
-                font_key,
-                preview_text(&text.text),
-                text.font_name
-            );
-            return false;
-        }
-
-        let glyph_positions = self.build_embedded_glyph_positions(text);
-        if glyph_positions.is_empty() {
-            println!(
-                "[PDF-EMBEDDED] skip no-glyph-positions text='{}' font='{}' char_origins={} char_widths={} codes={}",
-                preview_text(&text.text),
-                text.font_name,
-                text.char_origins.len(),
-                text.char_widths.len(),
-                text.pdf_char_codes.len()
-            );
-            return false;
-        }
-
-        let real_font_size = if text.scale_y.abs() > 1.0 {
-            text.scale_y.abs()
-        } else {
-            text.font_size
-        };
-        let mut scaler = scale_context.builder(font_ref).hint(false).build();
-
-        let mut drew_any_glyph = false;
-        for (index, (baseline_x, baseline_y)) in glyph_positions.into_iter().enumerate() {
-            let glyph_id = self.resolve_embedded_glyph_id(text, &font_ref, index);
-            if glyph_id == 0 {
-                continue;
-            }
-            let Some(outline) = scaler.scale_outline(glyph_id) else {
-                continue;
-            };
-
-                        let bez_path = outline_to_bez_path(&outline);
-
-            let final_transform = self.raw_outline_transform(
-                flip_y,
-                baseline_x,
-                baseline_y,
-                real_font_size,
-                units_per_em,
-            );
-
-            if self.paint_text_outline(scene, bez_path, final_transform, text) {
-                drew_any_glyph = true;
-            }
-        }
-
-        if !drew_any_glyph {
-            println!(
-                "[PDF-EMBEDDED] skip no-outlines text='{}' font='{}' key='{}' subtype={:?} codes={:?}",
-                preview_text(&text.text),
-                text.font_name,
-                font_key,
-                text.font_subtype,
-                text.pdf_char_codes
-            );
-        } else if should_trace_text_render(text) {
-            println!(
-                "[PDF-EMBEDDED] success text='{}' font='{}' key='{}' subtype={:?} codes={:?}",
-                preview_text(&text.text),
-                text.font_name,
-                font_key,
-                text.font_subtype,
-                text.pdf_char_codes
-            );
-        }
-
-        drew_any_glyph
-    }
-    fn build_embedded_glyph_positions(&self, text: &NativeTextModel) -> Vec<(f32, f32)> {
-        let glyph_count = self.embedded_glyph_count(text);
-        if glyph_count == 0 {
-            return Vec::new();
-        }
-
-        if text.char_origins.len() == glyph_count {
-            return text
-                .char_origins
-                .iter()
-                .map(|origin| (origin[0], origin[1]))
-                .collect();
-        }
-
-        if text.char_widths.len() == glyph_count {
-            let mut positions = Vec::with_capacity(glyph_count);
-            let mut current_x = text.tx;
-            for width in &text.char_widths {
-                positions.push((current_x, text.ty));
-                current_x += *width;
-            }
-            return positions;
-        }
-
-        if glyph_count == 1 {
-            return vec![(text.tx, text.ty)];
-        }
-
-        Vec::new()
-    }
-    fn embedded_glyph_count(&self, text: &NativeTextModel) -> usize {
-        if !text.pdf_char_codes.is_empty() {
-            return text.pdf_char_codes.len();
-        }
-        text.text.chars().count()
-    }
-    fn resolve_embedded_glyph_id(
-        &self,
-        text: &NativeTextModel,
-        font_ref: &swash::FontRef<'_>,
-        glyph_index: usize,
-    ) -> u16 {
-        let ch_for_log = text.text.chars().nth(glyph_index);
-        let raw_code_for_log = text.pdf_char_codes.get(glyph_index).copied();
-        let is_suspect = ch_for_log.map(|c| c as u32 > 0x7F).unwrap_or(false);
-
-        if let Some(raw_code) = text.pdf_char_codes.get(glyph_index).copied() {
-            if let Some(mapped) = self.resolve_cached_cid_glyph_id(text, raw_code) {
-                if is_suspect {
-                    crate::pdf_log!(
-                        3,
-                        "[GLYPH-RESOLVE] font='{}' idx={} raw=0x{:04X} ch={:?}(U+{:04X}) -> CID_MAP gid={}",
-                        text.font_name, glyph_index, raw_code,
-                        ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0), mapped
-                    );
-                }
-                return mapped;
-            }
-            let charmap_gid = font_ref.charmap().map(raw_code);
-            if charmap_gid != 0 {
-                if is_suspect {
-                    crate::pdf_log!(
-                        3,
-                        "[GLYPH-RESOLVE] font='{}' idx={} raw=0x{:04X} ch={:?}(U+{:04X}) -> RAW_CHARMAP gid={}",
-                        text.font_name, glyph_index, raw_code,
-                        ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0), charmap_gid
-                    );
-                }
-                return charmap_gid;
-            }
-        }
-
-        if let Some(ch) = text.text.chars().nth(glyph_index) {
-            if !ch.is_control() && !ch.is_whitespace() {
-                let glyph_id = font_ref.charmap().map(ch);
-                if glyph_id != 0 {
-                    if is_suspect {
-                        crate::pdf_log!(
-                            3,
-                            "[GLYPH-RESOLVE] font='{}' idx={} raw={:?} ch={:?}(U+{:04X}) -> UNICODE_CHARMAP gid={}",
-                            text.font_name, glyph_index, raw_code_for_log, ch, ch as u32, glyph_id
-                        );
-                    }
-                    return glyph_id;
-                }
-            }
-        }
-
-        if let Some(raw_code) = text.pdf_char_codes.get(glyph_index).copied() {
-            if self.prefers_pdf_code_glyph_mapping(text)
-                && raw_code > 0
-                && raw_code <= u16::MAX as u32
-            {
-                if is_suspect {
-                    crate::pdf_log!(
-                        3,
-                        "[GLYPH-RESOLVE] font='{}' idx={} raw=0x{:04X} ch={:?}(U+{:04X}) -> DIRECT_CODE gid={}",
-                        text.font_name, glyph_index, raw_code,
-                        ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0), raw_code as u16
-                    );
-                }
-                return raw_code as u16;
-            }
-        }
-
-        if is_suspect {
-            crate::pdf_log!(
-                3,
-                "[GLYPH-RESOLVE] font='{}' idx={} raw={:?} ch={:?}(U+{:04X}) -> FAILED gid=0 (will skip or fallback to cosmic)",
-                text.font_name, glyph_index, raw_code_for_log,
-                ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0)
-            );
-        }
-        0
-    }
-    fn resolve_cached_cid_glyph_id(&self, text: &NativeTextModel, raw_code: u32) -> Option<u16> {
-        let font_key = text.embedded_font_key.as_deref()?;
-        let cache = crate::infrastructure::pdf::cache::PDF_FONT_GLYPH_MAP_CACHE
-            .lock()
-            .ok()?;
-        let glyph_map = cache.get(font_key)?;
-
-        if let Some(gid) = glyph_map.cid_to_gid.get(&raw_code).copied() {
-            return Some(gid);
-        }
-        if glyph_map.identity && raw_code > 0 && raw_code <= u16::MAX as u32 {
-            return Some(raw_code as u16);
-        }
-
-        None
-    }
-    fn prefers_pdf_code_glyph_mapping(&self, text: &NativeTextModel) -> bool {
-        let Some(subtype) = text.font_subtype.as_deref() else {
-            return false;
-        };
-        let lower = subtype.trim().trim_start_matches('/').to_ascii_lowercase();
-        matches!(lower.as_str(), "truetype" | "opentype" | "type1")
-    }
-    fn resolve_cosmic_family<'a>(
-        &self,
-        text: &NativeTextModel,
-        resolved_font: &'a ResolvedPdfFont,
-    ) -> cosmic_text::Family<'a> {
-        if let Some(matched_family) = resolved_font.matched_family.as_deref() {
-            return cosmic_text::Family::Name(matched_family);
-        }
-
-        if text
-            .font_hints
-            .as_ref()
-            .map(|value| value.is_serif)
-            .unwrap_or(false)
-            || text.font_name.to_ascii_lowercase().contains("serif")
-            || text.font_name.to_ascii_lowercase().contains("roman")
-        {
-            return cosmic_text::Family::Serif;
-        }
-
-        cosmic_text::Family::SansSerif
-    }
 }
-fn preview_text(text: &str) -> String {
+
+pub(super) fn preview_text(text: &str) -> String {
     const LIMIT: usize = 16;
     let mut chars = text.chars();
     let preview: String = chars.by_ref().take(LIMIT).collect();

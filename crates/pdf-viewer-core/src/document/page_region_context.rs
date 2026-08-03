@@ -20,9 +20,47 @@ use crate::models::{
     SemanticRole, StyledRun,
 };
 
+fn is_marker_like_run(run: &StyledRun) -> bool {
+    let trimmed = run.text.trim();
+    matches!(trimmed, "•" | "·" | "●" | "◦" | "▪" | "-" | "–" | "—")
+}
+
+fn ordered_text_runs(obj: &NativeTextModel) -> Vec<(usize, &StyledRun)> {
+    let runs = obj.runs.iter().enumerate().collect::<Vec<_>>();
+    let Some((marker_index, marker_run)) = runs
+        .iter()
+        .filter(|(_, run)| is_marker_like_run(run))
+        .min_by(|(_, a), (_, b)| a.tx.partial_cmp(&b.tx).unwrap_or(std::cmp::Ordering::Equal))
+    else {
+        return runs;
+    };
+
+    let has_leftmost_late_marker = *marker_index > 0
+        && runs
+            .iter()
+            .take(*marker_index)
+            .any(|(_, run)| run.tx > marker_run.tx + 0.5);
+
+    if !has_leftmost_late_marker {
+        return runs;
+    }
+
+    let mut reordered = runs;
+    reordered.sort_by(|(a_index, a), (b_index, b)| {
+        a.tx.partial_cmp(&b.tx)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| b.ty.partial_cmp(&a.ty).unwrap_or(std::cmp::Ordering::Equal))
+            .then_with(|| a_index.cmp(b_index))
+    });
+    reordered
+}
+
 fn read_object_display_text(obj: &NativeTextModel) -> String {
     if !obj.runs.is_empty() {
-        obj.runs.iter().map(|run| run.text.as_str()).collect()
+        ordered_text_runs(obj)
+            .into_iter()
+            .map(|(_, run)| run.text.as_str())
+            .collect()
     } else {
         obj.text.clone()
     }
@@ -77,7 +115,7 @@ fn build_style_runs_from_text_object(
     let mut runs_out = Vec::new();
 
     if !obj.runs.is_empty() {
-        for (run_index, run) in obj.runs.iter().enumerate() {
+        for (run_index, run) in ordered_text_runs(obj) {
             let run_text = run.text.clone();
             let glyph_count = chars_count(&run_text);
             if glyph_count == 0 {
@@ -229,6 +267,84 @@ fn build_style_runs_from_text_object(
         object_ids: vec![obj.id.clone()],
         object_indices: obj.object_indices.clone(),
     }]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn styled_run(text: &str, tx: f32, width: f32) -> StyledRun {
+        StyledRun {
+            text: text.to_string(),
+            tx,
+            ty: 100.0,
+            width,
+            font_size: 10.0,
+            font_name: "Microsoft YaHei".to_string(),
+            color: "#000000".to_string(),
+            char_origins: if text.chars().count() == 1 {
+                vec![0.0]
+            } else {
+                Vec::new()
+            },
+            char_widths: if text.chars().count() == 1 {
+                vec![width]
+            } else {
+                Vec::new()
+            },
+            ..Default::default()
+        }
+    }
+
+    fn text_object_with_runs(runs: Vec<StyledRun>) -> NativeTextModel {
+        NativeTextModel {
+            id: "line-1".to_string(),
+            text: runs.iter().map(|run| run.text.as_str()).collect(),
+            tx: 58.0,
+            ty: 100.0,
+            width: 520.0,
+            height: 14.0,
+            font_size: 10.0,
+            font_name: "Microsoft YaHei".to_string(),
+            color: "#000000".to_string(),
+            runs,
+            object_indices: vec![0],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn read_display_text_uses_visual_run_order_for_tail_marker_pdf_order() {
+        let obj = text_object_with_runs(vec![
+            styled_run(
+                "分布式：Seata 分布式事务、Redis（持久化、集群、Lua 脚本）、RabbitMQ（消息可靠性、死信队列）",
+                74.0,
+                430.0,
+            ),
+            styled_run("•", 58.0, 6.0),
+        ]);
+
+        assert_eq!(
+            read_object_display_text(&obj),
+            "•分布式：Seata 分布式事务、Redis（持久化、集群、Lua 脚本）、RabbitMQ（消息可靠性、死信队列）"
+        );
+    }
+
+    #[test]
+    fn style_runs_use_visual_order_and_relative_origins() {
+        let obj = text_object_with_runs(vec![
+            styled_run("分布式：Seata", 74.0, 72.0),
+            styled_run("•", 58.0, 6.0),
+        ]);
+
+        let runs = build_style_runs_from_text_object(&obj, "line-1");
+
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs[0].text, "•");
+        assert_eq!(runs[0].char_origins, vec![0.0]);
+        assert_eq!(runs[1].text, "分布式：Seata");
+        assert_eq!(runs[1].char_origins.first().copied(), Some(16.0));
+    }
 }
 
 fn build_paragraph_line_from_text_object(

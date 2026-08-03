@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 
 // Re-export pure data structure from core.
 pub use pdf_viewer_core::render::viewer_session::*;
@@ -31,10 +30,12 @@ impl ViewerSessionState {
     }
 }
 
+use crate::app_context;
+
 /// Snapshot of the current viewer session state.
 pub fn read_viewer_state() -> ViewerSessionState {
-    VIEWER_SESSION.with(|session| {
-        if session.borrow().path.is_some() {
+    app_context::with_viewer(|viewer| {
+        if viewer.path.is_some() {
             ViewerSessionState::DocumentOpen
         } else {
             ViewerSessionState::NoDocument
@@ -42,20 +43,14 @@ pub fn read_viewer_state() -> ViewerSessionState {
     })
 }
 
-thread_local! {
-    pub static VIEWER_SESSION: RefCell<HostViewerSession> =
-        RefCell::new(HostViewerSession::default());
-}
-
 pub fn reset_viewer_session() {
-    VIEWER_SESSION.with(|session| {
-        *session.borrow_mut() = HostViewerSession::default();
+    app_context::with_viewer_mut(|viewer| {
+        *viewer = HostViewerSession::default();
     });
 }
 
 pub fn set_viewer_document(path: Option<String>, page_count: u16, initial_zoom: f32) {
-    VIEWER_SESSION.with(|session| {
-        let mut session = session.borrow_mut();
+    app_context::with_viewer_mut(|session| {
         session.path = path;
         session.current_page = 0;
         session.page_count = page_count;
@@ -65,20 +60,19 @@ pub fn set_viewer_document(path: Option<String>, page_count: u16, initial_zoom: 
 }
 
 pub fn set_current_page(page_index: u16) {
-    VIEWER_SESSION.with(|session| {
-        session.borrow_mut().current_page = page_index;
+    app_context::with_viewer_mut(|viewer| {
+        viewer.current_page = page_index;
     });
 }
 
 pub fn set_current_zoom(zoom: f32) {
-    VIEWER_SESSION.with(|session| {
-        session.borrow_mut().current_zoom = sanitize_zoom(zoom);
+    app_context::with_viewer_mut(|viewer| {
+        viewer.current_zoom = sanitize_zoom(zoom);
     });
 }
 
 pub fn set_zoom_and_page_dimensions(zoom: f32, page_width: Option<f32>, page_height: Option<f32>) {
-    VIEWER_SESSION.with(|session| {
-        let mut session = session.borrow_mut();
+    app_context::with_viewer_mut(|session| {
         session.current_zoom = sanitize_zoom(zoom);
         if let Some(w) = page_width {
             session.page_width = w.max(1.0);
@@ -90,27 +84,29 @@ pub fn set_zoom_and_page_dimensions(zoom: f32, page_width: Option<f32>, page_hei
 }
 
 pub fn read_viewer_session() -> HostViewerSession {
-    VIEWER_SESSION.with(|session| session.borrow().clone())
+    app_context::with_viewer(Clone::clone)
 }
 
 pub fn set_page_dimensions(page_width: f32, page_height: f32) {
-    VIEWER_SESSION.with(|session| {
-        let mut session = session.borrow_mut();
+    app_context::with_viewer_mut(|session| {
         session.page_width = page_width.max(1.0);
         session.page_height = page_height.max(1.0);
     });
 }
 
 pub fn bump_document_revision() -> u64 {
-    VIEWER_SESSION.with(|session| {
-        let mut session = session.borrow_mut();
+    app_context::with_viewer_mut(|session| {
         session.document_revision = session.document_revision.wrapping_add(1).max(1);
         session.document_revision
     })
 }
 
 pub fn current_document_revision() -> u64 {
-    VIEWER_SESSION.with(|session| session.borrow().document_revision)
+    app_context::with_viewer(|viewer| viewer.document_revision)
+}
+
+pub fn update_mutable_fields(f: impl FnOnce(&mut HostViewerSession)) {
+    app_context::with_viewer_mut(f);
 }
 
 fn sanitize_zoom(value: f32) -> f32 {

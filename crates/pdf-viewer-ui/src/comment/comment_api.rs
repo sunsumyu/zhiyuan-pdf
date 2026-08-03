@@ -15,7 +15,8 @@ use crate::document::comment::{
     PdfDeleteAnnotationRequest, PdfRegionCommentRequest, PdfUpdateCommentRequest,
 };
 use crate::review::review_store::{
-    clear_comment_review_session, read_comment_review_session, HostCommentReviewScope,
+    clear_review_session as clear_comment_review_session,
+    read_review_session as read_comment_review_session, HostCommentReviewScope,
 };
 
 fn parse_scope(scope: &str) -> HostCommentReviewScope {
@@ -23,6 +24,14 @@ fn parse_scope(scope: &str) -> HostCommentReviewScope {
         "document" => HostCommentReviewScope::Document,
         _ => HostCommentReviewScope::Page,
     }
+}
+
+fn parse_request<T: serde::de::DeserializeOwned>(
+    request_js: JsValue,
+    method: &str,
+) -> Result<T, JsValue> {
+    from_value(request_js)
+        .map_err(|e| JsValue::from_str(&format!("CommentManager.{method}: invalid request: {e}")))
 }
 
 // ── CommentManager ──────────────────────────────────────────────
@@ -137,7 +146,7 @@ impl CommentManager {
         path: String,
         request_js: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let request: PdfRegionCommentRequest = from_value(request_js).unwrap_or_default();
+        let request: PdfRegionCommentRequest = parse_request(request_js, "addRegionComment")?;
         let result = add_region_comment(path, request).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
@@ -148,7 +157,7 @@ impl CommentManager {
         path: String,
         request_js: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let request: PdfDeleteAnnotationRequest = from_value(request_js).unwrap_or_default();
+        let request: PdfDeleteAnnotationRequest = parse_request(request_js, "deleteAnnotation")?;
         let result = delete_page_annotation(path, request).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }
@@ -159,7 +168,7 @@ impl CommentManager {
         path: String,
         request_js: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let request: PdfUpdateCommentRequest = from_value(request_js).unwrap_or_default();
+        let request: PdfUpdateCommentRequest = parse_request(request_js, "updateComment")?;
         let result = update_page_comment(path, request).await?;
         Ok(to_value(&result).unwrap_or(JsValue::NULL))
     }

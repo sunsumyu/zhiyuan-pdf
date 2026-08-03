@@ -4,9 +4,9 @@ use web_sys::HtmlCanvasElement;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::host_runtime::read_state as get_editor_host_state;
-use crate::editor::mode::read_active_editor_state;
-use crate::editor::source_geometry::source_line_visual_bbox_for_caret;
+use crate::editor::mode::read_state;
+use crate::editor::platform_bridge::read_state as get_editor_host_state;
+use crate::editor::source_geometry::compute_caret_line_bbox;
 use crate::editor::text_geometry::active_caret_visual;
 use crate::render::canvas::CanvasRenderer;
 use crate::zoom::zoom_controller::read_zoom_state;
@@ -45,19 +45,27 @@ fn scene_shell_height(active_target: &crate::editor::session::ActiveEditorTarget
 }
 
 fn body_left_offset(active_target: &crate::editor::session::ActiveEditorTarget) -> f32 {
-    (active_target.scene.body_session.anchor_bbox.left - active_target.scene.shell_bbox.left)
-        .max(0.0)
+    let base_left = (active_target.scene.body_session().anchor_bbox.left
+        - active_target.scene.shell_bbox.left)
+        .max(0.0);
+    let marker_advance = active_target
+        .scene
+        .marker()
+        .map(|m| m.advance)
+        .unwrap_or(0.0);
+    base_left + marker_advance
 }
 
 fn body_top_offset(active_target: &crate::editor::session::ActiveEditorTarget) -> f32 {
-    (active_target.scene.body_session.anchor_bbox.top - active_target.scene.shell_bbox.top).max(0.0)
+    (active_target.scene.body_session().anchor_bbox.top - active_target.scene.shell_bbox.top)
+        .max(0.0)
 }
 
 fn source_line_bbox_for_caret(
     active_target: &crate::editor::session::ActiveEditorTarget,
     caret: crate::editor::text_geometry::EditorCaretVisualPosition,
 ) -> Option<pdf_viewer_core::models::BoundingBox> {
-    source_line_visual_bbox_for_caret(&active_target.scene.body_session, caret.baseline_y)
+    compute_caret_line_bbox(&active_target.scene.body_session(), caret.baseline_y)
 }
 
 fn resolve_caret_rect(
@@ -65,7 +73,7 @@ fn resolve_caret_rect(
     caret: crate::editor::text_geometry::EditorCaretVisualPosition,
 ) -> (f32, f32) {
     if let Some(line_bbox) = source_line_bbox_for_caret(active_target, caret) {
-        let body_top = active_target.scene.body_session.anchor_bbox.top;
+        let body_top = active_target.scene.body_session().anchor_bbox.top;
         let top = (line_bbox.top - body_top).max(0.0);
         let height = (line_bbox.bottom - line_bbox.top).max(1.0);
         return (top, height);
@@ -77,13 +85,13 @@ fn resolve_caret_rect(
     )
 }
 
-pub fn render_active_editor_canvas(
+pub fn render_canvas(
     canvas_js: wasm_bindgen::JsValue,
     display_zoom: f32,
     _draft_text: String,
     _caret_index: u32,
 ) -> bool {
-    let Some(active_state) = read_active_editor_state() else {
+    let Some(active_state) = read_state() else {
         return false;
     };
     let caret_index = active_state.normalized_caret_index();
@@ -121,7 +129,7 @@ pub fn render_active_editor_canvas(
     );
     let source_underline_run_count = active_target
         .scene
-        .body_session
+        .body_session()
         .paragraph
         .runs
         .iter()

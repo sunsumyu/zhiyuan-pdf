@@ -1,8 +1,8 @@
 use crate::models::PageState;
 
-use crate::edit::bridge::{collect_paragraph_interaction_targets, ParagraphInteractionTarget};
+use crate::edit::bridge::{interaction_targets, ParagraphInteractionTarget};
 
-pub fn resolve_region_target_from_page_state(
+pub fn resolve_region_target(
     page_state: &PageState,
     page_index: u16,
     region_id: &str,
@@ -15,7 +15,7 @@ pub fn resolve_region_target_from_page_state(
 
     let plan = page_state.paint_plan.as_ref()?;
     let vector_model = page_state.vector_model.as_ref();
-    let targets = collect_paragraph_interaction_targets(plan, vector_model);
+    let targets = interaction_targets(plan, vector_model);
     resolve_region_text_target(&targets, page_index, region_id, original_text)
 }
 

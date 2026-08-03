@@ -14,14 +14,9 @@ pub async fn find_in_page(
     query: String,
     case_sensitive: Option<bool>,
 ) -> Result<PdfPageSearchResult, String> {
-    let page_model = PdfPageIntermediateService::resolve_vector_page_model(
-        state.clone(),
-        path,
-        page_index,
-        1.0,
-        None,
-    )
-    .await?;
+    let page_model =
+        PdfPageIntermediateService::resolve_vector_page_model(&state, path, page_index, 1.0, None)
+            .await?;
     Ok(crate::application::pdf::page_search::search_page_regions(
         &page_model,
         &PdfPageSearchRequest {
@@ -46,7 +41,7 @@ pub async fn find_in_document(
     let mut page_models = Vec::with_capacity(page_count);
     for page_index in 0..page_count {
         let page_model = PdfPageIntermediateService::resolve_vector_page_model(
-            state.clone(),
+            &*state,
             path.clone(),
             page_index as u16,
             1.0,

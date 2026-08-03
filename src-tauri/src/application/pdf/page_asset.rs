@@ -32,8 +32,10 @@ mod tests {
 
     #[tokio::test]
     async fn waits_for_inflight_key() {
-        let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX.lock().unwrap();
-        crate::infrastructure::pdf::log_service::clear_pdf_event_log();
+        let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX
+            .lock()
+            .unwrap();
+        crate::infrastructure::pdf::log_service::clear_event_log();
         let state = Arc::new(crate::AppState::new());
         let first = PageAssetAdmissionService::acquire_inflight_lock(
             &state,
@@ -73,7 +75,7 @@ mod tests {
                 .is_err(),
             "same document/page/revision/kind should wait for the existing in-flight lock",
         );
-        let waiting_events = crate::infrastructure::pdf::log_service::read_pdf_event_log();
+        let waiting_events = crate::infrastructure::pdf::log_service::read_event_log();
         eprintln!("TEST_DIAG waiting_events: {:?}", waiting_events);
         assert!(
             waiting_events
@@ -90,7 +92,7 @@ mod tests {
             .await
             .expect("waiting asset request should acquire after first lock drops")
             .expect("waiting task should report acquisition");
-        let completed_events = crate::infrastructure::pdf::log_service::read_pdf_event_log();
+        let completed_events = crate::infrastructure::pdf::log_service::read_event_log();
         assert!(
             completed_events
                 .iter()
@@ -266,6 +268,7 @@ impl PageAssetKind {
 pub(crate) struct PageAssetAdmissionService;
 
 impl PageAssetAdmissionService {
+    #[allow(dead_code)]
     pub(crate) fn set_test_delay_ms(delay_ms: u64) {
         #[cfg(debug_assertions)]
         PAGE_ASSET_TEST_DELAY_MS.store(delay_ms.min(5_000), Ordering::SeqCst);
@@ -284,7 +287,7 @@ impl PageAssetAdmissionService {
     }
 
     fn emit_event(level: u8, event: &str, fields: Vec<(&str, String)>) {
-        crate::infrastructure::pdf::log_service::log_pdf_event(level, event, &fields);
+        crate::infrastructure::pdf::log_service::log_event(level, event, &fields);
     }
 
     fn lock_for(

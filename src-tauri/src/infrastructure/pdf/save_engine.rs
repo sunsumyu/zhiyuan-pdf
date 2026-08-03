@@ -3,7 +3,7 @@ use lopdf::Document;
 
 /// PDF 淇敼鎵ц涓績 (Command Invoker)
 /// 璇ユ湇鍔¤礋璐ｇ鐞嗘枃浠剁殑澹版槑鍛ㄦ湡锛屽苟鎸夐『搴忔墽琛屾墍鏈夌紪杈戞寚浠ゃ€?
-pub fn apply_pdf_commands(
+pub fn apply_commands(
     mut doc: Document,
     page_index: u16,
     commands: Vec<Box<dyn PdfEditCommand>>,

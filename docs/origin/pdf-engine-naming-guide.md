@@ -1,5 +1,7 @@
 # PDF Engine Naming Guide
 
+> ⚠️ 已整合到 [../naming-conventions.md](../naming-conventions.md)。本文档保留作为历史参考。
+
 This guide defines naming rules for the PDF viewer/editor engine. The goal is to make a file name and function name enough to understand where a behavior belongs.
 
 ## Module Names

@@ -2,17 +2,26 @@
 
 use crate::edit::replacement_region::ParagraphReplacementRegion;
 use crate::geometry::bbox_ops::bbox_intersects;
-use crate::models::{BoundingBox, VectorImageObject, VectorRenderObject};
-use crate::render::viewport_culling::path_object_bbox;
+use crate::models::{BoundingBox, VectorImageObject, VectorRenderObject, VisualMarker};
+use crate::render::viewport_culling::path_bbox;
 
 pub fn should_suppress(
     object: &VectorRenderObject,
+    object_index: usize,
+    graphic_markers: &[VisualMarker],
     replacement_region: &ParagraphReplacementRegion,
     suppression_bbox: &BoundingBox,
 ) -> Option<String> {
+    if graphic_markers
+        .iter()
+        .any(|marker| marker.contains_object_index(object_index))
+    {
+        return None;
+    }
+
     match object {
         VectorRenderObject::Path(path) => {
-            let path_bbox = path_object_bbox(path)?;
+            let path_bbox = path_bbox(path)?;
             let stroke_pad = if path.stroke {
                 (path.stroke_width.max(0.0) * 0.5).max(0.5)
             } else {
@@ -173,9 +182,10 @@ fn row_overlap_height(
 mod tests {
     use super::should_suppress;
     use crate::edit::active_target::ActiveEditorTarget;
-    use crate::edit::replacement_region::paragraph_replacement_region;
+    use crate::edit::replacement_region::build_region;
     use crate::models::{
-        BoundingBox, LayoutParagraph, ParagraphEditContext, VectorImageObject, VectorRenderObject,
+        BoundingBox, GraphicType, LayoutParagraph, ParagraphEditContext, VectorImageObject,
+        VectorRenderObject, VisualMarker,
     };
 
     fn replacement_target() -> ActiveEditorTarget {
@@ -186,7 +196,7 @@ mod tests {
             right: 360.0,
             bottom: 116.0,
         };
-        target.scene.body_session = ParagraphEditContext {
+        *target.scene.body_session_mut() = ParagraphEditContext {
             anchor_bbox: BoundingBox {
                 left: 90.0,
                 top: 100.0,
@@ -212,30 +222,46 @@ mod tests {
     #[test]
     fn suppresses_thin_decoration() {
         let target = replacement_target();
-        let region = paragraph_replacement_region(&target);
-        let suppression_bbox = region.row_path_suppression_bbox_for_page_width(420.0);
+        let region = build_region(&target);
+        let suppression_bbox = region.row_suppression_bbox(420.0);
         let object = row_image("blue-image-row", 101.0, 8.0);
 
-        assert!(should_suppress(
-            &object,
-            &region,
-            &suppression_bbox
-        )
-        .is_some());
+        assert!(should_suppress(&object, 0, &[], &region, &suppression_bbox).is_some());
     }
 
     #[test]
     fn keeps_normal_image() {
         let target = replacement_target();
-        let region = paragraph_replacement_region(&target);
-        let suppression_bbox = region.row_path_suppression_bbox_for_page_width(420.0);
+        let region = build_region(&target);
+        let suppression_bbox = region.row_suppression_bbox(420.0);
         let object = row_image("normal-image", 96.0, 42.0);
 
-        assert!(should_suppress(
-            &object,
-            &region,
-            &suppression_bbox
-        )
-        .is_none());
+        assert!(should_suppress(&object, 0, &[], &region, &suppression_bbox).is_none());
+    }
+
+    #[test]
+    fn skips_objects_claimed_by_graphic_marker() {
+        // 一个本应被抑制的细装饰图，若被某个 graphic marker 引用，
+        // must_suppress 必须返回 None，保证 bullet 在编辑正文时不会被擦除。
+        let target = replacement_target();
+        let region = build_region(&target);
+        let suppression_bbox = region.row_suppression_bbox(420.0);
+        let object = row_image("bullet-graphic", 101.0, 8.0);
+        let marker = VisualMarker::from_graphic(
+            3,
+            GraphicType::Image,
+            "bullet-graphic".to_string(),
+            BoundingBox {
+                left: 0.0,
+                top: 101.0,
+                right: 420.0,
+                bottom: 109.0,
+            },
+        );
+
+        assert!(
+            should_suppress(&object, 3, &[marker], &region, &suppression_bbox).is_none(),
+            "objects referenced by a graphic marker must not be suppressed"
+        );
     }
 }

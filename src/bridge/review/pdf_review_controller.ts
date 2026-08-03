@@ -11,6 +11,7 @@ import {
     type ReviewLocateResult,
 } from './review_wasm_facade';
 import { setToolbarButtonActive } from '../viewer/pdf_viewer_dom';
+import { emitPdfDiagnostic } from '../shared/diagnostics';
 
 type ViewerSessionSnapshot = {
     path: string | null;
@@ -169,21 +170,31 @@ export function createPdfReviewController(
         }
     }
 
+    function showError(operation: string, err: unknown): void {
+        const message = err instanceof Error ? err.message : String(err);
+        emitPdfDiagnostic('review', operation, { error: message }, { level: 'ERROR' });
+        clearView(`Review operation failed: ${message}`);
+    }
+
     async function locateChange(entry: ReviewChangeEntry): Promise<void> {
         if (busy) return;
-        const locateResult = locateChangeFacade(entry.patchKey);
-        if (!locateResult) return;
-        
-        if (deps.getViewerSession().currentPage !== locateResult.pageIndex) {
-            await deps.goToPage(locateResult.pageIndex);
+        try {
+            const locateResult = locateChangeFacade(entry.patchKey);
+            if (!locateResult) return;
+
+            if (deps.getViewerSession().currentPage !== locateResult.pageIndex) {
+                await deps.goToPage(locateResult.pageIndex);
+            }
+            if (!locateResult.kind) return;
+            await deps.openRegionEditor(
+                locateResult.pageIndex,
+                locateResult.regionId,
+                locateResult.kind,
+                locateResult.originalText,
+            );
+        } catch (err) {
+            showError('locateChange', err);
         }
-        if (!locateResult.kind) return;
-        await deps.openRegionEditor(
-            locateResult.pageIndex,
-            locateResult.regionId,
-            locateResult.kind,
-            locateResult.originalText,
-        );
     }
 
     async function rejectChange(entry: ReviewChangeEntry): Promise<void> {
@@ -200,6 +211,8 @@ export function createPdfReviewController(
                 }
                 await refresh();
             }
+        } catch (err) {
+            showError('rejectChange', err);
         } finally {
             busy = false;
         }
@@ -219,6 +232,8 @@ export function createPdfReviewController(
                 }
                 await refresh();
             }
+        } catch (err) {
+            showError('acceptChange', err);
         } finally {
             busy = false;
         }
@@ -236,6 +251,8 @@ export function createPdfReviewController(
                 };
                 await refresh();
             }
+        } catch (err) {
+            showError('acceptAllChanges', err);
         } finally {
             busy = false;
         }
@@ -253,6 +270,8 @@ export function createPdfReviewController(
                 };
                 await refresh();
             }
+        } catch (err) {
+            showError('rejectAllChanges', err);
         } finally {
             busy = false;
         }
@@ -475,8 +494,12 @@ export function createPdfReviewController(
             clearView('Open a PDF to review pending changes.');
             return;
         }
-        const feed = getReviewFeed();
-        renderFeed(feed);
+        try {
+            const feed = getReviewFeed();
+            renderFeed(feed);
+        } catch (err) {
+            showError('refresh', err);
+        }
     }
 
     async function togglePanel(): Promise<void> {

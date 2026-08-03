@@ -1,4 +1,5 @@
-use crate::models::{LayoutParagraph, LayoutRun, RunStyle};
+use crate::models::{LayoutParagraph, LayoutRun, RunStyle, TextRun};
+use crate::text::glyph_layout::is_decorative_text;
 use crate::typography::font_resolver::looks_like_symbolic_font;
 use serde::{Deserialize, Serialize};
 
@@ -35,10 +36,10 @@ impl StyleMapper {
         Self { spans }
     }
 
-    pub fn new_from_paragraph_for_text(paragraph: &LayoutParagraph, source_text: &str) -> Self {
+    pub fn from_paragraph_text(paragraph: &LayoutParagraph, source_text: &str) -> Self {
         let mut mapper = Self::new_from_paragraph(paragraph);
         if mapper.read_full_text() != source_text {
-            mapper.update_with_text(source_text);
+            mapper.update_text(source_text);
         }
         mapper
     }
@@ -49,7 +50,7 @@ impl StyleMapper {
     }
 
     /// 当用户输入新文本时，更新样式映射
-    pub fn update_with_text(&mut self, new_text: &str) {
+    pub fn update_text(&mut self, new_text: &str) {
         let old_text = self.read_full_text();
         if old_text == new_text {
             return;
@@ -224,7 +225,7 @@ impl StyleMapper {
 
     pub fn has_style_changes_against_paragraph(&self, paragraph: &LayoutParagraph) -> bool {
         let current_text = self.read_full_text();
-        let source_mapper = Self::new_from_paragraph_for_text(paragraph, &current_text);
+        let source_mapper = Self::from_paragraph_text(paragraph, &current_text);
         !style_spans_have_same_paint_style(&self.spans, &source_mapper.spans)
     }
 
@@ -234,19 +235,17 @@ impl StyleMapper {
             .iter()
             .enumerate()
             .map(|(i, span)| {
-                LayoutRun {
+                TextRun {
                     id: format!("run-{}", i),
                     text: span.text.clone(),
-                    style: span.style.clone(),
                     // 坐标由排版引擎动态生成，此处设为 0
-                    bbox: Default::default(),
                     origin_x: 0.0,
-                    origin_y: 0.0,
-                    char_origins: Vec::new(),
-                    char_widths: Vec::new(),
+                    baseline_y: 0.0,
+                    glyphs: Vec::new(),
+                    style: span.style.clone(),
                     object_ids: Vec::new(),
-                    object_indices: Vec::new(),
                 }
+                .to_layout_run()
             })
             .collect()
     }
@@ -343,16 +342,6 @@ fn is_style_equal(s1: &RunStyle, s2: &RunStyle) -> bool {
         && s1.color == s2.color
 }
 
-fn is_decorative_text(text: &str) -> bool {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return false;
-    }
-    trimmed
-        .chars()
-        .all(|c| ['•', '●', '▪', '◦', '·', '○', '-', '▶', '➤'].contains(&c))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,6 +374,7 @@ mod tests {
                 is_underline: false,
                 char_spacing: 0.0,
                 scale_x: 1.0,
+            font_weight_numeric: 400,
             },
             bbox: BoundingBox::default(),
             ..Default::default()
@@ -394,7 +384,7 @@ mod tests {
     #[test]
     fn test_deletion_at_head() {
         let mut mapper = create_test_mapper(&[("ABC", true), ("DEF", false)]);
-        mapper.update_with_text("BCDEF");
+        mapper.update_text("BCDEF");
         assert_eq!(mapper.spans[0].text, "BC");
         assert_eq!(mapper.spans[0].style.is_bold, true);
         assert_eq!(mapper.spans[1].text, "DEF");
@@ -403,7 +393,7 @@ mod tests {
     #[test]
     fn test_deletion_multi_byte_chinese() {
         let mut mapper = create_test_mapper(&[("专业：", true), ("计算机", false)]);
-        mapper.update_with_text("专：计算机");
+        mapper.update_text("专：计算机");
         assert_eq!(mapper.spans[0].text, "专：");
         assert_eq!(mapper.spans[0].style.is_bold, true);
         assert_eq!(mapper.spans[1].text, "计算机");
@@ -412,7 +402,7 @@ mod tests {
     #[test]
     fn test_full_deletion_protection() {
         let mut mapper = create_test_mapper(&[("Hello", true)]);
-        mapper.update_with_text("");
+        mapper.update_text("");
         assert_eq!(mapper.spans.len(), 1);
         assert_eq!(mapper.spans[0].text, "");
         assert_eq!(mapper.spans[0].style.is_bold, true);
@@ -424,7 +414,7 @@ mod tests {
             runs: vec![create_test_run("编程语言:"), create_test_run("Rust")],
             ..Default::default()
         };
-        let mapper = StyleMapper::new_from_paragraph_for_text(&paragraph, "编程语言: Rust");
+        let mapper = StyleMapper::from_paragraph_text(&paragraph, "编程语言: Rust");
 
         assert_eq!(mapper.read_full_text(), "编程语言: Rust");
         assert!(!mapper.has_style_changes_against_paragraph(&paragraph));

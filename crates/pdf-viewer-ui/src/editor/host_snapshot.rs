@@ -2,12 +2,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::patch_persistence::has_persistable_patches;
 use crate::editor::debug_trace::{resolve_editor_debug_trace, EditorDebugTraceEvent};
-use crate::editor::host_runtime::read_state as get_editor_host_state;
-use crate::editor::mode::is_text_edit_mode_enabled;
-use crate::editor::mode::read_active_editor_state;
+use crate::editor::mode::is_edit_enabled;
+use crate::editor::mode::read_state;
+use crate::editor::platform_bridge::read_state as get_editor_host_state;
 use crate::editor::projection::{
-    project_active_editor_shell, project_paragraph_interaction_targets, ProjectedEditorShell,
-    ProjectedParagraphInteractionTarget,
+    project_shell, project_targets, ProjectedEditorShell, ProjectedParagraphInteractionTarget,
 };
 use crate::zoom::zoom_controller::read_zoom_state;
 use pdf_viewer_core::text::glyph_layout::EditorGlyphSlotKind;
@@ -31,6 +30,20 @@ pub struct ActiveEditorDiagnostics {
     pub scene_body_text: String,
     pub text_plan_text: String,
     pub marker_text: Option<String>,
+    #[serde(default)]
+    pub marker_kind: String,
+    #[serde(default)]
+    pub marker_advance: Option<f32>,
+    #[serde(default)]
+    pub marker_run_count: usize,
+    #[serde(default)]
+    pub source_body_char_count: usize,
+    #[serde(default)]
+    pub draft_char_count: usize,
+    #[serde(default)]
+    pub text_plan_char_count: usize,
+    #[serde(default)]
+    pub slot_count: usize,
     pub initial_caret_index: usize,
     #[serde(default)]
     pub live_caret_index: usize,
@@ -85,10 +98,10 @@ fn resolve_editor_projection_zoom(requested_display_zoom: f32) -> f32 {
     sanitize_projection_zoom(requested_display_zoom, runtime_zoom)
 }
 
-pub fn resolve_editor_host_snapshot(display_zoom: f32) -> EditorHostSnapshot {
+pub fn resolve_snapshot(display_zoom: f32) -> EditorHostSnapshot {
     let projection_zoom = resolve_editor_projection_zoom(display_zoom);
-    let enabled = is_text_edit_mode_enabled();
-    let active_state = read_active_editor_state();
+    let enabled = is_edit_enabled();
+    let active_state = read_state();
     let page_height = crate::page::page_store::with_page_state(|state| {
         state
             .vector_model
@@ -99,12 +112,12 @@ pub fn resolve_editor_host_snapshot(display_zoom: f32) -> EditorHostSnapshot {
     });
 
     let active_target = if enabled {
-        project_active_editor_shell(projection_zoom, page_height)
+        project_shell(projection_zoom, page_height)
     } else {
         None
     };
     let targets = if enabled {
-        project_paragraph_interaction_targets(projection_zoom, page_height)
+        project_targets(projection_zoom, page_height)
     } else {
         Vec::new()
     };
@@ -116,34 +129,41 @@ pub fn resolve_editor_host_snapshot(display_zoom: f32) -> EditorHostSnapshot {
             .as_ref()
             .map(|state| state.current_text().to_string()),
         caret_index: active_state.map(|state| state.caret_index).unwrap_or(0),
-        diagnostics: resolve_active_editor_diagnostics(),
+        diagnostics: resolve_diagnostics(),
         targets,
         has_persistable_patches: has_persistable_patches(),
     }
 }
 
-pub fn resolve_active_editor_diagnostics() -> Option<ActiveEditorDiagnostics> {
-    let active_state = read_active_editor_state()?;
+pub fn resolve_diagnostics() -> Option<ActiveEditorDiagnostics> {
+    let active_state = read_state()?;
     let target = active_state.target.clone();
     let text_plan = target.scene.document_plan.body_text_plan.clone();
     let initial_caret_index = target.initial_body_caret_index();
+    let marker = target.scene.document_plan.marker.as_ref();
+    let draft_text = active_state.current_text().to_string();
+    let scene_body_text = target.scene.body_text().to_string();
 
     Some(ActiveEditorDiagnostics {
         paragraph_id: target.paragraph_id,
-        draft_text: active_state.current_text().to_string(),
-        scene_body_text: target.scene.document_plan.source_body_text().to_string(),
-        text_plan_text: text_plan.text,
-        marker_text: target
-            .scene
-            .document_plan
-            .marker
-            .as_ref()
-            .map(|marker| marker.text.clone()),
+        draft_text: draft_text.clone(),
+        scene_body_text: scene_body_text.clone(),
+        text_plan_text: text_plan.text.clone(),
+        marker_text: marker.map(|marker| marker.text.clone()),
+        marker_kind: marker
+            .map(|marker| format!("{:?}", marker.kind))
+            .unwrap_or_else(|| "None".to_string()),
+        marker_advance: marker.map(|marker| marker.advance),
+        marker_run_count: marker.map(|marker| marker.runs.len()).unwrap_or_default(),
+        source_body_char_count: scene_body_text.chars().count(),
+        draft_char_count: draft_text.chars().count(),
+        text_plan_char_count: text_plan.text.chars().count(),
+        slot_count: text_plan.slots.len(),
         initial_caret_index,
         live_caret_index: active_state.caret_index,
         runs: target
             .scene
-            .body_session
+            .body_session()
             .paragraph
             .runs
             .iter()

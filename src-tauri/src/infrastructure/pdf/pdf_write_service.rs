@@ -1,6 +1,6 @@
 use crate::infrastructure::pdf::commands::PdfEditCommand;
 use crate::infrastructure::pdf::models::PdfModifications;
-use crate::infrastructure::pdf::save_engine::apply_pdf_commands;
+use crate::infrastructure::pdf::save_engine::apply_commands;
 use lopdf::Document as LopdfDocument;
 use std::fs;
 use std::sync::Arc;
@@ -29,15 +29,13 @@ impl PdfWriteService {
                 let commands: Vec<Box<dyn PdfEditCommand>> = vec![Box::new(
                     crate::infrastructure::pdf::commands::ReplaceTextCommand { patch },
                 )];
-                modified_doc = apply_pdf_commands(modified_doc, 0, commands)
+                modified_doc = apply_commands(modified_doc, 0, commands)
                     .map_err(|e| format!("Failed to apply text patch: {}", e))?;
             }
 
             // 保存到工作路径
             let working_path =
-                crate::infrastructure::pdf::pdf_read_service::PdfReadService::resolve_working_path(
-                    &path,
-                );
+                crate::infrastructure::pdf::working_copy::resolve_working_path(&path);
             modified_doc
                 .save(&working_path)
                 .map_err(|e| format!("Failed to save working copy: {}", e))?;
@@ -92,10 +90,7 @@ impl PdfWriteService {
 
         if let Some(previous_doc) = previous_doc {
             // 保存到磁盘
-            let working_path =
-                crate::infrastructure::pdf::pdf_read_service::PdfReadService::resolve_working_path(
-                    path,
-                );
+            let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(path);
             let mut doc_clone = (*previous_doc).clone();
 
             tokio::task::spawn_blocking(move || doc_clone.save(&working_path))
@@ -157,10 +152,7 @@ impl PdfWriteService {
             }
 
             // 应用重做版本
-            let working_path =
-                crate::infrastructure::pdf::pdf_read_service::PdfReadService::resolve_working_path(
-                    path,
-                );
+            let working_path = crate::infrastructure::pdf::working_copy::resolve_working_path(path);
             let mut doc_clone = redo_doc.clone();
 
             tokio::task::spawn_blocking(move || doc_clone.save(&working_path))
@@ -191,7 +183,7 @@ impl PdfWriteService {
     }
 
     /// 生成演示PDF文档
-    pub fn generate_demo_pdf(path: &str) -> Result<String, String> {
+    pub fn generate_demo(path: &str) -> Result<String, String> {
         let pdf_content = b"%PDF-1.7
 1 0 obj
 << /Type /Catalog /Pages 2 0 R >>

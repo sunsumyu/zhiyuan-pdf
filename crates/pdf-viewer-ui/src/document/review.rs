@@ -1,6 +1,6 @@
 pub use crate::ui_state_store::{
-    accept_all_review_changes, accept_review_change, collect_review_changes,
-    current_patch_revision, reject_all_review_changes, reject_review_change,
+    accept_all_changes as accept_all_review_changes, accept_review_change, collect_review_changes,
+    current_patch_revision, reject_all_changes as reject_all_review_changes, reject_review_change,
     ReviewBulkChangeResult, ReviewChangeEntry,
 };
 

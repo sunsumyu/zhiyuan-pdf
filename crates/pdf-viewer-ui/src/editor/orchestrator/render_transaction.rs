@@ -1,20 +1,16 @@
 use serde::{Deserialize, Serialize};
 
 use crate::editor::activation::{
-    activate_editor_from_client_point, activate_region_editor, OpenEditorAtClientPointRequest,
+    activate_from_client, activate_region_editor, OpenEditorAtClientPointRequest,
 };
-use crate::editor::command::{
-    apply_editor_input_command, apply_input_with_host, EditorInputCommand,
-};
+use crate::editor::command::{apply_host_input, EditorInputCommand};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::editor_controller::{
-    apply_active_editor_format_action, sync_editor_input, EditorFormatAction,
-};
+use crate::editor::editor_controller::{apply_format, sync_editor_input, EditorFormatAction};
 use crate::editor::mode::close_active_editor;
-use crate::editor::orchestrator::commit::commit_active_editor_text;
-use crate::editor::session::{active_editor_draft_text, active_editor_has_session_changes};
+use crate::editor::orchestrator::commit::commit_text as do_commit_text;
+use crate::editor::session::{draft_text, has_changes};
 use crate::present::plan_builder::FramePlanRequest;
 use crate::present::present_store::schedule_render_frame_request;
 use crate::render::workflow::RenderFrameEnvelope;
@@ -67,14 +63,14 @@ pub fn open_editor_tx(
     // editing. The JS host is responsible for invoking renderCurrentPage when
     // it needs the page canvas to refresh (e.g. to suppress source text runs
     // for the active editor).
-    let action = activate_editor_from_client_point(request);
+    let action = activate_from_client(request);
     EditorRenderTransactionResult {
         changed: action.changed,
         render_frame: None,
     }
 }
 
-pub fn open_region_editor_tx(
+pub fn open_region_tx(
     page_index: u16,
     region_id: String,
     kind: String,
@@ -113,25 +109,11 @@ pub fn sync_input_tx(
 
 pub fn apply_input_tx(
     command: EditorInputCommand<'_>,
-    _frame_request: FramePlanRequest,
-) -> EditorInputRenderTransactionResult {
-    let result = apply_editor_input_command(command);
-    EditorInputRenderTransactionResult {
-        text_changed: result.text_changed,
-        caret_changed: result.caret_changed,
-        scene_changed: result.scene_changed,
-        caret_index: result.caret_index,
-        render_frame: None,
-    }
-}
-
-pub fn apply_host_input_tx(
-    command: EditorInputCommand<'_>,
     host_text: Option<String>,
     host_caret_index: Option<usize>,
     _frame_request: FramePlanRequest,
 ) -> EditorInputRenderTransactionResult {
-    let result = apply_input_with_host(command, host_text, host_caret_index);
+    let result = apply_host_input(command, host_text, host_caret_index);
     EditorInputRenderTransactionResult {
         text_changed: result.text_changed,
         caret_changed: result.caret_changed,
@@ -146,8 +128,8 @@ pub fn commit_editor_tx(
     caret_index: usize,
     _frame_request: FramePlanRequest,
 ) -> EditorRenderTransactionResult {
-    let has_session_changes = active_editor_has_session_changes();
-    let commit_text = if has_session_changes {
+    let has_session_changes = has_changes();
+    let text_to_commit = if has_session_changes {
         let _sync_result = sync_editor_input(new_text.clone(), caret_index);
         new_text
     } else {
@@ -159,9 +141,9 @@ pub fn commit_editor_tx(
                 dbg_field("hostText", &new_text),
             ],
         );
-        active_editor_draft_text().unwrap_or(new_text)
+        draft_text().unwrap_or(new_text)
     };
-    let action = commit_active_editor_text(commit_text);
+    let action = do_commit_text(text_to_commit);
     // NOTE: We intentionally do NOT call schedule_editor_render here.
     // The JS host calls renderCurrentPage('documentMutation') after commit,
     // which triggers refreshMutatedDocument(). Scheduling a frame here would
@@ -173,12 +155,9 @@ pub fn commit_editor_tx(
     }
 }
 
-pub fn commit_editor_silent_tx(
-    new_text: String,
-    caret_index: usize,
-) -> EditorRenderTransactionResult {
-    let has_session_changes = active_editor_has_session_changes();
-    let commit_text = if has_session_changes {
+pub fn commit_silent_tx(new_text: String, caret_index: usize) -> EditorRenderTransactionResult {
+    let has_session_changes = has_changes();
+    let text_to_commit = if has_session_changes {
         let _sync_result = sync_editor_input(new_text.clone(), caret_index);
         new_text
     } else {
@@ -190,9 +169,9 @@ pub fn commit_editor_silent_tx(
                 dbg_field("hostText", &new_text),
             ],
         );
-        active_editor_draft_text().unwrap_or(new_text)
+        draft_text().unwrap_or(new_text)
     };
-    let action = commit_active_editor_text(commit_text);
+    let action = do_commit_text(text_to_commit);
     EditorRenderTransactionResult {
         changed: action.changed,
         render_frame: None,
@@ -203,13 +182,13 @@ pub fn close_editor_tx(_frame_request: FramePlanRequest) -> EditorRenderTransact
     // P0 止血：原实现直接丢弃 live state，走该路径的退出（外部点击 / ESC / blur /
     // Ctrl+R 前清理）会丢失编辑。当存在 live draft 时强制走 commit，保证
     // "Editing → Idle" 的迁移必经 Persisting（见 docs/edit-save-architecture.md §4.1）。
-    if let Some(draft_text) = active_editor_draft_text() {
+    if let Some(draft_text) = draft_text() {
         dbg_event(
             "render-tx.close",
             "force-commit-pending-edit",
             vec![dbg_field("draftLen", draft_text.chars().count())],
         );
-        let action = commit_active_editor_text(draft_text);
+        let action = do_commit_text(draft_text);
         // NOTE: Do NOT schedule a render frame here — same rationale as
         // commit_editor_tx and open_editor_tx. The JS host handles the
         // post-close render via renderCurrentPage(). Scheduling here leaks
@@ -237,19 +216,14 @@ fn format_render_tx(
     }
 }
 
-pub fn apply_format_action_tx(
+pub fn apply_format_tx(
     action: EditorFormatAction,
     frame_request: FramePlanRequest,
 ) -> EditorRenderTransactionResult {
-    format_render_tx(
-        frame_request,
-        apply_active_editor_format_action(action).changed,
-    )
+    format_render_tx(frame_request, apply_format(action).changed)
 }
 
-pub fn undo_active_editor_tx(
-    _frame_request: FramePlanRequest,
-) -> EditorInputRenderTransactionResult {
+pub fn undo_tx(_frame_request: FramePlanRequest) -> EditorInputRenderTransactionResult {
     use crate::editor::session::undo_active_editor;
     match undo_active_editor() {
         Some(result) => EditorInputRenderTransactionResult {
@@ -263,9 +237,7 @@ pub fn undo_active_editor_tx(
     }
 }
 
-pub fn redo_active_editor_tx(
-    _frame_request: FramePlanRequest,
-) -> EditorInputRenderTransactionResult {
+pub fn redo_tx(_frame_request: FramePlanRequest) -> EditorInputRenderTransactionResult {
     use crate::editor::session::redo_active_editor;
     match redo_active_editor() {
         Some(result) => EditorInputRenderTransactionResult {

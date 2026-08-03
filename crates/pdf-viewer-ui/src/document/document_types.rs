@@ -41,3 +41,16 @@ pub fn err_response(error: DocumentError) -> JsValue {
     };
     response_to_js(&resp)
 }
+
+/// Deserialize a `JsValue` into `T`, or return a structured document error response.
+pub fn parse_request<T: serde::de::DeserializeOwned>(
+    js: JsValue,
+    method: &str,
+) -> Result<T, JsValue> {
+    serde_wasm_bindgen::from_value(js).map_err(|e| {
+        err_response(DocumentError::InvalidInput {
+            field: method.to_string(),
+            reason: format!("failed to parse request: {e}"),
+        })
+    })
+}

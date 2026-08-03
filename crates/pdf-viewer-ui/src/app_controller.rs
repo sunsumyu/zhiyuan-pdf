@@ -7,8 +7,15 @@ extern "C" {
     #[wasm_bindgen(js_name = "targetInvoke")]
     async fn target_invoke(cmd: String, args: JsValue) -> JsValue;
 
+    #[wasm_bindgen(js_name = "targetInvoke", catch)]
+    async fn target_invoke_catch(cmd: String, args: JsValue) -> Result<JsValue, JsValue>;
+
     #[wasm_bindgen(js_name = "onDebug")]
-    fn on_debug(label: String, payload: String);
+    fn on_debug_internal(label: String, payload: String);
+}
+
+pub fn on_debug(label: String, payload: String) {
+    on_debug_internal(label, payload);
 }
 
 pub const TRACE_KEY_ORDER: &[&str] = &[
@@ -59,20 +66,20 @@ pub struct PdfLogger;
 #[allow(dead_code)]
 impl PdfLogger {
     pub fn info(msg: String) {
-        on_debug("INFO".to_string(), msg);
+        on_debug_internal("INFO".to_string(), msg);
     }
 
     pub fn debug(msg: String) {
-        on_debug("DEBUG".to_string(), msg);
+        on_debug_internal("DEBUG".to_string(), msg);
     }
 
     pub fn error(msg: String) {
-        on_debug("ERROR".to_string(), msg);
+        on_debug_internal("ERROR".to_string(), msg);
     }
 
     pub fn trace(label: &str, payload: &serde_json::Value) {
         let msg = format_structured_trace(label, payload);
-        on_debug("TRACE".to_string(), msg);
+        on_debug_internal("TRACE".to_string(), msg);
     }
 }
 
@@ -131,4 +138,9 @@ where
         Ok(val) => Ok(val),
         Err(e) => Err(JsValue::from_str(&e.to_string())),
     }
+}
+
+pub async fn raw_invoke(cmd: &str, args: impl Serialize) -> Result<JsValue, JsValue> {
+    let args_js = serde_wasm_bindgen::to_value(&args)?;
+    target_invoke_catch(cmd.to_string(), args_js).await
 }

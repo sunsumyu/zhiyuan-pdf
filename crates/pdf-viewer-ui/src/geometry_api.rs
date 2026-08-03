@@ -45,6 +45,23 @@ pub struct RectResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+pub struct DownsampleDecision {
+    pub target_width: f32,
+    pub target_height: f32,
+    pub should_downsample: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PercentageRect {
+    pub left: f32,
+    pub top: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct TransformContext {
     /// DOM reference rect from `element.getBoundingClientRect()`.
     pub reference: DomRectLike,
@@ -76,10 +93,13 @@ impl GeometryApi {
         let point: DomPointLike = unwrap_or_null!(from_value(point_js));
         let ctx: TransformContext = unwrap_or_null!(from_value(ctx_js));
         let transform = build_transform(&ctx);
-        let page = transform.client_to_page(ClientPoint {
-            x: point.client_x,
-            y: point.client_y,
-        });
+        let page = transform.to_page(
+            ClientPoint {
+                x: point.client_x,
+                y: point.client_y,
+            },
+            None,
+        );
         to_value(&PointResult {
             x: page.x,
             y: page.y,
@@ -111,7 +131,7 @@ impl GeometryApi {
         let point: PointResult = unwrap_or_null!(from_value(point_js));
         let raw = PointResult {
             x: point.x,
-            y: PdfCoordinateSpace::denormalize_y(point.y, page_height),
+            y: PdfCoordinateSpace::to_y_up(point.y, page_height),
         };
         to_value(&raw).unwrap_or(JsValue::NULL)
     }
@@ -122,7 +142,7 @@ impl GeometryApi {
         let point: PointResult = unwrap_or_null!(from_value(point_js));
         let page = PointResult {
             x: point.x,
-            y: PdfCoordinateSpace::normalize_y(point.y, page_height),
+            y: PdfCoordinateSpace::to_y_down(point.y, page_height),
         };
         to_value(&page).unwrap_or(JsValue::NULL)
     }
@@ -137,13 +157,16 @@ impl GeometryApi {
         let point: DomPointLike = unwrap_or_null!(from_value(point_js));
         let ctx: TransformContext = unwrap_or_null!(from_value(ctx_js));
         let transform = build_transform(&ctx);
-        let page = transform.client_to_page(ClientPoint {
-            x: point.client_x,
-            y: point.client_y,
-        });
+        let page = transform.to_page(
+            ClientPoint {
+                x: point.client_x,
+                y: point.client_y,
+            },
+            None,
+        );
         let raw = PointResult {
             x: page.x,
-            y: PdfCoordinateSpace::denormalize_y(page.y, ctx.page_height),
+            y: PdfCoordinateSpace::to_y_up(page.y, ctx.page_height),
         };
         to_value(&raw).unwrap_or(JsValue::NULL)
     }
@@ -182,6 +205,52 @@ impl GeometryApi {
             bottom: rect.bottom * z,
         };
         to_value(&projected).unwrap_or(JsValue::NULL)
+    }
+
+    /// Downsample sizing calculation (moved from frontend TS to Rust).
+    #[wasm_bindgen(js_name = "resolveDownsampleDecision")]
+    pub fn resolve_downsample_decision(
+        &self,
+        obj_width: f32,
+        obj_height: f32,
+        original_width: f32,
+        original_height: f32,
+        zoom: f32,
+        dpr: f32,
+    ) -> JsValue {
+        let scale_factor = zoom * dpr * 1.5;
+        let target_width = (obj_width * scale_factor).round().max(1.0);
+        let target_height = (obj_height * scale_factor).round().max(1.0);
+        let should_downsample = original_width > target_width && original_height > target_height;
+
+        to_value(&DownsampleDecision {
+            target_width,
+            target_height,
+            should_downsample,
+        })
+        .unwrap_or(JsValue::NULL)
+    }
+
+    /// Calculate percentage coordinate boundaries relative to pageWidth and pageHeight.
+    #[wasm_bindgen(js_name = "toPercentageRect")]
+    pub fn to_percentage_rect(
+        &self,
+        left: f32,
+        top: f32,
+        width: f32,
+        height: f32,
+        page_width: f32,
+        page_height: f32,
+    ) -> JsValue {
+        let pw = page_width.max(1.0);
+        let ph = page_height.max(1.0);
+        to_value(&PercentageRect {
+            left: (left / pw) * 100.0,
+            top: (top / ph) * 100.0,
+            width: (width / pw) * 100.0,
+            height: (height / ph) * 100.0,
+        })
+        .unwrap_or(JsValue::NULL)
     }
 }
 

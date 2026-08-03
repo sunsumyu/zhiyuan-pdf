@@ -9,11 +9,11 @@ pub mod editor_store;
 pub mod editor_types;
 pub mod engine_state;
 pub mod host_mode;
-pub mod host_runtime;
 pub mod host_snapshot;
 pub mod host_workflow;
 pub mod mode;
 pub mod orchestrator;
+pub mod platform_bridge;
 pub mod replacement_region;
 pub mod replacement_snapshot;
 pub mod workflow;
@@ -21,7 +21,6 @@ pub mod workflow;
 // Sub-modules
 pub mod format;
 pub mod overlay;
-pub mod search_facade;
 pub mod session;
 
 // Direct re-exports from core (previously via draft/ and source/ shim dirs)

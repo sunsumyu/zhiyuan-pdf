@@ -145,11 +145,6 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         const cssScale = previewZoom / baseZoom;
         const anchorLayout = deps.peekFramePlan(previewZoom);
         deps.syncLayoutBox(previewZoom, baseZoom, anchorLayout);
-        if (Math.abs(cssScale - 1.0) < 0.001) {
-            container.style.transform = '';
-        } else {
-            container.style.transform = `scale(${cssScale})`;
-        }
 
         if (scrollContainer) {
             if (anchorLayout) {

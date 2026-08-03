@@ -93,7 +93,9 @@ pub struct TextReflowPatch {
 fn default_scale_x() -> f32 {
     100.0
 }
-pub use pdf_viewer_core::persistence::models::PersistableRegionPatch;
+pub use pdf_viewer_core::persistence::models::{
+    PersistableRegionPatch, PersistableSemanticOperation,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -133,6 +135,8 @@ pub struct PdfModifications {
     pub region_patches: Vec<PersistableRegionPatch>,
     #[serde(default)]
     pub text_reflows: Vec<TextReflowPatch>,
+    #[serde(default)]
+    pub semantic_ops: Vec<PersistableSemanticOperation>,
     #[serde(default)]
     pub text_patches: Vec<TextPatch>,
 }

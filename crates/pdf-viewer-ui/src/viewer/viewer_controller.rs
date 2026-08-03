@@ -1,19 +1,19 @@
 use serde::{Deserialize, Serialize};
 
-use crate::editor::host_runtime::reset_state as reset_editor_host_state;
+use crate::editor::platform_bridge::reset_state as reset_editor_host_state;
 use crate::editor::session::{close_active_editor, reset_editor_mode};
-use crate::find::host_find_store::clear_find_session;
+use crate::find::find_store::clear_find_session;
 use crate::page::page_store::reset_progressive_render_task;
 use crate::present::present_store::reset_present_runtime;
-use crate::render::host_runtime::reset_render_loop_runtime;
+use crate::render::platform_bridge::reset_runtime as reset_render_loop_runtime;
 use crate::render::render_store::reset_render_state;
-use crate::review::review_store::clear_comment_review_session;
+use crate::review::review_store::clear_review_session as clear_comment_review_session;
 use crate::ui_state_store::clear_persistable_patches;
 use crate::viewer::viewer_store::{
-    bump_document_revision, reset_viewer_session, set_current_page, set_current_zoom,
-    set_page_dimensions, set_viewer_document, HostViewerSession, VIEWER_SESSION,
+    bump_document_revision, read_viewer_session, reset_viewer_session, set_current_page,
+    set_current_zoom, set_page_dimensions, set_viewer_document, HostViewerSession,
 };
-use crate::zoom::preview_host::{clear_zoom_preview_host_state, settle_zoom_preview_at_target};
+use crate::zoom::preview_host::{clear_preview_state, settle_at_target};
 use crate::zoom::zoom_controller::reset_zoom_runtime;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -31,7 +31,7 @@ pub fn reset_viewer_runtime(options: ViewerRuntimeResetOptions) {
     reset_progressive_render_task();
     reset_render_loop_runtime();
     reset_editor_host_state();
-    clear_zoom_preview_host_state(true);
+    clear_preview_state(true);
     if options.reset_editor_mode {
         reset_editor_mode();
     } else {
@@ -70,12 +70,12 @@ pub fn note_document_mutation(_reason: &str) -> u64 {
     reset_present_runtime(true, true);
     reset_progressive_render_task();
     reset_render_loop_runtime();
-    settle_zoom_preview_at_target();
+    settle_at_target();
     revision
 }
 
 pub fn read_session() -> HostViewerSession {
-    VIEWER_SESSION.with(|session| session.borrow().clone())
+    read_viewer_session()
 }
 
 pub fn set_document(path: Option<String>, page_count: u16, initial_zoom: f32) {

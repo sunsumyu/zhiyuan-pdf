@@ -1,31 +1,17 @@
+use crate::common::bbox::bbox_intersects;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::mode::read_active_editor_state;
-use crate::editor::paragraph_overlay::{
-    collect_paragraph_render_overlays, ParagraphRenderOverlayOwner,
-};
-use crate::editor::replacement_region::paragraph_replacement_region;
-use crate::render::canvas_overlay::{
-    draw_active_editor_shell_overlay_page, draw_persisted_paragraph_overlay_page, path_bbox_summary,
-};
-use crate::render::effective_page_plan::{
-    build_effective_glyph_render_plan, build_effective_vector_render_plan,
-    EffectiveGlyphRenderEntry, EffectiveVectorRenderEntry, SuppressedVectorTextRuns,
-};
-use crate::render::prepared_scene::PreparedPageScene;
-use crate::render::progressive::ProgressiveVectorRenderTask;
-use crate::common::bbox::bbox_intersects;
-use crate::viewport_culling::{
-    glyph_run_intersects_viewport, path_object_bbox, resolve_page_viewport_bbox,
-};
+use crate::editor::mode::read_state;
+use crate::editor::replacement_region::build_region;
 use js_sys;
-use pdf_viewer_core::models::{BoundingBox, PageState, VectorImageObject, VectorPathObject, VectorRenderObject, VectorTextObject};
+use pdf_viewer_core::models::{BoundingBox, PageState};
 use pdf_viewer_core::render::renderer::{DrawCommand, PdfRenderer};
-use pdf_viewer_core::typography::font_resolver::resolve_font_face;
 use std::cell::Cell;
 use wasm_bindgen::{prelude::*, JsCast};
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement, ImageBitmap};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
+
+pub mod vector_draw;
 
 #[derive(Clone, Copy)]
 pub(crate) enum CoordinateMode {
@@ -42,64 +28,27 @@ pub struct CanvasRenderer {
     pub transparent_surface: bool,
 }
 
-#[wasm_bindgen]
-pub fn render_run_standalone(
-    ctx: CanvasRenderingContext2d,
-    dpr: f32,
-    text: String,
-    x: f32,
-    baseline_y: f32,
-    font_size: f32,
-    color: String,
-    font_name: String,
-    font_weight: String,
-    font_style: String,
-    is_underline: bool,
-    scale_x: f32,
-    render_mode: i32,
-    char_origins: Option<Vec<f32>>,
-) {
-    draw_text_run_core(
-        &ctx,
-        dpr,
-        &text,
-        x,
-        baseline_y,
-        font_size,
-        &color,
-        &font_name,
-        &font_weight,
-        &font_style,
-        is_underline,
-        scale_x,
-        render_mode,
-        char_origins.as_deref(),
-        CoordinateMode::PageSpace,
-    );
-}
-
 pub struct TextMetricsSnapshot {
     pub width: f32,
     pub _ascent: f32,
     pub _descent: f32,
 }
 
-fn current_time_ms() -> f64 {
+pub(super) fn current_time_ms() -> f64 {
     js_sys::Date::now()
 }
 
-fn active_shell_bbox_for_debug() -> Option<BoundingBox> {
-    read_active_editor_state()
-        .map(|state| paragraph_replacement_region(&state.target).text_clear_bbox)
+pub(super) fn active_shell_bbox_for_debug() -> Option<BoundingBox> {
+    read_state().map(|state| build_region(&state.target).text_clear_bbox)
 }
 
-fn debug_bbox_intersects_active_shell(bbox: &BoundingBox) -> bool {
+pub(super) fn debug_bbox_intersects_active_shell(bbox: &BoundingBox) -> bool {
     active_shell_bbox_for_debug()
         .map(|shell| bbox_intersects(bbox, &shell))
         .unwrap_or(false)
 }
 
-fn debug_log_canvas_method(
+pub(super) fn debug_log_canvas_method(
     action: &str,
     object_type: &str,
     object_index: Option<usize>,
@@ -138,8 +87,6 @@ fn debug_log_canvas_method(
 }
 
 impl CanvasRenderer {
-    // Unused new() purged
-
     pub fn new_overlay(canvas: HtmlCanvasElement) -> Self {
         let attrs = web_sys::ContextAttributes2d::new();
         attrs.set_alpha(true);
@@ -171,7 +118,6 @@ impl CanvasRenderer {
             .dyn_into::<HtmlCanvasElement>()
             .ok()?;
 
-        // 注意：劫持模式下我们不设置 alpha: false，因为我们要保留并操作现有的 Context
         let ctx = canvas
             .get_context("2d")
             .ok()?
@@ -204,13 +150,9 @@ impl CanvasRenderer {
         })
     }
 
-    /// 创建一个已知尺寸且已初始化的渲染器（供 standalone 模式使用）
-    // Unused new_with_size() purged
-
     /// 根据当前容器尺寸同步 Canvas 大小
     pub fn sync_size(&self, width: f32, height: f32, zoom: f32) {
         if self.is_hijacked {
-            // 在劫持模式下，不应修改外部画布的物理尺寸
             return;
         }
         self.canvas_height.set(height);
@@ -224,8 +166,6 @@ impl CanvasRenderer {
             .set_property("height", &format!("{}px", height))
             .unwrap();
 
-        // 编辑器 canvas 使用本地坐标系：左上角为原点，Y 轴向下。
-        // [Architectural Correction] 内部绘图单位应为 PDF Points，因此需要同时乘以 zoom 和 dpr
         let combined_scale = (self.dpr * zoom) as f64;
         let _ = self
             .ctx
@@ -263,8 +203,6 @@ impl CanvasRenderer {
         }
     }
 
-    // Unused snap_to_pixel() purged
-
     pub fn draw_text_run(
         &self,
         text: &str,
@@ -273,7 +211,7 @@ impl CanvasRenderer {
         font_size: f32,
         color: &str,
         font_name: &str,
-        font_weight: &str,
+        font_weight: u16,
         font_style: &str,
         is_underline: bool,
         scale_x: f32,
@@ -309,10 +247,7 @@ impl CanvasRenderer {
             );
             return;
         }
-        // 在劫持模式下，主画布可能已经处于某种变换（如 Zoom）之下
-        // 我们直接在当前坐标空间下绘图以保持一致
         self.ctx.set_fill_style_str("#ffffff");
-        // 增加少量 buffer 确保擦除干净
         self.ctx.fill_rect(
             x as f64 - 0.5,
             y as f64 - 0.5,
@@ -321,11 +256,12 @@ impl CanvasRenderer {
         );
     }
 
-    // 劫持模式下，我们进入相对于锚点的坐标空间
-    // Legacy begin_anchor_render purged.
-
-    /// [Architectural Core] 统一全页面状态化渲染
-    fn prepare_page_surface(&self, state: &PageState, _page_width: f32, _page_height: f32) {
+    pub(super) fn prepare_page_surface(
+        &self,
+        state: &PageState,
+        _page_width: f32,
+        _page_height: f32,
+    ) {
         let page_scale = (state.zoom * state.dpr) as f64;
         let viewport_left_px = (state.viewport_left * state.dpr).max(0.0) as f64;
         let viewport_top_px = (state.viewport_top * state.dpr).max(0.0) as f64;
@@ -348,7 +284,12 @@ impl CanvasRenderer {
         );
     }
 
-    fn apply_page_transform(&self, state: &PageState, _page_width: f32, _page_height: f32) {
+    pub(super) fn apply_page_transform(
+        &self,
+        state: &PageState,
+        _page_width: f32,
+        _page_height: f32,
+    ) {
         let page_scale = (state.zoom * state.dpr) as f64;
         let viewport_left_px = (state.viewport_left * state.dpr).max(0.0) as f64;
         let viewport_top_px = (state.viewport_top * state.dpr).max(0.0) as f64;
@@ -362,527 +303,6 @@ impl CanvasRenderer {
         );
     }
 
-    fn draw_vector_object(
-        &self,
-        obj: &VectorRenderObject,
-        object_index: Option<usize>,
-        image_provider: &js_sys::Map,
-        suppressed_text_runs: Option<&SuppressedVectorTextRuns>,
-    ) {
-        match obj {
-            VectorRenderObject::Path(path) => {
-                self.draw_path_object(path, object_index);
-            }
-            VectorRenderObject::Image(image) => {
-                self.draw_image_object(image, object_index, image_provider);
-            }
-            VectorRenderObject::Text(text_obj) => {
-                self.draw_text_object(text_obj, object_index, suppressed_text_runs);
-            }
-        }
-    }
-
-    fn draw_path_object(&self, path: &VectorPathObject, object_index: Option<usize>) {
-        let bbox = path_object_bbox(path);
-        debug_log_canvas_method(
-            "method.draw-vector-object.path",
-            "path",
-            object_index,
-            Some(path.id.as_str()),
-            bbox,
-            vec![
-                dbg_field("strokeColor", path.stroke_color.as_deref().unwrap_or("none")),
-                dbg_field("fillColor", path.fill_color.as_deref().unwrap_or("none")),
-                dbg_field("strokeWidth", path.stroke_width),
-            ],
-        );
-        if let Some((path_width, path_height)) = path_bbox_summary(path) {
-            let is_suspicious_horizontal_path = path_width >= 120.0
-                && path_height <= (path.stroke_width.max(0.0) * 6.0).max(30.0);
-            if is_suspicious_horizontal_path
-                && bbox
-                    .as_ref()
-                    .map(debug_bbox_intersects_active_shell)
-                    .unwrap_or(false)
-            {
-                dbg_event(
-                    "canvas.draw",
-                    "vector-path",
-                    vec![
-                        dbg_field("objectId", path.id.as_str()),
-                        dbg_field("strokeColor", path.stroke_color.as_deref().unwrap_or("none")),
-                        dbg_field("fillColor", path.fill_color.as_deref().unwrap_or("none")),
-                        dbg_field("strokeWidth", path.stroke_width),
-                        dbg_field("pathWidth", path_width),
-                        dbg_field("pathHeight", path_height),
-                    ],
-                );
-            }
-        }
-        self.ctx.save();
-        self.ctx.set_line_width(path.stroke_width.max(0.4) as f64);
-        self.ctx.begin_path();
-        for seg in &path.segments {
-            match seg.command.as_str() {
-                "move" => {
-                    if let Some([x, y]) = seg.points.first().copied() {
-                        self.ctx.move_to(x as f64, y as f64);
-                    }
-                }
-                "line" => {
-                    if let Some([x, y]) = seg.points.first().copied() {
-                        self.ctx.line_to(x as f64, y as f64);
-                    }
-                }
-                "close" => self.ctx.close_path(),
-                _ => {}
-            }
-        }
-        if path.fill {
-            if let Some(color) = &path.fill_color {
-                self.ctx.set_fill_style_str(color);
-                self.ctx.fill();
-            }
-        }
-        if path.stroke {
-            if let Some(color) = &path.stroke_color {
-                self.ctx.set_stroke_style_str(color);
-                self.ctx.stroke();
-            }
-        }
-        self.ctx.restore();
-    }
-
-    fn draw_image_object(
-        &self,
-        image: &VectorImageObject,
-        object_index: Option<usize>,
-        image_provider: &js_sys::Map,
-    ) {
-        let bbox = Some(BoundingBox {
-            left: image.x,
-            top: image.y,
-            right: image.x + image.width.max(0.0),
-            bottom: image.y + image.height.max(0.0),
-        });
-        debug_log_canvas_method(
-            "method.draw-vector-object.image",
-            "image",
-            object_index,
-            Some(image.id.as_str()),
-            bbox,
-            vec![dbg_field("width", image.width), dbg_field("height", image.height)],
-        );
-        let img_val = image_provider.get(&JsValue::from_str(&image.id));
-        if let Some(img_js) = img_val.clone().dyn_into::<HtmlImageElement>().ok() {
-            self.ctx.save();
-            let _ = self.ctx.draw_image_with_html_image_element_and_dw_and_dh(
-                &img_js,
-                image.x as f64,
-                image.y as f64,
-                image.width as f64,
-                image.height as f64,
-            );
-            self.ctx.restore();
-        } else if let Some(img_js) = img_val.dyn_into::<ImageBitmap>().ok() {
-            self.ctx.save();
-            let _ = self.ctx.draw_image_with_image_bitmap_and_dw_and_dh(
-                &img_js,
-                image.x as f64,
-                image.y as f64,
-                image.width as f64,
-                image.height as f64,
-            );
-            self.ctx.restore();
-        }
-    }
-
-    fn draw_text_object(
-        &self,
-        text_obj: &VectorTextObject,
-        object_index: Option<usize>,
-        suppressed_text_runs: Option<&SuppressedVectorTextRuns>,
-    ) {
-        let text_bbox = text_obj
-            .runs
-            .iter()
-            .fold(None, |acc: Option<BoundingBox>, run| {
-                let run_bbox = BoundingBox {
-                    left: run.tx,
-                    top: run.ty - run.font_size.max(0.0),
-                    right: run.tx + run.width.max(0.0),
-                    bottom: run.ty,
-                };
-                Some(match acc {
-                    Some(current) => BoundingBox {
-                        left: current.left.min(run_bbox.left),
-                        top: current.top.min(run_bbox.top),
-                        right: current.right.max(run_bbox.right),
-                        bottom: current.bottom.max(run_bbox.bottom),
-                    },
-                    None => run_bbox,
-                })
-            });
-        debug_log_canvas_method(
-            "method.draw-vector-object.text",
-            "text",
-            object_index,
-            Some(text_obj.id.as_str()),
-            text_bbox,
-            vec![dbg_field("runCount", text_obj.runs.len())],
-        );
-        for (run_index, run) in text_obj.runs.iter().enumerate() {
-            if run.render_mode == 3 {
-                continue;
-            }
-            let should_skip_run = suppressed_text_runs
-                .map(|suppressed| suppressed.suppresses_run(run_index, run))
-                .unwrap_or(false);
-            if should_skip_run {
-                continue;
-            }
-            let resolved_font = resolve_font_face(&run.font_name, run.font_hints.as_ref());
-            draw_text_run_core(
-                &self.ctx,
-                self.dpr,
-                &run.text,
-                run.tx,
-                run.ty,
-                run.font_size,
-                &run.color,
-                &resolved_font.render_family,
-                if run.is_bold { "bold" } else { "normal" },
-                if run.is_italic { "italic" } else { "normal" },
-                run.is_underline,
-                run.a.max(0.01),
-                run.render_mode as i32,
-                Some(&run.char_origins),
-                CoordinateMode::PageSpace,
-            );
-        }
-    }
-
-    pub fn render_vector_slice(
-        &self,
-        state: &PageState,
-        vector_model: &pdf_viewer_core::models::VectorPageModel,
-        task: &mut ProgressiveVectorRenderTask,
-        image_provider: &js_sys::Map,
-        max_items: usize,
-        budget_ms: Option<f64>,
-        clear_first: bool,
-    ) -> usize {
-        if clear_first {
-            self.prepare_page_surface(state, vector_model.width, vector_model.height);
-        } else {
-            self.apply_page_transform(state, vector_model.width, vector_model.height);
-        }
-
-        let max_items = max_items.max(1);
-        let budget_ms = budget_ms.filter(|budget| budget.is_finite() && *budget > 0.0);
-        let slice_start_time = budget_ms.map(|_| current_time_ms());
-        let mut processed_items = 0;
-
-        while task.next_index < task.entries.len() && processed_items < max_items {
-            if let (Some(start_time), Some(budget_ms)) = (slice_start_time, budget_ms) {
-                if processed_items > 0 {
-                    let now = current_time_ms();
-                    if now - start_time >= budget_ms {
-                        break;
-                    }
-                }
-            }
-
-            let visible_index = task.next_index;
-            let Some(entry) = task.entries.get(visible_index) else {
-                task.next_index += 1;
-                continue;
-            };
-            match entry {
-                EffectiveVectorRenderEntry::Object {
-                    object_index,
-                    suppressed_text_runs,
-                } => {
-                    let Some(obj) = vector_model.objects.get(*object_index) else {
-                        task.next_index += 1;
-                        continue;
-                    };
-                    self.draw_vector_object(
-                        obj,
-                        Some(*object_index),
-                        image_provider,
-                        Some(suppressed_text_runs),
-                    );
-                }
-                EffectiveVectorRenderEntry::ParagraphOverlay(overlay) => {
-                    dbg_event(
-                        "paint.overlay",
-                        "method.render-vector-slice.overlay-entry",
-                        vec![
-                            dbg_field("paragraphId", overlay.target.paragraph_id.as_str()),
-                            dbg_field("entryKind", "paragraphOverlay"),
-                            dbg_field(
-                                "owner",
-                                match overlay.owner {
-                                    ParagraphRenderOverlayOwner::ActiveEditorShell => {
-                                        "active-editor-shell"
-                                    }
-                                    ParagraphRenderOverlayOwner::PersistedPageCanvas => {
-                                        "persisted-page-canvas"
-                                    }
-                                },
-                            ),
-                        ],
-                    );
-                    match overlay.owner {
-                        ParagraphRenderOverlayOwner::ActiveEditorShell => {
-                            draw_active_editor_shell_overlay_page(
-                                self,
-                                &overlay,
-                                overlay.marker_text_override.as_deref(),
-                            );
-                        }
-                        ParagraphRenderOverlayOwner::PersistedPageCanvas => {
-                            draw_persisted_paragraph_overlay_page(
-                                self,
-                                &overlay.target,
-                                &overlay.draft_text,
-                                overlay.marker_text_override.as_deref(),
-                                "persisted-page-canvas",
-                            );
-                        }
-                    }
-                }
-            }
-            task.next_index += 1;
-            processed_items += 1;
-        }
-
-        processed_items
-    }
-
-    pub fn render_page(
-        &self,
-        state: &PageState,
-        image_provider: &js_sys::Map, // 映射 ID -> HtmlImageElement
-        prepared_scene: Option<&PreparedPageScene>,
-    ) {
-        let plan = match &state.paint_plan {
-            Some(p) => p,
-            None => return,
-        };
-
-        let viewport_bbox = resolve_page_viewport_bbox(state, plan.width, plan.height);
-        dbg_event(
-            "canvas.render",
-            "render_page.start",
-            vec![
-                dbg_field("width", plan.width),
-                dbg_field("height", plan.height),
-                dbg_field("zoom", state.zoom),
-                dbg_field("viewport", format!("{:?}", viewport_bbox)),
-                dbg_field("has_vector_model", state.vector_model.is_some()),
-            ],
-        );
-        self.prepare_page_surface(state, plan.width, plan.height);
-        let overlays = collect_paragraph_render_overlays(plan, state.vector_model.as_ref());
-        dbg_event(
-            "canvas.render",
-            "overlay-summary",
-            vec![dbg_field("overlayCount", overlays.len())],
-        );
-        for (ov_idx, ov) in overlays.iter().enumerate() {
-            dbg_event(
-                "canvas.render",
-                "overlay-detail",
-                vec![
-                    dbg_field("index", ov_idx),
-                    dbg_field("paragraphId", ov.target.paragraph_id.as_str()),
-                    dbg_field("owner", format!("{:?}", ov.owner)),
-                    dbg_field("replacesSource", ov.replaces_source),
-                    dbg_field(
-                        "sourceObjectIndices",
-                        format!("{:?}", ov.source_object_indices),
-                    ),
-                    dbg_field("sourceTextLen", ov.source_text.chars().count()),
-                    dbg_field("draftTextLen", ov.draft_text.chars().count()),
-                ],
-            );
-        }
-
-        if let Some(vector_model) = &state.vector_model {
-            let effective_plan = build_effective_vector_render_plan(
-                vector_model,
-                prepared_scene,
-                &viewport_bbox,
-                &overlays,
-            );
-
-            let mut draw_text_count = 0;
-            let mut draw_path_count = 0;
-            let mut draw_image_count = 0;
-
-            for entry in effective_plan {
-                match entry {
-                    EffectiveVectorRenderEntry::Object {
-                        object_index,
-                        suppressed_text_runs,
-                    } => {
-                        let Some(obj) = vector_model.objects.get(object_index) else {
-                            continue;
-                        };
-                        match obj {
-                            VectorRenderObject::Text(_) => draw_text_count += 1,
-                            VectorRenderObject::Path(_) => draw_path_count += 1,
-                            VectorRenderObject::Image(_) => draw_image_count += 1,
-                        }
-                        self.draw_vector_object(
-                            obj,
-                            Some(object_index),
-                            image_provider,
-                            Some(&suppressed_text_runs),
-                        );
-                    }
-                    EffectiveVectorRenderEntry::ParagraphOverlay(overlay) => {
-                        let replacement_region = paragraph_replacement_region(&overlay.target);
-                        let overlay_cull_bbox =
-                            replacement_region.viewport_cull_bbox_for_page_width(plan.width);
-                        let intersects = bbox_intersects(&overlay_cull_bbox, &viewport_bbox);
-                        if intersects {
-                            dbg_event(
-                                "paint.overlay",
-                                "method.render-page.overlay-entry",
-                                vec![
-                                    dbg_field("paragraphId", overlay.target.paragraph_id.as_str()),
-                                    dbg_field("entryKind", "paragraphOverlay"),
-                                    dbg_field(
-                                        "owner",
-                                        match overlay.owner {
-                                            ParagraphRenderOverlayOwner::ActiveEditorShell => {
-                                                "active-editor-shell"
-                                            }
-                                            ParagraphRenderOverlayOwner::PersistedPageCanvas => {
-                                                "persisted-page-canvas"
-                                            }
-                                        },
-                                    ),
-                                ],
-                            );
-                            match overlay.owner {
-                                ParagraphRenderOverlayOwner::ActiveEditorShell => {
-                                    draw_active_editor_shell_overlay_page(
-                                        self,
-                                        &overlay,
-                                        overlay.marker_text_override.as_deref(),
-                                    );
-                                }
-                                ParagraphRenderOverlayOwner::PersistedPageCanvas => {
-                                    draw_persisted_paragraph_overlay_page(
-                                        self,
-                                        &overlay.target,
-                                        &overlay.draft_text,
-                                        overlay.marker_text_override.as_deref(),
-                                        "persisted-page-canvas",
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
-                "[CANVAS-DBG] render_page finished. Drew: paths={}, images={}, texts={}",
-                draw_path_count, draw_image_count, draw_text_count
-            )));
-            return;
-        }
-
-        let effective_plan = build_effective_glyph_render_plan(plan, &viewport_bbox, &overlays);
-        for entry in effective_plan {
-            match entry {
-                EffectiveGlyphRenderEntry::ParagraphOverlay(overlay) => {
-                    dbg_event(
-                        "paint.overlay",
-                        "method.render-page.glyph-overlay-entry",
-                        vec![
-                            dbg_field("paragraphId", overlay.target.paragraph_id.as_str()),
-                            dbg_field("entryKind", "glyphParagraphOverlay"),
-                            dbg_field(
-                                "owner",
-                                match overlay.owner {
-                                    ParagraphRenderOverlayOwner::ActiveEditorShell => {
-                                        "active-editor-shell"
-                                    }
-                                    ParagraphRenderOverlayOwner::PersistedPageCanvas => {
-                                        "persisted-page-canvas"
-                                    }
-                                },
-                            ),
-                        ],
-                    );
-                    match overlay.owner {
-                        ParagraphRenderOverlayOwner::ActiveEditorShell => {
-                            draw_active_editor_shell_overlay_page(
-                                self,
-                                &overlay,
-                                overlay.marker_text_override.as_deref(),
-                            );
-                        }
-                        ParagraphRenderOverlayOwner::PersistedPageCanvas => {
-                            draw_persisted_paragraph_overlay_page(
-                                self,
-                                &overlay.target,
-                                &overlay.draft_text,
-                                overlay.marker_text_override.as_deref(),
-                                "persisted-page-canvas",
-                            );
-                        }
-                    }
-                }
-                EffectiveGlyphRenderEntry::Paragraph(reference) => {
-                    let Some(region) = plan.regions.get(reference.region_index) else {
-                        continue;
-                    };
-                    let Some(paragraph) = region.paragraphs.get(reference.paragraph_index) else {
-                        continue;
-                    };
-                    for (run_index, run) in paragraph.runs.iter().enumerate() {
-                        if reference.suppressed_run_indices.contains(&run_index)
-                            || run.object_ids.iter().any(|object_id| {
-                                reference.suppressed_run_object_ids.contains(object_id)
-                            })
-                        {
-                            continue;
-                        }
-                        if !glyph_run_intersects_viewport(run, &viewport_bbox) {
-                            continue;
-                        }
-                        draw_text_run_core(
-                            &self.ctx,
-                            self.dpr,
-                            &run.text,
-                            run.origin_x,
-                            run.origin_y,
-                            run.font_size,
-                            &run.color,
-                            &run.resolved_font.render_family,
-                            if run.is_bold { "bold" } else { "normal" },
-                            if run.is_italic { "italic" } else { "normal" },
-                            run.is_underline,
-                            run.scale_x,
-                            match run.paint_mode {
-                                pdf_viewer_core::models::PaintMode::Stroke => 1,
-                                pdf_viewer_core::models::PaintMode::FillStroke => 2,
-                                _ => 0,
-                            },
-                            Some(&run.char_origins),
-                            CoordinateMode::PageSpace,
-                        );
-                    }
-                }
-            }
-        }
-    }
     fn draw_text_command(
         &mut self,
         text: &str,
@@ -906,13 +326,15 @@ impl CanvasRenderer {
         color: &str,
         is_fill: bool,
     ) {
-        // Suspicious horizontal rules (wide + very short) are logged for diagnostics;
-        // the threshold is specific to filled/stroked rects.
         let is_suspicious_horizontal_rect = width >= 120.0 && height <= 6.0;
         if is_suspicious_horizontal_rect {
             dbg_event(
                 "canvas.draw",
-                if is_fill { "draw-command-fill-rect" } else { "draw-command-stroke-rect" },
+                if is_fill {
+                    "draw-command-fill-rect"
+                } else {
+                    "draw-command-stroke-rect"
+                },
                 vec![
                     dbg_field("x1", x),
                     dbg_field("y1", y),
@@ -924,22 +346,16 @@ impl CanvasRenderer {
         }
         if is_fill {
             self.ctx.set_fill_style_str(color);
-            self.ctx.fill_rect(x as f64, y as f64, width as f64, height as f64);
+            self.ctx
+                .fill_rect(x as f64, y as f64, width as f64, height as f64);
         } else {
             self.ctx.set_stroke_style_str(color);
-            self.ctx.stroke_rect(x as f64, y as f64, width as f64, height as f64);
+            self.ctx
+                .stroke_rect(x as f64, y as f64, width as f64, height as f64);
         }
     }
 
-    fn draw_line_command(
-        &mut self,
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-        color: &str,
-        width: f32,
-    ) {
+    fn draw_line_command(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: &str, width: f32) {
         let line_width = (x2 - x1).abs();
         let line_height = (y2 - y1).abs();
         let is_suspicious_horizontal_line = line_width >= 120.0 && line_height <= 6.0;
@@ -998,15 +414,12 @@ impl PdfRenderer for CanvasRenderer {
         }
     }
 
-
     fn clear(&mut self) {
         if self.is_hijacked {
-            // 在主画布模式下，禁止进行全画布清理，否则会擦掉整页 PDF
             return;
         }
         let w = self.canvas.width() as f64;
         let h = self.canvas.height() as f64;
-        let _current_canvas_height = self.canvas_height.get();
 
         let _ = self.ctx.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
         self.ctx.set_fill_style_str("#ffffff");
@@ -1030,7 +443,7 @@ pub(crate) fn draw_text_run_core(
     font_size: f32,
     color: &str,
     font_name: &str,
-    font_weight: &str,
+    font_weight: u16,
     font_style: &str,
     is_underline: bool,
     scale_x: f32,
@@ -1046,12 +459,12 @@ pub(crate) fn draw_text_run_core(
         CoordinateMode::PageSpace => 1.0,
         CoordinateMode::EditorLocal => 1.0,
     };
-    let effective_weight = if font_weight == "bold" { "600" } else { "400" };
+    let weight_str = font_weight.to_string();
 
     ctx.save();
     ctx.set_font(&format!(
         "{} {} {}px {}",
-        font_style, effective_weight, font_size, font_name
+        font_style, weight_str, font_size, font_name
     ));
     ctx.set_fill_style_str(color);
     ctx.set_stroke_style_str(color);

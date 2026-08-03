@@ -69,11 +69,11 @@ pub fn vector_object_intersects_viewport(
 fn text_object_intersects_viewport(text: &VectorTextObject, viewport: &BoundingBox) -> bool {
     text.runs
         .iter()
-        .any(|run| bbox_intersects(&styled_run_bbox(run), viewport))
+        .any(|run| bbox_intersects(&run_bbox(run), viewport))
 }
 
 fn path_object_intersects_viewport(path: &VectorPathObject, viewport: &BoundingBox) -> bool {
-    path_object_bbox(path)
+    path_bbox(path)
         .map(|bbox| bbox_intersects(&bbox, viewport))
         .unwrap_or(false)
 }
@@ -88,7 +88,7 @@ fn image_object_intersects_viewport(image: &VectorImageObject, viewport: &Boundi
     bbox_intersects(&bbox, viewport)
 }
 
-pub fn styled_run_bbox(run: &StyledRun) -> BoundingBox {
+pub fn run_bbox(run: &StyledRun) -> BoundingBox {
     BoundingBox {
         left: run.tx,
         top: run.ty - run.font_size.max(0.0),
@@ -97,7 +97,7 @@ pub fn styled_run_bbox(run: &StyledRun) -> BoundingBox {
     }
 }
 
-pub fn path_object_bbox(path: &VectorPathObject) -> Option<BoundingBox> {
+pub fn path_bbox(path: &VectorPathObject) -> Option<BoundingBox> {
     let mut min_x = f32::INFINITY;
     let mut min_y = f32::INFINITY;
     let mut max_x = f32::NEG_INFINITY;

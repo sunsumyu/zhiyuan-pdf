@@ -2,10 +2,10 @@ use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
 use crate::presentation::page_turn::{
-    admit_page_asset, can_prefetch, decide_adjacent_prefetch, is_latest_page_turn,
-    mark_page_visible, read_page_turn_snapshot, request_page_turn, reset_page_turn_state,
+    admit_page_asset, can_prefetch, decide_adjacent_prefetch, is_latest_turn, mark_page_visible,
+    request_page_turn, reset_state,
 };
-use crate::presentation::render_queue::resolve_render_queue_action;
+use crate::presentation::render_queue::resolve_queue_action;
 
 #[wasm_bindgen]
 pub struct PagePresentationRuntime;
@@ -24,12 +24,12 @@ impl PagePresentationRuntime {
 
     #[wasm_bindgen(js_name = "readPageTurn")]
     pub fn read_page_turn(&self) -> JsValue {
-        to_value(&read_page_turn_snapshot()).unwrap_or(JsValue::NULL)
+        to_value(&crate::presentation::page_turn::read_snapshot()).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(js_name = "isLatestPageTurn")]
     pub fn is_latest_page_turn(&self, page_turn_id: u32, page_index: u16) -> bool {
-        is_latest_page_turn(page_turn_id, page_index)
+        is_latest_turn(page_turn_id, page_index)
     }
 
     #[wasm_bindgen(js_name = "markPageVisible")]
@@ -60,7 +60,7 @@ impl PagePresentationRuntime {
         now_ms: f64,
         last_commit_ms: f64,
     ) -> JsValue {
-        to_value(&resolve_render_queue_action(
+        to_value(&resolve_queue_action(
             source,
             executing,
             now_ms,
@@ -71,7 +71,7 @@ impl PagePresentationRuntime {
 
     #[wasm_bindgen(js_name = "reset")]
     pub fn reset(&self) {
-        reset_page_turn_state();
+        reset_state();
     }
 }
 

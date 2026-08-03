@@ -16,6 +16,7 @@ src-tauri/gen/
 # Editor / IDE
 .vscode/
 .idea/
+.zed/
 *.swp
 *.swo
 
@@ -30,6 +31,9 @@ check*.txt
 scratch/
 *.bak
 *.tmp
+
+# Local markdown issue tracker (see docs/agents/issue-tracker.md)
+.scratch/
 
 # OS
 .DS_Store

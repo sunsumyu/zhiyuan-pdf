@@ -1,13 +1,14 @@
+use crate::common::debug::truncate_debug_text;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::editor::draft_layout::build_persisted_overlay_render_plan;
+use crate::editor::draft_layout::build_save_layout;
 use crate::editor::paragraph_overlay::ParagraphRenderOverlay;
-use crate::editor::replacement_region::paragraph_replacement_region;
+use crate::editor::replacement_region::build_region;
 use crate::editor::session::ActiveEditorTarget;
-use crate::editor::text_geometry::measure_editor_layout_text_width as measure_editor_layout_text_width_shared;
-use crate::render::canvas::{draw_text_run_core, CanvasRenderer, CoordinateMode};
-use crate::common::debug::truncate_debug_text;
+use crate::editor::text_geometry::measure_text_width as measure_text_width_shared;
+use crate::render::canvas::CanvasRenderer;
+use pdf_viewer_core::models::{VectorPageModel, VisualMarkerContent};
 
 pub(crate) fn path_bbox_summary(
     path: &pdf_viewer_core::models::VectorPathObject,
@@ -34,7 +35,7 @@ pub(crate) fn path_bbox_summary(
 }
 
 fn summarize_overlay_render_plan(
-    plan: &crate::editor::draft_layout::EditorDraftRenderPlan,
+    plan: &crate::editor::draft_layout::DraftLayout,
 ) -> String {
     plan.layout
         .lines
@@ -74,7 +75,7 @@ fn summarize_overlay_render_plan(
 }
 
 fn count_overlay_underline_runs(
-    plan: &crate::editor::draft_layout::EditorDraftRenderPlan,
+    plan: &crate::editor::draft_layout::DraftLayout,
 ) -> usize {
     plan.layout
         .lines
@@ -84,102 +85,30 @@ fn count_overlay_underline_runs(
         .count()
 }
 
-pub(crate) fn draw_editor_marker_page(
+fn draw_graphic_markers(
     renderer: &CanvasRenderer,
-    active_target: &ActiveEditorTarget,
-    marker_text_override: Option<&str>,
+    document_plan: &pdf_viewer_core::edit::document_plan::EditContext,
+    vector_model: Option<&VectorPageModel>,
+    image_provider: &js_sys::Map,
 ) {
-    crate::chain_trace!(
-        "render.marker-draw",
-        "hasMarker" => active_target.scene.document_plan.marker.is_some(),
-        "paragraphId" => &active_target.paragraph_id,
-    );
-    let synthetic_marker_text = marker_text_override
-        .filter(|text| active_target.scene.document_plan.marker.is_none() && !text.is_empty());
-    if let Some(marker) = &active_target.scene.document_plan.marker {
-        if let Some(override_text) = marker_text_override {
-            if !override_text.is_empty() {
-                if let Some(run) = marker.runs.first() {
-                    draw_text_run_core(
-                        &renderer.ctx,
-                        renderer.dpr,
-                        override_text,
-                        run.origin_x,
-                        run.origin_y,
-                        run.style.font_size,
-                        &run.style.color,
-                        &run.style.font_name,
-                        if run.style.is_bold { "bold" } else { "normal" },
-                        if run.style.is_italic {
-                            "italic"
-                        } else {
-                            "normal"
-                        },
-                        false,
-                        run.style.scale_x,
-                        0,
-                        None,
-                        CoordinateMode::PageSpace,
-                    );
-                }
-            }
-        } else {
-            for run in &marker.runs {
-                draw_text_run_core(
-                    &renderer.ctx,
-                    renderer.dpr,
-                    &run.text,
-                    run.origin_x,
-                    run.origin_y,
-                    run.style.font_size,
-                    &run.style.color,
-                    &run.style.font_name,
-                    if run.style.is_bold { "bold" } else { "normal" },
-                    if run.style.is_italic {
-                        "italic"
-                    } else {
-                        "normal"
-                    },
-                    false,
-                    run.style.scale_x,
-                    0,
-                    if run.char_origins.is_empty() {
-                        None
-                    } else {
-                        Some(&run.char_origins)
-                    },
-                    CoordinateMode::PageSpace,
-                );
-            }
-        }
-    } else if let Some(override_text) = synthetic_marker_text {
-        let run = active_target
-            .scene
-            .body_session
-            .paragraph
-            .runs
-            .first()
-            .unwrap_or(&active_target.scene.document_plan.draft_template_run);
-        draw_text_run_core(
-            &renderer.ctx,
-            renderer.dpr,
-            override_text,
-            active_target.scene.body_session.anchor_bbox.left,
-            run.origin_y,
-            run.style.font_size,
-            &run.style.color,
-            &run.style.font_name,
-            if run.style.is_bold { "bold" } else { "normal" },
-            if run.style.is_italic {
-                "italic"
-            } else {
-                "normal"
-            },
-            false,
-            run.style.scale_x,
-            0,
-            None,
-            CoordinateMode::PageSpace,
+    let Some(vector_model) = vector_model else {
+        return;
+    };
+    for marker in &document_plan.graphic_markers {
+        let VisualMarkerContent::Graphic { object_index, .. } = &marker.content else {
+            continue;
+        };
+        let Some(object) = vector_model.objects.get(*object_index) else {
+            continue;
+        };
+        renderer.draw_vector_object(object, Some(*object_index), image_provider, None);
+        dbg_event(
+            "paint.overlay",
+            "graphic-marker-redraw",
+            vec![
+                dbg_field("paragraphId", document_plan.target_id.as_str()),
+                dbg_field("objectIndex", *object_index),
+            ],
         );
     }
 }
@@ -187,6 +116,8 @@ pub(crate) fn draw_editor_marker_page(
 pub(crate) fn draw_active_editor_shell_overlay_page(
     renderer: &CanvasRenderer,
     overlay: &ParagraphRenderOverlay,
+    vector_model: Option<&VectorPageModel>,
+    image_provider: &js_sys::Map,
     marker_text_override: Option<&str>,
 ) {
     let active_target = &overlay.target;
@@ -195,6 +126,8 @@ pub(crate) fn draw_active_editor_shell_overlay_page(
             renderer,
             active_target,
             &overlay.draft_text,
+            vector_model,
+            image_provider,
             marker_text_override,
             "active-editor-page-canvas",
         );
@@ -202,7 +135,7 @@ pub(crate) fn draw_active_editor_shell_overlay_page(
     }
 
     let shell_bbox = active_target.scene.shell_bbox;
-    let replacement_region = paragraph_replacement_region(active_target);
+    let replacement_region = build_region(active_target);
     let occlusion_bbox = replacement_region.text_clear_bbox;
     let shell_width = (shell_bbox.right - shell_bbox.left).max(1.0);
     let shell_height = (shell_bbox.bottom - shell_bbox.top).max(1.0);
@@ -224,10 +157,10 @@ pub(crate) fn draw_active_editor_shell_overlay_page(
                 "bodyBBox",
                 format!(
                     "[{:.2},{:.2},{:.2},{:.2}]",
-                    active_target.scene.body_session.anchor_bbox.left,
-                    active_target.scene.body_session.anchor_bbox.top,
-                    active_target.scene.body_session.anchor_bbox.right,
-                    active_target.scene.body_session.anchor_bbox.bottom
+                    active_target.scene.body_session().anchor_bbox.left,
+                    active_target.scene.body_session().anchor_bbox.top,
+                    active_target.scene.body_session().anchor_bbox.right,
+                    active_target.scene.body_session().anchor_bbox.bottom
                 ),
             ),
             dbg_field(
@@ -256,6 +189,8 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
     renderer: &CanvasRenderer,
     active_target: &ActiveEditorTarget,
     draft_text: &str,
+    vector_model: Option<&VectorPageModel>,
+    image_provider: &js_sys::Map,
     marker_text_override: Option<&str>,
     owner_label: &str,
 ) {
@@ -269,7 +204,7 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
     let shell_bbox = active_target.scene.shell_bbox;
     let shell_width = (shell_bbox.right - shell_bbox.left).max(1.0);
     let shell_height = (shell_bbox.bottom - shell_bbox.top).max(1.0);
-    let replacement_region = paragraph_replacement_region(active_target);
+    let replacement_region = build_region(active_target);
     let source_replacement_bbox = replacement_region.text_clear_bbox;
     let replacement_width = (source_replacement_bbox.right - source_replacement_bbox.left).max(1.0);
     let replacement_height =
@@ -320,13 +255,15 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
             dbg_field("sourceReplacementHeight", replacement_height),
         ],
     );
-    draw_editor_marker_page(renderer, active_target, marker_text_override);
-
     let document_plan = &active_target.scene.document_plan;
     let session = &document_plan.body_session;
+    // marker 不再单独渲染，文本 marker 已在 build_persisted_overlay_render_plan 中统一排版。
+    // 图形 marker 由 source vector object 恢复，避免正文替换时被 row path suppression 误删。
+    draw_graphic_markers(renderer, document_plan, vector_model, image_provider);
+
     let render_plan =
-        build_persisted_overlay_render_plan(document_plan, draft_text, |text, run| {
-            measure_editor_layout_text_width_shared(&renderer.ctx, text, run)
+        build_save_layout(document_plan, draft_text, |text, run| {
+            measure_text_width_shared(&renderer.ctx, text, run)
         });
 
     dbg_event(
@@ -358,14 +295,21 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
         let baseline_y = session.anchor_bbox.top + line.baseline_y;
         for (_run_idx, run) in line.runs.iter().enumerate() {
             let run_x = session.anchor_bbox.left + line.offset_x + run.origin_x;
+            let resolved_font = pdf_viewer_core::typography::font_resolver::resolve_font_face(&run.style.font_name, None);
             renderer.draw_text_run(
                 &run.text,
                 run_x,
                 baseline_y,
                 run.style.font_size,
                 &run.style.color,
-                &run.style.font_name,
-                if run.style.is_bold { "bold" } else { "normal" },
+                &resolved_font.render_family,
+                if run.style.font_weight_numeric > 0 {
+                    run.style.font_weight_numeric
+                } else if run.style.is_bold {
+                    700
+                } else {
+                    400
+                },
                 if run.style.is_italic {
                     "italic"
                 } else {

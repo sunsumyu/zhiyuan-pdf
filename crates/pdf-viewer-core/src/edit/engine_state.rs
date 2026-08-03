@@ -1,7 +1,7 @@
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
-use crate::models::LayoutAlignment;
+use crate::models::{LayoutAlignment, SemanticBlockKind};
 use crate::text::list_semantics::{derive_list_text_semantics, ListMarkerKind};
 use serde::{Deserialize, Serialize};
 
@@ -90,25 +90,22 @@ fn derive_next_marker_text(
 
 impl LiveEditorParagraphState {
     pub fn new(target: ActiveEditorTarget) -> Self {
-        let source_text = target.source_body_text().to_string();
-        let style_mapper = StyleMapper::new_from_paragraph_for_text(
-            &target.scene.body_session.paragraph,
-            &source_text,
-        );
-        let list_kind = target
-            .scene
-            .marker
-            .as_ref()
-            .map(|marker| marker.kind)
-            .unwrap_or(ListMarkerKind::None);
+        let semantic_block = target.semantic_block();
+        let source_text = semantic_block.body.text.clone();
+        let style_mapper =
+            StyleMapper::from_paragraph_text(&semantic_block.body.session.paragraph, &source_text);
+        let list_kind = match &semantic_block.kind {
+            SemanticBlockKind::ListItem(list_item) => list_item.source_list_kind(),
+            _ => ListMarkerKind::None,
+        };
         Self {
             text_model: EditorTextModel::new(source_text),
             style_mapper,
             list_kind,
-            source_alignment: target.scene.body_session.paragraph.style.align,
-            source_line_height: target
-                .scene
-                .body_session
+            source_alignment: semantic_block.body.session.paragraph.style.align,
+            source_line_height: semantic_block
+                .body
+                .session
                 .paragraph
                 .style
                 .line_height
@@ -136,7 +133,9 @@ impl LiveEditorParagraphState {
 
     pub fn set_caret_index(&mut self, caret_index: usize) -> bool {
         let normalized = caret_index.min(self.text_char_count());
-        let changed = self.caret_index != normalized || self.selection_start.is_some() || self.selection_end.is_some();
+        let changed = self.caret_index != normalized
+            || self.selection_start.is_some()
+            || self.selection_end.is_some();
         if changed {
             self.caret_index = normalized;
             self.selection_start = None;
@@ -195,7 +194,7 @@ impl LiveEditorParagraphState {
         let changed = self.text_model.set_current_text(new_text);
         if changed {
             self.style_mapper
-                .update_with_text(self.text_model.current_text());
+                .update_text(self.text_model.current_text());
             self.normalize_caret();
             self.sync_target_control_style();
             self.selection_start = None;
@@ -280,7 +279,7 @@ impl LiveEditorParagraphState {
     pub fn active_line_height(&self) -> f32 {
         self.target
             .scene
-            .body_session
+            .body_session()
             .paragraph
             .style
             .line_height
@@ -305,7 +304,7 @@ impl LiveEditorParagraphState {
     }
 
     pub fn active_alignment(&self) -> LayoutAlignment {
-        self.target.scene.body_session.paragraph.style.align
+        self.target.scene.body_session().paragraph.style.align
     }
 
     pub fn active_alignment_label(&self) -> String {
@@ -319,8 +318,7 @@ impl LiveEditorParagraphState {
     pub fn source_list_kind(&self) -> ListMarkerKind {
         self.target
             .scene
-            .marker
-            .as_ref()
+            .marker()
             .map(|marker| marker.kind)
             .unwrap_or(ListMarkerKind::None)
     }
@@ -335,7 +333,7 @@ impl LiveEditorParagraphState {
 
     pub fn has_style_changes(&self) -> bool {
         self.style_mapper
-            .has_style_changes_against_paragraph(&self.target.scene.body_session.paragraph)
+            .has_style_changes_against_paragraph(&self.target.scene.body_session().paragraph)
     }
 
     pub fn requires_source_replacement(&self) -> bool {
@@ -397,7 +395,7 @@ impl LiveEditorParagraphState {
         if self.active_alignment() == align {
             return false;
         }
-        self.target.scene.body_session.paragraph.style.align = align;
+        self.target.scene.body_session_mut().paragraph.style.align = align;
         self.target.editor_session.paragraph.style.align = align;
         self.scene_revision = self.scene_revision.saturating_add(1);
         self.session_dirty = true;
@@ -419,17 +417,16 @@ impl LiveEditorParagraphState {
         true
     }
 
-    pub fn restore_list_kind_from_marker_text(&mut self, marker_text: &str) {
+    pub fn restore_list_kind(&mut self, marker_text: &str) {
         let restored_kind = derive_list_text_semantics(marker_text).kind;
         self.list_kind = restored_kind;
     }
 
-    pub fn resolved_marker_text_for_patch(&self) -> Option<String> {
+    pub fn resolved_marker_text(&self) -> Option<String> {
         let source_marker_text = self
             .target
             .scene
-            .marker
-            .as_ref()
+            .marker()
             .map(|marker| marker.text.as_str());
         let next = derive_next_marker_text(
             self.active_list_kind(),
@@ -443,11 +440,10 @@ impl LiveEditorParagraphState {
         }
     }
 
-    pub fn source_marker_text_for_patch(&self) -> Option<&str> {
+    pub fn source_marker_text(&self) -> Option<&str> {
         self.target
             .scene
-            .marker
-            .as_ref()
+            .marker()
             .map(|marker| marker.text.as_str())
     }
 
@@ -519,7 +515,12 @@ impl LiveEditorParagraphState {
         if (self.active_line_height() - normalized).abs() < 0.01 {
             return false;
         }
-        self.target.scene.body_session.paragraph.style.line_height = normalized;
+        self.target
+            .scene
+            .body_session_mut()
+            .paragraph
+            .style
+            .line_height = normalized;
         self.target.editor_session.paragraph.style.line_height = normalized;
         self.scene_revision = self.scene_revision.saturating_add(1);
         self.session_dirty = true;
@@ -535,5 +536,117 @@ impl LiveEditorParagraphState {
             _ => return false,
         };
         self.set_line_height(target_line_height)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::edit::active_target::ActiveEditorTarget;
+    use crate::edit::document_plan::EditContext;
+    use crate::edit::paragraph_scene::from_context;
+    use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContext, RunStyle};
+    use crate::text::glyph_layout::build_editor_session_text_plan;
+
+    fn test_style() -> RunStyle {
+        RunStyle {
+            font_name: "Microsoft YaHei".to_string(),
+            font_size: 10.0,
+            color: "#000000".to_string(),
+            is_bold: false,
+            is_italic: false,
+            is_underline: false,
+            char_spacing: 0.0,
+            scale_x: 1.0,
+            font_weight_numeric: 400,
+        }
+    }
+
+    fn test_run(text: &str) -> LayoutRun {
+        LayoutRun {
+            id: "r-engine-state".to_string(),
+            text: text.to_string(),
+            style: test_style(),
+            bbox: BoundingBox {
+                left: 10.0,
+                top: 40.0,
+                right: 110.0,
+                bottom: 52.0,
+            },
+            origin_x: 10.0,
+            origin_y: 50.0,
+            char_origins: Vec::new(),
+            char_widths: Vec::new(),
+            object_ids: Vec::new(),
+            object_indices: Vec::new(),
+        }
+    }
+
+    fn state_with_text(text: &str, caret_index: usize) -> LiveEditorParagraphState {
+        let anchor_bbox = BoundingBox {
+            left: 10.0,
+            top: 40.0,
+            right: 110.0,
+            bottom: 52.0,
+        };
+        let body_session = ParagraphEditContext {
+            anchor_bbox,
+            paragraph: LayoutParagraph {
+                id: "p-engine-state".to_string(),
+                bbox: anchor_bbox,
+                origin_x: anchor_bbox.left,
+                origin_y: anchor_bbox.top,
+                wrap_width: 100.0,
+                runs: vec![test_run(text)],
+                ..Default::default()
+            },
+        };
+        let document_plan = EditContext {
+            target_id: "p-engine-state".to_string(),
+            base_paragraph_id: "p-engine-state".to_string(),
+            shell_bbox: anchor_bbox,
+            source_body_text: text.to_string(),
+            body_text_plan: build_editor_session_text_plan(&body_session),
+            body_session,
+            body_initial_caret: caret_index,
+            ..Default::default()
+        };
+        let scene = from_context(document_plan).expect("scene should build");
+        let target = ActiveEditorTarget {
+            paragraph_id: "p-engine-state".to_string(),
+            region_id: "region-engine-state".to_string(),
+            page_index: 0,
+            text: text.to_string(),
+            bbox_left: anchor_bbox.left,
+            bbox_top: anchor_bbox.top,
+            bbox_right: anchor_bbox.right,
+            bbox_bottom: anchor_bbox.bottom,
+            font_family: "Microsoft YaHei".to_string(),
+            font_size: 10.0,
+            font_weight: "400".to_string(),
+            font_style: "normal".to_string(),
+            color: "#000000".to_string(),
+            text_decoration: String::new(),
+            initial_caret_index: caret_index,
+            editor_session: scene.body_session().clone(),
+            scene,
+        };
+        LiveEditorParagraphState::new(target)
+    }
+
+    #[test]
+    fn set_draft_text_clamps_caret_clears_selection_and_marks_dirty() {
+        let mut state = state_with_text("abcdef", 6);
+        assert!(state.set_selection_range(1, 4));
+        state.mark_session_clean();
+        let revision_before = state.scene_revision;
+
+        assert!(state.set_draft_text("ab".to_string()));
+
+        assert_eq!(state.current_text(), "ab");
+        assert_eq!(state.caret_index, 2);
+        assert_eq!(state.selection_range(), None);
+        assert!(state.scene_revision > revision_before);
+        assert!(state.has_session_changes());
     }
 }

@@ -5,11 +5,11 @@ use pdf_viewer_core::text::list_semantics::{
     derive_list_text_semantics, format_numbering_marker, parse_numbering_value, ListMarkerKind,
 };
 
-use crate::editor::bridge::build_paragraph_patch_with_runs;
-use crate::editor::edit_target::edit_target_base_paragraph_id;
+use crate::editor::bridge::build_rich_patch;
+use crate::editor::edit_target::base_paragraph_id;
 use crate::editor::engine_state::LiveEditorParagraphState;
-use crate::models::PersistableRegionPatch;
-use crate::ui_state_store::{read_patch_state, GlobalPatchState};
+use crate::ui_state_store::{with_patch_state, GlobalPatchState};
+use pdf_viewer_core::persistence::models::{PersistableRegionPatch, PersistableSemanticOperation};
 
 #[derive(Debug, Clone, Default)]
 struct EffectiveListState {
@@ -25,13 +25,13 @@ struct ParagraphListContext<'a> {
     _paragraph: &'a GlyphPaintParagraph,
 }
 
-pub fn resolve_active_marker_text(
+pub fn resolve_marker_text(
     active_state: &LiveEditorParagraphState,
     page_state: &PageState,
 ) -> Option<String> {
     let overrides = collect_marker_overrides(page_state.paint_plan.as_ref(), Some(active_state));
     overrides
-        .get(edit_target_base_paragraph_id(active_state.paragraph_id()))
+        .get(base_paragraph_id(active_state.paragraph_id()))
         .cloned()
         .flatten()
 }
@@ -44,14 +44,13 @@ pub fn collect_marker_overrides(
         return BTreeMap::new();
     };
     let ordered_paragraphs = collect_ordered_page_paragraphs(plan);
-    let Ok(state) = read_patch_state().read() else {
-        return BTreeMap::new();
-    };
-    let contexts = ordered_paragraphs
-        .into_iter()
-        .map(|paragraph| build_paragraph_list_context(&state, paragraph, active_state))
-        .collect::<Vec<_>>();
-    build_numbering_override_map(&contexts)
+    with_patch_state(|state| {
+        let contexts = ordered_paragraphs
+            .into_iter()
+            .map(|paragraph| build_paragraph_list_context(state, paragraph, active_state))
+            .collect::<Vec<_>>();
+        build_numbering_override_map(&contexts)
+    })
 }
 
 pub fn reconcile_numbering_patches(
@@ -71,8 +70,8 @@ pub fn reconcile_numbering_patches(
             patch.source.as_str(),
             "paragraph-region" | "list-item-region"
         ) {
-            let base_paragraph_id = edit_target_base_paragraph_id(&patch.region_id).to_string();
-            patch_index_by_base.insert(base_paragraph_id, paragraph_patches.len());
+            let base_id = base_paragraph_id(&patch.region_id).to_string();
+            patch_index_by_base.insert(base_id, paragraph_patches.len());
             paragraph_patches.push(patch);
         } else {
             auxiliary_patches.push(patch);
@@ -80,23 +79,32 @@ pub fn reconcile_numbering_patches(
     }
 
     for paragraph in ordered_paragraphs {
-        let base_paragraph_id = edit_target_base_paragraph_id(&paragraph.id).to_string();
-        let Some(desired_marker_text) = overrides.get(&base_paragraph_id).cloned().flatten() else {
+        let base_id = base_paragraph_id(&paragraph.id).to_string();
+        let Some(desired_marker_text) = overrides.get(&base_id).cloned().flatten() else {
             continue;
         };
         if derive_list_text_semantics(&desired_marker_text).kind != ListMarkerKind::Numbering {
             continue;
         }
 
-        if let Some(existing_index) = patch_index_by_base.get(&base_paragraph_id).copied() {
+        if let Some(existing_index) = patch_index_by_base.get(&base_id).copied() {
             if let Some(existing_patch) = paragraph_patches.get_mut(existing_index) {
                 if existing_patch.new_marker_text.as_deref() != Some(desired_marker_text.as_str()) {
                     existing_patch.new_marker_text = Some(desired_marker_text.clone());
+                    push_set_list_marker_op(
+                        &mut existing_patch.semantic_ops,
+                        &existing_patch.region_id,
+                        &desired_marker_text,
+                    );
                 }
             }
             continue;
         }
 
+        // Only emit a derived patch when the body text actually differs from source.
+        // Pure numbering-only changes on untouched list items are represented as
+        // semantic SetListMarker ops and must not synthesize body patches that
+        // would reflow unchanged body text.
         let source_text = paragraph
             .runs
             .iter()
@@ -107,7 +115,7 @@ pub fn reconcile_numbering_patches(
             continue;
         }
 
-        let Some(mut derived_patch) = build_paragraph_patch_with_runs(
+        let Some(mut derived_patch) = build_rich_patch(
             plan,
             vector_model,
             &paragraph.id,
@@ -116,13 +124,37 @@ pub fn reconcile_numbering_patches(
         ) else {
             continue;
         };
-        derived_patch.new_marker_text = Some(desired_marker_text);
-        patch_index_by_base.insert(base_paragraph_id, paragraph_patches.len());
+        derived_patch.new_marker_text = Some(desired_marker_text.clone());
+        push_set_list_marker_op(
+            &mut derived_patch.semantic_ops,
+            &derived_patch.region_id,
+            &desired_marker_text,
+        );
+        patch_index_by_base.insert(base_id, paragraph_patches.len());
         paragraph_patches.push(derived_patch);
     }
 
     paragraph_patches.extend(auxiliary_patches);
     paragraph_patches
+}
+
+fn push_set_list_marker_op(
+    semantic_ops: &mut Vec<PersistableSemanticOperation>,
+    block_id: &str,
+    marker_text: &str,
+) {
+    let block_id = block_id.to_string();
+    let marker_text = marker_text.to_string();
+    semantic_ops.retain(|op| match op {
+        PersistableSemanticOperation::SetListMarker {
+            block_id: existing, ..
+        } if existing == &block_id => false,
+        _ => true,
+    });
+    semantic_ops.push(PersistableSemanticOperation::SetListMarker {
+        block_id,
+        marker_text,
+    });
 }
 
 fn build_numbering_override_map(
@@ -133,7 +165,7 @@ fn build_numbering_override_map(
     let mut numbering_template: Option<String> = None;
 
     for context in contexts {
-        let base_paragraph_id = context.base_paragraph_id.clone();
+        let base_id = context.base_paragraph_id.clone();
         match context.effective.kind {
             ListMarkerKind::Numbering => {
                 let explicit_number = parse_numbering_value(&context.effective.marker_text);
@@ -155,7 +187,7 @@ fn build_numbering_override_map(
                 let marker_text = format_numbering_marker(next_value, template.as_deref());
                 numbering_sequence = Some(next_value);
                 numbering_template = Some(marker_text.clone());
-                overrides.insert(base_paragraph_id, Some(marker_text));
+                overrides.insert(base_id, Some(marker_text));
             }
             ListMarkerKind::Bullet | ListMarkerKind::Symbol | ListMarkerKind::Custom => {
                 numbering_sequence = None;
@@ -164,12 +196,12 @@ fn build_numbering_override_map(
                     context.effective.marker_text.as_str(),
                     context.source_marker_text.as_deref(),
                 );
-                overrides.insert(base_paragraph_id, Some(marker_text));
+                overrides.insert(base_id, Some(marker_text));
             }
             ListMarkerKind::None => {
                 numbering_sequence = None;
                 numbering_template = None;
-                overrides.insert(base_paragraph_id, None);
+                overrides.insert(base_id, None);
             }
         }
     }
@@ -182,9 +214,9 @@ fn build_paragraph_list_context<'a>(
     paragraph: &'a GlyphPaintParagraph,
     active_state: Option<&LiveEditorParagraphState>,
 ) -> ParagraphListContext<'a> {
-    let base_paragraph_id = edit_target_base_paragraph_id(&paragraph.id).to_string();
+    let base_id = base_paragraph_id(&paragraph.id).to_string();
     let active_marker = active_state
-        .filter(|active| edit_target_base_paragraph_id(active.paragraph_id()) == base_paragraph_id);
+        .filter(|active| base_paragraph_id(active.paragraph_id()) == base_id);
 
     let source_semantics = derive_list_text_semantics(
         &paragraph
@@ -203,12 +235,11 @@ fn build_paragraph_list_context<'a>(
             marker_text: active_state
                 .target
                 .scene
-                .marker
-                .as_ref()
+                .marker()
                 .map(|marker| marker.text.clone())
                 .unwrap_or_default(),
         }
-    } else if let Some(patch) = resolve_patch_for_base_paragraph(state, &base_paragraph_id) {
+    } else if let Some(patch) = resolve_patch_for_base_paragraph(state, &base_id) {
         let marker_text = patch
             .new_marker_text
             .clone()
@@ -227,7 +258,7 @@ fn build_paragraph_list_context<'a>(
     };
 
     ParagraphListContext {
-        base_paragraph_id,
+        base_paragraph_id: base_id,
         effective,
         source_marker_text,
         _paragraph: paragraph,
@@ -269,12 +300,55 @@ fn collect_ordered_page_paragraphs(plan: &GlyphPaintPlan) -> Vec<&GlyphPaintPara
 
 fn resolve_patch_for_base_paragraph<'a>(
     state: &'a GlobalPatchState,
-    base_paragraph_id: &str,
-) -> Option<&'a crate::models::PersistableRegionPatch> {
-    state.paragraph_patches.get(base_paragraph_id).or_else(|| {
+    base_id: &str,
+) -> Option<&'a pdf_viewer_core::persistence::models::PersistableRegionPatch> {
+    state.paragraph_patches.get(base_id).or_else(|| {
         state
             .paragraph_patches
             .values()
-            .find(|patch| edit_target_base_paragraph_id(&patch.region_id) == base_paragraph_id)
+            .find(|patch| base_paragraph_id(&patch.region_id).to_string() == base_id)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_set_list_marker_op_dedupes_existing_op_for_same_block() {
+        let mut ops = vec![PersistableSemanticOperation::SetListMarker {
+            block_id: "p1".to_string(),
+            marker_text: "1.".to_string(),
+        }];
+
+        push_set_list_marker_op(&mut ops, "p1", "2.");
+
+        let count = ops
+            .iter()
+            .filter(|op| {
+                matches!(
+                    op,
+                    PersistableSemanticOperation::SetListMarker { block_id, .. } if block_id == "p1"
+                )
+            })
+            .count();
+        assert_eq!(count, 1, "duplicate SetListMarker op must be replaced");
+        if let Some(PersistableSemanticOperation::SetListMarker { marker_text, .. }) = ops.last() {
+            assert_eq!(marker_text, "2.");
+        } else {
+            panic!("expected SetListMarker op");
+        }
+    }
+
+    #[test]
+    fn push_set_list_marker_op_keeps_other_block_ops() {
+        let mut ops = vec![PersistableSemanticOperation::SetListMarker {
+            block_id: "p2".to_string(),
+            marker_text: "1.".to_string(),
+        }];
+
+        push_set_list_marker_op(&mut ops, "p1", "3.");
+
+        assert_eq!(ops.len(), 2, "ops for different blocks must be preserved");
+    }
 }

@@ -78,16 +78,18 @@ pub fn build_vector_page_model_from_display_list(
         let mut grouped_runs: Vec<Vec<StyledRun>> = Vec::new();
         if let Some(first) = runs.first() {
             let mut current_group = vec![first.clone()];
-            let mut last_y = first.ty;
             for run in runs.iter().skip(1) {
-                // V256: ARCHITECTURAL FIX - High-precision sub-pixel line grouping (0.5 threshold)
-                // This prevents merging "Name" and "Address" into the same row if they drift even 1pt.
-                if (run.ty - last_y).abs() < 0.5 {
+                let last = current_group.last().unwrap();
+                let can_group = (run.ty - last.ty).abs() < 0.5
+                    && run.font_name == last.font_name
+                    && run.embedded_font_key == last.embedded_font_key
+                    && run.color == last.color
+                    && (run.font_size - last.font_size).abs() < 0.1;
+                if can_group {
                     current_group.push(run.clone());
                 } else {
                     grouped_runs.push(current_group);
                     current_group = vec![run.clone()];
-                    last_y = run.ty;
                 }
             }
             grouped_runs.push(current_group);
@@ -104,6 +106,40 @@ pub fn build_vector_page_model_from_display_list(
             }
 
             let object_indices: Vec<usize> = group.iter().map(|r| r.z_index).collect();
+            let mut combined_origins = Vec::new();
+            let mut combined_widths = Vec::new();
+            let mut combined_codes = Vec::new();
+            let base_tx = first.tx;
+            let base_ty = first.ty;
+
+            for run in &group {
+                let dx = run.tx - base_tx;
+                let dy = run.ty - base_ty;
+                if run.char_origins.is_empty() {
+                    let run_char_count = if !run.pdf_char_codes.is_empty() {
+                        run.pdf_char_codes.len()
+                    } else {
+                        run.text.chars().count()
+                    };
+                    let avg_w = if run_char_count > 0 && run.width > 0.0 {
+                        run.width / run_char_count as f32
+                    } else {
+                        run.font_size * 0.6
+                    };
+                    let mut cur_x = dx;
+                    for _ in 0..run_char_count {
+                        combined_origins.push([cur_x, dy]);
+                        cur_x += avg_w;
+                    }
+                } else {
+                    for &orig in &run.char_origins {
+                        combined_origins.push([dx + orig, dy]);
+                    }
+                }
+                combined_widths.extend_from_slice(&run.char_widths);
+                combined_codes.extend_from_slice(&run.pdf_char_codes);
+            }
+
             crate::pdf_log!(
                 3,
                 "[PDF-Vector] Grouped text line: '{}' at ({:.1}, {:.1})",
@@ -115,7 +151,7 @@ pub fn build_vector_page_model_from_display_list(
                 id: format!("text_{}_{}", page_index, render_objects.len()),
                 text: line_text,
                 left: first.tx,
-                top: first.ty, // UNIFIED: Raw PDF Y
+                top: first.ty + first.font_size, // Raw PDF Y top
                 baseline_y: first.ty,
                 width: total_width,
                 height: first.font_size,
@@ -144,9 +180,9 @@ pub fn build_vector_page_model_from_display_list(
                 embedded_font_key: first.embedded_font_key.clone(),
                 has_embedded_font_program: first.has_embedded_font_program,
                 has_to_unicode_cmap: first.has_to_unicode_cmap,
-                char_origins: first.char_origins.iter().map(|&x| [x, 0.0]).collect(),
-                char_widths: first.char_widths.clone(),
-                pdf_char_codes: first.pdf_char_codes.clone(),
+                char_origins: combined_origins,
+                char_widths: combined_widths,
+                pdf_char_codes: combined_codes,
                 rendering_mode: first.render_mode as i32,
                 ..Default::default()
             }));
@@ -314,24 +350,20 @@ pub fn build_vector_page_model_from_display_list(
                 RenderObject::Text(t) => {
                     if let Some(pos) = palette_colors_ref.iter().position(|c| c == &t.color) {
                         t.color_index = Some(pos as u8);
-                        t.color = String::new();
                     }
                     if let Some(pos) = palette_fonts_ref.iter().position(|f| f == &t.font_name) {
                         t.font_index = Some(pos as u8);
-                        t.font_name = String::new();
                     }
                 }
                 RenderObject::Path(p) => {
                     if let Some(fc) = &p.fill_color {
                         if let Some(pos) = palette_colors_ref.iter().position(|c| c == fc) {
                             p.fill_color_index = Some(pos as u8);
-                            p.fill_color = None;
                         }
                     }
                     if let Some(sc) = &p.stroke_color {
                         if let Some(pos) = palette_colors_ref.iter().position(|c| c == sc) {
                             p.stroke_color_index = Some(pos as u8);
-                            p.stroke_color = None;
                         }
                     }
                 }
@@ -339,7 +371,7 @@ pub fn build_vector_page_model_from_display_list(
             });
         }
 
-        // --- Phase 7: Parallel Style-Based Sorting (Preserving Z-Index) ---
+        // --- Phase 7: Parallel Sorting (Strictly Preserving Z-Index) ---
         render_objects.par_sort_by(|a, b| {
             let z_a = match a {
                 RenderObject::Text(t) => t.z_index,
@@ -351,17 +383,7 @@ pub fn build_vector_page_model_from_display_list(
                 RenderObject::Path(p) => p.z_index,
                 RenderObject::Image(i) => i.z_index,
             };
-            let style_a = match a {
-                RenderObject::Image(_) => (0, None, None),
-                RenderObject::Path(p) => (1, p.fill_color_index, p.stroke_color_index),
-                RenderObject::Text(t) => (2, t.font_index, t.color_index),
-            };
-            let style_b = match b {
-                RenderObject::Image(_) => (0, None, None),
-                RenderObject::Path(p) => (1, p.fill_color_index, p.stroke_color_index),
-                RenderObject::Text(t) => (2, t.font_index, t.color_index),
-            };
-            (style_a, z_a).cmp(&(style_b, z_b))
+            z_a.cmp(&z_b)
         });
     }
 
@@ -434,8 +456,8 @@ pub fn resolve_layout_inference(
     doc: &lopdf::Document,
     page_index: u16,
 ) -> Result<LayoutInferenceResult, String> {
-    let display_list = resolve_display_list(doc, page_index)
-        .map_err(|e| format!("Extraction failed: {}", e))?;
+    let display_list =
+        resolve_display_list(doc, page_index).map_err(|e| format!("Extraction failed: {}", e))?;
     resolve_layout_inference_from_display_list(&display_list)
 }
 

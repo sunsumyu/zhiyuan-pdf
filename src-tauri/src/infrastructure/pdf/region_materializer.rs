@@ -1,9 +1,9 @@
 use crate::infrastructure::pdf::models::{
     PdfMaterializationDecisionReport, PdfMaterializationReport, PdfMaterializationSourceStats,
-    PersistableRegionPatch, TextReflowPatch,
+    PersistableRegionPatch, PersistableSemanticOperation, TextReflowPatch,
 };
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 #[derive(Debug, Clone)]
 pub struct RegionMaterializationDecision {
@@ -199,6 +199,70 @@ fn combine_list_item_text(marker_text: &str, body_text: &str) -> String {
         format!("{marker}{body}")
     }
 }
+fn semantic_list_item_unit_text_reflow(
+    patch: &PersistableRegionPatch,
+) -> Option<(Vec<TextReflowPatch>, RegionMaterializationDecision)> {
+    let summary = patch.semantic_block.as_ref()?;
+    if summary.kind != "list-item" {
+        return None;
+    }
+    let marker_text = patch
+        .new_marker_text
+        .clone()
+        .or_else(|| summary.marker_text.clone())
+        .or_else(|| patch.marker_text.clone())
+        .filter(|text| !text.is_empty())?;
+    if summary.marker_object_indices.is_empty() || summary.body_object_indices.is_empty() {
+        return None;
+    }
+
+    let mut target_indices = summary
+        .marker_object_indices
+        .iter()
+        .chain(summary.body_object_indices.iter())
+        .copied()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if target_indices.is_empty() {
+        return None;
+    }
+    target_indices.sort_unstable();
+
+    let body_text = patch
+        .snapshot
+        .as_ref()
+        .and_then(|value| value.get("bodyText"))
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| patch.new_text.clone());
+    let new_text = combine_list_item_text(&marker_text, &body_text);
+
+    Some((
+        vec![TextReflowPatch {
+            page_index: patch.page_index,
+            target_indices,
+            new_text: normalize_region_text(new_text),
+            // Semantic text-marker list items are materialized as one full text unit.
+            // Legacy patch.new_runs are body-only in the current editor pipeline, so carrying
+            // them here would mismatch marker+body text and can corrupt save output.
+            new_runs: None,
+            alignment: patch.align,
+            line_height: patch.line_height,
+            displacement_y: patch.displacement_y,
+            wrap_width: patch.wrap_width,
+            char_spacing: patch.char_spacing,
+            horizontal_scaling: patch.horizontal_scaling,
+        }],
+        RegionMaterializationDecision {
+            region_id: patch.region_id.clone(),
+            source: patch.source.clone(),
+            status: "materialized",
+            reason: "semantic-list-item-text-marker-unit".to_string(),
+        },
+    ))
+}
+
 fn is_valid_patch_target(patch: &PersistableRegionPatch) -> bool {
     !patch.target_indices.is_empty()
 }
@@ -435,6 +499,56 @@ fn materialize_list_item_patch_to_text_reflow(
             },
         );
     }
+    
+    // Check if this is a cross-region marker (marker and body in different PDF objects)
+    // If so, only patch the body and preserve the original marker
+    let is_cross_region_marker = patch.semantic_block.as_ref().map_or(false, |summary| {
+        summary.is_cross_paragraph
+            && !summary.marker_object_indices.is_empty()
+            && !summary.body_object_indices.is_empty()
+    });
+    
+    if is_cross_region_marker {
+        // Cross-region marker: only patch the body, preserve the original marker
+        let summary = patch.semantic_block.as_ref().unwrap();
+        let body_text = patch
+            .snapshot
+            .as_ref()
+            .and_then(|value| value.get("bodyText"))
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| patch.new_text.clone());
+        
+        // Only create a patch for the body
+        let mut body_indices = summary.body_object_indices.clone();
+        body_indices.sort_unstable();
+        
+        return (
+            vec![TextReflowPatch {
+                page_index: patch.page_index,
+                target_indices: body_indices,
+                new_text: normalize_region_text(body_text),
+                new_runs: patch.new_runs.clone(),
+                alignment: patch.align,
+                line_height: patch.line_height,
+                displacement_y: patch.displacement_y,
+                wrap_width: patch.wrap_width,
+                char_spacing: patch.char_spacing,
+                horizontal_scaling: patch.horizontal_scaling,
+            }],
+            RegionMaterializationDecision {
+                region_id: patch.region_id.clone(),
+                source: patch.source.clone(),
+                status: "materialized",
+                reason: "cross-region-marker-preserve-original".to_string(),
+            },
+        );
+    }
+    
+    if let Some(semantic_result) = semantic_list_item_unit_text_reflow(patch) {
+        return semantic_result;
+    }
+
     let has_marker_update = match (
         patch.marker_text.as_deref(),
         patch.new_marker_text.as_deref(),
@@ -568,12 +682,24 @@ fn materialize_region_patch_to_text_reflow(
         }
     }
 }
-pub fn build_region_materialization_plan(
+pub fn build_region_materialization_plan_v2(
     region_patches: &[PersistableRegionPatch],
+    semantic_ops: &[PersistableSemanticOperation],
     text_reflows: &[TextReflowPatch],
 ) -> RegionMaterializationPlan {
     let mut decisions = Vec::with_capacity(region_patches.len());
     let mut region_reflows = Vec::new();
+    let embedded_semantic_op_count = region_patches
+        .iter()
+        .map(|patch| patch.semantic_ops.len())
+        .sum::<usize>();
+    if !semantic_ops.is_empty() || embedded_semantic_op_count > 0 {
+        crate::log_step!(
+            "[PDF][materialize][semantic-v2] explicit_ops={} embedded_ops={}",
+            semantic_ops.len(),
+            embedded_semantic_op_count
+        );
+    }
     for patch in region_patches {
         let (reflows, decision) = materialize_region_patch_to_text_reflow(patch);
         decisions.push(decision);
@@ -582,5 +708,138 @@ pub fn build_region_materialization_plan(
     RegionMaterializationPlan {
         effective_text_reflows: merge_text_reflows(region_reflows, text_reflows),
         decisions,
+    }
+}
+
+pub fn build_region_materialization_plan(
+    region_patches: &[PersistableRegionPatch],
+    text_reflows: &[TextReflowPatch],
+) -> RegionMaterializationPlan {
+    build_region_materialization_plan_v2(region_patches, &[], text_reflows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pdf_viewer_core::persistence::models::PersistableSemanticBlockSummary;
+    use serde_json::json;
+
+    fn list_patch(
+        marker_text: Option<&str>,
+        new_marker_text: Option<&str>,
+    ) -> PersistableRegionPatch {
+        PersistableRegionPatch {
+            patch_key: "list:p1".to_string(),
+            page_index: 0,
+            region_id: "p1".to_string(),
+            original_text: "Body".to_string(),
+            new_text: "Body edited".to_string(),
+            source: "list-item-region".to_string(),
+            marker_text: marker_text.map(|text| text.to_string()),
+            new_marker_text: new_marker_text.map(|text| text.to_string()),
+            snapshot: Some(json!({
+                "bodyText": "Body edited",
+                "markerText": marker_text.unwrap_or(""),
+                "newMarkerText": new_marker_text.unwrap_or(""),
+            })),
+            target_indices: vec![2],
+            full_target_indices: vec![1, 2],
+            wrap_width: Some(100.0),
+            ..Default::default()
+        }
+    }
+
+    fn semantic_text_marker_list_patch() -> PersistableRegionPatch {
+        let mut patch = list_patch(Some("●"), None);
+        patch.semantic_block = Some(PersistableSemanticBlockSummary {
+            block_id: "p1".to_string(),
+            region_id: "p1".to_string(),
+            kind: "list-item".to_string(),
+            body_text: "Body edited".to_string(),
+            marker_text: Some("●".to_string()),
+            body_object_indices: vec![2],
+            marker_object_indices: vec![1],
+            graphic_marker_object_indices: Vec::new(),
+            is_cross_paragraph: false, // normal list item, not cross-paragraph
+        });
+        patch.new_runs = Some(Vec::new());
+        patch
+    }
+
+    fn semantic_graphic_marker_list_patch() -> PersistableRegionPatch {
+        let mut patch = list_patch(None, None);
+        patch.semantic_block = Some(PersistableSemanticBlockSummary {
+            block_id: "p1".to_string(),
+            region_id: "p1".to_string(),
+            kind: "list-item".to_string(),
+            body_text: "Body edited".to_string(),
+            marker_text: None,
+            body_object_indices: vec![2],
+            marker_object_indices: Vec::new(),
+            graphic_marker_object_indices: vec![1],
+            is_cross_paragraph: false,
+        });
+        patch
+    }
+
+    #[test]
+    fn semantic_text_marker_list_item_materializes_marker_and_body_as_unit() {
+        let plan =
+            build_region_materialization_plan_v2(&[semantic_text_marker_list_patch()], &[], &[]);
+        assert_eq!(plan.effective_text_reflows.len(), 1);
+        let reflow = &plan.effective_text_reflows[0];
+        assert_eq!(reflow.target_indices, vec![1, 2]);
+        assert_eq!(reflow.new_text, "●Body edited");
+        assert!(
+            reflow.new_runs.is_none(),
+            "body-only legacy runs must not be reused for marker+body text"
+        );
+        assert_eq!(
+            plan.decisions[0].reason,
+            "semantic-list-item-text-marker-unit"
+        );
+    }
+
+    #[test]
+    fn semantic_graphic_marker_list_item_keeps_body_only_legacy_materialization() {
+        let plan =
+            build_region_materialization_plan_v2(&[semantic_graphic_marker_list_patch()], &[], &[]);
+        assert_eq!(plan.effective_text_reflows.len(), 1);
+        let reflow = &plan.effective_text_reflows[0];
+        assert_eq!(reflow.target_indices, vec![2]);
+        assert_eq!(reflow.new_text, "Body edited");
+        assert_eq!(plan.decisions[0].reason, "list-body-new-text");
+    }
+
+    #[test]
+    fn body_only_list_patch_materializes_body_targets_only() {
+        let plan = build_region_materialization_plan(&[list_patch(Some("●"), None)], &[]);
+        assert_eq!(plan.effective_text_reflows.len(), 1);
+        let reflow = &plan.effective_text_reflows[0];
+        assert_eq!(reflow.target_indices, vec![2]);
+        assert_eq!(reflow.new_text, "Body edited");
+    }
+
+    #[test]
+    fn marker_update_uses_full_targets_and_combines_marker_before_body() {
+        let plan = build_region_materialization_plan(&[list_patch(Some("1."), Some("2."))], &[]);
+        assert_eq!(plan.effective_text_reflows.len(), 1);
+        let reflow = &plan.effective_text_reflows[0];
+        assert_eq!(reflow.target_indices, vec![1, 2]);
+        assert_eq!(reflow.new_text, "2.Body edited");
+    }
+
+    #[test]
+    fn v2_keeps_legacy_materialization_compatible_when_semantic_ops_exist() {
+        let mut patch = list_patch(Some("●"), None);
+        patch.semantic_ops = vec![PersistableSemanticOperation::ReplaceBodyText {
+            block_id: "p1".to_string(),
+            old_text: "Body".to_string(),
+            new_text: "Body edited".to_string(),
+        }];
+        let plan = build_region_materialization_plan_v2(&[patch], &[], &[]);
+        assert_eq!(plan.effective_text_reflows.len(), 1);
+        assert_eq!(plan.effective_text_reflows[0].target_indices, vec![2]);
+        assert_eq!(plan.effective_text_reflows[0].new_text, "Body edited");
     }
 }

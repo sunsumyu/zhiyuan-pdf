@@ -1,13 +1,12 @@
 use wasm_bindgen::JsValue;
 
-use crate::bridge::target_invoke;
 use crate::editor::list_format::reconcile_numbering_patches;
-use crate::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
 use crate::ui_state_store::{
-    apply_patch_with_history, clear_persistable_patches as core_clear_persistable_patches,
-    collect_persistable_patches,
+    clear_persistable_patches as core_clear_persistable_patches, collect_persistable_patches,
+    collect_persistable_semantic_ops, record_patch,
 };
+use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 
 /// Direct Rust-to-Rust patch application (no JsValue roundtrip).
 /// Use this from internal Rust callers; only `apply_document_patch` should
@@ -20,7 +19,7 @@ pub fn apply_document_patch_direct(patch: PersistableRegionPatch) {
         "pageIndex" => patch.page_index,
         "newLen" => patch.new_text.chars().count(),
     );
-    apply_patch_with_history(patch);
+    record_patch(patch);
 }
 
 pub fn apply_document_patch(patch_js: JsValue) {
@@ -33,7 +32,7 @@ pub fn apply_document_patch(patch_js: JsValue) {
                 "pageIndex" => patch.page_index,
                 "newLen" => patch.new_text.chars().count(),
             );
-            apply_patch_with_history(patch);
+            record_patch(patch);
         }
         Err(err) => {
             crate::chain_trace!(
@@ -74,6 +73,8 @@ pub async fn save_persistable_patches(path: String, page_index: u16) -> Result<J
         }
     });
 
+    let semantic_ops = collect_persistable_semantic_ops();
+
     if patches.is_empty() {
         return Ok(JsValue::TRUE);
     }
@@ -82,13 +83,10 @@ pub async fn save_persistable_patches(path: String, page_index: u16) -> Result<J
         "path": path,
         "pageIndex": page_index,
         "patches": patches,
+        "semanticOps": semantic_ops,
     });
 
-    let result = target_invoke(
-        "apply_region_patches".into(),
-        serde_wasm_bindgen::to_value(&args).unwrap_or(JsValue::NULL),
-    )
-    .await?;
+    let result: JsValue = crate::app_controller::raw_invoke("apply_region_patches", &args).await?;
     clear_persistable_patches(true);
     Ok(result)
 }

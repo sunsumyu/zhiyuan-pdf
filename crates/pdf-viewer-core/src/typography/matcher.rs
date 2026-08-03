@@ -32,7 +32,7 @@ pub fn build_match_request(name: &str, hints: Option<&FontHints>) -> PdfFontMatc
     }
 }
 
-pub fn build_match_request_with_descriptor(
+pub fn build_descriptor_request(
     name: &str,
     hints: Option<&FontHints>,
     descriptor: PdfFontDescriptor,
@@ -493,7 +493,7 @@ mod tests {
 
     #[test]
     fn descriptor_postscript_match_boosts_candidate() {
-        let request = build_match_request_with_descriptor(
+        let request = build_descriptor_request(
             "UnknownFont",
             None,
             PdfFontDescriptor {
@@ -519,7 +519,7 @@ mod tests {
 
     #[test]
     fn accepts_embedded_cmap() {
-        let request = build_match_request_with_descriptor(
+        let request = build_descriptor_request(
             "ABCDEE+SimSun",
             None,
             PdfFontDescriptor {

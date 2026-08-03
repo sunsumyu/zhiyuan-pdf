@@ -13,7 +13,7 @@ import {
     normalizeTargetOverlayDisplay,
 } from './pdf_comment_contracts';
 import type { WasmModule } from '../shared/wasm_loader';
-import type { CommentManager, ReviewSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
+import type { CommentManager } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
 type CreatePdfCommentWasmBridgeDeps = {
     getViewerSession: () => ViewerSessionSnapshot;
@@ -23,26 +23,30 @@ type CreatePdfCommentWasmBridgeDeps = {
 // ── Session singletons ─────────────────────────────────────────
 
 let _commentManager: CommentManager | null = null;
-let _reviewSession: ReviewSession | null = null;
 
-function getCommentManager(getWasmApi: () => WasmModule): CommentManager | null {
+function getCommentManager(getWasmApi: () => WasmModule): CommentManager {
     if (!_commentManager) {
         const api = getWasmApi();
         if (typeof api?.CommentManager === 'function') {
             _commentManager = new api.CommentManager();
         }
     }
+    if (!_commentManager) {
+        throw new Error('CommentManager WASM API is unavailable');
+    }
     return _commentManager;
 }
 
-function getReviewSession(getWasmApi: () => WasmModule): ReviewSession | null {
-    if (!_reviewSession) {
-        const api = getWasmApi();
-        if (typeof api?.ReviewSession === 'function') {
-            _reviewSession = new api.ReviewSession();
-        }
+function callCommentManagerMethod<T>(
+    manager: CommentManager,
+    method: string,
+    ...args: unknown[]
+): T {
+    const fn = (manager as unknown as Record<string, unknown>)[method];
+    if (typeof fn !== 'function') {
+        throw new Error(`Required CommentManager method is unavailable: ${method}`);
     }
-    return _reviewSession;
+    return (fn as (...a: unknown[]) => T).apply(manager, args);
 }
 
 export type PdfCommentWasmBridge = {
@@ -65,7 +69,7 @@ export function createPdfCommentWasmBridge(
     deps: CreatePdfCommentWasmBridgeDeps,
 ): PdfCommentWasmBridge {
     function readReviewSession(): CommentReviewSession {
-        const raw = getReviewSession(deps.getWasmApi)?.readFeed() as
+        const raw = cm().readReviewSession() as
             | CommentReviewSession
             | null
             | undefined;
@@ -87,62 +91,62 @@ export function createPdfCommentWasmBridge(
     return {
         readReviewSession,
         clearReviewSession: () => {
-            cm()?.clearReviewSession();
+            cm().clearReviewSession();
         },
         setReviewPanelOpenAndLoad: async (panelOpen) =>
             await withCurrentDocument(async (path, currentPage) =>
                 normalizeReviewDisplay(
-                    await cm()?.setPanelOpenAndLoad(path, currentPage, panelOpen),
+                    await cm().setPanelOpenAndLoad(path, currentPage, panelOpen),
                 ),
             ),
         toggleReviewPanelAndLoad: async () =>
             await withCurrentDocument(async (path, currentPage) =>
                 normalizeReviewDisplay(
-                    await cm()?.togglePanelAndLoad(path, currentPage),
+                    await cm().togglePanelAndLoad(path, currentPage),
                 ),
             ),
         setReviewScopeAndLoad: async (scope) =>
             await withCurrentDocument(async (path, currentPage) =>
                 normalizeReviewDisplay(
-                    await cm()?.setScopeAndLoad(path, currentPage, scope),
+                    await cm().setScopeAndLoad(path, currentPage, scope),
                 ),
             ),
         setReviewQueryAndLoad: async (query) =>
             await withCurrentDocument(async (path, currentPage) =>
                 normalizeReviewDisplay(
-                    await cm()?.setQueryAndLoad(path, currentPage, query),
+                    await cm().setQueryAndLoad(path, currentPage, query),
                 ),
             ),
         selectReviewCommentAndLoad: async (selectedCommentId) =>
             await withCurrentDocument(async (path, currentPage) =>
                 normalizeReviewDisplay(
-                    await cm()?.selectAndLoad(path, currentPage, selectedCommentId ?? null),
+                    await cm().selectAndLoad(path, currentPage, selectedCommentId ?? null),
                 ),
             ),
         loadCommentOverlay: async (path, currentPage) =>
             normalizeOverlayDisplay(
-                (await cm()?.loadOverlay(path, currentPage)) as
+                (await cm().loadOverlay(path, currentPage)) as
                     | PdfCommentOverlayDisplay
                     | null
                     | undefined,
             ),
         loadCommentTargetOverlay: async (path, currentPage) =>
             normalizeTargetOverlayDisplay(
-                (await cm()?.loadTargetOverlay(path, currentPage)) as
+                (await cm().loadTargetOverlay(path, currentPage)) as
                     | PdfCommentTargetOverlayDisplay
                     | null
                     | undefined,
             ),
         loadCommentReview: async (path, currentPage) =>
-            normalizeReviewDisplay(await cm()?.loadReview(path, currentPage)),
+            normalizeReviewDisplay(await cm().loadReview(path, currentPage)),
         addRegionCommentRequest: async (path, request) => {
-            await cm()?.addRegionComment(path, request);
+            await callCommentManagerMethod<Promise<unknown>>(cm(), 'addRegionComment', path, request);
         },
         deletePageAnnotationRequest: async (path, request) => {
-            await cm()?.deleteAnnotation(path, request);
+            await callCommentManagerMethod<Promise<unknown>>(cm(), 'deleteAnnotation', path, request);
         },
         updatePageCommentRequest: async (path, request) => {
-            await cm()?.updateComment(path, request);
+            await callCommentManagerMethod<Promise<unknown>>(cm(), 'updateComment', path, request);
         },
     };
 }

@@ -10,6 +10,24 @@ function api() {
     return getPdfViewerAPI();
 }
 
+function formatOpenError(err: unknown): string {
+    if (err instanceof Error) return err.message;
+    if (typeof err === 'string') return err;
+    try {
+        return JSON.stringify(err);
+    } catch {
+        return String(err);
+    }
+}
+
+function showOpenError(target: HTMLElement | null, err: unknown): void {
+    const message = formatOpenError(err) || '未知错误';
+    if (target) {
+        target.textContent = `打开失败：${message}`;
+        target.title = message;
+    }
+}
+
 async function init() {
     performance.mark('viewer-init-start');
     console.log('Initializing Sovereignty PDF Viewer...');
@@ -37,11 +55,16 @@ async function init() {
 
     const handleFileOpen = async (filePath: string) => {
         try {
-            await api()?.openPdfFile(filePath);
+            const viewerApi = api();
+            if (!viewerApi) {
+                throw new Error('PDF viewer API 未初始化');
+            }
+            await viewerApi.openPdfFile(filePath);
             pathSpan!.textContent = filePath;
+            pathSpan!.title = filePath;
         } catch (err) {
             console.error('[PDF] Failed to open file:', filePath, err);
-            pathSpan!.textContent = '';
+            showOpenError(pathSpan, err);
         }
     };
 
@@ -55,6 +78,7 @@ async function init() {
                 }
             } catch (err) {
                 console.error('Tauri open failed:', err);
+                showOpenError(pathSpan, err);
             }
         } else {
             hiddenInput?.click();
@@ -164,10 +188,12 @@ async function init() {
     });
 
     // Add Text Mode
-    document.getElementById('pdf-add-text-btn')?.addEventListener('click', (e) => {
-        document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-        (e.currentTarget as HTMLElement).classList.add('active');
-        api()?.toggleTextEditMode();
+    document.getElementById('pdf-add-text-btn')?.addEventListener('click', () => {
+        const viewerApi = api();
+        if (!viewerApi) return;
+        void viewerApi.toggleTextEditMode().catch((err) => {
+            console.error('[PDF][editor] failed to toggle text edit mode:', err);
+        });
     });
 
     // Draw / Highlight (Placeholders)

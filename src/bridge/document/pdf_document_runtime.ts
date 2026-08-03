@@ -13,12 +13,15 @@ import type { DocumentSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_view
 
 let _documentSession: DocumentSession | null = null;
 
-function resolveDocumentSession(getWasmApi: () => WasmModule): DocumentSession | null {
+function resolveDocumentSession(getWasmApi: () => WasmModule): DocumentSession {
     if (!_documentSession) {
         const api = getWasmApi();
         if (typeof api?.DocumentSession === 'function') {
             _documentSession = new api.DocumentSession();
         }
+    }
+    if (!_documentSession) {
+        throw new Error('DocumentSession WASM API is unavailable');
     }
     return _documentSession;
 }
@@ -83,47 +86,64 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
     }
 
     async function openTextPdfFlow(path: string): Promise<void> {
+        emitPdfDiagnostic('DOC', 'openTextPdfFlow.start', { path });
         await deps.ensureWasmInitialized();
+        emitPdfDiagnostic('DOC', 'openTextPdfFlow.wasmReady', { path });
         try {
             const session = resolveDocumentSession(deps.getWasmApi);
-            emitPdfDiagnostic('DOC', 'openTextPdfFlow', { path, session: session ? 'OK' : 'NULL' });
+            emitPdfDiagnostic('DOC', 'openTextPdfFlow.sessionResolved', { path, session: 'OK' });
             // Eagerly clear the vector host BEFORE awaiting session.open().
             // This cancels any in-flight Rust render (cancelProgressiveRender + resetFrameCache)
             // so the old document's Worker render cannot complete and flash old pixels
             // during the async IPC gap of session.open().
             deps.clearVectorHost();
             deps.clearEditorHost();
-            const openResult = session
-                ? await session.open({
-                    path,
-                    initialZoom: 1.0,
-                    defaultPageWidth: 595,
-                    defaultPageHeight: 842,
-                })
-                : null;
-            emitPdfDiagnostic('DOC', 'openResult', { openResult: openResult ? JSON.stringify(openResult) : 'null' });
+            emitPdfDiagnostic('DOC', 'openTextPdfFlow.callingSessionOpen', { path });
+            const openResult = await session.open({
+                path,
+                initialZoom: 1.0,
+                defaultPageWidth: 595,
+                defaultPageHeight: 842,
+            });
+            emitPdfDiagnostic('DOC', 'openResult', { 
+                opened: openResult?.opened,
+                pageCount: openResult?.pageCount,
+                path,
+                fullResult: openResult ? JSON.stringify(openResult) : 'null' 
+            });
             const pageCount: number = Number(openResult?.pageCount || 0);
             if (!openResult?.opened || pageCount <= 0) {
-                emitPdfDiagnostic('DOC', 'openFailed', { path, openResult: openResult ? JSON.stringify(openResult) : 'null' }, { level: 'ERROR' });
-                resetPdfViewerState();
-                return;
+                const reason = pageCount <= 0
+                    ? 'open_pdf returned 0 pages'
+                    : 'document open pipeline returned opened=false';
+                emitPdfDiagnostic('DOC', 'openFailed', { path, reason, openResult: openResult ? JSON.stringify(openResult) : 'null' }, { level: 'ERROR' });
+                throw new Error(`Failed to open PDF: ${reason}`);
             }
             emitPdfDiagnostic('DOC', 'openSuccess', { path, pageCount });
             deps.syncZoomSelect();
             deps.syncTextEditButton();
+            emitPdfDiagnostic('DOC', 'openTextPdfFlow.callingRender', { path });
             await renderCurrentPage();
             emitPdfDiagnostic('DOC', 'renderCompleted', { path });
         } catch (err) {
-            emitPdfDiagnostic('DOC', 'openException', { path, error: String(err) }, { level: 'ERROR' });
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            const errorStack = err instanceof Error ? err.stack : undefined;
+            emitPdfDiagnostic('DOC', 'openException', { 
+                path, 
+                error: errorMsg,
+                stack: errorStack,
+            }, { level: 'ERROR' });
             resetPdfViewerState();
+            throw err instanceof Error ? err : new Error(String(err));
         }
     }
 
     function resetPdfViewerState(): void {
         try {
             const session = resolveDocumentSession(deps.getWasmApi);
-            session?.close?.(deps.defaultPageWidth, deps.defaultPageHeight);
-        } catch {
+            session.close(deps.defaultPageWidth, deps.defaultPageHeight);
+        } catch (err) {
+            emitPdfDiagnostic('DOC', 'resetCloseFailed', { error: String(err) }, { level: 'ERROR' });
         }
         deps.clearPendingAnchor();
         deps.resetZoomPreview();
