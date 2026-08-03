@@ -102,3 +102,93 @@ pub fn sync_host_layout(request: SyncHostLayoutRequest) -> SyncHostLayoutResult 
         content_top: layout.content_top,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PAGE_W: f32 = 612.0;
+    const PAGE_H: f32 = 792.0;
+    const VIEWPORT_W: f32 = 800.0;
+    const VIEWPORT_H: f32 = 600.0;
+
+    fn request(display_zoom: f32, render_zoom: Option<f32>) -> SyncHostLayoutRequest {
+        SyncHostLayoutRequest {
+            display_zoom,
+            render_zoom,
+            page_width: PAGE_W,
+            page_height: PAGE_H,
+            viewport_width: VIEWPORT_W,
+            viewport_height: VIEWPORT_H,
+            layout_override: None,
+        }
+    }
+
+    fn assert_close(actual: f32, expected: f32, msg: &str) {
+        let tolerance = 1e-3;
+        assert!(
+            (actual - expected).abs() <= tolerance,
+            "{msg}: expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn committed_state_has_identity_css_scale() {
+        // Committed: rendered zoom equals display zoom => css_scale == 1, dom == display.
+        let result = sync_host_layout(request(1.25, Some(1.25)));
+        assert_close(result.css_scale, 1.0, "css_scale");
+        assert_close(result.dom_width, result.display_width, "dom_width == display_width");
+        assert_close(result.dom_height, result.display_height, "dom_height == display_height");
+        assert_close(result.dom_width, PAGE_W * 1.25, "dom_width == page_w * zoom");
+        assert!(result.host_width >= result.display_width, "host covers display");
+    }
+
+    #[test]
+    fn preview_state_cancels_css_scale_against_render_zoom() {
+        // Preview: rendered zoom lags behind display zoom.
+        let result = sync_host_layout(request(1.25, Some(1.0)));
+        assert_close(result.dom_width, PAGE_W * 1.0, "dom_width == page_w * render_zoom");
+        assert_close(result.display_width, PAGE_W * 1.25, "display_width == page_w * display_zoom");
+        assert_close(result.css_scale, 1.25, "css_scale == display / render");
+        // The core cancellation guarantee from the design spec:
+        // visual width = dom_width * css_scale == display_width.
+        assert_close(
+            result.dom_width * result.css_scale,
+            result.display_width,
+            "dom_width * css_scale == display_width",
+        );
+    }
+
+    #[test]
+    fn zoom_in_preview_does_not_flash_larger() {
+        // Z_display=1.25, Z_rendered=1.0: visual width must equal the target display width,
+        // not the pre-fix quadratic overshoot W * Z_display^2 / Z_rendered.
+        let result = sync_host_layout(request(1.25, Some(1.0)));
+        let visual_width = result.dom_width * result.css_scale;
+        let quadratic_overshoot = PAGE_W * (1.25f32 * 1.25) / 1.0;
+        assert!(
+            (visual_width - quadratic_overshoot).abs() > 10.0,
+            "must not exhibit quadratic double-scaling flash"
+        );
+        assert_close(visual_width, PAGE_W * 1.25, "visual width == display target");
+    }
+
+    #[test]
+    fn render_zoom_defaults_to_display_zoom() {
+        // render_zoom omitted => defaults to display_zoom (committed-like).
+        let result = sync_host_layout(request(1.5, None));
+        assert_close(result.render_zoom, 1.5, "render_zoom fallback");
+        assert_close(result.css_scale, 1.0, "css_scale identity");
+        assert_close(result.dom_width * result.css_scale, result.display_width, "cancellation");
+    }
+
+    #[test]
+    fn sanitizes_invalid_zoom_inputs() {
+        // Invalid display zoom falls back to 1.0; invalid render zoom falls back to display.
+        let result = sync_host_layout(request(f32::NAN, Some(f32::NAN)));
+        assert_close(result.display_zoom, 1.0, "display_zoom fallback");
+        assert_close(result.render_zoom, 1.0, "render_zoom fallback");
+        assert_close(result.css_scale, 1.0, "css_scale identity");
+        assert_close(result.dom_width * result.css_scale, result.display_width, "cancellation");
+    }
+}
