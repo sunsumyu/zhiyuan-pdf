@@ -71,6 +71,28 @@ cargo check -p pdf-viewer-ui --target wasm32-unknown-unknown
 └─ 是磁盘/系统/PDF 解析 → 改 src-tauri，新增 #[command]
 ```
 
+## 3.5 文档驱动开发（Doc-Driven Development）
+
+> 从 2026-08-04 起，本项目采用**文档驱动开发**：任何创造性工作（新功能、组件、行为修改、重构）**必须先产出文档，评审通过后才写代码**。完整流水线见 `AGENTS.md`。
+
+```
+想法
+  │
+  ▼
+① brainstorming ──▶ docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md   （设计获批前禁止实现）
+  ▼
+② writing-plans ──▶ docs/superpowers/plans/YYYY-MM-DD-<feature>.md        （禁占位符，checkbox 步骤）
+  ▼
+③ executing-plans / subagent-driven-development                           （先建隔离 worktree；绝不在 main 实现）
+  ▼
+④ verification-before-completion ──▶ finishing-a-development-branch
+```
+
+- **issue tracker**：当前为 Local markdown（`.scratch/<feature-slug>/`），声明见 `docs/agents/issue-tracker.md`。`to-spec`/`to-tickets`/`wayfinder` 依赖它。
+- **HARD-GATE**：brainstorming 的设计未获用户批准前，禁止任何实现动作（包括写测试）。
+- **文档义务**：改动 facade / 架构 / 加 Stub 时，除代码外必须同步更新本文档与 `docs/architecture-overview.md`、`docs/api-contract.md`（承上启下衔接 §4.3 步骤 4 的文档义务）。
+- 工具链：`AGENTS.md`（流水线 + Agent skills 三节：tracker / triage labels / domain）、`docs/development-guide.md`（本文件）、`docs/agents/*.md`（tracker/triage/domain 配置）。
+
 ## 4. 添加新 WASM API
 
 ### 4.1 选定域
