@@ -532,7 +532,5 @@ pub fn parse_content_stream(
     Ok(())
 }
 
-// === Stub wrappers for renamed/relocated functions ===
-
 
 

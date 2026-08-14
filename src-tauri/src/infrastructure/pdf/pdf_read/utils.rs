@@ -94,9 +94,5 @@ pub(crate) fn resolve_tj_array_text(
     (combined, all_origins, all_widths, all_codes, offset)
 }
 
-lazy_static::lazy_static! {
-    static ref PAGE_LOCKS: std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::Mutex<()>>>> =
-        std::sync::Mutex::new(std::collections::HashMap::new());
-}
 
 

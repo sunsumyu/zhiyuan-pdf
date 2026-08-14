@@ -411,7 +411,7 @@ mod tests {
                 model.kind, model.width, model.height, model.preview_image_url
             );
 
-            let vector_model = crate::infrastructure::pdf::pdf_read::extract_vector_page_model(&doc, page_index as u16).unwrap();
+            let vector_model = crate::infrastructure::pdf::vector_engine::resolve_model(&doc, page_index as u16).unwrap();
             for obj in &vector_model.objects {
                 if let crate::infrastructure::pdf::models::RenderObject::Image(img) = obj {
                     println!("  Vector image object: id={}, data_url={}, size={}x{}", img.id, img.data_url, img.width, img.height);
