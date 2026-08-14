@@ -2,14 +2,12 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::infrastructure::pdf::models::{EmbeddedGlyphMap, RenderObject, StyledRun};
+use crate::infrastructure::pdf::models::{RenderObject, StyledRun};
 
 lazy_static! {
     pub static ref PDF_IMAGE_CACHE: Arc<Mutex<HashMap<String, Arc<[u8]>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     pub static ref PDF_FONT_PROGRAM_CACHE: Arc<Mutex<HashMap<String, Arc<Vec<u8>>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    pub static ref PDF_FONT_GLYPH_MAP_CACHE: Arc<Mutex<HashMap<String, Arc<EmbeddedGlyphMap>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     pub static ref PDF_RESOLVE_PATHS_CACHE: Arc<Mutex<HashMap<String, Arc<(Vec<RenderObject>, Vec<StyledRun>, f32, f32)>>>> =
         Arc::new(Mutex::new(HashMap::new()));

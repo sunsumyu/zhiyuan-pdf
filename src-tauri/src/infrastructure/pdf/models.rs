@@ -11,12 +11,6 @@ pub use pdf_viewer_core::models::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Default)]
-pub struct EmbeddedGlyphMap {
-    pub identity: bool,
-    pub cid_to_gid: HashMap<u32, u16>,
-}
-
 pub use pdf_viewer_core::models::NativeTextModel;
 
 fn is_false(v: &bool) -> bool {
