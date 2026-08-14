@@ -13,6 +13,7 @@ use tokio::sync::Mutex as AsyncMutex;
 use super::cache::{
     invalidate_pdf_layout_cache, invalidate_pdf_light_page_cache, invalidate_pdf_page_cache,
 };
+use super::pdf_loader::load_pdf_lenient;
 
 lazy_static! {
     static ref WORKING_COPIES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
@@ -257,42 +258,23 @@ impl PdfDocumentService {
             "[PDF][save_pdf][MATERIALIZED] effective_text_reflows={}",
             effective_text_reflows.len()
         );
-        let materialized_count = materialization_plan
-            .decisions
-            .iter()
-            .filter(|d| d.status == "materialized")
-            .count();
-        let skipped_count = materialization_plan
-            .decisions
-            .iter()
-            .filter(|d| d.status == "skipped")
-            .count();
         crate::pdf_log!(
             2,
             "[PDF][save_pdf][MATERIALIZE_REPORT] decisions={} materialized={} skipped={}",
-            materialization_plan.decisions.len(),
-            materialized_count,
-            skipped_count
+            materialization_report.decisions.len(),
+            materialization_report.materialized_count,
+            materialization_report.skipped_count
         );
-        let mut by_source: HashMap<String, (usize, usize)> = HashMap::new();
-        for decision in &materialization_plan.decisions {
-            let entry = by_source.entry(decision.source.clone()).or_insert((0, 0));
-            if decision.status == "materialized" {
-                entry.0 += 1;
-            } else {
-                entry.1 += 1;
-            }
-        }
-        for (source, (ok_count, skip_count)) in by_source {
+        for source in &materialization_report.by_source {
             crate::pdf_log!(
                 2,
                 "[PDF][save_pdf][MATERIALIZE_REPORT][SOURCE] source={} materialized={} skipped={}",
-                source,
-                ok_count,
-                skip_count
+                source.source,
+                source.materialized,
+                source.skipped
             );
         }
-        for decision in materialization_plan
+        for decision in materialization_report
             .decisions
             .iter()
             .filter(|d| d.status == "skipped")
@@ -363,14 +345,6 @@ impl PdfDocumentService {
         Ok(())
     }
 
-    pub fn read_last_pdf_materialization_report(
-        state: tauri::State<'_, crate::AppState>,
-        path: &str,
-    ) -> Result<Option<crate::infrastructure::pdf::models::PdfMaterializationReport>, String> {
-        let reports = state.cache.pdf_materialization_reports.lock().unwrap();
-        Ok(reports.get(path).cloned())
-    }
-
     pub async fn rollback_pdf(
         state: tauri::State<'_, crate::AppState>,
         path: &str,
@@ -380,31 +354,24 @@ impl PdfDocumentService {
         let mut redo_cache = state.history.pdf_redo_transactions.lock().unwrap();
         let mut doc_cache = state.docs.pdf_documents.lock().unwrap();
 
-        if let Some(history) = tx_cache.get_mut(path) {
-            if let Some(prev_doc) = history.pop() {
-                if let Some(current_doc) = doc_cache.get(path) {
-                    let redo_history = redo_cache.entry(path.to_string()).or_insert_with(Vec::new);
-                    redo_history.push(current_doc.clone());
-                    if redo_history.len() > 20 {
-                        redo_history.remove(0);
-                    }
-                }
-                let mut doc_to_save = (*prev_doc).clone();
-                doc_to_save
-                    .save(path)
-                    .map_err(|err| format!("Rollback disk save failed: {}", err))?;
-                doc_cache.insert(path.to_string(), prev_doc);
-                invalidate_pdf_light_page_cache(&state, path);
-                invalidate_pdf_page_cache(&state, path);
-                invalidate_pdf_layout_cache(&state, path);
-                crate::log_step!(
-                    "[PDF][rollback] Restored from transaction snapshot and saved to disk. Remaining history: {}",
-                    history.len()
-                );
-                return Ok(());
-            }
-        }
-        Err("No transaction history to rollback".to_string())
+        let Some(prev_doc) =
+            transfer_snapshot(&mut tx_cache, &mut redo_cache, path, doc_cache.get(path).cloned())
+        else {
+            return Err("No transaction history to rollback".to_string());
+        };
+        let mut doc_to_save = (*prev_doc).clone();
+        doc_to_save
+            .save(path)
+            .map_err(|err| format!("Rollback disk save failed: {}", err))?;
+        doc_cache.insert(path.to_string(), prev_doc);
+        invalidate_pdf_light_page_cache(&state, path);
+        invalidate_pdf_page_cache(&state, path);
+        invalidate_pdf_layout_cache(&state, path);
+        crate::log_step!(
+            "[PDF][rollback] Restored from transaction snapshot and saved to disk. Remaining history: {}",
+            tx_cache.get(path).map(|h| h.len()).unwrap_or(0)
+        );
+        Ok(())
     }
 
     pub async fn redo_pdf(
@@ -416,31 +383,24 @@ impl PdfDocumentService {
         let mut redo_cache = state.history.pdf_redo_transactions.lock().unwrap();
         let mut doc_cache = state.docs.pdf_documents.lock().unwrap();
 
-        if let Some(redo_history) = redo_cache.get_mut(path) {
-            if let Some(next_doc) = redo_history.pop() {
-                if let Some(current_doc) = doc_cache.get(path) {
-                    let history = tx_cache.entry(path.to_string()).or_insert_with(Vec::new);
-                    history.push(current_doc.clone());
-                    if history.len() > 20 {
-                        history.remove(0);
-                    }
-                }
-                let mut doc_to_save = (*next_doc).clone();
-                doc_to_save
-                    .save(path)
-                    .map_err(|err| format!("Redo disk save failed: {}", err))?;
-                doc_cache.insert(path.to_string(), next_doc);
-                invalidate_pdf_light_page_cache(&state, path);
-                invalidate_pdf_page_cache(&state, path);
-                invalidate_pdf_layout_cache(&state, path);
-                crate::log_step!(
-                    "[PDF][redo] Restored redo snapshot and saved to disk. Remaining redo: {}",
-                    redo_history.len()
-                );
-                return Ok(());
-            }
-        }
-        Err("No redo transaction history".to_string())
+        let Some(next_doc) =
+            transfer_snapshot(&mut redo_cache, &mut tx_cache, path, doc_cache.get(path).cloned())
+        else {
+            return Err("No redo transaction history".to_string());
+        };
+        let mut doc_to_save = (*next_doc).clone();
+        doc_to_save
+            .save(path)
+            .map_err(|err| format!("Redo disk save failed: {}", err))?;
+        doc_cache.insert(path.to_string(), next_doc);
+        invalidate_pdf_light_page_cache(&state, path);
+        invalidate_pdf_page_cache(&state, path);
+        invalidate_pdf_layout_cache(&state, path);
+        crate::log_step!(
+            "[PDF][redo] Restored redo snapshot and saved to disk. Remaining redo: {}",
+            redo_cache.get(path).map(|h| h.len()).unwrap_or(0)
+        );
+        Ok(())
     }
 
     pub fn generate_demo_pdf(path: &str) -> Result<String, String> {
@@ -450,180 +410,101 @@ impl PdfDocumentService {
     }
 }
 
-/// Public wrapper for lenient PDF loading (used from other modules).
-pub fn load_pdf_public(path: &str) -> Result<Document, String> {
-    load_pdf_lenient(path)
+/// Maximum snapshots kept per path in undo/redo history.
+const HISTORY_LIMIT: usize = 20;
+
+/// Pop the newest snapshot for `path` from `from`, archiving `current` into
+/// `to` (capped at [`HISTORY_LIMIT`]). Returns the snapshot to restore, if any.
+fn transfer_snapshot(
+    from: &mut HashMap<String, Vec<std::sync::Arc<Document>>>,
+    to: &mut HashMap<String, Vec<std::sync::Arc<Document>>>,
+    path: &str,
+    current: Option<std::sync::Arc<Document>>,
+) -> Option<std::sync::Arc<Document>> {
+    let popped = from.get_mut(path)?.pop()?;
+    if let Some(current) = current {
+        let history = to.entry(path.to_string()).or_insert_with(Vec::new);
+        history.push(current);
+        if history.len() > HISTORY_LIMIT {
+            history.remove(0);
+        }
+    }
+    Some(popped)
 }
 
-/// Attempt to load a PDF with multiple fallback strategies:
-/// 1. Direct lopdf::Document::load (strict)
-/// 2. Load from memory bytes (handles some path encoding issues)
-/// 3. Repair the PDF trailer and retry from memory
-fn load_pdf_lenient(path: &str) -> Result<Document, String> {
-    // Strategy 1: Direct file load
-    match Document::load(path) {
-        Ok(doc) => {
-            crate::log_step!(
-                "[PDF][load_lenient] Strategy 1 (direct load) SUCCESS for {}",
-                path
-            );
-            return Ok(doc);
-        }
-        Err(e) => {
-            crate::log_step!(
-                "[PDF][load_lenient] Strategy 1 (direct load) FAILED: {} - trying fallbacks",
-                e
-            );
-        }
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+
+    fn blank_doc() -> std::sync::Arc<Document> {
+        std::sync::Arc::new(Document::with_version("1.4"))
     }
 
-    // Read raw bytes for subsequent strategies
-    let raw_bytes = fs::read(path).map_err(|e| format!("Cannot read PDF file {}: {}", path, e))?;
-
-    if raw_bytes.len() < 8 {
-        return Err(format!(
-            "PDF file too small ({} bytes): {}",
-            raw_bytes.len(),
-            path
-        ));
+    fn history_with(path: &str, count: usize) -> HashMap<String, Vec<std::sync::Arc<Document>>> {
+        let mut map = HashMap::new();
+        map.insert(
+            path.to_string(),
+            (0..count).map(|_| blank_doc()).collect(),
+        );
+        map
     }
 
-    // Strategy 2: Load from memory (bypasses file I/O quirks)
-    match Document::load_mem(&raw_bytes) {
-        Ok(doc) => {
-            crate::log_step!(
-                "[PDF][load_lenient] Strategy 2 (load_mem) SUCCESS for {}",
-                path
-            );
-            return Ok(doc);
-        }
-        Err(e) => {
-            crate::log_step!(
-                "[PDF][load_lenient] Strategy 2 (load_mem) FAILED: {} - trying repair",
-                e
-            );
-        }
+    #[test]
+    fn transfer_pops_newest_and_archives_current_into_target() {
+        let path = "a.pdf";
+        let mut undo = history_with(path, 2);
+        let newest = undo.get(path).unwrap().last().unwrap().clone();
+        let mut redo = HashMap::new();
+        let current = blank_doc();
+
+        let restored = transfer_snapshot(&mut undo, &mut redo, path, Some(current.clone()));
+
+        assert!(std::sync::Arc::ptr_eq(&restored.unwrap(), &newest));
+        assert_eq!(undo.get(path).unwrap().len(), 1);
+        let archived = redo.get(path).unwrap();
+        assert_eq!(archived.len(), 1);
+        assert!(std::sync::Arc::ptr_eq(&archived[0], &current));
     }
 
-    // Strategy 3: Repair trailer and retry
-    match repair_and_load(&raw_bytes) {
-        Ok(doc) => {
-            crate::log_step!(
-                "[PDF][load_lenient] Strategy 3 (repair) SUCCESS for {}",
-                path
-            );
-            return Ok(doc);
-        }
-        Err(e) => {
-            crate::log_step!("[PDF][load_lenient] Strategy 3 (repair) FAILED: {}", e);
-        }
+    #[test]
+    fn transfer_returns_none_for_empty_history() {
+        let mut undo = history_with("a.pdf", 0);
+        let mut redo = HashMap::new();
+        assert!(transfer_snapshot(&mut undo, &mut redo, "a.pdf", Some(blank_doc())).is_none());
+        assert!(
+            redo.is_empty(),
+            "nothing should be archived when no snapshot was popped"
+        );
     }
 
-    Err(format!("All PDF loading strategies failed for {}", path))
-}
-
-/// Try to repair a PDF with invalid trailer by finding and fixing the startxref value,
-/// or by synthesizing a minimal trailer if missing.
-fn repair_and_load(raw: &[u8]) -> Result<Document, String> {
-    // Find the last occurrence of "startxref" in the file
-    let content = String::from_utf8_lossy(raw);
-
-    // Strategy 3a: Trim trailing garbage after %%EOF
-    if let Some(eof_pos) = content.rfind("%%EOF") {
-        let trimmed_end = eof_pos + 5; // "%%EOF".len()
-                                       // Skip any trailing newlines
-        let trimmed_end = raw.len().min(trimmed_end + 2);
-        if trimmed_end < raw.len() {
-            let trimmed = &raw[..trimmed_end];
-            crate::log_step!(
-                "[PDF][repair] Trimming {} trailing bytes after %%EOF",
-                raw.len() - trimmed_end
-            );
-            if let Ok(doc) = Document::load_mem(trimmed) {
-                return Ok(doc);
-            }
-        }
+    #[test]
+    fn transfer_returns_none_for_unknown_path() {
+        let mut undo = history_with("a.pdf", 1);
+        let mut redo = HashMap::new();
+        assert!(transfer_snapshot(&mut undo, &mut redo, "other.pdf", None).is_none());
+        assert_eq!(undo.get("a.pdf").unwrap().len(), 1);
     }
 
-    // Strategy 3b: Find startxref and verify the offset points to valid xref/obj
-    if let Some(startxref_pos) = content.rfind("startxref") {
-        let after_startxref = &content[startxref_pos + 9..];
-        let offset_str = after_startxref
-            .trim_start()
-            .lines()
-            .next()
-            .unwrap_or("")
-            .trim();
-        if let Ok(xref_offset) = offset_str.parse::<usize>() {
-            // Verify the offset is within file bounds
-            if xref_offset < raw.len() {
-                let at_offset = &content[xref_offset..];
-                // If it points to "xref" or a valid obj, the startxref is correct
-                // Try scanning backwards for an earlier valid xref
-                if !at_offset.starts_with("xref") && !at_offset.contains("obj") {
-                    // The startxref offset is wrong - try to find actual xref location
-                    if let Some(real_xref) = content
-                        .rfind("\nxref\n")
-                        .or_else(|| content.rfind("\nxref\r"))
-                    {
-                        let real_offset = real_xref + 1; // skip the leading newline
-                        crate::log_step!(
-                            "[PDF][repair] Fixing startxref from {} to {}",
-                            xref_offset,
-                            real_offset
-                        );
-                        let mut repaired = raw.to_vec();
-                        let new_startxref = format!("startxref\n{}\n%%EOF\n", real_offset);
-                        // Replace from startxref_pos to end
-                        repaired.truncate(startxref_pos);
-                        repaired.extend_from_slice(new_startxref.as_bytes());
-                        if let Ok(doc) = Document::load_mem(&repaired) {
-                            return Ok(doc);
-                        }
-                    }
-                }
-            }
-        }
+    #[test]
+    fn transfer_caps_target_history_at_limit() {
+        let path = "a.pdf";
+        let mut undo = history_with(path, 1);
+        let mut redo = history_with(path, HISTORY_LIMIT);
+        let oldest_kept = redo.get(path).unwrap()[1].clone();
+
+        transfer_snapshot(&mut undo, &mut redo, path, Some(blank_doc()));
+
+        let archived = redo.get(path).unwrap();
+        assert_eq!(archived.len(), HISTORY_LIMIT);
+        assert!(std::sync::Arc::ptr_eq(&archived[0], &oldest_kept));
     }
 
-    // Strategy 3c: If the file has cross-reference streams (PDF 1.5+),
-    // look for the last "obj" that contains /Type /XRef
-    // This handles PDFs that use xref streams instead of traditional xref tables
-    if content.contains("/Type /XRef") || content.contains("/Type/XRef") {
-        // Find the byte offset of the last xref stream object
-        let search_patterns = ["/Type /XRef", "/Type/XRef"];
-        let mut last_xref_stream_pos = None;
-        for pattern in &search_patterns {
-            if let Some(pos) = content.rfind(pattern) {
-                // Walk backwards to find the "N N obj" header
-                let before = &content[..pos];
-                if let Some(obj_line_start) = before.rfind('\n') {
-                    let candidate_start = before[..obj_line_start]
-                        .rfind('\n')
-                        .map(|p| p + 1)
-                        .unwrap_or(0);
-                    let obj_header = &before[candidate_start..obj_line_start];
-                    if obj_header.trim().ends_with("obj") {
-                        last_xref_stream_pos = Some(candidate_start);
-                    }
-                }
-            }
-        }
-        if let Some(xref_pos) = last_xref_stream_pos {
-            // Build a repaired file with correct startxref pointing to this object
-            let mut repaired = raw.to_vec();
-            let new_tail = format!("\nstartxref\n{}\n%%EOF\n", xref_pos);
-            // Find where to append - after the last endobj or at end
-            if let Some(last_endobj) = content.rfind("endobj") {
-                let append_pos = last_endobj + 6;
-                repaired.truncate(append_pos);
-                repaired.extend_from_slice(new_tail.as_bytes());
-                if let Ok(doc) = Document::load_mem(&repaired) {
-                    return Ok(doc);
-                }
-            }
-        }
+    #[test]
+    fn transfer_without_current_still_pops_snapshot() {
+        let path = "a.pdf";
+        let mut undo = history_with(path, 1);
+        let mut redo = HashMap::new();
+        assert!(transfer_snapshot(&mut undo, &mut redo, path, None).is_some());
+        assert!(redo.is_empty(), "no current doc means nothing archived");
     }
-
-    Err("PDF repair strategies exhausted".to_string())
 }

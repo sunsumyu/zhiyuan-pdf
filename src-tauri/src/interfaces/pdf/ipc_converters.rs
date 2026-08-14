@@ -26,7 +26,7 @@ pub(crate) async fn ensure_document_loaded(
     let working_path = PdfDocumentService::resolve_working_path(path);
     let path_for_load = path.to_string();
     let loaded_doc = tokio::task::spawn_blocking(move || {
-        crate::infrastructure::pdf::document_service::load_pdf_public(&working_path)
+        crate::infrastructure::pdf::pdf_loader::load_pdf_public(&working_path)
             .map(std::sync::Arc::new)
             .map_err(|e| format!("Lopdf Load Error for {}: {}", path_for_load, e))
     })

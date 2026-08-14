@@ -19,7 +19,7 @@ impl PdfPageModelService {
                 d.clone()
             } else {
                 let wp = PdfDocumentService::resolve_working_path(path);
-                let d = crate::infrastructure::pdf::document_service::load_pdf_public(&wp)
+                let d = crate::infrastructure::pdf::pdf_loader::load_pdf_public(&wp)
                     .map_err(|e| format!("Lopdf Load Error: {}", e))?;
                 let d_arc = std::sync::Arc::new(d);
                 cache.insert(path.to_string(), d_arc.clone());
