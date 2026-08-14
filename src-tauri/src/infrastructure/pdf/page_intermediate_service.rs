@@ -61,7 +61,7 @@ impl PdfPageIntermediateService {
             let path_for_load = path.clone();
             let working_path = crate::infrastructure::pdf::document_service::PdfDocumentService::resolve_working_path(&path);
             let loaded_doc = tokio::task::spawn_blocking(move || {
-                crate::infrastructure::pdf::document_service::load_pdf_public(&working_path)
+                crate::infrastructure::pdf::pdf_loader::load_pdf_public(&working_path)
                     .map(Arc::new)
                     .map_err(|e| {
                         format!(
