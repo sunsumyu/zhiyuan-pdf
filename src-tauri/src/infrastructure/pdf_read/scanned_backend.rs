@@ -1,8 +1,10 @@
 use crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE;
 use crate::infrastructure::pdf_read::backend::PdfReadBackend;
-use crate::infrastructure::pdf_read::types::{
-    ClassificationReason, PagePreview, PdfDocumentKind, ReadDocumentMeta,
+use crate::infrastructure::pdf_read::classification::{
+    classify_open_decision, likely_ocr_scanned_document, qualifies_as_scanned_page,
+    ClassificationDecision,
 };
+use crate::infrastructure::pdf_read::types::{PagePreview, PdfDocumentKind, ReadDocumentMeta};
 use crate::log_step;
 use crate::pdf_log;
 use memmap2::Mmap;
@@ -19,32 +21,18 @@ use std::sync::Arc;
 use std::time::Instant;
 pub struct ScannedReadBackend;
 
-const SCANNED_MIN_PAGE_COVERAGE: f32 = 0.70;
-const SCANNED_MIN_WIDTH_RATIO: f32 = 0.75;
-const SCANNED_MIN_HEIGHT_RATIO: f32 = 0.75;
-const OCR_SCAN_MIN_AVG_PAGE_BYTES: u64 = 180 * 1024;
-struct ClassificationDecision {
-    kind: PdfDocumentKind,
-    confidence: f32,
-    allow_scan_preview_first_paint: bool,
-    reason: ClassificationReason,
+struct LoadedScannedDocument {
+    file: CachedFile<Mmap>,
+    file_open: std::time::Duration,
+    mmap: std::time::Duration,
+    load: std::time::Duration,
+    total: std::time::Duration,
 }
 impl ScannedReadBackend {
     pub fn new() -> Self {
         Self
     }
-    fn load_document(
-        path: &str,
-    ) -> Result<
-        (
-            CachedFile<Mmap>,
-            std::time::Duration,
-            std::time::Duration,
-            std::time::Duration,
-            std::time::Duration,
-        ),
-        String,
-    > {
+    fn load_document(path: &str) -> Result<LoadedScannedDocument, String> {
         let file_start = Instant::now();
         let raw = File::open(Path::new(path)).map_err(|e| ToString::to_string(&e))?;
         let file_elapsed = file_start.elapsed();
@@ -83,13 +71,13 @@ impl ScannedReadBackend {
             total_elapsed,
             path
         );
-        Ok((
+        Ok(LoadedScannedDocument {
             file,
-            file_elapsed,
-            mmap_elapsed,
-            load_elapsed,
-            total_elapsed,
-        ))
+            file_open: file_elapsed,
+            mmap: mmap_elapsed,
+            load: load_elapsed,
+            total: total_elapsed,
+        })
     }
     fn resolve_page_tree(
         resolver: &impl Resolve,
@@ -225,159 +213,6 @@ impl ScannedReadBackend {
         );
         format!("http://pdfasset.localhost/{}", asset_id)
     }
-    fn qualifies_as_scanned_page(
-        page_width: f32,
-        page_height: f32,
-        image_width: u32,
-        image_height: u32,
-    ) -> bool {
-        if page_width <= 1.0 || page_height <= 1.0 || image_width == 0 || image_height == 0 {
-            return false;
-        }
-
-        let page_area = page_width * page_height;
-        let image_area = image_width as f32 * image_height as f32;
-        let coverage = image_area / page_area;
-        let width_ratio = image_width as f32 / page_width;
-        let height_ratio = image_height as f32 / page_height;
-
-        coverage >= SCANNED_MIN_PAGE_COVERAGE
-            && width_ratio >= SCANNED_MIN_WIDTH_RATIO
-            && height_ratio >= SCANNED_MIN_HEIGHT_RATIO
-    }
-    fn likely_ocr_scanned_document(
-        avg_page_bytes: u64,
-        image_covers_page: bool,
-        has_text_content: bool,
-        has_font_resources: bool,
-    ) -> bool {
-        image_covers_page
-            && avg_page_bytes >= OCR_SCAN_MIN_AVG_PAGE_BYTES
-            && has_text_content
-            && has_font_resources
-    }
-    fn scanned_confidence(
-        avg_page_bytes: u64,
-        image_covers_page: bool,
-        has_text_content: bool,
-        has_font_resources: bool,
-    ) -> f32 {
-        let mut score = 0.0f32;
-
-        if image_covers_page {
-            score += 0.55;
-        }
-        if avg_page_bytes >= OCR_SCAN_MIN_AVG_PAGE_BYTES {
-            score += 0.25;
-        }
-        if !has_text_content {
-            score += 0.20;
-        } else if has_font_resources {
-            score -= 0.05;
-        }
-
-        score.clamp(0.0, 1.0)
-    }
-    fn classify_open_decision(
-        avg_page_bytes: u64,
-        image_covers_page: bool,
-        has_text_content: bool,
-        has_font_resources: bool,
-    ) -> ClassificationDecision {
-        if image_covers_page && !(has_text_content || has_font_resources) {
-            return ClassificationDecision {
-                kind: PdfDocumentKind::Scanned,
-                confidence: 1.0,
-                allow_scan_preview_first_paint: true,
-                reason: ClassificationReason::FullPageImageNoText,
-            };
-        }
-
-        if Self::likely_ocr_scanned_document(
-            avg_page_bytes,
-            image_covers_page,
-            has_text_content,
-            has_font_resources,
-        ) {
-            return ClassificationDecision {
-                kind: PdfDocumentKind::Scanned,
-                confidence: Self::scanned_confidence(
-                    avg_page_bytes,
-                    image_covers_page,
-                    has_text_content,
-                    has_font_resources,
-                ),
-                allow_scan_preview_first_paint: true,
-                reason: ClassificationReason::FullPageImageWithOcrLayer,
-            };
-        }
-
-        if has_text_content {
-            return ClassificationDecision {
-                kind: PdfDocumentKind::Vector,
-                confidence: 0.95,
-                allow_scan_preview_first_paint: false,
-                reason: ClassificationReason::TextOperatorsDominant,
-            };
-        }
-
-        if has_font_resources {
-            return ClassificationDecision {
-                kind: PdfDocumentKind::Vector,
-                confidence: 0.90,
-                allow_scan_preview_first_paint: false,
-                reason: ClassificationReason::FontResourcesDominant,
-            };
-        }
-
-        ClassificationDecision {
-            kind: PdfDocumentKind::Unknown,
-            confidence: 0.0,
-            allow_scan_preview_first_paint: false,
-            reason: ClassificationReason::LowConfidenceFallback,
-        }
-    }
-    fn _classify_page_kind(
-        page_width: f32,
-        page_height: f32,
-        has_text_content: bool,
-        resources: &MaybeRef<Resources>,
-        resolver: &impl Resolve,
-        avg_page_bytes: u64,
-    ) -> Result<PdfDocumentKind, String> {
-        let has_font_resources = !resources.fonts.is_empty();
-
-        for xref in resources.xobjects.values() {
-            let obj = resolver.get(*xref).map_err(|e| ToString::to_string(&e))?;
-            let XObject::Image(img) = &*obj else {
-                continue;
-            };
-
-            let image_covers_page =
-                Self::qualifies_as_scanned_page(page_width, page_height, img.width, img.height);
-
-            if image_covers_page
-                && Self::likely_ocr_scanned_document(
-                    avg_page_bytes,
-                    image_covers_page,
-                    has_text_content,
-                    has_font_resources,
-                )
-            {
-                return Ok(PdfDocumentKind::Scanned);
-            }
-
-            if image_covers_page && !(has_text_content || has_font_resources) {
-                return Ok(PdfDocumentKind::Scanned);
-            }
-        }
-
-        if has_text_content || has_font_resources {
-            return Ok(PdfDocumentKind::Vector);
-        }
-
-        Ok(PdfDocumentKind::Unknown)
-    }
     fn page_has_text_content(
         resolver: &impl Resolve,
         primitive: &Primitive,
@@ -453,7 +288,13 @@ impl ScannedReadBackend {
 impl PdfReadBackend for ScannedReadBackend {
     fn open(&self, path: &str) -> Result<ReadDocumentMeta, String> {
         let total = Instant::now();
-        let (file, file_open_ms, mmap_ms, load_ms, load_total_ms) = Self::load_document(path)?;
+        let LoadedScannedDocument {
+            file,
+            file_open: file_open_ms,
+            mmap: mmap_ms,
+            load: load_ms,
+            total: load_total_ms,
+        } = Self::load_document(path)?;
 
         let count_start = Instant::now();
         let page_count = file.num_pages() as usize;
@@ -479,24 +320,19 @@ impl PdfReadBackend for ScannedReadBackend {
                 let XObject::Image(img) = &*obj else {
                     continue;
                 };
-                if Self::qualifies_as_scanned_page(width, height, img.width, img.height) {
+                if qualifies_as_scanned_page(width, height, img.width, img.height) {
                     image_covers_page = true;
                     break;
                 }
             }
-            Self::classify_open_decision(
+            classify_open_decision(
                 avg_page_bytes,
                 image_covers_page,
                 has_text_content,
                 has_font_resources,
             )
         } else {
-            ClassificationDecision {
-                kind: PdfDocumentKind::Unknown,
-                confidence: 0.0,
-                allow_scan_preview_first_paint: false,
-                reason: ClassificationReason::Unknown,
-            }
+            ClassificationDecision::unknown()
         };
 
         log_step!(
@@ -526,7 +362,13 @@ impl PdfReadBackend for ScannedReadBackend {
     }
     fn read_page_preview(&self, path: &str, page_index: u16) -> Result<PagePreview, String> {
         let total = Instant::now();
-        let (file, file_open_ms, mmap_ms, load_ms, load_total_ms) = Self::load_document(path)?;
+        let LoadedScannedDocument {
+            file,
+            file_open: file_open_ms,
+            mmap: mmap_ms,
+            load: load_ms,
+            total: load_total_ms,
+        } = Self::load_document(path)?;
         let page_count = file.num_pages().max(1) as u64;
         let avg_page_bytes = std::fs::metadata(path)
             .ok()
@@ -605,10 +447,10 @@ impl PdfReadBackend for ScannedReadBackend {
                 best_image_width = img.width;
                 best_image_height = img.height;
                 let image_covers_page =
-                    Self::qualifies_as_scanned_page(width, height, img.width, img.height);
+                    qualifies_as_scanned_page(width, height, img.width, img.height);
                 if image_covers_page
                     && ((!has_text_content && !has_font_resources)
-                        || Self::likely_ocr_scanned_document(
+                        || likely_ocr_scanned_document(
                             avg_page_bytes,
                             image_covers_page,
                             has_text_content,
@@ -664,5 +506,41 @@ impl PdfReadBackend for ScannedReadBackend {
             path
         );
         Ok(preview)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ScannedReadBackend;
+
+    #[test]
+    fn bytes_may_contain_text_operators_matches_all_six_tokens() {
+        for sample in [
+            &b"q BT /F1 12 Tf (hi) Tj Q"[..],
+            b"\nBT /F2 10 Tf [(a) -20 (b)] TJ ET",
+            b"\rBT 1 0 0 1 10 10 Tm",
+            b"/Image Do Tj end",
+            b"re f TJ",
+            b"BT ET Tf",
+        ] {
+            assert!(
+                ScannedReadBackend::bytes_may_contain_text_operators(sample),
+                "{sample:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn bytes_may_contain_text_operators_requires_leading_separator() {
+        // 令牌都带前缀分隔符:无空白前缀的算子串、过短输入、非文本内容均不匹配
+        assert!(!ScannedReadBackend::bytes_may_contain_text_operators(b"BT"));
+        assert!(!ScannedReadBackend::bytes_may_contain_text_operators(b"BTTjTJTf"));
+        assert!(!ScannedReadBackend::bytes_may_contain_text_operators(b""));
+        assert!(!ScannedReadBackend::bytes_may_contain_text_operators(
+            b"q 100 0 0 100 0 0 cm /Im0 Do Q"
+        ));
+        assert!(!ScannedReadBackend::bytes_may_contain_text_operators(
+            b"0.5 0.5 0.5 rg 100 100 200 150 re f"
+        ));
     }
 }
