@@ -167,11 +167,6 @@ pub(crate) async fn execute_commands(
     page_index: u16,
     commands: Vec<Box<dyn PdfEditCommand>>,
 ) -> Result<(), String> {
-    println!(
-        ">>>>> [CORE] execute_pdf_commands | path={} | cmd_count={}",
-        path,
-        commands.len()
-    );
     let save_path = path.clone();
 
     // 1. Manage Transaction History for Undo

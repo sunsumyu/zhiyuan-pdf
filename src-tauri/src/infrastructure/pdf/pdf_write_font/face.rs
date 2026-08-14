@@ -20,7 +20,8 @@ pub(crate) fn font_from_bytes(
     let font_bytes = Arc::new(standalone);
     let face = Face::parse(font_bytes.as_slice(), 0).ok()?;
     if !font_covers_text(&face, text) {
-        println!(
+        crate::pdf_log!(
+            2,
             "[PDF-WRITE-FONT][reject-coverage] family='{}' source={} missing={}",
             requested_family,
             source_label,
@@ -68,7 +69,10 @@ pub(crate) fn standalone_ttf_bytes(data: &[u8], face_index: u32) -> Option<Vec<u
         Some(b"\x00\x01\x00\x00") | Some(b"true") => Some(data.to_vec()),
         Some(b"ttcf") => extract_ttc_face_as_ttf(data, face_index).ok(),
         Some(b"OTTO") => {
-            println!("[PDF-WRITE-FONT][reject-cff] OpenType CFF requires FontFile3 writer");
+            crate::pdf_log!(
+                2,
+                "[PDF-WRITE-FONT][reject-cff] OpenType CFF requires FontFile3 writer"
+            );
             None
         }
         _ => None,

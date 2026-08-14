@@ -12,11 +12,6 @@ pub async fn apply_region_patches(
     page_index: u16,
     patches: Vec<PersistableRegionPatch>,
 ) -> Result<(), String> {
-    println!(
-        ">>>>> [ENTRY] apply_region_patches | path={} | count={}",
-        path,
-        patches.len()
-    );
     log_step!(
         "[V3-SAVE-CMD] Applying region patches: path={} page={} count={}",
         path,

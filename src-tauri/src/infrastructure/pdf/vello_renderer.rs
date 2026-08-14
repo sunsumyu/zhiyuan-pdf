@@ -292,7 +292,8 @@ impl VelloRenderer {
         // --- DIAGNOSTIC LOGGING ---
         let matched_font = self.first_matched_font_name(&buffer);
         if should_trace_text_render(text) {
-            println!(
+            crate::pdf_log!(
+                3,
                 "[FONT-MATCH] REQ: '{}' | MATCHED: '{}' | RENDER_MODE: {} | TEXT: '{}'",
                 text.font_name,
                 matched_font,
@@ -926,7 +927,8 @@ impl VelloRenderer {
         }
         if !resolved_font.can_attempt_embedded_render {
             if should_trace_text_render(text) {
-                println!(
+                crate::pdf_log!(
+                    2,
                     "[PDF-EMBEDDED] skip can_attempt=false text='{}' font='{}' key={:?} subtype={:?}",
                     preview_text(&text.text),
                     text.font_name,
@@ -938,7 +940,8 @@ impl VelloRenderer {
         }
 
         let Some(font_key) = text.embedded_font_key.as_deref() else {
-            println!(
+            crate::pdf_log!(
+                2,
                 "[PDF-EMBEDDED] skip missing-key text='{}' font='{}' subtype={:?}",
                 preview_text(&text.text),
                 text.font_name,
@@ -953,7 +956,8 @@ impl VelloRenderer {
             cache.get(font_key).cloned()
         };
         let Some(font_bytes) = font_bytes else {
-            println!(
+            crate::pdf_log!(
+                2,
                 "[PDF-EMBEDDED] skip missing-cache-entry key='{}' text='{}' font='{}'",
                 font_key,
                 preview_text(&text.text),
@@ -963,7 +967,8 @@ impl VelloRenderer {
         };
 
         let Some(font_ref) = swash::FontRef::from_index(font_bytes.as_slice(), 0) else {
-            println!(
+            crate::pdf_log!(
+                2,
                 "[PDF-EMBEDDED] skip invalid-font-ref key='{}' text='{}' font='{}'",
                 font_key,
                 preview_text(&text.text),
@@ -973,7 +978,8 @@ impl VelloRenderer {
         };
         let units_per_em = MetricsProxy::from_font(&font_ref).units_per_em() as f64;
         if units_per_em <= 0.0 {
-            println!(
+            crate::pdf_log!(
+                2,
                 "[PDF-EMBEDDED] skip invalid-upem key='{}' text='{}' font='{}'",
                 font_key,
                 preview_text(&text.text),
@@ -984,7 +990,8 @@ impl VelloRenderer {
 
         let glyph_positions = glyph_mapping::build_glyph_positions(text);
         if glyph_positions.is_empty() {
-            println!(
+            crate::pdf_log!(
+                2,
                 "[PDF-EMBEDDED] skip no-glyph-positions text='{}' font='{}' char_origins={} char_widths={} codes={}",
                 preview_text(&text.text),
                 text.font_name,
@@ -1025,7 +1032,8 @@ impl VelloRenderer {
         }
 
         if !drew_any_glyph {
-            println!(
+            crate::pdf_log!(
+                2,
                 "[PDF-EMBEDDED] skip no-outlines text='{}' font='{}' key='{}' subtype={:?} codes={:?}",
                 preview_text(&text.text),
                 text.font_name,
@@ -1034,7 +1042,8 @@ impl VelloRenderer {
                 text.pdf_char_codes
             );
         } else if should_trace_text_render(text) {
-            println!(
+            crate::pdf_log!(
+                3,
                 "[PDF-EMBEDDED] success text='{}' font='{}' key='{}' subtype={:?} codes={:?}",
                 preview_text(&text.text),
                 text.font_name,

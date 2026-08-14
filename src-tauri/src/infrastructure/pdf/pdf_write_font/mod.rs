@@ -64,7 +64,8 @@ pub fn resolve_text_write_font(
 ) -> Result<PdfTextWriteFont, String> {
     if let Some(font) = current_font {
         if can_pdf_font_encode_text(font, text) {
-            println!(
+            crate::pdf_log!(
+                2,
                 "[PDF-WRITE-FONT][reuse-original] font='{}' alias={} text='{}'",
                 font.name,
                 String::from_utf8_lossy(current_font_alias),
@@ -84,7 +85,8 @@ pub fn resolve_text_write_font(
     let alias = embed::ensure_font_in_page(doc, page_id, &system_font, text)?;
     let parsed_font = face::parsed_font_from_system_font(&system_font);
 
-    println!(
+    crate::pdf_log!(
+        2,
         "[PDF-WRITE-FONT][resolved] alias={} source={} family='{}' ps='{}' text='{}'",
         String::from_utf8_lossy(&alias),
         system_font.source_label,
