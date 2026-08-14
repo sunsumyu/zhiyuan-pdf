@@ -4,7 +4,7 @@ use crate::infrastructure::pdf::pdf_font::{
 };
 use crate::infrastructure::pdf::pdf_read::{operands_to_f32, read_resources, FlatResources};
 use crate::infrastructure::pdf::text_matrix::TextMatrixCore;
-use crate::infrastructure::pdf::pdf_write_font_resolver::resolve_text_write_font;
+use crate::infrastructure::pdf::pdf_write_font::resolve_text_write_font;
 use crate::infrastructure::pdf::save_text_write_plan::PersistedTextLinePlan;
 use lopdf::{content::Content, Dictionary, Document, Object, Stream, StringFormat};
 use crate::infrastructure::pdf::pdf_utils;

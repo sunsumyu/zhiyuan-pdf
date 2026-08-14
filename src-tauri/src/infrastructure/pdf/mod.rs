@@ -22,7 +22,7 @@ pub mod pdf_read;
 pub mod pdf_utils;
 pub mod pdf_read_service;
 pub mod pdf_write;
-pub mod pdf_write_font_resolver;
+pub mod pdf_write_font;
 pub mod preview_engine;
 pub mod region_materializer;
 pub mod save_engine;
