@@ -2,9 +2,8 @@ use crate::infrastructure::pdf::models::*;
 use crate::infrastructure::pdf::pdf_font::{
     parse_font_from_dict, resolve_glyph_geom, ParsedFont, ResourceCache,
 };
-use crate::infrastructure::pdf::pdf_read::{
-    multiply_matrices, operands_to_f32, read_resources, FlatResources,
-};
+use crate::infrastructure::pdf::pdf_read::{operands_to_f32, read_resources, FlatResources};
+use crate::infrastructure::pdf::text_matrix::TextMatrixCore;
 use crate::infrastructure::pdf::pdf_write_font_resolver::resolve_text_write_font;
 use crate::infrastructure::pdf::save_text_write_plan::PersistedTextLinePlan;
 use lopdf::{content::Content, Dictionary, Document, Object, Stream, StringFormat};
@@ -195,7 +194,8 @@ impl PdfDocExt for Document {
             cluster_map.insert(cluster.min_idx, cluster.clone());
         }
 
-        let mut state = PdfTextState::default();
+        let mut state = PdfTextState::new();
+        let mut deferred_lines: Vec<PersistedTextLinePlan> = Vec::new();
         let patch_font_name = b"Helvetica".to_vec();
         let mut obj_counter = 0;
 
@@ -210,21 +210,22 @@ impl PdfDocExt for Document {
             &patch_font_name,
             &mut obj_counter,
             &mut state,
+            &mut deferred_lines,
         )?;
 
-        if changed || !state.deferred_lines.is_empty() {
+        if changed || !deferred_lines.is_empty() {
             content
                 .operations
                 .push(lopdf::content::Operation::new("Q", vec![]));
         }
 
-        if !state.deferred_lines.is_empty() {
+        if !deferred_lines.is_empty() {
             content
                 .operations
-                .extend(emit_deferred_text_block(&state.deferred_lines, page_height, user_unit));
+                .extend(emit_deferred_text_block(&deferred_lines, page_height, user_unit));
         }
 
-        if changed || !state.deferred_lines.is_empty() {
+        if changed || !deferred_lines.is_empty() {
             let new_content = content
                 .encode()
                 .map_err(|e| format!("Failed to encode: {}", e))?;
@@ -628,20 +629,34 @@ fn patch_content_recursive(
     Ok(modified)
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct PdfTextState {
+    /// Shared text-matrix trio (`ctm`/`tm`/`tlm`) and its invariant-bearing
+    /// operations, delegated to [`TextMatrixCore`].
+    core: TextMatrixCore,
     font_alias: Vec<u8>,
     font_size: f32,
     char_spacing: f32,
     word_spacing: f32,
     horizontal_scaling: f32,
     render_mode: i32,
-    in_text_block: bool,
-    last_tm: [f32; 6],
-    tlm: [f32; 6],
-    ctm: [f32; 6],
-    state_stack: Vec<([f32; 6], [f32; 6], [f32; 6])>,
-    deferred_lines: Vec<PersistedTextLinePlan>,
+    /// Text leading set by `TL`/`TD` and consumed by `T*`.
+    tl: f32,
+}
+
+impl PdfTextState {
+    fn new() -> Self {
+        Self {
+            core: TextMatrixCore::new(),
+            font_alias: Vec::new(),
+            font_size: 12.0,
+            char_spacing: 0.0,
+            word_spacing: 0.0,
+            horizontal_scaling: 100.0,
+            render_mode: 0,
+            tl: 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -829,9 +844,15 @@ fn patch_atomic_reflow_recursive(
     _font_name: &[u8],
     obj_counter: &mut usize,
     state: &mut PdfTextState,
+    deferred_lines: &mut Vec<PersistedTextLinePlan>,
 ) -> Result<bool, String> {
     let mut modified = false;
     let mut current_font = None;
+    // Graphics-state save/restore stack for `q`/`Q`. Local (not a field of
+    // `PdfTextState`): a Form XObject recursion gets its own fresh stack, and
+    // `q`/`Q` clone the whole (graphics-only) state wholesale, mirroring the
+    // read path. `deferred_lines` is the output sink and never participates.
+    let mut state_stack: Vec<PdfTextState> = Vec::new();
     let mut silenced = std::collections::HashSet::new();
     for c in cluster_map.values() {
         for p in &c.patches {
@@ -872,7 +893,7 @@ fn patch_atomic_reflow_recursive(
                             patch.horizontal_scaling,
                         );
 
-                        let trm = multiply_matrices(state.ctm, state.last_tm);
+                        let trm = state.core.text_render_matrix();
                         let (psx, psy) = (
                             (trm[0].powi(2) + trm[1].powi(2)).sqrt(),
                             (trm[2].powi(2) + trm[3].powi(2)).sqrt(),
@@ -889,7 +910,7 @@ fn patch_atomic_reflow_recursive(
                             let ly = ay + patch.displacement_y.unwrap_or(0.0)
                                 - ((line.baseline_y - first_base) * psy);
                             let lx = ax + (line.offset_x as f32 * psx);
-                            state.deferred_lines.push(PersistedTextLinePlan {
+                            deferred_lines.push(PersistedTextLinePlan {
                                 font_alias: font_info.font_alias.clone(),
                                 font_size: state.font_size * psy,
                                 encoded_bytes: font_info.encode_text(&line.text)?,
@@ -923,13 +944,9 @@ fn patch_atomic_reflow_recursive(
         }
 
         match op_str {
-            "BT" => {
-                state.in_text_block = true;
-                state.last_tm = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
-                state.tlm = state.last_tm;
-            }
-            "ET" => state.in_text_block = false,
-            "Tc" | "Tw" | "Tz" | "Tr" => {
+            "BT" => state.core.begin_text(),
+            "ET" => {}
+            "Tc" | "Tw" | "Tz" | "Tr" | "TL" => {
                 if let Some(f) = op.operands.get(0).and_then(|o| {
                     o.as_float()
                         .ok()
@@ -940,6 +957,7 @@ fn patch_atomic_reflow_recursive(
                         "Tw" => state.word_spacing = f,
                         "Tz" => state.horizontal_scaling = f,
                         "Tr" => state.render_mode = f as i32,
+                        "TL" => state.tl = f,
                         _ => {}
                     }
                 }
@@ -947,37 +965,39 @@ fn patch_atomic_reflow_recursive(
             "Tm" => {
                 if let Ok(m) = operands_to_f32(&op.operands) {
                     if m.len() >= 6 {
-                        state.last_tm = [m[0], m[1], m[2], m[3], m[4], m[5]];
-                        state.tlm = state.last_tm;
+                        state.core.set_text_matrix([m[0], m[1], m[2], m[3], m[4], m[5]]);
                     }
                 }
             }
-            "Td" | "TD" => {
+            "Td" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
-                    state.tlm = multiply_matrices(state.tlm, [1.0, 0.0, 0.0, 1.0, p[0], p[1]]);
-                    state.last_tm = state.tlm;
+                    if p.len() >= 2 {
+                        state.core.translate_text(p[0], p[1]);
+                    }
                 }
             }
-            "T*" => {
-                state.tlm =
-                    multiply_matrices(state.tlm, [1.0, 0.0, 0.0, 1.0, 0.0, -state.font_size]);
-                state.last_tm = state.tlm;
+            // `TD tx ty` is `TL -ty` followed by `Td tx ty` (PDF spec).
+            "TD" => {
+                if let Ok(p) = operands_to_f32(&op.operands) {
+                    if p.len() >= 2 {
+                        state.tl = -p[1];
+                        state.core.translate_text(p[0], p[1]);
+                    }
+                }
             }
-            "q" => state
-                .state_stack
-                .push((state.last_tm, state.tlm, state.ctm)),
+            // `T*` moves to the next line by the text leading (`TL`). Spec-correct:
+            // uses `tl` rather than `font_size` as a leading surrogate.
+            "T*" => state.core.translate_text(0.0, -state.tl),
+            "q" => state_stack.push(state.clone()),
             "Q" => {
-                if let Some((tm, tlm, ctm)) = state.state_stack.pop() {
-                    state.last_tm = tm;
-                    state.tlm = tlm;
-                    state.ctm = ctm;
+                if let Some(s) = state_stack.pop() {
+                    *state = s;
                 }
             }
             "cm" => {
                 if let Ok(m) = operands_to_f32(&op.operands) {
                     if m.len() >= 6 {
-                        state.ctm =
-                            multiply_matrices(state.ctm, [m[0], m[1], m[2], m[3], m[4], m[5]]);
+                        state.core.concat_ctm([m[0], m[1], m[2], m[3], m[4], m[5]]);
                     }
                 }
             }
@@ -1025,8 +1045,7 @@ fn patch_atomic_reflow_recursive(
                                             if let Ok(m_arr) = m_obj.as_array() {
                                                 if let Ok(m) = operands_to_f32(m_arr) {
                                                     if m.len() >= 6 {
-                                                        sub_state.ctm = multiply_matrices(
-                                                            state.ctm,
+                                                        sub_state.core.concat_ctm(
                                                             [m[0], m[1], m[2], m[3], m[4], m[5]],
                                                         );
                                                     }
@@ -1044,8 +1063,8 @@ fn patch_atomic_reflow_recursive(
                                             _font_name,
                                             obj_counter,
                                             &mut sub_state,
+                                            deferred_lines,
                                         )? {
-                                            state.deferred_lines.extend(sub_state.deferred_lines);
                                             xstream.set_content(
                                                 sub.encode().map_err(|e| e.to_string())?,
                                             );
@@ -1230,4 +1249,150 @@ fn resolve_line_color(line: &pdf_viewer_core::geometry::layout_engine::VisualLin
 }
 fn resolve_line_underline(line: &pdf_viewer_core::geometry::layout_engine::VisualLine) -> bool {
     line.runs.iter().any(|r| r.style.is_underline)
+}
+
+#[cfg(test)]
+mod write_state_tests {
+    //! These tests drive a synthetic content stream through
+    //! `patch_atomic_reflow_recursive` with empty resources (no font/XObject
+    //! resolution) and assert the write-path text-state tracking directly. They
+    //! pin the b-2 behavior changes that no reflow integration test covers:
+    //! `q`/`Q` cloning the whole graphics state, `T*`/`TD`/`TL` leading, and the
+    //! non-zero `PdfTextState::new()` defaults.
+    use super::*;
+    use lopdf::content::Operation;
+
+    fn run_ops(ops: &[(&str, &[lopdf::Object])]) -> PdfTextState {
+        let operations = ops
+            .iter()
+            .map(|(op, operands)| Operation::new(*op, operands.to_vec()))
+            .collect();
+        let mut content = Content { operations };
+        let mut doc = Document::with_version("1.4");
+        let resources: FlatResources = HashMap::new();
+        let mut res_cache = ResourceCache::new();
+        let cluster_map: HashMap<usize, ReflowCluster> = HashMap::new();
+        let mut state = PdfTextState::new();
+        let mut deferred: Vec<PersistedTextLinePlan> = Vec::new();
+        let mut obj_counter = 0;
+        let _ = patch_atomic_reflow_recursive(
+            &mut doc,
+            (0, 0),
+            &mut content,
+            &resources,
+            &mut res_cache,
+            &cluster_map,
+            1000.0,
+            b"Helvetica",
+            &mut obj_counter,
+            &mut state,
+            &mut deferred,
+        );
+        state
+    }
+
+    #[test]
+    fn new_initializes_nonzero_defaults_and_identity_matrices() {
+        // The old #[derive(Default)] zeroed font_size/horizontal_scaling and the
+        // matrices, yielding a garbage text-render matrix until overwritten.
+        let s = PdfTextState::new();
+        assert_eq!(s.font_size, 12.0);
+        assert_eq!(s.horizontal_scaling, 100.0);
+        assert_eq!(s.tl, 0.0);
+        assert_eq!(s.core.ctm(), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        assert_eq!(s.core.tm(), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn q_save_q_restore_clones_whole_graphics_state() {
+        // The old `q`/`Q` saved only (tm, tlm, ctm), so a font_size set between
+        // `q` and `Q` leaked past `Q`. Cloning the whole state restores it.
+        let state = run_ops(&[
+            ("BT", &[]),
+            ("Tf", &[Object::Name(b"F1".to_vec()), Object::Real(20.0)]),
+            ("q", &[]),
+            ("Tf", &[Object::Name(b"F1".to_vec()), Object::Real(40.0)]),
+            ("Q", &[]),
+        ]);
+        assert_eq!(state.font_size, 20.0);
+    }
+
+    #[test]
+    fn q_save_q_restore_also_restores_leading() {
+        let state = run_ops(&[
+            ("BT", &[]),
+            ("TL", &[Object::Real(12.0)]),
+            ("q", &[]),
+            ("TL", &[Object::Real(30.0)]),
+            ("Q", &[]),
+            ("T*", &[]),
+        ]);
+        // `tl` restored to 12 after `Q`; `T*` then moves by -12.
+        assert_eq!(state.tl, 12.0);
+        assert_eq!(state.core.tm()[5], -12.0);
+    }
+
+    #[test]
+    fn td_sets_leading_then_translates() {
+        // `TD tx ty` == `TL -ty` then `Td tx ty` (PDF spec).
+        let state = run_ops(&[
+            ("BT", &[]),
+            (
+                "Tm",
+                &[
+                    Object::Real(1.0),
+                    Object::Real(0.0),
+                    Object::Real(0.0),
+                    Object::Real(1.0),
+                    Object::Real(50.0),
+                    Object::Real(60.0),
+                ],
+            ),
+            ("TD", &[Object::Real(10.0), Object::Real(-15.0)]),
+            ("T*", &[]),
+        ]);
+        // Tm -> tm=[1,0,0,1,50,60]. TD(10,-15): tl=15, translate(10,-15)
+        // -> tm[4]=60, tm[5]=45. T*(0,-15): tm[5]=30.
+        let tm = state.core.tm();
+        assert_eq!(state.tl, 15.0);
+        assert_eq!(tm[4], 60.0);
+        assert_eq!(tm[5], 30.0);
+    }
+
+    #[test]
+    fn t_star_without_leading_is_a_noop() {
+        // With no `TL`/`TD`, `tl` defaults to 0; per spec `T*` moves by 0.
+        // (The old code moved by -font_size, which was non-spec.)
+        let state = run_ops(&[
+            ("BT", &[]),
+            (
+                "Tm",
+                &[
+                    Object::Real(1.0),
+                    Object::Real(0.0),
+                    Object::Real(0.0),
+                    Object::Real(1.0),
+                    Object::Real(50.0),
+                    Object::Real(60.0),
+                ],
+            ),
+            ("T*", &[]),
+        ]);
+        let tm = state.core.tm();
+        assert_eq!(tm[4], 50.0);
+        assert_eq!(tm[5], 60.0);
+        assert_eq!(state.tl, 0.0);
+    }
+
+    #[test]
+    fn tl_op_sets_text_leading() {
+        let state = run_ops(&[
+            ("BT", &[]),
+            ("TL", &[Object::Real(18.0)]),
+            ("T*", &[]),
+        ]);
+        assert_eq!(state.tl, 18.0);
+        // BT resets tm to identity; T* moves by -18.
+        assert_eq!(state.core.tm()[5], -18.0);
+    }
 }

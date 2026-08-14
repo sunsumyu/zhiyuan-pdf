@@ -1,9 +1,9 @@
 use crate::infrastructure::pdf::models::{NativePathModel, NativeImageModel, PathSegment, RenderObject, StyledRun};
-use crate::infrastructure::pdf::pdf_font::{resolve_glyph_geom, simplify_path_segments, ResourceCache};
+use crate::infrastructure::pdf::pdf_font::{resolve_glyph_geom, simplify_path_segments, ResourceCache, ParsedFont};
 use crate::infrastructure::pdf::pdf_read::graphics_state::GraphicsState;
 use crate::infrastructure::pdf::pdf_read::resource_reader::{read_resources, FlatResources, find_xobject_by_name};
-use crate::infrastructure::pdf::pdf_read::utils::{operands_to_f32, multiply_matrices, apply_alpha_to_color, compute_segments_bbox, resolve_tj_array_text};
-use lopdf::{content::Content, Document};
+use crate::infrastructure::pdf::pdf_read::utils::operands_to_f32;
+use lopdf::{content::Content, Document, Object};
 use std::sync::Arc;
 pub fn parse_content_stream(
     doc: &Document,
@@ -30,8 +30,7 @@ pub fn parse_content_stream(
             "cm" => {
                 if let Ok(m) = operands_to_f32(&op.operands) {
                     if m.len() == 6 {
-                        state.ctm =
-                            multiply_matrices(state.ctm, [m[0], m[1], m[2], m[3], m[4], m[5]]);
+                        state.concat_ctm([m[0], m[1], m[2], m[3], m[4], m[5]]);
                     }
                 }
             }
@@ -185,8 +184,7 @@ pub fn parse_content_stream(
                 }
             }
             "BT" => {
-                state.tm = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
-                state.tlm = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+                state.begin_text();
             }
             "Tf" => {
                 if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
@@ -226,16 +224,14 @@ pub fn parse_content_stream(
             "Td" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 2 {
-                        state.tlm = multiply_matrices(state.tlm, [1.0, 0.0, 0.0, 1.0, p[0], p[1]]);
-                        state.tm = state.tlm;
+                        state.translate_text(p[0], p[1]);
                     }
                 }
             }
             "Tm" => {
                 if let Ok(m) = operands_to_f32(&op.operands) {
                     if m.len() >= 6 {
-                        state.tm = [m[0], m[1], m[2], m[3], m[4], m[5]];
-                        state.tlm = state.tm;
+                        state.set_text_matrix([m[0], m[1], m[2], m[3], m[4], m[5]]);
                     }
                 }
             }
@@ -268,7 +264,7 @@ pub fn parse_content_stream(
                             .unwrap_or_default()
                     };
 
-                    let trm = multiply_matrices(state.ctm, state.tm);
+                    let trm = state.text_render_matrix();
                     // char_origins and char_widths from resolve_glyph_geom are in TEXT
                     // SPACE (pre-matrix).  The rest of the pipeline (LayoutRun, caret
                     // stops, overlay rendering) expects PAGE SPACE values.  Scale by the
@@ -300,7 +296,7 @@ pub fn parse_content_stream(
                         ..Default::default()
                     });
                     // Tm update uses the original text-space advance (not page-scaled)
-                    state.tm = multiply_matrices(state.tm, [1.0, 0.0, 0.0, 1.0, advance, 0.0]);
+                    state.advance_text(advance);
                 }
             }
             "S" | "s" | "f" | "F" | "f*" | "B" | "b" | "B*" | "b*" => {
@@ -379,13 +375,10 @@ pub fn parse_content_stream(
                                                 if let Ok(m_arr) = m_obj.as_array() {
                                                     if let Ok(m) = operands_to_f32(m_arr) {
                                                         if m.len() == 6 {
-                                                            sub_state.ctm = multiply_matrices(
-                                                                state.ctm,
-                                                                [
-                                                                    m[0], m[1], m[2], m[3], m[4],
-                                                                    m[5],
-                                                                ],
-                                                            );
+                                                            sub_state.concat_ctm([
+                                                                m[0], m[1], m[2], m[3], m[4],
+                                                                m[5],
+                                                            ]);
                                                         }
                                                     }
                                                 }
@@ -452,7 +445,7 @@ pub fn parse_content_stream(
                                                     let mut cache = crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE.lock().unwrap();
                                                     cache.insert(asset_id.clone(), data);
                                                 }
-                                                let ctm = state.ctm;
+                                                let ctm = state.ctm();
                                                 crate::pdf_log!(
                                                     3,
                                                     "[PDF-IMG] Do image id={} {}x{} ctm=[{:.1},{:.1},{:.1},{:.1},{:.1},{:.1}] jpeg={}",
@@ -532,7 +525,73 @@ pub fn parse_content_stream(
     Ok(())
 }
 
-// === Stub wrappers for renamed/relocated functions ===
+// ── content-stream helpers (relocated from pdf_read::utils; single-consumer) ──
+
+/// Apply alpha into a `#rrggbb` color, producing `#rrggbbaa` when alpha < 1.0.
+/// Fully-opaque colors are returned unchanged to preserve existing output.
+fn apply_alpha_to_color(color: &Option<String>, alpha: f32) -> Option<String> {
+    let base = color.as_ref()?;
+    if alpha >= 0.999 {
+        return Some(base.clone());
+    }
+    if base.starts_with('#') && base.len() == 7 {
+        let alpha_byte = (alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
+        Some(format!("{}{:02x}", base, alpha_byte))
+    } else {
+        Some(base.clone())
+    }
+}
+
+/// Axis-aligned bounding box of a path segment list, or `None` if empty.
+fn compute_segments_bbox(segments: &[PathSegment]) -> Option<(f32, f32, f32, f32)> {
+    let mut min_x = f32::INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    for seg in segments {
+        for pt in &seg.points {
+            if pt[0] < min_x { min_x = pt[0]; }
+            if pt[0] > max_x { max_x = pt[0]; }
+            if pt[1] < min_y { min_y = pt[1]; }
+            if pt[1] > max_y { max_y = pt[1]; }
+        }
+    }
+    if min_x.is_infinite() { None } else { Some((min_x, min_y, max_x, max_y)) }
+}
+
+/// Resolve a TJ array (mixed strings and kerning adjustments) into unified text geometry.
+/// Each string element is resolved via `resolve_glyph_geom`; numeric elements adjust the
+/// horizontal offset (negative kern). Returns (text, origins, widths, codes, total_advance).
+fn resolve_tj_array_text(
+    items: &[Object],
+    font: &ParsedFont,
+    font_size: f32,
+    h_scale: f32,
+    char_spacing: f32,
+    word_spacing: f32,
+) -> (String, Vec<f32>, Vec<f32>, Vec<u32>, f32) {
+    let mut combined = String::new();
+    let mut all_origins = Vec::new();
+    let mut all_widths = Vec::new();
+    let mut all_codes = Vec::new();
+    let mut offset = 0.0f32;
+    for item in items {
+        if let Ok(bytes) = item.as_str() {
+            let (t, o, w, c, adv) =
+                resolve_glyph_geom(bytes, font, font_size, h_scale, char_spacing, word_spacing);
+            for ori in o {
+                all_origins.push(offset + ori);
+            }
+            all_widths.extend(w);
+            all_codes.extend(c);
+            combined.push_str(&t);
+            offset += adv;
+        } else if let Ok(kern) = item.as_float().or_else(|_| item.as_i64().map(|i| i as f32)) {
+            offset -= (kern / 1000.0) * font_size * h_scale;
+        }
+    }
+    (combined, all_origins, all_widths, all_codes, offset)
+}
 
 
 
