@@ -16,6 +16,7 @@ pub mod models;
 pub mod page_classifier;
 pub mod page_intermediate_service;
 pub mod pdf_font;
+pub mod text_matrix;
 pub mod pdf_read;
 pub mod pdf_utils;
 pub mod pdf_read_service;
