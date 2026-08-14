@@ -352,7 +352,13 @@ fn check_path_suppression(object: &VectorRenderObject, object_index: usize, over
             record_overlay_object_summary(overlay, vector_object_summary(object, object_index));
         }
     }
-    if let Some(path_summary) = should_suppress(object, &overlay.replacement_region, &overlay.path_suppression_bbox) {
+    if let Some(path_summary) = should_suppress(
+        object,
+        object_index,
+        &overlay.overlay.graphic_markers,
+        &overlay.replacement_region,
+        &overlay.path_suppression_bbox,
+    ) {
         overlay.thin_horizontal_path_count = overlay.thin_horizontal_path_count.saturating_add(1);
         overlay.suppressed_path_count = overlay.suppressed_path_count.saturating_add(1);
         if overlay.first_path_summary.is_none() { overlay.first_path_summary = Some(path_summary); }
@@ -629,6 +635,7 @@ mod tests {
             owner: ParagraphRenderOverlayOwner::ActiveEditorShell,
             target,
             source_object_indices: Vec::new(),
+            graphic_markers: Vec::new(),
             source_text: "body".to_string(),
             draft_text: "body".to_string(),
             replaces_source: true,

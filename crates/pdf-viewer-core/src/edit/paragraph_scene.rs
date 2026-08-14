@@ -29,6 +29,13 @@ pub struct ParagraphEditorScene {
     pub original_runs: Vec<GlyphPaintRun>,
 }
 
+impl ParagraphEditorScene {
+    /// 图形 marker 列表，来自 document_plan（保留 main 的扁平结构，委托访问器）。
+    pub fn graphic_markers(&self) -> &[crate::models::VisualMarker] {
+        &self.document_plan.graphic_markers
+    }
+}
+
 impl Default for ParagraphEditorScene {
     fn default() -> Self {
         Self {

@@ -10,8 +10,8 @@ use crate::edit::source_runs::{original_paint_runs_for_target, resolve_preferred
 use crate::edit::source_text::session_source_text;
 use crate::geometry::source_geometry::source_visual_bbox_from_runs;
 use crate::models::{
-    BoundingBox, GlyphPaintParagraph, GlyphPaintRun, LayoutParagraph, LayoutRun,
-    ParagraphEditContext, VectorPageModel,
+    BoundingBox, GlyphPaintParagraph, GlyphPaintRun, GraphicType, LayoutParagraph, LayoutRun,
+    ParagraphEditContext, VectorPageModel, VectorRenderObject, VisualMarker,
 };
 use crate::text::glyph_layout::{
     build_editor_session_text_plan, infer_run_advance, is_decorative_text, EditorSessionTextPlan,
@@ -49,6 +49,11 @@ pub struct EditorDocumentPlan {
     pub body_initial_caret: usize,
     #[serde(default)]
     pub marker: Option<ParagraphEditorMarker>,
+    /// 图形 marker 列表（新增）
+    /// 存储 VectorPageModel.objects 中的 Image/Path 引用
+    /// 用于渲染抑制时跳过有意义的图形 marker
+    #[serde(default)]
+    pub graphic_markers: Vec<VisualMarker>,
     #[serde(default)]
     pub original_runs: Vec<GlyphPaintRun>,
 }
@@ -69,6 +74,7 @@ impl Default for EditorDocumentPlan {
             body_lines: Vec::new(),
             body_initial_caret: 0,
             marker: None,
+            graphic_markers: Vec::new(),
             original_runs: Vec::new(),
         }
     }
@@ -97,19 +103,202 @@ impl EditorDocumentPlan {
 
 // ── Build functions ─────────────────────────────────────────────
 
-fn resolve_shell_bbox(target_session: &ParagraphEditContext, split: &SessionSplit) -> BoundingBox {
+fn resolve_shell_bbox(
+    target_session: &ParagraphEditContext,
+    split: &SessionSplit,
+    graphic_markers: &[VisualMarker],
+) -> BoundingBox {
+    let mut shell_bbox = split.body_session.anchor_bbox;
+    let mut expanded = false;
+
     if let Some(marker) = split.marker.as_ref() {
-        let mut shell_bbox = split.body_session.anchor_bbox;
         if let Some(marker_bbox) = bbox_from_runs(&marker.runs) {
             shell_bbox.left = shell_bbox.left.min(marker_bbox.left);
             shell_bbox.top = shell_bbox.top.min(marker_bbox.top);
             shell_bbox.right = shell_bbox.right.max(marker_bbox.right);
             shell_bbox.bottom = shell_bbox.bottom.max(marker_bbox.bottom);
+            expanded = true;
         }
-        return shell_bbox;
     }
 
-    target_session.anchor_bbox
+    for marker in graphic_markers {
+        shell_bbox.left = shell_bbox.left.min(marker.bbox.left);
+        shell_bbox.top = shell_bbox.top.min(marker.bbox.top);
+        shell_bbox.right = shell_bbox.right.max(marker.bbox.right);
+        shell_bbox.bottom = shell_bbox.bottom.max(marker.bbox.bottom);
+        expanded = true;
+    }
+
+    if expanded {
+        shell_bbox
+    } else {
+        target_session.anchor_bbox
+    }
+}
+
+fn vector_object_bbox(object: &VectorRenderObject) -> Option<BoundingBox> {
+    match object {
+        VectorRenderObject::Text(_) => None,
+        VectorRenderObject::Path(path) => {
+            let mut min_x = f32::INFINITY;
+            let mut min_y = f32::INFINITY;
+            let mut max_x = f32::NEG_INFINITY;
+            let mut max_y = f32::NEG_INFINITY;
+
+            for segment in &path.segments {
+                for [x, y] in &segment.points {
+                    min_x = min_x.min(*x);
+                    min_y = min_y.min(*y);
+                    max_x = max_x.max(*x);
+                    max_y = max_y.max(*y);
+                }
+            }
+
+            if min_x.is_finite()
+                && min_y.is_finite()
+                && max_x.is_finite()
+                && max_y.is_finite()
+                && max_x > min_x
+                && max_y > min_y
+            {
+                Some(BoundingBox {
+                    left: min_x,
+                    top: min_y,
+                    right: max_x,
+                    bottom: max_y,
+                })
+            } else {
+                None
+            }
+        }
+        VectorRenderObject::Image(image) => {
+            let width = image.width.max(0.0);
+            let height = image.height.max(0.0);
+            if width > 0.0 && height > 0.0 {
+                Some(BoundingBox {
+                    left: image.x,
+                    top: image.y,
+                    right: image.x + width,
+                    bottom: image.y + height,
+                })
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn bbox_width(bbox: &BoundingBox) -> f32 {
+    (bbox.right - bbox.left).max(0.0)
+}
+
+fn bbox_height(bbox: &BoundingBox) -> f32 {
+    (bbox.bottom - bbox.top).max(0.0)
+}
+
+fn vertical_overlap_height(left: &BoundingBox, right: &BoundingBox) -> f32 {
+    (left.bottom.min(right.bottom) - left.top.max(right.top)).max(0.0)
+}
+
+fn object_marker_kind(object: &VectorRenderObject) -> Option<GraphicType> {
+    match object {
+        VectorRenderObject::Image(_) => Some(GraphicType::Image),
+        VectorRenderObject::Path(_) => Some(GraphicType::Path),
+        VectorRenderObject::Text(_) => None,
+    }
+}
+
+fn object_id(object: &VectorRenderObject) -> Option<&str> {
+    match object {
+        VectorRenderObject::Image(image) => Some(image.id.as_str()),
+        VectorRenderObject::Path(path) => Some(path.id.as_str()),
+        VectorRenderObject::Text(_) => None,
+    }
+}
+
+fn graphic_marker_candidate(
+    object_bbox: &BoundingBox,
+    body_bbox: &BoundingBox,
+    shell_bbox: &BoundingBox,
+) -> bool {
+    let width = bbox_width(object_bbox);
+    let height = bbox_height(object_bbox);
+    let body_height = bbox_height(body_bbox).max(1.0);
+    if width < 2.0 || height < 2.0 || width > body_height * 2.5 || height > body_height * 2.5 {
+        return false;
+    }
+
+    let object_center_y = (object_bbox.top + object_bbox.bottom) * 0.5;
+    let body_center_y = (body_bbox.top + body_bbox.bottom) * 0.5;
+    let center_tolerance = (body_height * 0.7).max(height * 0.7).max(3.0);
+    if (object_center_y - body_center_y).abs() > center_tolerance {
+        return false;
+    }
+
+    let overlap = vertical_overlap_height(object_bbox, body_bbox);
+    if overlap < height.min(body_height) * 0.25 {
+        return false;
+    }
+
+    let max_right = body_bbox.left + (body_height * 0.35).max(4.0);
+    let min_left = shell_bbox.left - (body_height * 2.0).max(24.0);
+    object_bbox.left >= min_left && object_bbox.right <= max_right
+}
+
+fn detect_graphic_markers(
+    vector_model: Option<&VectorPageModel>,
+    body_session: &ParagraphEditContext,
+    shell_bbox: &BoundingBox,
+) -> Vec<VisualMarker> {
+    let Some(vector_model) = vector_model else {
+        return Vec::new();
+    };
+    let body_bbox = body_session.paragraph.bbox;
+    if bbox_width(&body_bbox) <= 0.0 || bbox_height(&body_bbox) <= 0.0 {
+        return Vec::new();
+    }
+
+    let markers: Vec<VisualMarker> = vector_model
+        .objects
+        .iter()
+        .enumerate()
+        .filter_map(|(object_index, object)| {
+            let object_type = object_marker_kind(object)?;
+            let bbox = vector_object_bbox(object)?;
+            if !graphic_marker_candidate(&bbox, &body_bbox, shell_bbox) {
+                return None;
+            }
+            Some(VisualMarker::from_graphic(
+                object_index,
+                object_type,
+                object_id(object).unwrap_or_default().to_string(),
+                bbox,
+            ))
+        })
+        .collect();
+
+    if !markers.is_empty() {
+        dbg_event(
+            "document-plan.graphic-marker",
+            "detected",
+            vec![
+                dbg_field("paragraphId", body_session.paragraph.id.as_str()),
+                dbg_field("count", markers.len()),
+                dbg_field(
+                    "objectIndices",
+                    format!(
+                        "{:?}",
+                        markers
+                            .iter()
+                            .flat_map(|marker| marker.object_indices.iter().copied())
+                            .collect::<Vec<_>>()
+                    ),
+                ),
+            ],
+        );
+    }
+
+    markers
 }
 
 pub fn build_editor_document_plan_from_session(
@@ -129,6 +318,7 @@ pub fn build_editor_document_plan_from_session(
         body_lines,
         body_initial_caret: 0,
         marker: None,
+        graphic_markers: Vec::new(),
         original_runs: Vec::new(),
     }
 }
@@ -157,6 +347,8 @@ fn split_run_at_char_index(
         infer_run_advance(run) * split_index as f32
     };
 
+    // marker 侧保留原始（相对 anchor 的绝对）char_origins，不归零；
+    // body 侧以 body 首字符 origin 为基线转相对坐标，两条路径互不干扰。
     let mut marker_run = run.clone();
     marker_run.text = chars[..split_index].iter().collect();
     marker_run.char_origins = run.char_origins.iter().take(split_index).copied().collect();
@@ -440,8 +632,9 @@ fn synthesize_marker_from_paragraph(
         return None;
     }
 
-    let bbox = bbox_from_runs(&candidates)?;
-    let advance = (body_origin_x - bbox.left).max(0.0);
+    // advance 以 body anchor 为基准（与 split_editor_session 的 marker_advance 同语义），
+    // 而非 marker→body 间距：保证编辑重排时 marker 锚定在 anchor 左侧不漂移。
+    let advance = (body_origin_x - body_session.anchor_bbox.left).max(0.0);
     let text: String = candidates.iter().map(|r| r.text.clone()).collect();
     let kind = derive_list_text_semantics(&text).kind;
     let kind = if kind == ListMarkerKind::None {
@@ -528,7 +721,9 @@ pub fn collect_editor_document_target_plans(
         .unwrap_or_else(|| paragraph.editor_session.clone());
     collect_edit_targets_from_session(&paragraph.id, &full_session)
         .into_iter()
-        .filter_map(|target| build_plan_for_target_session(paragraph, &full_session, target, None))
+        .filter_map(|target| {
+            build_plan_for_target_session(paragraph, &full_session, target, vector_model, None)
+        })
         .collect()
 }
 
@@ -543,9 +738,8 @@ pub fn build_editor_document_plan_for_target(
     let target =
         resolve_edit_target_from_session(&paragraph.id, target_id, &full_session, click_page_point);
 
-    build_plan_for_target_session(paragraph, &full_session, target, click_page_point)
+    build_plan_for_target_session(paragraph, &full_session, target, vector_model, click_page_point)
 }
-
 /// Format up to `limit` codepoints of `text` as `U+XXXX(char)` for diagnostics.
 fn codepoint_preview(text: &str, limit: usize) -> String {
     text.chars()
@@ -719,6 +913,7 @@ fn build_plan_for_target_session(
     paragraph: &GlyphPaintParagraph,
     _full_session: &ParagraphEditContext,
     target: EditorEditTarget,
+    vector_model: Option<&VectorPageModel>,
     click_page_point: Option<(f32, f32)>,
 ) -> Option<EditorDocumentPlan> {
     let target_id = target.target_id.clone();
@@ -736,7 +931,9 @@ fn build_plan_for_target_session(
 
     let body_text_plan = build_editor_session_text_plan(&split.body_session);
     let source_body_text = session_source_text(&split.body_session);
-    let shell_bbox = resolve_shell_bbox(&full_session, &split);
+    let preliminary_shell_bbox = resolve_shell_bbox(&full_session, &split, &[]);
+    let graphic_markers = detect_graphic_markers(vector_model, &split.body_session, &preliminary_shell_bbox);
+    let shell_bbox = resolve_shell_bbox(&full_session, &split, &graphic_markers);
 
     let body_lines = build_body_line_plans(&split.body_session, &body_text_plan);
     let draft_template_run = select_draft_template_run(&split.body_session, &body_lines);
@@ -783,6 +980,7 @@ fn build_plan_for_target_session(
             }
             marker
         }),
+        graphic_markers,
         original_runs,
     })
 }
@@ -792,8 +990,9 @@ mod tests {
     use super::*;
     use crate::models::{
         EditorControlStyle, FontSourceKind, PaintMode, ParagraphStyle, ResolvedFontFace,
-        ResolvedFontIdentity, RunStyle, SemanticRole, StyledRun, SymbolClass, VectorRenderObject,
-        VectorTextObject,
+        ResolvedFontIdentity, RunStyle, SemanticRole, StyledRun, SymbolClass,
+        VectorImageObject, VectorPathObject, VectorPathSegment, VectorRenderObject,
+        VectorTextObject, VisualMarkerContent,
     };
     use crate::text::glyph_layout::build_editor_session_text_plan;
 
@@ -856,6 +1055,10 @@ mod tests {
     }
 
     fn session_from_runs(runs: Vec<LayoutRun>) -> ParagraphEditContext {
+        session_from_runs_with_id("p1", runs)
+    }
+
+    fn session_from_runs_with_id(id: &str, runs: Vec<LayoutRun>) -> ParagraphEditContext {
         let anchor_bbox = runs.iter().fold(
             BoundingBox {
                 left: f32::INFINITY,
@@ -874,7 +1077,7 @@ mod tests {
         ParagraphEditContext {
             anchor_bbox,
             paragraph: LayoutParagraph {
-                id: "p1".to_string(),
+                id: id.to_string(),
                 bbox: anchor_bbox,
                 origin_x: anchor_bbox.left,
                 origin_y: anchor_bbox.top,
@@ -882,6 +1085,19 @@ mod tests {
                 runs,
                 ..Default::default()
             },
+        }
+    }
+
+    fn paragraph_from_session(session: ParagraphEditContext) -> GlyphPaintParagraph {
+        GlyphPaintParagraph {
+            id: session.paragraph.id.clone(),
+            region_id: "region-1".to_string(),
+            bbox: session.anchor_bbox,
+            style: ParagraphStyle::default(),
+            editor_session: session,
+            control_style: EditorControlStyle::default(),
+            semantic_role: SemanticRole::None,
+            runs: Vec::new(),
         }
     }
 
@@ -1033,8 +1249,7 @@ mod tests {
         }
     }
 
-    fn test_styled_run(text: &str, left: f32, width: f32, z_index: usize) -> StyledRun {
-        StyledRun {
+    fn test_styled_run(text: &str, left: f32, width: f32, z_index: usize) -> StyledRun {        StyledRun {
             text: text.to_string(),
             color: "#000000".to_string(),
             tx: left,
@@ -1049,6 +1264,119 @@ mod tests {
             object_id: Some("obj-1".to_string()),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn marker_split_preserves_semantic_advance_and_body_width() {
+        let session = session_from_runs(vec![
+            test_layout_run("marker", "1. ", 0.0, 15.0),
+            test_layout_run("body", "Body", 24.0, 40.0),
+        ]);
+
+        let split = split_editor_session(
+            &session,
+            "1. ".chars().count(),
+            crate::text::list_semantics::ListMarkerKind::Numbering,
+        )
+        .expect("semantic marker should split");
+        let marker = split.marker.expect("marker should be present");
+        let body_text = split
+            .body_session
+            .paragraph
+            .runs
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect::<String>();
+
+        assert_eq!(marker.text, "1. ");
+        assert_eq!(marker.advance, 24.0);
+        assert_eq!(body_text, "Body");
+        assert_eq!(split.body_session.paragraph.bbox.left, 24.0);
+        assert_eq!(split.body_session.paragraph.wrap_width, 40.0);
+    }
+
+    #[test]
+    fn marker_split_maps_visual_body_start_to_raw_index() {
+        let session = session_from_runs(vec![
+            test_layout_run("marker", "1.", 0.0, 10.0),
+            test_layout_run("body", "Body", 24.0, 40.0),
+        ]);
+        let full_source_text = "1. Body";
+        let full_text_plan = build_editor_session_text_plan(&session);
+        let paragraph = paragraph_from_session(session.clone());
+
+        let split = resolve_marker_split(&paragraph, &session, &full_source_text, &full_text_plan);
+        let marker = split.marker.expect("numbering marker should split");
+        let body_text = split
+            .body_session
+            .paragraph
+            .runs
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect::<String>();
+
+        assert_eq!(marker.text, "1.");
+        assert_eq!(body_text, "Body");
+    }
+
+    #[test]
+    fn geometric_marker_synthesis_accepts_only_same_line_left_candidates() {
+        let full_session = session_from_runs_with_id(
+            "p-geo",
+            vec![
+                test_layout_run("marker", "•", 10.0, 8.0),
+                test_layout_run("body", "Body", 30.0, 40.0),
+            ],
+        );
+        let body_session =
+            session_from_runs_with_id("p-geo", vec![test_layout_run("body", "Body", 30.0, 40.0)]);
+        let paragraph = paragraph_from_session(full_session);
+
+        let marker = synthesize_marker_from_paragraph(&paragraph, &body_session)
+            .expect("left same-line bullet should synthesize");
+        assert_eq!(marker.text, "•");
+        assert_eq!(marker.advance, 0.0);
+        assert_eq!(
+            body_session.anchor_bbox.left + marker.advance,
+            body_session
+                .paragraph
+                .runs
+                .iter()
+                .find(|run| !run.text.is_empty())
+                .map(|run| run.origin_x)
+                .unwrap(),
+            "geometric marker advance must be body offset from anchor, not marker-to-body gap"
+        );
+
+        let different_line = session_from_runs_with_id(
+            "p-geo-line",
+            vec![
+                {
+                    let mut run = test_layout_run("marker", "•", 10.0, 8.0);
+                    run.origin_y = 10.0;
+                    run
+                },
+                test_layout_run("body", "Body", 30.0, 40.0),
+            ],
+        );
+        let different_line_paragraph = paragraph_from_session(different_line);
+        assert!(
+            synthesize_marker_from_paragraph(&different_line_paragraph, &body_session).is_none(),
+            "candidate on a different baseline must not synthesize"
+        );
+
+        let right_side = session_from_runs_with_id(
+            "p-geo-right",
+            vec![
+                test_layout_run("body", "Body", 30.0, 40.0),
+                test_layout_run("marker", "•", 80.0, 8.0),
+            ],
+        );
+        let right_side_paragraph = paragraph_from_session(right_side);
+        assert!(
+            synthesize_marker_from_paragraph(&right_side_paragraph, &body_session).is_none(),
+            "candidate to the right of body must not synthesize"
+        );
     }
 
     #[test]
@@ -1201,5 +1529,82 @@ mod tests {
             document_plan.source_body_text(),
             "编程语言: Rust (Solana/Anchor), Solidity (Ethereum)"
         );
+    }
+
+    fn bullet_image(id: &str, x: f32, y: f32, size: f32) -> VectorRenderObject {
+        VectorRenderObject::Image(VectorImageObject {
+            id: id.to_string(),
+            x,
+            y,
+            width: size,
+            height: size,
+            z_index: 1,
+        })
+    }
+
+    fn decorative_path(id: &str, x: f32, y: f32, width: f32, height: f32) -> VectorRenderObject {
+        VectorRenderObject::Path(VectorPathObject {
+            id: id.to_string(),
+            segments: vec![VectorPathSegment {
+                command: "move".to_string(),
+                points: vec![[x, y], [x + width, y + height]],
+            }],
+            fill_color: Some("#ff0000".to_string()),
+            stroke_color: None,
+            fill: true,
+            stroke: false,
+            stroke_width: 0.0,
+            z_index: 1,
+        })
+    }
+
+    #[test]
+    fn detects_graphic_marker_alongside_body() {
+        // Body 文本位于 x=30..120；左侧 x=10..18 放置一个 8x8 的图形 bullet。
+        let session = session_from_runs(vec![test_layout_run("body", "Body", 30.0, 90.0)]);
+        let paragraph = paragraph_from_session(session.clone());
+        let vector_model = VectorPageModel {
+            page_index: 0,
+            width: 400.0,
+            height: 200.0,
+            objects: vec![
+                bullet_image("bullet-img", 10.0, 44.0, 8.0),
+                decorative_path("deco-bar", 0.0, 48.0, 400.0, 2.0),
+            ],
+        };
+
+        let plan = build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
+            .expect("plan should resolve");
+
+        let graphic_markers = &plan.graphic_markers;
+        assert_eq!(
+            graphic_markers.len(),
+            1,
+            "only the small bullet image should be detected as a graphic marker"
+        );
+        let marker = &graphic_markers[0];
+        let VisualMarkerContent::Graphic { object_index, .. } = &marker.content else {
+            panic!("expected graphic marker content");
+        };
+        assert_eq!(*object_index, 0, "marker should reference the bullet image");
+        assert!(marker.contains_object_index(0));
+    }
+
+    #[test]
+    fn graphic_marker_keeps_shell_bbox_extent() {
+        let session = session_from_runs(vec![test_layout_run("body", "Body", 30.0, 90.0)]);
+        let paragraph = paragraph_from_session(session.clone());
+        let vector_model = VectorPageModel {
+            page_index: 0,
+            width: 400.0,
+            height: 200.0,
+            objects: vec![bullet_image("bullet-img", 10.0, 44.0, 8.0)],
+        };
+
+        let plan = build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
+            .expect("plan should resolve");
+
+        assert!(plan.shell_bbox.left <= 10.0);
+        assert!(plan.shell_bbox.right >= 120.0);
     }
 }

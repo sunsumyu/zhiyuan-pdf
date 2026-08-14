@@ -8,6 +8,7 @@
 //   layout      — LayoutRun, LayoutParagraph, SemanticRegion, enums, …
 //   glyph       — GlyphPaintRun, GlyphPaintPlan, …
 //   vector      — VectorPageModel, VectorRenderObject, …
+//   marker      — VisualMarker, VisualMarkerKind, GraphicType (统一视觉 marker 抽象)
 //   document_runtime — PageState, ReadDocumentMeta, …
 //   interaction — FieldProjection, InteractionTarget, …
 //
@@ -21,6 +22,7 @@ pub mod geometry;
 pub mod glyph;
 pub mod interaction;
 pub mod layout;
+pub mod marker;
 pub mod styled_run;
 pub mod vector;
 
@@ -30,5 +32,6 @@ pub use geometry::*;
 pub use glyph::*;
 pub use interaction::*;
 pub use layout::*;
+pub use marker::*;
 pub use styled_run::*;
 pub use vector::*;
