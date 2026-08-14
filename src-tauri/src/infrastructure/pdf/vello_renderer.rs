@@ -1,3 +1,4 @@
+use crate::infrastructure::pdf::color::{parse_rgb, parse_vello};
 use crate::infrastructure::pdf::models::{NativeTextModel, RenderObject};
 use cosmic_text::{Buffer, FontSystem, Metrics, Shaping, SwashCache};
 use image::{ImageBuffer, Rgba};
@@ -99,14 +100,14 @@ impl VelloRenderer {
                     let bez_path = path_segments_to_bez_path(&path.segments);
 
                     if path.fill {
-                        let color = parse_hex_vello_color(
+                        let color = parse_vello(
                             path.fill_color.as_deref().unwrap_or("#000000"),
                             path.alpha,
                         );
                         scene.fill(Fill::NonZero, flip_y, color, None, &bez_path);
                     }
                     if path.stroke {
-                        let color = parse_hex_vello_color(
+                        let color = parse_vello(
                             path.stroke_color.as_deref().unwrap_or("#000000"),
                             path.alpha,
                         );
@@ -300,7 +301,7 @@ impl VelloRenderer {
         attrs = attrs.family(self.resolve_cosmic_family(text, &resolved_font));
 
         // 2. Parse text color
-        let (cr, cg, cb) = parse_hex_color_rgb(if text.color.is_empty() {
+        let (cr, cg, cb) = parse_rgb(if text.color.is_empty() {
             "#000000"
         } else {
             &text.color
@@ -457,7 +458,7 @@ impl VelloRenderer {
         }
     }
     fn text_fill_color(&self, text: &NativeTextModel) -> Color {
-        parse_hex_vello_color(
+        parse_vello(
             if text.color.is_empty() {
                 "#000000"
             } else {
@@ -472,7 +473,7 @@ impl VelloRenderer {
         } else {
             &text.color
         };
-        parse_hex_vello_color(text.stroke_color.as_deref().unwrap_or(fallback), text.alpha)
+        parse_vello(text.stroke_color.as_deref().unwrap_or(fallback), text.alpha)
     }
     fn text_stroke_width(&self, text: &NativeTextModel) -> f64 {
         let width = if text.stroke_width > 0.0 {
@@ -657,19 +658,6 @@ impl VelloRenderer {
 #[inline]
 fn blend(bg: u8, fg: u8, alpha: f32) -> u8 {
     ((bg as f32 * (1.0 - alpha)) + (fg as f32 * alpha)) as u8
-}
-fn parse_hex_color_rgb(hex: &str) -> (u8, u8, u8) {
-    if hex.len() < 7 {
-        return (0, 0, 0);
-    }
-    let r = u8::from_str_radix(&hex[1..3], 16).unwrap_or(0);
-    let g = u8::from_str_radix(&hex[3..5], 16).unwrap_or(0);
-    let b = u8::from_str_radix(&hex[5..7], 16).unwrap_or(0);
-    (r, g, b)
-}
-fn parse_hex_vello_color(hex: &str, alpha: f32) -> Color {
-    let (r, g, b) = parse_hex_color_rgb(hex);
-    Color::rgba8(r, g, b, (alpha * 255.0) as u8)
 }
 fn text_fill_enabled(render_mode: i32) -> bool {
     matches!(render_mode, 0 | 2 | 4 | 6)
