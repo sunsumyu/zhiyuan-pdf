@@ -132,7 +132,8 @@ impl PdfSystemFontMatcher {
                 .join("; ")
         };
 
-        println!(
+        crate::pdf_log!(
+            2,
             "[PDF-FONT-MATCH] request='{}' matched='{}' source={:?} score={} reasons={}",
             pdf_font_name,
             resolved.matched_family.as_deref().unwrap_or("<none>"),
@@ -149,7 +150,8 @@ impl PdfSystemFontMatcher {
                     .map(|item| format!("{}:{}", item.candidate.family_name, item.score))
                     .collect::<Vec<_>>()
                     .join(", ");
-                println!(
+                crate::pdf_log!(
+                    2,
                     "[PDF-FONT-MATCH-TOP] request='{}' top_candidates=[{}]",
                     pdf_font_name, ranked
                 );

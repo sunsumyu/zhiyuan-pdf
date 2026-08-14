@@ -37,7 +37,8 @@ pub(crate) fn ensure_font_in_page(
     if font_dict.get(&alias).is_err() {
         let font_obj = type0_font_object(doc, font)?;
         font_dict.set(alias.clone(), Object::Reference(font_obj));
-        println!(
+        crate::pdf_log!(
+            2,
             "[PDF-WRITE-FONT][embed] alias={} ps='{}' source={} glyphs={} bytes={}",
             String::from_utf8_lossy(&alias),
             font.post_script_name,
