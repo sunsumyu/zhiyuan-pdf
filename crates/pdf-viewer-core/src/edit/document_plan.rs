@@ -347,6 +347,8 @@ fn split_run_at_char_index(
         infer_run_advance(run) * split_index as f32
     };
 
+    // marker 侧保留原始（相对 anchor 的绝对）char_origins，不归零；
+    // body 侧以 body 首字符 origin 为基线转相对坐标，两条路径互不干扰。
     let mut marker_run = run.clone();
     marker_run.text = chars[..split_index].iter().collect();
     marker_run.char_origins = run.char_origins.iter().take(split_index).copied().collect();
@@ -630,8 +632,9 @@ fn synthesize_marker_from_paragraph(
         return None;
     }
 
-    let bbox = bbox_from_runs(&candidates)?;
-    let advance = (body_origin_x - bbox.left).max(0.0);
+    // advance 以 body anchor 为基准（与 split_editor_session 的 marker_advance 同语义），
+    // 而非 marker→body 间距：保证编辑重排时 marker 锚定在 anchor 左侧不漂移。
+    let advance = (body_origin_x - body_session.anchor_bbox.left).max(0.0);
     let text: String = candidates.iter().map(|r| r.text.clone()).collect();
     let kind = derive_list_text_semantics(&text).kind;
     let kind = if kind == ListMarkerKind::None {
@@ -1052,6 +1055,10 @@ mod tests {
     }
 
     fn session_from_runs(runs: Vec<LayoutRun>) -> ParagraphEditContext {
+        session_from_runs_with_id("p1", runs)
+    }
+
+    fn session_from_runs_with_id(id: &str, runs: Vec<LayoutRun>) -> ParagraphEditContext {
         let anchor_bbox = runs.iter().fold(
             BoundingBox {
                 left: f32::INFINITY,
@@ -1070,7 +1077,7 @@ mod tests {
         ParagraphEditContext {
             anchor_bbox,
             paragraph: LayoutParagraph {
-                id: "p1".to_string(),
+                id: id.to_string(),
                 bbox: anchor_bbox,
                 origin_x: anchor_bbox.left,
                 origin_y: anchor_bbox.top,
@@ -1078,6 +1085,19 @@ mod tests {
                 runs,
                 ..Default::default()
             },
+        }
+    }
+
+    fn paragraph_from_session(session: ParagraphEditContext) -> GlyphPaintParagraph {
+        GlyphPaintParagraph {
+            id: session.paragraph.id.clone(),
+            region_id: "region-1".to_string(),
+            bbox: session.anchor_bbox,
+            style: ParagraphStyle::default(),
+            editor_session: session,
+            control_style: EditorControlStyle::default(),
+            semantic_role: SemanticRole::None,
+            runs: Vec::new(),
         }
     }
 
@@ -1247,6 +1267,119 @@ mod tests {
     }
 
     #[test]
+    fn marker_split_preserves_semantic_advance_and_body_width() {
+        let session = session_from_runs(vec![
+            test_layout_run("marker", "1. ", 0.0, 15.0),
+            test_layout_run("body", "Body", 24.0, 40.0),
+        ]);
+
+        let split = split_editor_session(
+            &session,
+            "1. ".chars().count(),
+            crate::text::list_semantics::ListMarkerKind::Numbering,
+        )
+        .expect("semantic marker should split");
+        let marker = split.marker.expect("marker should be present");
+        let body_text = split
+            .body_session
+            .paragraph
+            .runs
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect::<String>();
+
+        assert_eq!(marker.text, "1. ");
+        assert_eq!(marker.advance, 24.0);
+        assert_eq!(body_text, "Body");
+        assert_eq!(split.body_session.paragraph.bbox.left, 24.0);
+        assert_eq!(split.body_session.paragraph.wrap_width, 40.0);
+    }
+
+    #[test]
+    fn marker_split_maps_visual_body_start_to_raw_index() {
+        let session = session_from_runs(vec![
+            test_layout_run("marker", "1.", 0.0, 10.0),
+            test_layout_run("body", "Body", 24.0, 40.0),
+        ]);
+        let full_source_text = "1. Body";
+        let full_text_plan = build_editor_session_text_plan(&session);
+        let paragraph = paragraph_from_session(session.clone());
+
+        let split = resolve_marker_split(&paragraph, &session, &full_source_text, &full_text_plan);
+        let marker = split.marker.expect("numbering marker should split");
+        let body_text = split
+            .body_session
+            .paragraph
+            .runs
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect::<String>();
+
+        assert_eq!(marker.text, "1.");
+        assert_eq!(body_text, "Body");
+    }
+
+    #[test]
+    fn geometric_marker_synthesis_accepts_only_same_line_left_candidates() {
+        let full_session = session_from_runs_with_id(
+            "p-geo",
+            vec![
+                test_layout_run("marker", "•", 10.0, 8.0),
+                test_layout_run("body", "Body", 30.0, 40.0),
+            ],
+        );
+        let body_session =
+            session_from_runs_with_id("p-geo", vec![test_layout_run("body", "Body", 30.0, 40.0)]);
+        let paragraph = paragraph_from_session(full_session);
+
+        let marker = synthesize_marker_from_paragraph(&paragraph, &body_session)
+            .expect("left same-line bullet should synthesize");
+        assert_eq!(marker.text, "•");
+        assert_eq!(marker.advance, 0.0);
+        assert_eq!(
+            body_session.anchor_bbox.left + marker.advance,
+            body_session
+                .paragraph
+                .runs
+                .iter()
+                .find(|run| !run.text.is_empty())
+                .map(|run| run.origin_x)
+                .unwrap(),
+            "geometric marker advance must be body offset from anchor, not marker-to-body gap"
+        );
+
+        let different_line = session_from_runs_with_id(
+            "p-geo-line",
+            vec![
+                {
+                    let mut run = test_layout_run("marker", "•", 10.0, 8.0);
+                    run.origin_y = 10.0;
+                    run
+                },
+                test_layout_run("body", "Body", 30.0, 40.0),
+            ],
+        );
+        let different_line_paragraph = paragraph_from_session(different_line);
+        assert!(
+            synthesize_marker_from_paragraph(&different_line_paragraph, &body_session).is_none(),
+            "candidate on a different baseline must not synthesize"
+        );
+
+        let right_side = session_from_runs_with_id(
+            "p-geo-right",
+            vec![
+                test_layout_run("body", "Body", 30.0, 40.0),
+                test_layout_run("marker", "•", 80.0, 8.0),
+            ],
+        );
+        let right_side_paragraph = paragraph_from_session(right_side);
+        assert!(
+            synthesize_marker_from_paragraph(&right_side_paragraph, &body_session).is_none(),
+            "candidate to the right of body must not synthesize"
+        );
+    }
+
+    #[test]
     fn prefers_vector_source() {
         let polluted_paint_run = test_paint_run("paint-1", "智能合约: A nchor", 0.0, 90.0);
         let paint_session = session_from_runs(vec![test_layout_run(
@@ -1396,19 +1529,6 @@ mod tests {
             document_plan.source_body_text(),
             "编程语言: Rust (Solana/Anchor), Solidity (Ethereum)"
         );
-    }
-
-    fn paragraph_from_session(session: ParagraphEditContext) -> GlyphPaintParagraph {
-        GlyphPaintParagraph {
-            id: session.paragraph.id.clone(),
-            region_id: "region-1".to_string(),
-            bbox: session.anchor_bbox,
-            style: ParagraphStyle::default(),
-            editor_session: session,
-            control_style: EditorControlStyle::default(),
-            semantic_role: SemanticRole::None,
-            runs: Vec::new(),
-        }
     }
 
     fn bullet_image(id: &str, x: f32, y: f32, size: f32) -> VectorRenderObject {

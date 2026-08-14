@@ -144,11 +144,17 @@ where
     );
 
     if !run.char_origins.is_empty() {
-        let first_origin = run.char_origins[0];
-        let normalized_origins: Vec<f32> =
-            run.char_origins.iter().map(|o| o - first_origin).collect();
-        let last_index = normalized_origins.len() - 1;
-        let last_origin = normalized_origins[last_index];
+        // char_origins 是相对于 line_left 的偏移；marker/body 均直接换算为绝对
+        // 页面坐标（marker 侧保留原始绝对偏移，见 list_item_region_builder）。
+        let absolute_glyph_positions: Vec<f32> = run
+            .char_origins
+            .iter()
+            .map(|origin| line_left + *origin)
+            .collect();
+
+        let absolute_left = absolute_glyph_positions[0];
+        let last_index = absolute_glyph_positions.len() - 1;
+        let last_glyph_x = absolute_glyph_positions[last_index];
         let last_width = if last_index < run.char_widths.len() {
             run.char_widths[last_index]
         } else {
@@ -161,12 +167,12 @@ where
         let final_width = run
             .width
             .max(measured_width)
-            .max(last_origin + last_width)
+            .max(last_glyph_x + last_width - absolute_left)
             .max(1.0);
         return RunLayout {
-            left: line_left + first_origin,
+            left: absolute_left,
             width: final_width,
-            char_origins: normalized_origins,
+            char_origins: absolute_glyph_positions,
         };
     }
 
