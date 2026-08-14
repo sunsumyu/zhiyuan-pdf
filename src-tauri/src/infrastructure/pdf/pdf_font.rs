@@ -41,7 +41,7 @@ pub struct ParsedFont {
     pub post_script_name: Option<String>,
     pub family_hint: Option<String>,
     pub embedded_font_key: Option<String>,
-    pub has_embedded_program: bool,
+    pub has_embedded_font_file: bool,
     pub has_to_unicode_cmap: bool,
 }
 
@@ -705,7 +705,7 @@ pub fn parse_font_from_dict(
         post_script_name,
         family_hint,
         embedded_font_key: None,
-        has_embedded_program: false,
+        has_embedded_font_file: false,
         has_to_unicode_cmap,
     })
 }

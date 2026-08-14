@@ -91,7 +91,7 @@ pub struct StyledRun {
     #[serde(default)]
     pub embedded_font_key: Option<String>,
     #[serde(default)]
-    pub has_embedded_font_program: bool,
+    pub has_embedded_font_file: bool,
     #[serde(default)]
     pub has_to_unicode_cmap: bool,
 }
@@ -202,7 +202,7 @@ pub struct NativeTextModel {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedded_font_key: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
-    pub has_embedded_font_program: bool,
+    pub has_embedded_font_file: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub has_to_unicode_cmap: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -285,7 +285,7 @@ impl Default for NativeTextModel {
             font_family_hint: None,
             font_subtype: None,
             embedded_font_key: None,
-            has_embedded_font_program: false,
+            has_embedded_font_file: false,
             has_to_unicode_cmap: false,
             paragraph_id: None,
             wrap_width: None,

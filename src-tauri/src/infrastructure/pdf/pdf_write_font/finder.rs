@@ -229,7 +229,7 @@ mod finder_tests {
             post_script_name: None,
             family_hint: None,
             embedded_font_key: None,
-            has_embedded_program: false,
+            has_embedded_font_file: false,
             has_to_unicode_cmap: false,
         }
     }

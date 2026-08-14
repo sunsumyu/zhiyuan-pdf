@@ -152,7 +152,7 @@ pub(crate) fn parsed_font_from_system_font(font: &SystemFont) -> ParsedFont {
         family_hint: Some(font.family_name.clone()),
         font_subtype: Some("Type0".to_string()),
         embedded_font_key: Some(font.source_label.clone()),
-        has_embedded_program: true,
+        has_embedded_font_file: true,
         has_to_unicode_cmap: true,
         widths,
         default_width: 1000.0,
