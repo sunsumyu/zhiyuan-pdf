@@ -10,6 +10,7 @@ pub mod page_model_service;
 pub mod annotation_store;
 pub mod commands;
 pub mod font;
+pub mod glyph_mapping;
 pub mod layout_analyzer;
 pub mod layout_engine;
 pub mod models;

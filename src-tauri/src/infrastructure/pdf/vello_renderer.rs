@@ -1,4 +1,5 @@
-use crate::infrastructure::pdf::color::{parse_rgb, parse_vello};
+use crate::infrastructure::pdf::color::{blend, parse_rgb, parse_vello};
+use crate::infrastructure::pdf::glyph_mapping;
 use crate::infrastructure::pdf::models::{NativeTextModel, RenderObject};
 use cosmic_text::{Buffer, FontSystem, Metrics, Shaping, SwashCache};
 use image::{ImageBuffer, Rgba};
@@ -145,10 +146,10 @@ impl VelloRenderer {
                     {
                         continue;
                     }
-                    self.draw_text_bitmap_deprecated(&mut img, text_model, zoom, width, height);
+                    self.draw_text_bitmap_deprecated(&mut img, text_model, zoom, height);
                 }
                 RenderObject::Image(image_model) => {
-                    self.draw_image_cpu(&mut img, image_model, zoom, width, height);
+                    self.draw_image_cpu(&mut img, image_model, zoom, height);
                 }
                 _ => {}
             }
@@ -170,7 +171,6 @@ impl VelloRenderer {
         img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
         model: &crate::infrastructure::pdf::models::NativeImageModel,
         zoom: f32,
-        canvas_w: u32,
         canvas_h: u32,
     ) {
         // 1. Extract asset ID from local URL
@@ -225,29 +225,18 @@ impl VelloRenderer {
             src_img
         };
 
-        for py in 0..target_h {
-            for px in 0..target_w {
-                let fx = target_x + px as i32;
-                let fy = target_y + py as i32;
-
-                if fx >= 0 && fx < canvas_w as i32 && fy >= 0 && fy < canvas_h as i32 {
-                    let src_pixel = resized.get_pixel(px, py);
-                    if src_pixel[3] == 0 {
-                        continue;
-                    } // Skip transparent
-
-                    let dst_pixel = img.get_pixel_mut(fx as u32, fy as u32);
-                    let alpha = src_pixel[3] as f32 / 255.0;
-
-                    dst_pixel.0 = [
-                        blend(dst_pixel[0], src_pixel[0], alpha),
-                        blend(dst_pixel[1], src_pixel[1], alpha),
-                        blend(dst_pixel[2], src_pixel[2], alpha),
-                        255,
-                    ];
-                }
-            }
-        }
+        let (rw, rh) = (resized.width() as i32, resized.height() as i32);
+        blend_span(
+            img,
+            target_x,
+            target_y,
+            rw,
+            rh,
+            SpanSource::Rgba {
+                data: resized.as_raw(),
+            },
+            [0, 0, 0],
+        );
     }
 
     /// CPU text rendering using cosmic_text's SwashCache for glyph rasterization.
@@ -260,19 +249,13 @@ impl VelloRenderer {
         img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
         text: &NativeTextModel,
         zoom: f32,
-        canvas_w: u32,
         canvas_h: u32,
     ) {
         if text_is_non_painting(text.rendering_mode) {
             return;
         }
         // --- DYNAMIC FONT SIZE: Handle matrix scale (scale_y) ---
-        let real_font_size = if text.scale_y.abs() > 1.0 {
-            text.scale_y.abs()
-        } else {
-            text.font_size
-        };
-        let font_size = real_font_size * zoom;
+        let font_size = glyph_mapping::real_font_size(text) * zoom;
 
         let metrics = Metrics::new(
             font_size,
@@ -281,12 +264,6 @@ impl VelloRenderer {
             } else {
                 1.0
             },
-        );
-        let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(
-            &mut self.font_system,
-            Some(canvas_w as f32),
-            Some(canvas_h as f32),
         );
         // 1. Configure attributes based on PDF metadata.
         // PDF render mode / faux-bold are paint semantics, not font-face selection hints.
@@ -313,15 +290,7 @@ impl VelloRenderer {
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         // --- DIAGNOSTIC LOGGING ---
-        let mut matched_font = "Unknown".to_string();
-        for run in buffer.layout_runs() {
-            for glyph in run.glyphs {
-                if let Some(font) = self.font_system.db().face(glyph.font_id) {
-                    matched_font = format!("{:?} {:?}", font.families, font.weight);
-                    break;
-                }
-            }
-        }
+        let matched_font = self.first_matched_font_name(&buffer);
         if should_trace_text_render(text) {
             println!(
                 "[FONT-MATCH] REQ: '{}' | MATCHED: '{}' | RENDER_MODE: {} | TEXT: '{}'",
@@ -351,7 +320,7 @@ impl VelloRenderer {
                 {
                     let gx = base_x as i32 + physical.x + glyph_img.placement.left;
                     let gy = base_y as i32 + physical.y - glyph_img.placement.top;
-                    self.composite_glyph(img, &glyph_img, gx, gy, cr, cg, cb, canvas_w, canvas_h);
+                    self.composite_glyph(img, &glyph_img, gx, gy, cr, cg, cb);
                 }
             }
         }
@@ -367,8 +336,6 @@ impl VelloRenderer {
         cr: u8,
         cg: u8,
         cb: u8,
-        canvas_w: u32,
-        canvas_h: u32,
     ) {
         let gw = glyph_img.placement.width as i32;
         let gh = glyph_img.placement.height as i32;
@@ -376,85 +343,41 @@ impl VelloRenderer {
             return;
         }
 
+        let tint = [cr, cg, cb];
         match glyph_img.content {
-            cosmic_text::SwashContent::Mask => {
-                for py in 0..gh {
-                    for px in 0..gw {
-                        let alpha = glyph_img.data[(py * gw + px) as usize] as f32 / 255.0;
-                        if alpha < 0.01 {
-                            continue;
-                        }
-                        let fx = gx + px;
-                        let fy = gy + py;
-                        if fx >= 0 && fx < canvas_w as i32 && fy >= 0 && fy < canvas_h as i32 {
-                            let pixel = img.get_pixel_mut(fx as u32, fy as u32);
-                            let bg = pixel.0;
-                            // Solid composite (avoid multiple passes if possible, but keep alpha for antialiasing)
-                            pixel.0 = [
-                                blend(bg[0], cr, alpha),
-                                blend(bg[1], cg, alpha),
-                                blend(bg[2], cb, alpha),
-                                255,
-                            ];
-                        }
-                    }
-                }
-            }
-            cosmic_text::SwashContent::Color => {
-                for py in 0..gh {
-                    for px in 0..gw {
-                        let idx = ((py * gw + px) * 4) as usize;
-                        if idx + 3 >= glyph_img.data.len() {
-                            break;
-                        }
-                        let sa = glyph_img.data[idx + 3] as f32 / 255.0;
-                        if sa < 0.01 {
-                            continue;
-                        }
-                        let fx = gx + px;
-                        let fy = gy + py;
-                        if fx >= 0 && fx < canvas_w as i32 && fy >= 0 && fy < canvas_h as i32 {
-                            let sr = glyph_img.data[idx];
-                            let sg = glyph_img.data[idx + 1];
-                            let sb = glyph_img.data[idx + 2];
-                            let pixel = img.get_pixel_mut(fx as u32, fy as u32);
-                            let bg = pixel.0;
-                            pixel.0 = [
-                                blend(bg[0], sr, sa),
-                                blend(bg[1], sg, sa),
-                                blend(bg[2], sb, sa),
-                                255,
-                            ];
-                        }
-                    }
-                }
-            }
-            cosmic_text::SwashContent::SubpixelMask => {
-                for py in 0..gh {
-                    for px in 0..gw {
-                        let idx = ((py * gw + px) * 3) as usize;
-                        if idx + 2 >= glyph_img.data.len() {
-                            break;
-                        }
-                        let alpha = glyph_img.data[idx + 1] as f32 / 255.0;
-                        if alpha < 0.01 {
-                            continue;
-                        }
-                        let fx = gx + px;
-                        let fy = gy + py;
-                        if fx >= 0 && fx < canvas_w as i32 && fy >= 0 && fy < canvas_h as i32 {
-                            let pixel = img.get_pixel_mut(fx as u32, fy as u32);
-                            let bg = pixel.0;
-                            pixel.0 = [
-                                blend(bg[0], cr, alpha),
-                                blend(bg[1], cg, alpha),
-                                blend(bg[2], cb, alpha),
-                                255,
-                            ];
-                        }
-                    }
-                }
-            }
+            cosmic_text::SwashContent::Mask => blend_span(
+                img,
+                gx,
+                gy,
+                gw,
+                gh,
+                SpanSource::AlphaMask {
+                    data: &glyph_img.data,
+                },
+                tint,
+            ),
+            cosmic_text::SwashContent::Color => blend_span(
+                img,
+                gx,
+                gy,
+                gw,
+                gh,
+                SpanSource::Rgba {
+                    data: &glyph_img.data,
+                },
+                tint,
+            ),
+            cosmic_text::SwashContent::SubpixelMask => blend_span(
+                img,
+                gx,
+                gy,
+                gw,
+                gh,
+                SpanSource::SubpixelMask {
+                    data: &glyph_img.data,
+                },
+                tint,
+            ),
         }
     }
     fn text_fill_color(&self, text: &NativeTextModel) -> Color {
@@ -654,11 +577,79 @@ impl VelloRenderer {
     }
 }
 
-/// Alpha blend: result = bg * (1 - alpha) + fg * alpha
-#[inline]
-fn blend(bg: u8, fg: u8, alpha: f32) -> u8 {
-    ((bg as f32 * (1.0 - alpha)) + (fg as f32 * alpha)) as u8
+/// Source pixel layout for [`blend_span`].
+enum SpanSource<'a> {
+    /// 8-bit alpha coverage, one byte per pixel; tinted with a constant color.
+    AlphaMask { data: &'a [u8] },
+    /// RGB subpixel coverage, three bytes per pixel; alpha is the G channel.
+    SubpixelMask { data: &'a [u8] },
+    /// RGBA8, four bytes per pixel; per-pixel color and alpha.
+    Rgba { data: &'a [u8] },
 }
+
+impl SpanSource<'_> {
+    /// `(alpha, color)` of the pixel at `(px, py)` in a span `w` pixels wide,
+    /// or `None` past the end of the source data.
+    fn pixel(&self, px: i32, py: i32, w: i32, tint: [u8; 3]) -> Option<(f32, [u8; 3])> {
+        match *self {
+            SpanSource::AlphaMask { data } => {
+                let alpha = *data.get((py * w + px) as usize)? as f32 / 255.0;
+                Some((alpha, tint))
+            }
+            SpanSource::SubpixelMask { data } => {
+                let idx = ((py * w + px) * 3) as usize;
+                let g = *data.get(idx + 1)?;
+                Some((g as f32 / 255.0, tint))
+            }
+            SpanSource::Rgba { data } => {
+                let idx = ((py * w + px) * 4) as usize;
+                let r = *data.get(idx)?;
+                let g = *data.get(idx + 1)?;
+                let b = *data.get(idx + 2)?;
+                let a = *data.get(idx + 3)?;
+                Some((a as f32 / 255.0, [r, g, b]))
+            }
+        }
+    }
+}
+
+/// Blend a `w` x `h` span of source pixels onto the canvas at `(dst_x, dst_y)`,
+/// clipping to the canvas bounds. Near-fully-transparent pixels (alpha < 0.01)
+/// are skipped; the destination alpha becomes opaque.
+fn blend_span(
+    img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    dst_x: i32,
+    dst_y: i32,
+    w: i32,
+    h: i32,
+    source: SpanSource<'_>,
+    tint: [u8; 3],
+) {
+    let (canvas_w, canvas_h) = (img.width() as i32, img.height() as i32);
+    for py in 0..h {
+        for px in 0..w {
+            let Some((alpha, color)) = source.pixel(px, py, w, tint) else {
+                continue;
+            };
+            if alpha < 0.01 {
+                continue;
+            }
+            let fx = dst_x + px;
+            let fy = dst_y + py;
+            if fx >= 0 && fx < canvas_w && fy >= 0 && fy < canvas_h {
+                let pixel = img.get_pixel_mut(fx as u32, fy as u32);
+                let bg = pixel.0;
+                pixel.0 = [
+                    blend(bg[0], color[0], alpha),
+                    blend(bg[1], color[1], alpha),
+                    blend(bg[2], color[2], alpha),
+                    255,
+                ];
+            }
+        }
+    }
+}
+
 fn text_fill_enabled(render_mode: i32) -> bool {
     matches!(render_mode, 0 | 2 | 4 | 6)
 }
@@ -812,11 +803,7 @@ impl VelloRenderer {
             );
         }
 
-        let real_font_size = if text.scale_y.abs() > 1.0 {
-            text.scale_y.abs()
-        } else {
-            text.font_size
-        };
+        let real_font_size = glyph_mapping::real_font_size(text);
         let metrics = Metrics::new(real_font_size, real_font_size * 1.2);
 
         let mut attrs = cosmic_text::Attrs::new();
@@ -833,18 +820,7 @@ impl VelloRenderer {
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let layout_runs: Vec<_> = buffer.layout_runs().collect();
-        let mut matched_font = "Unknown".to_string();
-        for run in &layout_runs {
-            for glyph in run.glyphs {
-                if let Some(font) = self.font_system.db().face(glyph.font_id) {
-                    matched_font = format!("{:?} {:?}", font.families, font.weight);
-                    break;
-                }
-            }
-            if matched_font != "Unknown" {
-                break;
-            }
-        }
+        let matched_font = self.first_matched_font_name(&buffer);
         if should_trace_text_render(text) {
             crate::pdf_log!(
                 3,
@@ -925,6 +901,18 @@ impl VelloRenderer {
     fn resolve_pdf_font(&mut self, text: &NativeTextModel) -> ResolvedPdfFont {
         self.font_matcher.resolve_native_text(text)
     }
+    /// First face name (families + weight) actually used by the shaped buffer,
+    /// or "Unknown" - for diagnostic logging.
+    fn first_matched_font_name(&self, buffer: &Buffer) -> String {
+        for run in buffer.layout_runs() {
+            for glyph in run.glyphs {
+                if let Some(font) = self.font_system.db().face(glyph.font_id) {
+                    return format!("{:?} {:?}", font.families, font.weight);
+                }
+            }
+        }
+        "Unknown".to_string()
+    }
     fn draw_embedded_text_vector(
         &mut self,
         scene: &mut Scene,
@@ -994,7 +982,7 @@ impl VelloRenderer {
             return false;
         }
 
-        let glyph_positions = self.build_embedded_glyph_positions(text);
+        let glyph_positions = glyph_mapping::build_glyph_positions(text);
         if glyph_positions.is_empty() {
             println!(
                 "[PDF-EMBEDDED] skip no-glyph-positions text='{}' font='{}' char_origins={} char_widths={} codes={}",
@@ -1007,16 +995,13 @@ impl VelloRenderer {
             return false;
         }
 
-        let real_font_size = if text.scale_y.abs() > 1.0 {
-            text.scale_y.abs()
-        } else {
-            text.font_size
-        };
+        let real_font_size = glyph_mapping::real_font_size(text);
         let mut scaler = scale_context.builder(font_ref).hint(false).build();
 
         let mut drew_any_glyph = false;
         for (index, (baseline_x, baseline_y)) in glyph_positions.into_iter().enumerate() {
-            let glyph_id = self.resolve_embedded_glyph_id(text, &font_ref, index);
+            let glyph_id =
+                glyph_mapping::resolve_glyph_id(text, index, |code| font_ref.charmap().map(code));
             if glyph_id == 0 {
                 continue;
             }
@@ -1061,144 +1046,6 @@ impl VelloRenderer {
 
         drew_any_glyph
     }
-    fn build_embedded_glyph_positions(&self, text: &NativeTextModel) -> Vec<(f32, f32)> {
-        let glyph_count = self.embedded_glyph_count(text);
-        if glyph_count == 0 {
-            return Vec::new();
-        }
-
-        if text.char_origins.len() == glyph_count {
-            return text
-                .char_origins
-                .iter()
-                .map(|origin| (origin[0], origin[1]))
-                .collect();
-        }
-
-        if text.char_widths.len() == glyph_count {
-            let mut positions = Vec::with_capacity(glyph_count);
-            let mut current_x = text.tx;
-            for width in &text.char_widths {
-                positions.push((current_x, text.ty));
-                current_x += *width;
-            }
-            return positions;
-        }
-
-        if glyph_count == 1 {
-            return vec![(text.tx, text.ty)];
-        }
-
-        Vec::new()
-    }
-    fn embedded_glyph_count(&self, text: &NativeTextModel) -> usize {
-        if !text.pdf_char_codes.is_empty() {
-            return text.pdf_char_codes.len();
-        }
-        text.text.chars().count()
-    }
-    fn resolve_embedded_glyph_id(
-        &self,
-        text: &NativeTextModel,
-        font_ref: &swash::FontRef<'_>,
-        glyph_index: usize,
-    ) -> u16 {
-        let ch_for_log = text.text.chars().nth(glyph_index);
-        let raw_code_for_log = text.pdf_char_codes.get(glyph_index).copied();
-        let is_suspect = ch_for_log.map(|c| c as u32 > 0x7F).unwrap_or(false);
-
-        if let Some(raw_code) = text.pdf_char_codes.get(glyph_index).copied() {
-            if let Some(mapped) = self.resolve_cached_cid_glyph_id(text, raw_code) {
-                if is_suspect {
-                    crate::pdf_log!(
-                        3,
-                        "[GLYPH-RESOLVE] font='{}' idx={} raw=0x{:04X} ch={:?}(U+{:04X}) -> CID_MAP gid={}",
-                        text.font_name, glyph_index, raw_code,
-                        ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0), mapped
-                    );
-                }
-                return mapped;
-            }
-            let charmap_gid = font_ref.charmap().map(raw_code);
-            if charmap_gid != 0 {
-                if is_suspect {
-                    crate::pdf_log!(
-                        3,
-                        "[GLYPH-RESOLVE] font='{}' idx={} raw=0x{:04X} ch={:?}(U+{:04X}) -> RAW_CHARMAP gid={}",
-                        text.font_name, glyph_index, raw_code,
-                        ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0), charmap_gid
-                    );
-                }
-                return charmap_gid;
-            }
-        }
-
-        if let Some(ch) = text.text.chars().nth(glyph_index) {
-            if !ch.is_control() && !ch.is_whitespace() {
-                let glyph_id = font_ref.charmap().map(ch);
-                if glyph_id != 0 {
-                    if is_suspect {
-                        crate::pdf_log!(
-                            3,
-                            "[GLYPH-RESOLVE] font='{}' idx={} raw={:?} ch={:?}(U+{:04X}) -> UNICODE_CHARMAP gid={}",
-                            text.font_name, glyph_index, raw_code_for_log, ch, ch as u32, glyph_id
-                        );
-                    }
-                    return glyph_id;
-                }
-            }
-        }
-
-        if let Some(raw_code) = text.pdf_char_codes.get(glyph_index).copied() {
-            if self.prefers_pdf_code_glyph_mapping(text)
-                && raw_code > 0
-                && raw_code <= u16::MAX as u32
-            {
-                if is_suspect {
-                    crate::pdf_log!(
-                        3,
-                        "[GLYPH-RESOLVE] font='{}' idx={} raw=0x{:04X} ch={:?}(U+{:04X}) -> DIRECT_CODE gid={}",
-                        text.font_name, glyph_index, raw_code,
-                        ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0), raw_code as u16
-                    );
-                }
-                return raw_code as u16;
-            }
-        }
-
-        if is_suspect {
-            crate::pdf_log!(
-                3,
-                "[GLYPH-RESOLVE] font='{}' idx={} raw={:?} ch={:?}(U+{:04X}) -> FAILED gid=0 (will skip or fallback to cosmic)",
-                text.font_name, glyph_index, raw_code_for_log,
-                ch_for_log, ch_for_log.map(|c| c as u32).unwrap_or(0)
-            );
-        }
-        0
-    }
-    fn resolve_cached_cid_glyph_id(&self, text: &NativeTextModel, raw_code: u32) -> Option<u16> {
-        let font_key = text.embedded_font_key.as_deref()?;
-        let cache = crate::infrastructure::pdf::cache::PDF_FONT_GLYPH_MAP_CACHE
-            .lock()
-            .ok()?;
-        let glyph_map = cache.get(font_key)?;
-
-        if let Some(gid) = glyph_map.cid_to_gid.get(&raw_code).copied() {
-            return Some(gid);
-        }
-        if glyph_map.identity && raw_code > 0 && raw_code <= u16::MAX as u32 {
-            return Some(raw_code as u16);
-        }
-
-        None
-    }
-    fn prefers_pdf_code_glyph_mapping(&self, text: &NativeTextModel) -> bool {
-        let Some(subtype) = text.font_subtype.as_deref() else {
-            return false;
-        };
-        let lower = subtype.trim().trim_start_matches('/').to_ascii_lowercase();
-        matches!(lower.as_str(), "truetype" | "opentype" | "type1")
-    }
     fn resolve_cosmic_family<'a>(
         &self,
         text: &NativeTextModel,
@@ -1230,5 +1077,127 @@ fn preview_text(text: &str) -> String {
         format!("{}...", preview)
     } else {
         preview
+    }
+}
+
+#[cfg(test)]
+mod blend_span_tests {
+    //! These tests pin the `blend_span` compositing primitive that replaced the
+    //! four duplicated bounds-check/blend loops (three glyph-content arms plus
+    //! the image compositing loop).
+    use super::*;
+
+    fn canvas(w: u32, h: u32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+        ImageBuffer::from_pixel(w, h, Rgba([200, 100, 50, 255]))
+    }
+
+    #[test]
+    fn alpha_mask_tints_with_constant_color() {
+        // 2x1 mask: fully opaque + fully transparent; tint = red.
+        let mut img = canvas(2, 1);
+        let data = [255u8, 0];
+        blend_span(
+            &mut img,
+            0,
+            0,
+            2,
+            1,
+            SpanSource::AlphaMask { data: &data },
+            [255, 0, 0],
+        );
+        assert_eq!(img.get_pixel(0, 0), &Rgba([255, 0, 0, 255]));
+        // Transparent pixel leaves the background untouched.
+        assert_eq!(img.get_pixel(1, 0), &Rgba([200, 100, 50, 255]));
+    }
+
+    #[test]
+    fn rgba_uses_per_pixel_color_and_alpha() {
+        // 1x1 RGBA, half-opaque green over (200,100,50).
+        let mut img = canvas(1, 1);
+        let data = [0, 255, 0, 128];
+        blend_span(
+            &mut img,
+            0,
+            0,
+            1,
+            1,
+            SpanSource::Rgba { data: &data },
+            [255, 0, 0],
+        );
+        let p = img.get_pixel(0, 0);
+        let alpha = 128.0 / 255.0;
+        assert_eq!(p.0[3], 255);
+        assert_eq!(p.0[0], blend(200, 0, alpha));
+        assert_eq!(p.0[1], blend(100, 255, alpha));
+        assert_eq!(p.0[2], blend(50, 0, alpha));
+    }
+
+    #[test]
+    fn subpixel_mask_takes_alpha_from_green_channel() {
+        // 1x1 subpixel (r,g,b) = (10, 255, 20): alpha 1.0 -> full tint.
+        let mut img = canvas(1, 1);
+        let data = [10, 255, 20];
+        blend_span(
+            &mut img,
+            0,
+            0,
+            1,
+            1,
+            SpanSource::SubpixelMask { data: &data },
+            [0, 0, 255],
+        );
+        assert_eq!(img.get_pixel(0, 0), &Rgba([0, 0, 255, 255]));
+    }
+
+    #[test]
+    fn near_transparent_pixels_are_skipped() {
+        // alpha = 2/255 < 0.01 threshold: background untouched.
+        let mut img = canvas(1, 1);
+        let data = [255u8, 0, 0, 2];
+        blend_span(
+            &mut img,
+            0,
+            0,
+            1,
+            1,
+            SpanSource::Rgba { data: &data },
+            [255, 0, 0],
+        );
+        assert_eq!(img.get_pixel(0, 0), &Rgba([200, 100, 50, 255]));
+    }
+
+    #[test]
+    fn fully_off_canvas_offsets_change_nothing() {
+        let mut img = canvas(2, 2);
+        let data = [255u8; 16];
+        blend_span(
+            &mut img,
+            10,
+            10,
+            2,
+            2,
+            SpanSource::Rgba { data: &data },
+            [0, 0, 0],
+        );
+        assert_eq!(img.get_pixel(0, 0), &Rgba([200, 100, 50, 255]));
+        assert_eq!(img.get_pixel(1, 1), &Rgba([200, 100, 50, 255]));
+    }
+
+    #[test]
+    fn partial_overlap_blends_only_inside_canvas() {
+        // 3-wide span at x = -1: span pixels 1..3 land on the 2-wide canvas.
+        let mut img = canvas(2, 1);
+        let data = [255u8; 3];
+        blend_span(
+            &mut img,
+            -1,
+            0,
+            3,
+            1,
+            SpanSource::AlphaMask { data: &data },
+            [255, 0, 0],
+        );
+        assert_eq!(img.get_pixel(0, 0), &Rgba([255, 0, 0, 255]));
+        assert_eq!(img.get_pixel(1, 0), &Rgba([255, 0, 0, 255]));
     }
 }

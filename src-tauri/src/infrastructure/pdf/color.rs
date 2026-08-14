@@ -11,6 +11,11 @@
 
 use vello::peniko::Color;
 
+/// Alpha-blend a foreground value onto a background value.
+pub(crate) fn blend(bg: u8, fg: u8, alpha: f32) -> u8 {
+    ((bg as f32 * (1.0 - alpha)) + (fg as f32 * alpha)) as u8
+}
+
 /// Parse a `#rrggbb` hex string into `(r, g, b)` bytes.
 /// Lenient: returns `(0, 0, 0)` for input shorter than 7 chars (render fallback).
 pub(crate) fn parse_rgb(hex: &str) -> (u8, u8, u8) {
