@@ -142,7 +142,7 @@ pub fn build_vector_page_model_from_display_list(
                 font_family_hint: first.font_family_hint.clone(),
                 font_subtype: first.font_subtype.clone(),
                 embedded_font_key: first.embedded_font_key.clone(),
-                has_embedded_font_program: first.has_embedded_font_program,
+                has_embedded_font_file: first.has_embedded_font_file,
                 has_to_unicode_cmap: first.has_to_unicode_cmap,
                 char_origins: first.char_origins.iter().map(|&x| [x, 0.0]).collect(),
                 char_widths: first.char_widths.clone(),

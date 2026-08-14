@@ -19,7 +19,7 @@ pub fn build_match_request(name: &str, hints: Option<&FontHints>) -> PdfFontMatc
         is_italic: hints.map(|value| value.is_italic).unwrap_or(false),
         is_fixed_pitch: hints.map(|value| value.is_fixed_pitch).unwrap_or(false),
         is_serif: hints.map(|value| value.is_serif).unwrap_or(false),
-        has_embedded_program: false,
+        has_embedded_font_file: false,
         has_to_unicode_cmap: false,
         post_script_name: None,
         family_hint: None,
@@ -235,11 +235,11 @@ pub fn score_system_font_candidate(
         }
     }
 
-    if request.descriptor.has_embedded_program {
+    if request.descriptor.has_embedded_font_file {
         push_reason(
             &mut reasons,
             "embedded_pdf_font",
-            "pdf font has embedded program; prefer close system metrics if fallback is needed",
+            "pdf font has embedded font file; prefer close system metrics if fallback is needed",
             12,
         );
         score += 12;
@@ -306,7 +306,7 @@ pub fn resolve_system_or_fallback_font(
     candidates: &[SystemFontCandidate],
     fallback_family: &str,
 ) -> ResolvedPdfFont {
-    let can_attempt_embedded_render = request.descriptor.has_embedded_program
+    let can_attempt_embedded_render = request.descriptor.has_embedded_font_file
         && request.descriptor.has_to_unicode_cmap
         && request.descriptor.embedded_font_kind.is_some();
 
@@ -525,7 +525,7 @@ mod tests {
             PdfFontDescriptor {
                 source_kind: Some(PdfFontSourceKind::EmbeddedSubset),
                 embedded_font_kind: Some(PdfEmbeddedFontKind::TrueType),
-                has_embedded_program: true,
+                has_embedded_font_file: true,
                 has_to_unicode_cmap: true,
                 ..Default::default()
             },

@@ -428,7 +428,7 @@ fn parsed_font_from_resolved_program(resolved: &ResolvedFontProgram) -> ParsedFo
         family_hint: Some(resolved.family_name.clone()),
         font_subtype: Some("Type0".to_string()),
         embedded_font_key: Some(resolved.source_label.clone()),
-        has_embedded_program: true,
+        has_embedded_font_file: true,
         has_to_unicode_cmap: true,
         widths,
         default_width: 1000.0,

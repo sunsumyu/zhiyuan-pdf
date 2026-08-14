@@ -51,7 +51,7 @@ pub struct PdfFontDescriptor {
     pub is_italic: bool,
     pub is_fixed_pitch: bool,
     pub is_serif: bool,
-    pub has_embedded_program: bool,
+    pub has_embedded_font_file: bool,
     pub has_to_unicode_cmap: bool,
     pub post_script_name: Option<String>,
     pub family_hint: Option<String>,

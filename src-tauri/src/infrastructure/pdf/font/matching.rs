@@ -46,7 +46,7 @@ impl PdfSystemFontMatcher {
         }
 
         let descriptor = PdfFontDescriptor {
-            source_kind: if text.has_embedded_font_program {
+            source_kind: if text.has_embedded_font_file {
                 Some(if text.font_name.contains('+') {
                     PdfFontSourceKind::EmbeddedSubset
                 } else {
@@ -77,7 +77,7 @@ impl PdfSystemFontMatcher {
                 .as_ref()
                 .map(|value| value.is_serif)
                 .unwrap_or(text.is_serif),
-            has_embedded_program: text.has_embedded_font_program,
+            has_embedded_font_file: text.has_embedded_font_file,
             has_to_unicode_cmap: text.has_to_unicode_cmap,
             post_script_name: text.font_post_script_name.clone(),
             family_hint: text.font_family_hint.clone(),
@@ -179,7 +179,7 @@ fn build_native_text_cache_key(text: &NativeTextModel) -> String {
         text.font_family_hint,
         text.font_subtype,
         text.embedded_font_key,
-        text.has_embedded_font_program,
+        text.has_embedded_font_file,
         text.has_to_unicode_cmap
     )
 }
@@ -231,7 +231,7 @@ mod tests {
         let text = NativeTextModel {
             font_name: "寰蒋闆呴粦".to_string(),
             font_post_script_name: Some("MicrosoftYaHei".to_string()),
-            has_embedded_font_program: true,
+            has_embedded_font_file: true,
             has_to_unicode_cmap: true,
             font_subtype: Some("TrueType".to_string()),
             ..Default::default()
