@@ -168,7 +168,7 @@ pub async fn diagnose_page(
     use lopdf::content::Content;
 
     // Ensure document is loaded
-    crate::interfaces::pdf::ipc_converters::ensure_document_loaded(&state, &path).await?;
+    crate::application::pdf::edit_commands::ensure_document_loaded(&state, &path).await?;
 
     let doc_arc = {
         let cache = state.docs.pdf_documents.lock().unwrap();

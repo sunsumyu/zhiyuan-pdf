@@ -12,7 +12,6 @@ pub mod glyph_mapping;
 pub mod layout_analyzer;
 pub mod layout_engine;
 pub mod models;
-pub mod page_classifier;
 pub mod page_intermediate_service;
 pub mod pdf_loader;
 pub mod pdf_read;
@@ -25,7 +24,6 @@ pub mod spatial_graph;
 pub mod text_matrix;
 pub mod text_state;
 pub mod vector_engine;
-pub mod vello_renderer;
 
 #[cfg(test)]
 pub mod tests_reflow;

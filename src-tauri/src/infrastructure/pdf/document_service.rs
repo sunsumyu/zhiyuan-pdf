@@ -5,14 +5,9 @@ use crate::infrastructure::pdf_read::scanned_backend::ScannedReadBackend;
 use lopdf::Document;
 use std::collections::HashMap;
 use std::fs;
-use tokio::sync::Mutex as AsyncMutex;
 
 use super::cache::{invalidate_pdf_layout_cache, invalidate_pdf_page_cache};
 use super::pdf_loader::load_pdf_lenient;
-
-lazy_static::lazy_static! {
-    static ref PDF_OPS_LOCK: AsyncMutex<()> = AsyncMutex::new(());
-}
 
 pub struct PdfDocumentService;
 

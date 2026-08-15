@@ -29,40 +29,6 @@ fn is_default_alpha(v: &f32) -> bool {
 
 // LayoutRun, LayoutParagraph, SemanticRegion, etc. moved to pdf-viewer-core
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PageModel {
-    pub page_index: u16,
-    pub width: f32,         // Fixed at 1000.0 in V17 for reference
-    pub height: f32,        // Calculated based on aspect ratio in V17
-    pub native_width: f32,  // V18: True physical pixel width of the rendered bitmap
-    pub native_height: f32, // V18: True physical pixel height of the rendered bitmap
-    pub paragraphs: Vec<NativeTextModel>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PageTextInfo {
-    pub index: usize,
-    pub text: String,
-    pub left: f32,
-    pub top: f32,
-    pub width: f32,
-    pub height: f32,
-    pub font_size: f32,
-    pub font_name: String,
-    pub color: String,
-    pub clear_indices: Vec<usize>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct TextObjectInfo {
-    pub index: usize,
-    pub text: String,
-    pub rect: [f32; 4],
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TextReflowPatch {

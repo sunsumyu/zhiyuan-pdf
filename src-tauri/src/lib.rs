@@ -7,7 +7,7 @@ pub mod infrastructure;
 pub mod interfaces;
 pub mod state;
 
-pub use app_state::{AppState, CacheStore, DocumentStore, HistoryStore, RendererState};
+pub use app_state::{AppState, CacheStore, DocumentStore, HistoryStore};
 pub use error::{PdfError, PdfResult};
 
 pub fn run() {

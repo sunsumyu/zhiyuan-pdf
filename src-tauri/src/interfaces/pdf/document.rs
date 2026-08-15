@@ -29,10 +29,6 @@ pub fn clear_cache(state: tauri::State<'_, crate::AppState>) -> Result<(), Strin
     );
     PdfDocumentService::release_all_pdf_resources(&state);
     {
-        let mut cache = state.docs.read_document_meta_cache.lock().unwrap();
-        cache.clear();
-    }
-    {
         let mut cache = state.cache.page_preview_cache.lock().unwrap();
         cache.clear();
     }

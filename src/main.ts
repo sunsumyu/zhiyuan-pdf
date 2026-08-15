@@ -153,14 +153,12 @@ async function init() {
     document.getElementById('pdf-select-mode-btn')?.addEventListener('click', (e) => {
         document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
         (e.currentTarget as HTMLElement).classList.add('active');
-        (window as any).pdfSetToolMode?.('select');
     });
 
     // Hand Tool
     document.getElementById('pdf-hand-mode-btn')?.addEventListener('click', (e) => {
         document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
         (e.currentTarget as HTMLElement).classList.add('active');
-        (window as any).pdfSetToolMode?.('hand');
     });
 
     // Add Text Mode

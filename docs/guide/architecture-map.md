@@ -140,8 +140,11 @@ and are re-exported flat via `src/interfaces/pdf/mod.rs:22-29`.
 **Also at top level:**
 | Module | Lines | Role |
 |---|---|---|
-| `pdf_read/` (sibling dir) | ~780 | pdf-rs fallback backend: `scanned_backend.rs` (514), `classification.rs` (221), dead `facade.rs`/`vector_backend.rs` |
-| `vello_renderer.rs` | 1130 | GPU renderer -- **dead at runtime** (zero call sites for `VelloRenderer::new()`) |
+| `pdf_read/` (sibling dir) | ~780 | pdf-rs fallback backend: `scanned_backend.rs` (514), `classification.rs` (221) |
+
+> Removed 2026-08-15: `vello_renderer.rs` (1130 lines, dead GPU renderer),
+> `pdf_read/facade.rs` + `pdf_read/vector_backend.rs` (no callers),
+> `page_classifier.rs` (no callers). See §7.
 
 ### 2.3 Document Lifecycle (Server-Side)
 
@@ -416,12 +419,18 @@ The TS bridge never calls Tauri commands directly; wasm calls
 
 ## 7. Known Issues / Dead Code
 
-### Dead at runtime (confirmed by cross-reference)
-- `vello_renderer.rs` (1130 lines) -- `VelloRenderer::new()` has zero call sites
+### Removed in the 2026-08-15 dead-code sweep (branch `refactor/architecture-improvements`)
+- `vello_renderer.rs` + `RendererState` (1130 lines) -- `VelloRenderer::new()` had zero call sites
 - `pdf_read/facade.rs`, `pdf_read/vector_backend.rs` -- no callers
 - `page_classifier.rs` -- no callers (preview_engine has its own inline version)
-- `#vector-render-container` div in `index.html:154` -- never read by TS
-- `window.pdfSetToolMode()` -- called in `main.ts:156/163` but defined nowhere
+- `interfaces/pdf/ipc_converters.rs` -- re-export shim; call sites now use
+  `application::pdf::edit_commands` directly (also fixed an Application -> Interfaces
+  dependency inversion in `page_annotation.rs`)
+- `PDF_OPS_LOCK`, `read_document_meta_cache`, legacy `PageModel`/`PageTextInfo`/`TextObjectInfo`
+- `#vector-render-container` div in `index.html` -- never read by TS
+- `window.pdfSetToolMode()` calls in `main.ts` -- defined nowhere (were no-ops via `?.`)
+
+### Dead at runtime (confirmed by cross-reference, not yet removed)
 - Occlusion culling in `vector_engine.rs:432` -- computed then discarded
 
 ### Duplicated logic

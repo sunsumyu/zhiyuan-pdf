@@ -356,7 +356,7 @@ pub(crate) async fn delete_page_annotation(
 ) -> Result<PdfDeleteAnnotationResult, String> {
     let annot_id = parse_annotation_object_id(&request.annotation_id)?;
 
-    crate::interfaces::pdf::delete_annotation_internal(
+    crate::application::pdf::edit_commands::delete_annotation_internal(
         app_state,
         path.to_string(),
         request.page_index,
@@ -381,7 +381,7 @@ pub(crate) async fn update_page_comment(
     }
 
     let annot_id = parse_annotation_object_id(&request.annotation_id)?;
-    crate::interfaces::pdf::update_text_comment(
+    crate::application::pdf::edit_commands::update_text_comment(
         app_state,
         path.to_string(),
         request.page_index,
