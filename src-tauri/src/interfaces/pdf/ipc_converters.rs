@@ -8,7 +8,6 @@
 //! in `interfaces/pdf/mod.rs`.
 
 use crate::infrastructure::pdf::commands::PdfEditCommand;
-use crate::infrastructure::pdf::engine::PdfDocumentService;
 use crate::log_step;
 use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 
@@ -16,25 +15,8 @@ pub(crate) async fn ensure_document_loaded(
     app_state: &crate::AppState,
     path: &str,
 ) -> Result<(), String> {
-    {
-        let cache = app_state.docs.pdf_documents.lock().unwrap();
-        if cache.contains_key(path) {
-            return Ok(());
-        }
-    }
-
-    let working_path = PdfDocumentService::resolve_working_path(path);
-    let path_for_load = path.to_string();
-    let loaded_doc = tokio::task::spawn_blocking(move || {
-        crate::infrastructure::pdf::pdf_loader::load_pdf_public(&working_path)
-            .map(std::sync::Arc::new)
-            .map_err(|e| format!("Lopdf Load Error for {}: {}", path_for_load, e))
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    let mut cache = app_state.docs.pdf_documents.lock().unwrap();
-    cache.insert(path.to_string(), loaded_doc);
+    crate::infrastructure::pdf::document_resolver::ensure_loaded(app_state, path)
+        .await?;
     Ok(())
 }
 

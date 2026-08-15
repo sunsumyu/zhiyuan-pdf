@@ -2,62 +2,11 @@ use crate::infrastructure::pdf::models::{
     GlyphPaintPlan, LayoutInferenceResult, NativeVectorPageModel, PdfMetadata,
 };
 use crate::infrastructure::pdf::page_intermediate_service::PdfPageIntermediateService;
-use lazy_static::lazy_static;
-use lopdf::Document as LopdfDocument;
 use std::collections::HashMap;
-use std::sync::Mutex;
-
-lazy_static! {
-    static ref WORKING_COPIES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
-    static ref COPY_LOCKS: Mutex<HashMap<String, std::sync::Arc<Mutex<()>>>> =
-        Mutex::new(HashMap::new());
-}
 
 pub struct PdfReadService;
 
 impl PdfReadService {
-    /// 获取PDF文档的工作路径（用于编辑）
-    pub(crate) fn resolve_working_path(original_path: &str) -> String {
-        let total_start = std::time::Instant::now();
-        let (working_path, lock) = {
-            let mut copies = WORKING_COPIES.lock().unwrap();
-            let mut locks = COPY_LOCKS.lock().unwrap();
-
-            let digest = md5::compute(original_path);
-            let hashed_name = format!("{:x}.pdf", digest);
-            let wp = std::env::temp_dir()
-                .join(format!("working_{}", hashed_name))
-                .to_string_lossy()
-                .to_string();
-
-            copies
-                .entry(original_path.to_string())
-                .or_insert(wp.clone());
-            let l = locks
-                .entry(original_path.to_string())
-                .or_insert_with(|| std::sync::Arc::new(Mutex::new(())))
-                .clone();
-            (wp, l)
-        };
-
-        // V206.77: Atomic copy protection
-        let _guard = lock.lock().unwrap();
-        if !std::path::Path::new(&working_path).exists() {
-            let copy_start = std::time::Instant::now();
-            crate::log_step!(
-                "[WORKING-PATH] Copying {} -> {}",
-                original_path,
-                working_path
-            );
-            if let Err(e) = std::fs::copy(original_path, &working_path) {
-                crate::log_step!("[WORKING-PATH] Copy failed: {}", e);
-            }
-            crate::log_step!("[WORKING-PATH] Copy took {:?}", copy_start.elapsed());
-        }
-        crate::log_step!("[WORKING-PATH] Total took {:?}", total_start.elapsed());
-        working_path
-    }
-
     /// 打开PDF文档并加载到内存缓存
     pub async fn open_pdf(
         state: tauri::State<'_, crate::AppState>,
@@ -65,42 +14,7 @@ impl PdfReadService {
     ) -> Result<(), String> {
         crate::log_step!("[PDF][open_pdf] START path={}", path);
 
-        // 检查是否已在缓存中
-        {
-            let cache = state.docs.pdf_documents.lock().unwrap();
-            if cache.contains_key(&path) {
-                crate::log_step!("[PDF][open_pdf] Already cached: {}", path);
-                return Ok(());
-            }
-        }
-
-        // 设置加载状态
-        {
-            let mut loading = state.docs.loading_docs.lock().unwrap();
-            loading.insert(path.clone(), crate::state::LoadingStatus::Loading);
-        }
-
-        let path_for_load = path.clone();
-        let loaded_doc = tokio::task::spawn_blocking(move || {
-            let working_path = Self::resolve_working_path(&path_for_load);
-            LopdfDocument::load(&working_path)
-                .map(std::sync::Arc::new)
-                .map_err(|e| format!("Lopdf Load Error for {}: {}", path_for_load, e))
-        })
-        .await
-        .map_err(|e| e.to_string())??;
-
-        // 更新缓存
-        {
-            let mut cache = state.docs.pdf_documents.lock().unwrap();
-            cache.insert(path.clone(), loaded_doc);
-        }
-
-        // 更新加载状态
-        {
-            let mut loading = state.docs.loading_docs.lock().unwrap();
-            loading.insert(path, crate::state::LoadingStatus::Ready);
-        }
+        crate::infrastructure::pdf::document_resolver::ensure_loaded(&state, &path).await?;
 
         crate::log_step!("[PDF][open_pdf] SUCCESS");
         Ok(())

@@ -46,43 +46,7 @@ impl PdfPageIntermediateService {
         let lopdf_doc = if let Some(doc) = lopdf_doc {
             doc
         } else {
-            let loading_error = {
-                let loading = app_state.docs.loading_docs.lock().unwrap();
-                match loading.get(&path) {
-                    Some(crate::state::LoadingStatus::Error(err)) => Some(err.clone()),
-                    _ => None,
-                }
-            };
-
-            if let Some(err) = loading_error {
-                return Err(format!("PDF background load failed for {}: {}", path, err));
-            }
-
-            let path_for_load = path.clone();
-            let working_path = crate::infrastructure::pdf::document_service::PdfDocumentService::resolve_working_path(&path);
-            let loaded_doc = tokio::task::spawn_blocking(move || {
-                crate::infrastructure::pdf::pdf_loader::load_pdf_public(&working_path)
-                    .map(Arc::new)
-                    .map_err(|e| {
-                        format!(
-                            "Lopdf Load Error (intermediate) for {}: {}",
-                            path_for_load, e
-                        )
-                    })
-            })
-            .await
-            .map_err(|e| format!("Intermediate lopdf load join error: {}", e))??;
-
-            {
-                let mut cache = app_state.docs.pdf_documents.lock().unwrap();
-                cache.insert(path.clone(), loaded_doc.clone());
-            }
-            {
-                let mut loading = app_state.docs.loading_docs.lock().unwrap();
-                loading.remove(&path);
-            }
-
-            loaded_doc
+            crate::infrastructure::pdf::document_resolver::ensure_loaded(app_state, &path).await?
         };
 
         let display_list = tokio::task::spawn_blocking(move || {

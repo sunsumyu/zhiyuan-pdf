@@ -3,6 +3,7 @@ pub mod log_service;
 
 pub mod cache;
 pub mod document_service;
+pub mod document_resolver;
 pub mod engine;
 pub mod geometry_service;
 pub mod page_model_service;
