@@ -50,6 +50,7 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
         });
         const layout = wasm.syncHostLayout?.({
             displayZoom: safeDisplayZoom,
+            renderZoom: renderedZoom > 0 ? renderedZoom : safeDisplayZoom,
             pageWidth: deps.getPageWidth(),
             pageHeight: deps.getPageHeight(),
             viewportWidth: scrollContainer.clientWidth || rect.width || 0,
@@ -62,12 +63,15 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             } : null,
         }) ?? null;
 
+        const domWidth = Number.isFinite(layout?.domWidth) ? layout.domWidth : deps.getPageWidth() * (renderedZoom > 0 ? renderedZoom : safeDisplayZoom);
+        const domHeight = Number.isFinite(layout?.domHeight) ? layout.domHeight : deps.getPageHeight() * (renderedZoom > 0 ? renderedZoom : safeDisplayZoom);
         const displayWidth = Number.isFinite(layout?.displayWidth) ? layout.displayWidth : deps.getPageWidth() * safeDisplayZoom;
         const displayHeight = Number.isFinite(layout?.displayHeight) ? layout.displayHeight : deps.getPageHeight() * safeDisplayZoom;
         const hostWidth = Number.isFinite(layout?.hostWidth) ? layout.hostWidth : displayWidth;
         const hostHeight = Number.isFinite(layout?.hostHeight) ? layout.hostHeight : displayHeight;
         const contentLeft = Number.isFinite(layout?.contentLeft) ? layout.contentLeft : 0;
         const contentTop = Number.isFinite(layout?.contentTop) ? layout.contentTop : 0;
+        const cssScale = Number.isFinite(layout?.cssScale) ? layout.cssScale : (renderedZoom > 0 ? safeDisplayZoom / renderedZoom : 1.0);
 
         wrapper.style.display = 'block';
         wrapper.style.position = 'relative';
@@ -82,10 +86,11 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             container.style.position = 'absolute';
             container.style.left = `${contentLeft}px`;
             container.style.top = `${contentTop}px`;
-            container.style.width = `${displayWidth}px`;
-            container.style.height = `${displayHeight}px`;
+            container.style.width = `${domWidth}px`;
+            container.style.height = `${domHeight}px`;
             container.style.margin = '0';
             container.style.transformOrigin = '0 0';
+            container.style.transform = Math.abs(cssScale - 1.0) < 0.001 ? '' : `scale(${cssScale})`;
         }
 
         const rasterCanvas = document.getElementById('pdf-render-target') as HTMLCanvasElement | null;
@@ -93,10 +98,11 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             rasterCanvas.style.position = 'absolute';
             rasterCanvas.style.left = `${contentLeft}px`;
             rasterCanvas.style.top = `${contentTop}px`;
-            rasterCanvas.style.width = `${displayWidth}px`;
-            rasterCanvas.style.height = `${displayHeight}px`;
+            rasterCanvas.style.width = `${domWidth}px`;
+            rasterCanvas.style.height = `${domHeight}px`;
             rasterCanvas.style.margin = '0';
             rasterCanvas.style.transformOrigin = '0 0';
+            rasterCanvas.style.transform = Math.abs(cssScale - 1.0) < 0.001 ? '' : `scale(${cssScale})`;
         }
 
         scrollContainer.style.overflowX = 'auto';

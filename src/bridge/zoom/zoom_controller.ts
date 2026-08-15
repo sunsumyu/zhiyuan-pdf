@@ -144,12 +144,9 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         const baseZoom = deps.getZoomState().lastRenderedZoom > 0 ? deps.getZoomState().lastRenderedZoom : 1.0;
         const cssScale = previewZoom / baseZoom;
         const anchorLayout = deps.peekFramePlan(previewZoom);
+        // The css scale now lives in layout sync (container sized to the
+        // rendered zoom); setting it here as well double-scales the preview.
         deps.syncLayoutBox(previewZoom, baseZoom, anchorLayout);
-        if (Math.abs(cssScale - 1.0) < 0.001) {
-            container.style.transform = '';
-        } else {
-            container.style.transform = `scale(${cssScale})`;
-        }
 
         if (scrollContainer) {
             if (anchorLayout) {
