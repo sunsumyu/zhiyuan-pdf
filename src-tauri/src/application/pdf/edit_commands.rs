@@ -193,11 +193,6 @@ async fn execute_commands(
         docs.insert(save_path.clone(), std::sync::Arc::new(new_doc));
     }
 
-    let light_prefix = format!("light::{}::", save_path);
-    let mut light_page_cache = app_state.cache.pdf_light_page_cache.lock().unwrap();
-    light_page_cache.retain(|key, _| !key.starts_with(&light_prefix));
-    drop(light_page_cache);
-
     let prefix = format!("{}::", save_path);
     let mut intermediate_cache = app_state.cache.pdf_page_intermediate_cache.lock().unwrap();
     intermediate_cache.retain(|key, _| !key.starts_with(&prefix));

@@ -28,20 +28,6 @@ pub(crate) fn page_revision_cache_key(
     }
 }
 
-pub(crate) fn light_page_cache_key(path: &str, page_index: u16) -> String {
-    format!("light::{}::{}", path, page_index)
-}
-
-pub(crate) fn invalidate_pdf_light_page_cache(state: &crate::AppState, path: &str) {
-    let prefix = format!("light::{}::", path);
-    let mut cache = state.cache.pdf_light_page_cache.lock().unwrap();
-    cache.retain(|key, _| !key.starts_with(&prefix));
-    crate::log_step!(
-        "[PDF][LightPageCache] Invalidated cached light page models for {}",
-        path
-    );
-}
-
 pub(crate) fn invalidate_pdf_page_cache(state: &crate::AppState, path: &str) {
     let prefix = format!("{}::", path);
     {
@@ -71,6 +57,28 @@ pub(crate) fn invalidate_pdf_page_cache(state: &crate::AppState, path: &str) {
         "[PDF][PageCache] Invalidated cached page models and resolve_paths cache for {}",
         path
     );
+}
+
+/// Snapshot the embedded-image cache as `data:` URLs, keyed by XObject id.
+pub(crate) fn snapshot_image_cache_as_data_urls() -> HashMap<String, String> {
+    use base64::{engine::general_purpose, Engine as _};
+
+    let cache = PDF_IMAGE_CACHE.lock().unwrap();
+    let mut result = HashMap::new();
+    for (id, data) in cache.iter() {
+        let mime = if data.len() > 4 && &data[0..3] == b"\xff\xd8\xff" {
+            "image/jpeg"
+        } else if data.len() > 8 && &data[0..8] == b"\x89PNG\r\n\x1a\n" {
+            "image/png"
+        } else if data.len() > 2 && &data[0..2] == b"BM" {
+            "image/bmp"
+        } else {
+            "image/png"
+        };
+        let b64 = general_purpose::STANDARD.encode(&**data);
+        result.insert(id.clone(), format!("data:{mime};base64,{b64}"));
+    }
+    result
 }
 
 pub(crate) fn invalidate_pdf_layout_cache(state: &crate::AppState, path: &str) {

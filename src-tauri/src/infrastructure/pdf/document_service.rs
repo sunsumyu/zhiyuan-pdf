@@ -7,9 +7,7 @@ use std::collections::HashMap;
 use std::fs;
 use tokio::sync::Mutex as AsyncMutex;
 
-use super::cache::{
-    invalidate_pdf_layout_cache, invalidate_pdf_light_page_cache, invalidate_pdf_page_cache,
-};
+use super::cache::{invalidate_pdf_layout_cache, invalidate_pdf_page_cache};
 use super::pdf_loader::load_pdf_lenient;
 
 lazy_static::lazy_static! {
@@ -31,7 +29,6 @@ impl PdfDocumentService {
             docs.remove(path);
         }
 
-        invalidate_pdf_light_page_cache(state, path);
         invalidate_pdf_page_cache(state, path);
         invalidate_pdf_layout_cache(state, path);
 
@@ -77,10 +74,6 @@ impl PdfDocumentService {
         {
             let mut docs = state.docs.pdf_documents.lock().unwrap();
             docs.clear();
-        }
-        {
-            let mut page_cache = state.cache.pdf_light_page_cache.lock().unwrap();
-            page_cache.clear();
         }
         {
             let mut page_cache = state.cache.pdf_page_intermediate_cache.lock().unwrap();
@@ -307,7 +300,6 @@ impl PdfDocumentService {
             let mut cache = state.docs.pdf_documents.lock().unwrap();
             cache.insert(path.to_string(), std::sync::Arc::new(doc_new));
         }
-        invalidate_pdf_light_page_cache(&state, path);
         invalidate_pdf_page_cache(&state, path);
         invalidate_pdf_layout_cache(&state, path);
         {
@@ -336,7 +328,6 @@ impl PdfDocumentService {
             .save(path)
             .map_err(|err| format!("Rollback disk save failed: {}", err))?;
         doc_cache.insert(path.to_string(), prev_doc);
-        invalidate_pdf_light_page_cache(&state, path);
         invalidate_pdf_page_cache(&state, path);
         invalidate_pdf_layout_cache(&state, path);
         crate::log_step!(
@@ -365,7 +356,6 @@ impl PdfDocumentService {
             .save(path)
             .map_err(|err| format!("Redo disk save failed: {}", err))?;
         doc_cache.insert(path.to_string(), next_doc);
-        invalidate_pdf_light_page_cache(&state, path);
         invalidate_pdf_page_cache(&state, path);
         invalidate_pdf_layout_cache(&state, path);
         crate::log_step!(

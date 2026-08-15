@@ -3,7 +3,7 @@
 use crate::application::pdf::page_asset::{
     PageAssetAdmissionService, PageAssetKind, PageAssetRole,
 };
-use crate::infrastructure::pdf::engine::{PdfEditorGeometryService, PdfPageIntermediateService};
+use crate::infrastructure::pdf::page_intermediate_service::PdfPageIntermediateService;
 use crate::infrastructure::pdf::models::{GlyphPaintPlan, NativeVectorPageModel};
 use tauri::command;
 
@@ -155,8 +155,8 @@ pub async fn read_glyph_plan(
 }
 
 #[command]
-pub fn read_images(path: String) -> Result<std::collections::HashMap<String, String>, String> {
-    Ok(PdfEditorGeometryService::read_image_cache(&path))
+pub fn read_images(_path: String) -> Result<std::collections::HashMap<String, String>, String> {
+    Ok(crate::infrastructure::pdf::cache::snapshot_image_cache_as_data_urls())
 }
 
 #[command]

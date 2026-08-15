@@ -1,6 +1,6 @@
 //! Document lifecycle commands: open / save / undo / redo / clear_cache.
 
-use crate::infrastructure::pdf::engine::PdfDocumentService;
+use crate::infrastructure::pdf::document_service::PdfDocumentService;
 use crate::infrastructure::pdf::models::PdfModifications;
 use tauri::command;
 

@@ -1,6 +1,6 @@
 //! System-level utilities: demo PDF, log level, asset URL, file picker.
 
-use crate::infrastructure::pdf::engine::PdfDocumentService;
+use crate::infrastructure::pdf::document_service::PdfDocumentService;
 use tauri::command;
 
 #[command]

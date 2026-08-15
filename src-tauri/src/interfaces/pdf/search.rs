@@ -3,7 +3,7 @@
 use crate::application::pdf::page_search::{
     PdfDocumentSearchResult, PdfPageSearchRequest, PdfPageSearchResult,
 };
-use crate::infrastructure::pdf::engine::PdfPageIntermediateService;
+use crate::infrastructure::pdf::page_intermediate_service::PdfPageIntermediateService;
 use tauri::command;
 
 #[command]

@@ -3,7 +3,7 @@ use crate::application::pdf::edit_commands::{
 };
 use crate::application::pdf::page_context::build_page_region_context_from_vector_model;
 use crate::infrastructure::pdf::annotation_store::{read_page_comments, read_page_highlights};
-use crate::infrastructure::pdf::engine::PdfPageIntermediateService;
+use crate::infrastructure::pdf::page_intermediate_service::PdfPageIntermediateService;
 use crate::log_step;
 use pdf_viewer_core::document::page_region_context::{BoundingBoxOutput, PageRegionContextOutput};
 use serde::{Deserialize, Serialize};

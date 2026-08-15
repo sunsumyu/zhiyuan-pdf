@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::infrastructure::pdf::models::{
-    LightPageModel, NativeVectorPageModel, PageDisplayList, PdfMaterializationReport,
+    NativeVectorPageModel, PageDisplayList, PdfMaterializationReport,
 };
 use crate::infrastructure::pdf::vello_renderer::VelloRenderer;
 use crate::infrastructure::pdf_read::types::{PagePreview, ReadDocumentMeta};
@@ -44,7 +44,6 @@ impl DocumentStore {
 
 /// Derived view caches — invalidated on document mutation.
 pub struct CacheStore {
-    pub pdf_light_page_cache: Mutex<HashMap<String, Arc<LightPageModel>>>,
     pub pdf_page_intermediate_cache: Mutex<HashMap<String, Arc<PageDisplayList>>>,
     pub pdf_page_cache: Mutex<HashMap<String, Arc<NativeVectorPageModel>>>,
     pub pdf_layout_cache:
@@ -57,7 +56,6 @@ pub struct CacheStore {
 impl CacheStore {
     fn new() -> Self {
         Self {
-            pdf_light_page_cache: Mutex::new(HashMap::new()),
             pdf_page_intermediate_cache: Mutex::new(HashMap::new()),
             pdf_page_cache: Mutex::new(HashMap::new()),
             pdf_layout_cache: Mutex::new(HashMap::new()),

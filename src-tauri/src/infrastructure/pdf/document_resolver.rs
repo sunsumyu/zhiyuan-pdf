@@ -1,9 +1,9 @@
 //! Unified document loading and working copy management.
 //!
-//! Replaces three duplicate "check cache → load → cache" paths scattered across
-//! `ipc_converters.rs`, `pdf_read_service.rs`, and `page_intermediate_service.rs`.
-//! Also consolidates the two duplicate `WORKING_COPIES` + `COPY_LOCKS` global
-//! state instances from `document_service.rs` and `pdf_read_service.rs`.
+//! Replaces duplicate "check cache -> load -> cache" paths formerly scattered
+//! across `ipc_converters.rs` and `page_intermediate_service.rs`, and the
+//! duplicate `WORKING_COPIES` + `COPY_LOCKS` global state formerly in
+//! `document_service.rs`.
 
 use lazy_static::lazy_static;
 use lopdf::Document as LopdfDocument;
