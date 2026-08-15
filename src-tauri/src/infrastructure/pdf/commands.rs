@@ -1,4 +1,5 @@
 use crate::infrastructure::pdf::models::{PersistableRegionPatch, TextPatch, TextReflowPatch};
+use crate::infrastructure::pdf::pdf_utils::truncate_for_log;
 use crate::infrastructure::pdf::pdf_write::PdfDocExt;
 use lopdf::Document;
 pub use pdf_viewer_core::models::{
@@ -105,22 +106,6 @@ impl PdfEditCommand for BatchTextReflowCommand {
         doc.apply_batch_reflow_to_doc(page_num, &self.patches)
             .map_err(|e| format!("BatchTextReflow Error: {}", e))
     }
-}
-
-fn truncate_for_log(value: &str, limit: usize) -> String {
-    let mut chars = value.chars();
-    let mut out = String::new();
-    for _ in 0..limit {
-        if let Some(ch) = chars.next() {
-            out.push(ch);
-        } else {
-            break;
-        }
-    }
-    if chars.next().is_some() {
-        out.push_str("...");
-    }
-    out
 }
 
 /// 图像物理替换命令 (V3 Sovereign)

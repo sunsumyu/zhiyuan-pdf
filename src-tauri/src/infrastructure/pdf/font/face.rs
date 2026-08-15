@@ -1,14 +1,13 @@
-use crate::infrastructure::pdf::font::ttc::extract_ttc_face_as_ttf;
-use crate::infrastructure::pdf::pdf_font::{CMap, ParsedFont};
-use crate::infrastructure::pdf::pdf_write_font::SystemFont;
+use super::ttc::extract_ttc_face_as_ttf;
+use super::parse::{CMap, ParsedFont};
+use super::SystemFont;
+use super::embed::sanitize_pdf_name;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use ttf_parser::{Face, GlyphId};
 
-use super::sanitize_pdf_name;
-
 /// Turn raw font bytes into a [`SystemFont`], rejecting fonts that cannot
-/// cover every visible character of `text`.
+/// cover every character of `text`.
 pub(crate) fn font_from_bytes(
     data: &[u8],
     face_index: u32,
@@ -78,10 +77,12 @@ pub(crate) fn standalone_ttf_bytes(data: &[u8], face_index: u32) -> Option<Vec<u
         _ => None,
     }
 }
+
 fn font_covers_text(face: &Face<'_>, text: &str) -> bool {
     text.chars()
         .all(|ch| ch == '\n' || ch == '\r' || ch == '\t' || face.glyph_index(ch).is_some())
 }
+
 fn missing_chars(face: &Face<'_>, text: &str) -> String {
     let mut missing = BTreeSet::new();
     for ch in text.chars() {
@@ -94,6 +95,7 @@ fn missing_chars(face: &Face<'_>, text: &str) -> String {
     }
     missing.into_iter().collect::<Vec<_>>().join(", ")
 }
+
 fn glyph_subset(face: &Face<'_>, text: &str) -> Option<Vec<(char, u16, f32)>> {
     let mut seen = HashSet::<u16>::new();
     let mut out = Vec::new();
@@ -141,6 +143,7 @@ pub(crate) fn encode_text_as_glyph_ids(
     }
     Ok(encoded)
 }
+
 pub(crate) fn parsed_font_from_system_font(font: &SystemFont) -> ParsedFont {
     let mut widths = HashMap::new();
     let mut pairs = Vec::new();
@@ -164,6 +167,7 @@ pub(crate) fn parsed_font_from_system_font(font: &SystemFont) -> ParsedFont {
         hints: None,
     }
 }
+
 fn post_script_name(face: &Face<'_>) -> Option<String> {
     face.names()
         .into_iter()

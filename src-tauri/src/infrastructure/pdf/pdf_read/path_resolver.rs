@@ -1,5 +1,5 @@
 use crate::infrastructure::pdf::models::{RenderObject, StyledRun};
-use crate::infrastructure::pdf::pdf_font::ResourceCache;
+use crate::infrastructure::pdf::font::ResourceCache;
 use crate::infrastructure::pdf::pdf_read::resource_reader::read_resources;
 use crate::infrastructure::pdf::pdf_read::content_parser::parse_content_stream;
 use crate::infrastructure::pdf::pdf_read::graphics_state::GraphicsState;

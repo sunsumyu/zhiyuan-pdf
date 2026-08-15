@@ -23,7 +23,7 @@ pub struct VelloRenderer {
     font_system: FontSystem,
     swash_cache: SwashCache,
     font_file_cache: HashMap<std::path::PathBuf, Arc<Vec<u8>>>,
-    font_matcher: crate::infrastructure::pdf::font::matching::PdfSystemFontMatcher,
+    font_matcher: crate::infrastructure::pdf::font::PdfSystemFontMatcher,
 }
 impl VelloRenderer {
     pub async fn new() -> Result<Self, String> {
@@ -70,7 +70,7 @@ impl VelloRenderer {
             font_system: FontSystem::new(),
             swash_cache: SwashCache::new(),
             font_file_cache: HashMap::new(),
-            font_matcher: crate::infrastructure::pdf::font::matching::PdfSystemFontMatcher::new(
+            font_matcher: crate::infrastructure::pdf::font::PdfSystemFontMatcher::new(
                 crate::infrastructure::pdf::font::catalog::load_system_font_candidates(),
                 "Microsoft YaHei",
             ),

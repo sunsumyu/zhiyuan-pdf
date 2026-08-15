@@ -1,5 +1,6 @@
 use crate::infrastructure::pdf::models::{NativePathModel, NativeImageModel, PathSegment, RenderObject, StyledRun};
-use crate::infrastructure::pdf::pdf_font::{resolve_glyph_geom, simplify_path_segments, ResourceCache, ParsedFont};
+use crate::infrastructure::pdf::font::{resolve_glyph_geom, ResourceCache, ParsedFont};
+use crate::infrastructure::pdf::font::path::simplify_path_segments;
 use crate::infrastructure::pdf::pdf_read::graphics_state::GraphicsState;
 use crate::infrastructure::pdf::pdf_read::resource_reader::{read_resources, FlatResources, find_xobject_by_name};
 use crate::infrastructure::pdf::pdf_read::utils::operands_to_f32;
@@ -57,26 +58,21 @@ pub fn parse_content_stream(
             "g" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if let Some(&gray) = p.first() {
-                        let val = (gray.clamp(0.0, 1.0) * 255.0) as u8;
-                        state.fill_color = Some(format!("#{:02x}{:02x}{:02x}", val, val, val));
+                        state.fill_color = Some(crate::infrastructure::pdf::color::gray_to_hex(gray));
                     }
                 }
             }
             "G" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if let Some(&gray) = p.first() {
-                        let val = (gray.clamp(0.0, 1.0) * 255.0) as u8;
-                        state.stroke_color = Some(format!("#{:02x}{:02x}{:02x}", val, val, val));
+                        state.stroke_color = Some(crate::infrastructure::pdf::color::gray_to_hex(gray));
                     }
                 }
             }
             "k" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 4 {
-                        let (c, m, y, kk) = (p[0].clamp(0.0, 1.0), p[1].clamp(0.0, 1.0), p[2].clamp(0.0, 1.0), p[3].clamp(0.0, 1.0));
-                        let r = ((1.0 - c) * (1.0 - kk) * 255.0) as u8;
-                        let g = ((1.0 - m) * (1.0 - kk) * 255.0) as u8;
-                        let b = ((1.0 - y) * (1.0 - kk) * 255.0) as u8;
+                        let (r, g, b) = crate::infrastructure::pdf::color::cmyk_to_rgb(p[0], p[1], p[2], p[3]);
                         state.fill_color = Some(format!("#{:02x}{:02x}{:02x}", r, g, b));
                     }
                 }
@@ -84,10 +80,7 @@ pub fn parse_content_stream(
             "K" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 4 {
-                        let (c, m, y, kk) = (p[0].clamp(0.0, 1.0), p[1].clamp(0.0, 1.0), p[2].clamp(0.0, 1.0), p[3].clamp(0.0, 1.0));
-                        let r = ((1.0 - c) * (1.0 - kk) * 255.0) as u8;
-                        let g = ((1.0 - m) * (1.0 - kk) * 255.0) as u8;
-                        let b = ((1.0 - y) * (1.0 - kk) * 255.0) as u8;
+                        let (r, g, b) = crate::infrastructure::pdf::color::cmyk_to_rgb(p[0], p[1], p[2], p[3]);
                         state.stroke_color = Some(format!("#{:02x}{:02x}{:02x}", r, g, b));
                     }
                 }
@@ -95,17 +88,10 @@ pub fn parse_content_stream(
             "rg" | "sc" | "scn" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() == 1 {
-                        let val = (p[0].clamp(0.0, 1.0) * 255.0) as u8;
-                        state.fill_color = Some(format!("#{:02x}{:02x}{:02x}", val, val, val));
+                        state.fill_color = Some(crate::infrastructure::pdf::color::gray_to_hex(p[0]));
                     } else if p.len() >= 3 {
                         let (r, g, b) = if p.len() >= 4 {
-                            // DeviceCMYK via sc/scn: naive conversion r=(1-c)(1-k) etc.
-                            let (c, m, y, kk) = (p[0].clamp(0.0, 1.0), p[1].clamp(0.0, 1.0), p[2].clamp(0.0, 1.0), p[3].clamp(0.0, 1.0));
-                            (
-                                ((1.0 - c) * (1.0 - kk) * 255.0) as u8,
-                                ((1.0 - m) * (1.0 - kk) * 255.0) as u8,
-                                ((1.0 - y) * (1.0 - kk) * 255.0) as u8,
-                            )
+                            crate::infrastructure::pdf::color::cmyk_to_rgb(p[0], p[1], p[2], p[3])
                         } else {
                             (
                                 (p[0].clamp(0.0, 1.0) * 255.0) as u8,
@@ -120,16 +106,10 @@ pub fn parse_content_stream(
             "RG" | "SC" | "SCN" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() == 1 {
-                        let val = (p[0].clamp(0.0, 1.0) * 255.0) as u8;
-                        state.stroke_color = Some(format!("#{:02x}{:02x}{:02x}", val, val, val));
+                        state.stroke_color = Some(crate::infrastructure::pdf::color::gray_to_hex(p[0]));
                     } else if p.len() >= 3 {
                         let (r, g, b) = if p.len() >= 4 {
-                            let (c, m, y, kk) = (p[0].clamp(0.0, 1.0), p[1].clamp(0.0, 1.0), p[2].clamp(0.0, 1.0), p[3].clamp(0.0, 1.0));
-                            (
-                                ((1.0 - c) * (1.0 - kk) * 255.0) as u8,
-                                ((1.0 - m) * (1.0 - kk) * 255.0) as u8,
-                                ((1.0 - y) * (1.0 - kk) * 255.0) as u8,
-                            )
+                            crate::infrastructure::pdf::color::cmyk_to_rgb(p[0], p[1], p[2], p[3])
                         } else {
                             (
                                 (p[0].clamp(0.0, 1.0) * 255.0) as u8,
@@ -268,7 +248,7 @@ pub fn parse_content_stream(
                         if let Some(cached) = res_cache.fonts.get(font_id) {
                             state.current_font = Some(cached.clone());
                         } else if let Ok(parsed) =
-                            crate::infrastructure::pdf::pdf_font::parse_font_from_dict(
+                            crate::infrastructure::pdf::font::parse_font_from_dict(
                                 doc, *font_id, name,
                             )
                         {

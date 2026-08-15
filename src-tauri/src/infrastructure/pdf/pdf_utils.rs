@@ -101,3 +101,20 @@ pub fn apply_rotation(width: f32, height: f32, rotation: i64) -> (f32, f32) {
         (width, height)
     }
 }
+
+/// Truncate a string to `limit` characters, appending "..." if truncated.
+pub fn truncate_for_log(value: &str, limit: usize) -> String {
+    let mut chars = value.chars();
+    let mut out = String::new();
+    for _ in 0..limit {
+        if let Some(ch) = chars.next() {
+            out.push(ch);
+        } else {
+            break;
+        }
+    }
+    if chars.next().is_some() {
+        out.push_str("...");
+    }
+    out
+}

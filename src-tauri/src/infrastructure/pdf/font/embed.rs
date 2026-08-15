@@ -1,9 +1,39 @@
-use crate::infrastructure::pdf::pdf_write_font::SystemFont;
+use super::SystemFont;
 use lopdf::{Dictionary, Document, Object, Stream};
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 
-use super::sanitize_pdf_name;
+/// Filter a font name to characters valid inside a PDF name object,
+/// falling back to a fixed name when nothing survives.
+pub(crate) fn sanitize_pdf_name(value: &str) -> String {
+    let mut out = value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
+        .collect::<String>();
+    if out.is_empty() {
+        out = "HsaWriteFont".to_string();
+    }
+    if out.len() > 48 {
+        out.truncate(48);
+    }
+    out
+}
+
+pub(crate) fn truncate_log(value: &str, limit: usize) -> String {
+    let mut out = String::new();
+    let mut chars = value.chars();
+    for _ in 0..limit {
+        if let Some(ch) = chars.next() {
+            out.push(ch);
+        } else {
+            break;
+        }
+    }
+    if chars.next().is_some() {
+        out.push_str("...");
+    }
+    out
+}
 
 /// Embed `font` into the page's resources as a Type0 font (if not already
 /// present under the derived alias) and return the resource key to use for
@@ -63,6 +93,7 @@ pub(crate) fn ensure_font_in_page(
 
     Ok(alias)
 }
+
 fn type0_font_object(
     doc: &mut Document,
     font: &SystemFont,
@@ -197,6 +228,7 @@ fn to_unicode_cmap(ps_name: &str, font: &SystemFont) -> String {
     out.push_str("endcmap\nCMapName currentdict /CMap defineresource pop\nend end\n");
     out
 }
+
 fn utf16be_hex(ch: char) -> String {
     let mut tmp = [0u16; 2];
     ch.encode_utf16(&mut tmp)
@@ -205,6 +237,7 @@ fn utf16be_hex(ch: char) -> String {
         .collect::<Vec<_>>()
         .join("")
 }
+
 fn page_resources(
     doc: &Document,
     page_id: lopdf::ObjectId,
@@ -219,6 +252,7 @@ fn page_resources(
         .and_then(|value| value.as_reference().ok());
     Ok((page_dict, res_id))
 }
+
 fn page_resource_dictionary(doc: &Document, page_dict: &Dictionary) -> Result<Dictionary, String> {
     if let Ok(Object::Reference(id)) = page_dict.get(b"Resources") {
         return doc

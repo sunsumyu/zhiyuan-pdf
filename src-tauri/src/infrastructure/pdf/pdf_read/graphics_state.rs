@@ -1,4 +1,4 @@
-use crate::infrastructure::pdf::pdf_font::ParsedFont;
+use crate::infrastructure::pdf::font::ParsedFont;
 use crate::infrastructure::pdf::text_state::TextState;
 use std::sync::Arc;
 
