@@ -83,7 +83,7 @@ fn push_unique(out: &mut Vec<String>, value: String) {
         out.push(value);
     }
 }
-fn strip_subset_prefix(name: &str) -> &str {
+pub(crate) fn strip_subset_prefix(name: &str) -> &str {
     if name.len() > 7
         && name.as_bytes().get(6) == Some(&b'+')
         && name[..6].chars().all(|ch| ch.is_ascii_uppercase())
@@ -95,10 +95,12 @@ fn strip_subset_prefix(name: &str) -> &str {
 }
 
 /// Search the system font database and managed font directories for the
-/// first family that covers every character of `text`.
+/// first family that covers every character of `text`, preferring the face
+/// matching `target_weight` (bold originals resolve to bold faces).
 pub(crate) fn find_system_font(
     preferred_names: &[String],
     text: &str,
+    target_weight: Weight,
 ) -> Result<SystemFont, String> {
     let mut db = Database::new();
     db.load_system_fonts();
@@ -107,7 +109,7 @@ pub(crate) fn find_system_font(
     let mut tried = Vec::new();
     for family in preferred_names {
         tried.push(family.clone());
-        if let Some(font) = query_fontdb(&db, family, text) {
+        if let Some(font) = query_fontdb(&db, family, text, target_weight) {
             return Ok(font);
         }
     }
@@ -132,23 +134,28 @@ fn load_managed_font_dirs(db: &mut Database) {
         }
     }
 }
-fn query_fontdb(db: &Database, family: &str, text: &str) -> Option<SystemFont> {
+fn query_fontdb(
+    db: &Database,
+    family: &str,
+    text: &str,
+    target_weight: Weight,
+) -> Option<SystemFont> {
     let families = [Family::Name(family)];
     let query = Query {
         families: &families,
-        weight: Weight::NORMAL,
+        weight: target_weight,
         stretch: Stretch::Normal,
         style: Style::Normal,
     };
     let Some(id) = db.query(&query) else {
-        return probe_known_font_files(family, text, 0);
+        return probe_known_font_files(family, text, 0, target_weight);
     };
     let (source, face_index) = db.face_source(id)?;
     let source_label = source_label(&source, family);
     db.with_face_data(id, |data, index| {
         face::font_from_bytes(data, index, family, &source_label, text)
     })?
-    .or_else(|| probe_known_font_files(family, text, face_index))
+    .or_else(|| probe_known_font_files(family, text, face_index, target_weight))
 }
 
 /// Fallback for families the font database misses: read the hardcoded
@@ -158,10 +165,14 @@ fn probe_known_font_files(
     family: &str,
     text: &str,
     preferred_face_index: u32,
+    target_weight: Weight,
 ) -> Option<SystemFont> {
     let lower = family.to_ascii_lowercase();
     let mut paths = Vec::<PathBuf>::new();
-    if lower.contains("yahei") || family == "寰蒋闆呴粦" || lower.contains("microsoft") {
+    if lower.contains("yahei") || family == "寰蒋闆呴粦" || lower.contains("microsoft") {
+        if target_weight >= Weight::BOLD {
+            paths.push(PathBuf::from(r"C:\Windows\Fonts\msyhbd.ttc"));
+        }
         paths.extend([
             PathBuf::from(r"C:\Windows\Fonts\msyh.ttc"),
             PathBuf::from(r"C:\Windows\Fonts\msyh.ttf"),

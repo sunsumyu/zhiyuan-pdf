@@ -3,6 +3,7 @@ mod face;
 mod finder;
 
 use crate::infrastructure::pdf::pdf_font::ParsedFont;
+use fontdb::Weight;
 use lopdf::Document;
 use std::sync::Arc;
 
@@ -81,9 +82,32 @@ pub fn resolve_text_write_font(
     }
 
     let candidate_names = finder::candidate_font_names(current_font);
-    let system_font = finder::find_system_font(&candidate_names, text)?;
+    let target_weight = target_weight_for(current_font);
+    let system_font = finder::find_system_font(&candidate_names, text, target_weight)?;
     let alias = embed::ensure_font_in_page(doc, page_id, &system_font, text)?;
     let parsed_font = face::parsed_font_from_system_font(&system_font);
+
+    // The original font could not encode the text (that's why we're here);
+    // when the substitute is a different family entirely, say so loudly.
+    let is_exact_match = if let Some(font) = current_font {
+        let clean_orig = finder::strip_subset_prefix(&font.name).to_lowercase();
+        let clean_resolved = system_font.family_name.to_lowercase();
+        clean_resolved.contains(&clean_orig) || clean_orig.contains(&clean_resolved)
+    } else {
+        true
+    };
+    if !is_exact_match {
+        let orig_name = current_font.map(|f| f.name.as_str()).unwrap_or("unknown");
+        crate::pdf_log!(
+            2,
+            "[PDF-WRITE-FONT][fallback-warning] original font '{}' missing glyphs for text '{}'; system fallback '{}' ({}) weight={}",
+            orig_name,
+            truncate_log(text, 50),
+            system_font.family_name,
+            system_font.source_label,
+            target_weight.0
+        );
+    }
 
     crate::pdf_log!(
         2,
@@ -117,6 +141,23 @@ fn can_pdf_font_encode_text(font: &ParsedFont, text: &str) -> bool {
         }
     }
     has_visible
+}
+
+/// Weight class to prefer when substituting a system font: bold originals
+/// (bold-named or FontWeight >= 600) must resolve to bold faces, otherwise
+/// bold text silently renders regular after an edit.
+fn target_weight_for(current_font: Option<&ParsedFont>) -> Weight {
+    if let Some(font) = current_font {
+        if font.name.to_lowercase().contains("bold")
+            || font.hints.as_ref().map_or(false, |h| h.weight >= 600)
+        {
+            Weight::BOLD
+        } else {
+            Weight::NORMAL
+        }
+    } else {
+        Weight::NORMAL
+    }
 }
 
 /// Filter a font name to characters valid inside a PDF name object,
@@ -174,5 +215,53 @@ mod util_tests {
     fn truncate_log_cuts_and_marks_long_values() {
         assert_eq!(truncate_log("short", 80), "short");
         assert_eq!(truncate_log("abcdef", 3), "abc...");
+    }
+
+    #[test]
+    fn target_weight_detects_bold_font_names() {
+        let mut font = crate::infrastructure::pdf::pdf_font::ParsedFont {
+            name: "SimHei-Bold".to_string(),
+            ..test_parsed_font()
+        };
+        assert_eq!(target_weight_for(Some(&font)), Weight::BOLD);
+        font.name = "SimSun".to_string();
+        assert_eq!(target_weight_for(Some(&font)), Weight::NORMAL);
+    }
+
+    #[test]
+    fn target_weight_detects_bold_font_hints() {
+        let mut font = test_parsed_font();
+        font.hints = Some(crate::infrastructure::pdf::pdf_font::FontHints {
+            weight: 700,
+            ..Default::default()
+        });
+        assert_eq!(target_weight_for(Some(&font)), Weight::BOLD);
+        font.hints = Some(crate::infrastructure::pdf::pdf_font::FontHints {
+            weight: 400,
+            ..Default::default()
+        });
+        assert_eq!(target_weight_for(Some(&font)), Weight::NORMAL);
+    }
+
+    #[test]
+    fn target_weight_defaults_to_normal_without_font() {
+        assert_eq!(target_weight_for(None), Weight::NORMAL);
+    }
+
+    fn test_parsed_font() -> crate::infrastructure::pdf::pdf_font::ParsedFont {
+        crate::infrastructure::pdf::pdf_font::ParsedFont {
+            name: "SimSun".to_string(),
+            base_font: "SimSun".to_string(),
+            font_subtype: None,
+            cmap: None,
+            widths: Default::default(),
+            default_width: 1000.0,
+            hints: None,
+            post_script_name: None,
+            family_hint: None,
+            embedded_font_key: None,
+            has_embedded_font_file: false,
+            has_to_unicode_cmap: false,
+        }
     }
 }

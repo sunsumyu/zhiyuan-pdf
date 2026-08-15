@@ -234,8 +234,12 @@ impl NativeTextModel {
         self.ty = h - self.ty;
         self.baseline_y = h - self.baseline_y;
         self.top = h - self.top - self.height;
+        // char_origins are baseline-relative offsets (dy measured from the
+        // group's first run), not page coordinates: mirror the sign instead
+        // of flipping against the page height, which would displace every
+        // glyph by a full page.
         for origin in &mut self.char_origins {
-            origin[1] = h - origin[1];
+            origin[1] = -origin[1];
         }
         for run in &mut self.runs {
             run.ty = h - run.ty;

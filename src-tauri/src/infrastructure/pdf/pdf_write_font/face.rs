@@ -147,7 +147,7 @@ pub(crate) fn parsed_font_from_system_font(font: &SystemFont) -> ParsedFont {
     for (ch, gid, width) in &font.glyphs {
         widths.insert(*gid as u32, *width);
         widths.insert(*ch as u32, *width);
-        pairs.push((*gid, ch.to_string()));
+        pairs.push((*gid as u32, ch.to_string()));
     }
     ParsedFont {
         name: font.family_name.clone(),
