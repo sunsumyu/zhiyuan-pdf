@@ -1,27 +1,16 @@
 import type { RenderReason } from '../render/frame_plan';
 import type { RenderScheduler } from '../render/render_scheduler';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
+import { getDocumentSession } from '../shared/session_singletons';
 import type { WasmModule } from '../shared/wasm_loader';
-import type { DocumentSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
 // ── DocumentSession bridge (P1 of session-API plan) ─────────────────────────
 //
 // Replaces the prior raw `wasm.open_document_pipeline()` /
 // `wasm.close_document_pipeline()` calls with the struct-based
 // `DocumentSession` API exported from `crates/pdf-viewer-ui/src/document/
-// document_api.rs`. Singleton handle — all state lives in wasm thread_locals.
-
-let _documentSession: DocumentSession | null = null;
-
-function resolveDocumentSession(getWasmApi: () => WasmModule): DocumentSession | null {
-    if (!_documentSession) {
-        const api = getWasmApi();
-        if (typeof api?.DocumentSession === 'function') {
-            _documentSession = new api.DocumentSession();
-        }
-    }
-    return _documentSession;
-}
+// document_api.rs`. Singleton handle (shared/session_singletons.ts) - all
+// state lives in wasm thread_locals.
 
 type CreatePdfDocumentRuntimeDeps = {
     ensureWasmInitialized: () => Promise<void>;
@@ -87,7 +76,7 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
         await deps.ensureWasmInitialized();
         emitPdfDiagnostic('DOC', 'openTextPdfFlow.wasmReady', { path });
         try {
-            const session = resolveDocumentSession(deps.getWasmApi);
+            const session = getDocumentSession();
             emitPdfDiagnostic('DOC', 'openTextPdfFlow.sessionResolved', { path, session: session ? 'OK' : 'NULL' });
             // Eagerly clear the vector host BEFORE awaiting session.open().
             // This cancels any in-flight Rust render (cancelProgressiveRender + resetFrameCache)
@@ -137,7 +126,7 @@ export function createPdfDocumentRuntime(deps: CreatePdfDocumentRuntimeDeps): Pd
 
     function resetPdfViewerState(): void {
         try {
-            const session = resolveDocumentSession(deps.getWasmApi);
+            const session = getDocumentSession();
             session?.close?.(deps.defaultPageWidth, deps.defaultPageHeight);
         } catch {
         }

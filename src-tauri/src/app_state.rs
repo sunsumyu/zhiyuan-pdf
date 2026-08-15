@@ -62,6 +62,9 @@ impl CacheStore {
     }
 }
 
+/// Maximum snapshots kept per path in undo/redo history.
+pub const HISTORY_LIMIT: usize = 20;
+
 /// Undo/redo transaction history per document.
 pub struct HistoryStore {
     pub pdf_transactions: Mutex<HashMap<String, Vec<Arc<lopdf::Document>>>>,

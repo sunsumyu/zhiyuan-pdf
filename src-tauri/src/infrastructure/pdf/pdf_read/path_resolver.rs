@@ -87,29 +87,13 @@ pub fn resolve_paths(
     };
 
     // Support inherited /Rotate attribute in page dictionary tree
-    let mut rotation = 0i64;
-    let mut current_id = page_id;
-    while let Ok(dict) = doc.get_dictionary(current_id) {
-        if let Ok(rotate_obj) = dict.get(b"Rotate") {
-            if let Ok(r) = rotate_obj.as_i64() {
-                rotation = r;
-                break;
-            }
-        }
-        if let Ok(parent_id) = dict.get(b"Parent").and_then(|o| o.as_reference()) {
-            current_id = parent_id;
-        } else {
-            break;
-        }
-    }
-
-    // Normalize rotation to 0, 90, 180, 270
-    let normalized_rotation = ((rotation % 360) + 360) % 360;
-    if normalized_rotation == 90 || normalized_rotation == 270 {
+    let rotation =
+        crate::infrastructure::pdf::pdf_utils::read_page_rotation(doc, page_id);
+    if rotation == 90 || rotation == 270 {
         std::mem::swap(&mut width, &mut height);
         crate::log_step!(
             "[PDF-Vector] swapped page size due to {} deg rotation. final={}x{}",
-            normalized_rotation,
+            rotation,
             width,
             height
         );

@@ -133,7 +133,7 @@ and are re-exported flat via `src/interfaces/pdf/mod.rs:22-29`.
 | `document_service.rs` | 423 | `open_pdf`/`save_pdf`/`rollback`/`redo`/release; 5 unit tests |
 | `document_resolver.rs` | 132 | Working-copy manager (`%TEMP%\working_{md5}.pdf`) |
 | `cache.rs` | 79 | 3 lazy_static global caches + invalidation helpers |
-| `color.rs` | 170 | hex/rgb/cmyk/gray parse + vello/peniko color types (22 tests) |
+| `color.rs` | 120 | strict hex parse (write path), cmyk/gray convert (14 tests) |
 | `log_service.rs` | 266 | Level-gated logging, 512-event ring buffer, macros |
 | `commands.rs` | 181 | `PdfEditCommand` trait + 10 command types |
 
@@ -420,26 +420,36 @@ The TS bridge never calls Tauri commands directly; wasm calls
 ## 7. Known Issues / Dead Code
 
 ### Removed in the 2026-08-15 dead-code sweep (branch `refactor/architecture-improvements`)
-- `vello_renderer.rs` + `RendererState` (1130 lines) -- `VelloRenderer::new()` had zero call sites
+- `vello_renderer.rs` + `RendererState` (1130 lines) -- `VelloRenderer::new()` had zero call sites.
+  Also dropped the `vello` + `wgpu` deps (Cargo.lock -642 lines); vello/wgpu were never called by
+  the frontend in this project *or* in the origin project (`nushell-enhanced`'s
+  `render_vector_tile` was registered but never invoked from TS). Real rendering is the
+  wasm Canvas 2D path (`pdf-viewer-ui/src/render/canvas.rs`), GPU-accelerated via WebView2/Skia.
+  Recover with `git show fdde982^:src-tauri/src/infrastructure/pdf/vello_renderer.rs`.
 - `pdf_read/facade.rs`, `pdf_read/vector_backend.rs` -- no callers
 - `page_classifier.rs` -- no callers (preview_engine has its own inline version)
 - `interfaces/pdf/ipc_converters.rs` -- re-export shim; call sites now use
   `application::pdf::edit_commands` directly (also fixed an Application -> Interfaces
   dependency inversion in `page_annotation.rs`)
 - `PDF_OPS_LOCK`, `read_document_meta_cache`, legacy `PageModel`/`PageTextInfo`/`TextObjectInfo`
+- `color.rs` orphan helpers `blend`/`parse_rgb`/`parse_vello` (orphaned with the vello renderer;
+  the strict `parse_pdf` write path remains)
+- Occlusion culling block in `vector_engine.rs` -- scanned and logged but the drain was
+  commented out (pure dead computation)
 - `#vector-render-container` div in `index.html` -- never read by TS
 - `window.pdfSetToolMode()` calls in `main.ts` -- defined nowhere (were no-ops via `?.`)
 
-### Dead at runtime (confirmed by cross-reference, not yet removed)
-- Occlusion culling in `vector_engine.rs:432` -- computed then discarded
-
 ### Duplicated logic
-- Page-size `/Rotate` parent-chain walking: `pdf_utils.rs`, `path_resolver.rs`,
-  `resource_reader.rs`, `preview_engine.rs`, `annotation_store.rs`
-- `truncate_for_log` in `pdf_utils.rs` and `edit_commands.rs`
-- `DocumentSession` wasm singleton created in 2 TS locations
-- `ReviewSession` wasm singleton created in 2 TS locations
-- `undo`/`redo` history cap: constant `HISTORY_LIMIT=20` vs hardcoded `20`
+- ~~`truncate_for_log` in `pdf_utils.rs` and `edit_commands.rs`~~ -- deduped 2026-08-15
+  (`edit_commands.rs` now imports from `pdf_utils`)
+- ~~`/Rotate` parent-chain walking~~ -- the one true duplicate (`path_resolver.rs`) now calls
+  `pdf_utils::read_page_rotation`. `resource_reader.rs` / `preview_engine.rs` walk the parent
+  chain for `/Resources`-inherited XObject/Font lookups -- pattern-similar but semantically
+  distinct; a generic "inherited attribute walker" would be needed to unify them (low value).
+- ~~`DocumentSession` / `ReviewSession` TS singletons~~ -- now constructed only via
+  `src/bridge/shared/session_singletons.ts` (was 2 / 3 separate module-level copies)
+- ~~undo/redo history cap `HISTORY_LIMIT=20` vs hardcoded `20`~~ -- single constant at
+  `app_state::HISTORY_LIMIT`, used by both `document_service.rs` and `edit_commands.rs`
 
 ### Naming hazards
 - Two `pdf_read/` dirs: `src-tauri/src/infrastructure/pdf/pdf_read/` (lopdf parsing)

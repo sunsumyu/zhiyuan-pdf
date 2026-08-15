@@ -12,7 +12,6 @@ pub mod ttc;
 pub use parse::{CMap, ParsedFont, ParsedImage, ResourceCache, parse_font_from_dict, read_cmap, resolve_glyph_geom};
 pub use layout::break_text_into_lines;
 pub use path::simplify_path_segments;
-pub(crate) use match_mod::PdfSystemFontMatcher;
 
 pub use pdf_viewer_core::models::FontHints;
 

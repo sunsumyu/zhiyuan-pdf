@@ -5,6 +5,7 @@
 //! logic — application concerns that should not live in the IPC boundary.
 
 use crate::infrastructure::pdf::commands::PdfEditCommand;
+use crate::infrastructure::pdf::pdf_utils::truncate_for_log;
 use crate::log_step;
 use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 
@@ -123,22 +124,6 @@ pub(crate) async fn update_text_comment(
     execute_commands(app_state, path, page_index, commands).await
 }
 
-fn truncate_for_log(value: &str, limit: usize) -> String {
-    let mut chars = value.chars();
-    let mut out = String::new();
-    for _ in 0..limit {
-        if let Some(ch) = chars.next() {
-            out.push(ch);
-        } else {
-            break;
-        }
-    }
-    if chars.next().is_some() {
-        out.push_str("...");
-    }
-    out
-}
-
 /// Apply commands to the in-memory document, persist to disk, refresh caches.
 async fn execute_commands(
     app_state: &crate::AppState,
@@ -155,7 +140,7 @@ async fn execute_commands(
         if let Some(current_doc) = docs.get(&save_path) {
             let history = txs.entry(save_path.clone()).or_insert_with(Vec::new);
             history.push(current_doc.clone());
-            if history.len() > 20 {
+            if history.len() > crate::app_state::HISTORY_LIMIT {
                 history.remove(0);
             }
             log_step!(

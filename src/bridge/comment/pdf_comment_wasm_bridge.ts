@@ -13,7 +13,8 @@ import {
     normalizeTargetOverlayDisplay,
 } from './pdf_comment_contracts';
 import type { WasmModule } from '../shared/wasm_loader';
-import type { CommentManager, ReviewSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
+import { getReviewSession } from '../shared/session_singletons';
+import type { CommentManager } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
 type CreatePdfCommentWasmBridgeDeps = {
     getViewerSession: () => ViewerSessionSnapshot;
@@ -23,7 +24,6 @@ type CreatePdfCommentWasmBridgeDeps = {
 // ── Session singletons ─────────────────────────────────────────
 
 let _commentManager: CommentManager | null = null;
-let _reviewSession: ReviewSession | null = null;
 
 function getCommentManager(getWasmApi: () => WasmModule): CommentManager | null {
     if (!_commentManager) {
@@ -33,16 +33,6 @@ function getCommentManager(getWasmApi: () => WasmModule): CommentManager | null 
         }
     }
     return _commentManager;
-}
-
-function getReviewSession(getWasmApi: () => WasmModule): ReviewSession | null {
-    if (!_reviewSession) {
-        const api = getWasmApi();
-        if (typeof api?.ReviewSession === 'function') {
-            _reviewSession = new api.ReviewSession();
-        }
-    }
-    return _reviewSession;
 }
 
 export type PdfCommentWasmBridge = {
@@ -65,7 +55,7 @@ export function createPdfCommentWasmBridge(
     deps: CreatePdfCommentWasmBridgeDeps,
 ): PdfCommentWasmBridge {
     function readReviewSession(): CommentReviewSession {
-        const raw = getReviewSession(deps.getWasmApi)?.readFeed() as
+        const raw = getReviewSession()?.readFeed() as
             | CommentReviewSession
             | null
             | undefined;

@@ -1,22 +1,7 @@
 // Review WASM bridge — delegates to `ReviewSession` struct API (P2 of session-API plan).
 
 import { getWasmApi } from '../shared/wasm_loader';
-import type { WasmModule } from '../shared/wasm_loader';
-import type { ReviewSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
-
-// ── Singleton ReviewSession instance ──────────────────────────────────
-
-let _session: ReviewSession | null = null;
-
-function getReviewSession(): ReviewSession | null {
-    if (!_session) {
-        const api = getWasmApi();
-        if (typeof api?.ReviewSession === 'function') {
-            _session = new api.ReviewSession();
-        }
-    }
-    return _session;
-}
+import { getReviewSession } from '../shared/session_singletons';
 
 // ── Review types ──
 

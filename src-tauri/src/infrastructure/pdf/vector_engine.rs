@@ -397,42 +397,10 @@ pub fn build_vector_page_model_from_display_list(
         });
     }
 
-    // --- Phase 8: Occlusion Culling (V1: Full-page Masking) ---
-    // If a top-level object (like a background image) covers the whole page,
-    // we can ignore everything below it to save IPC and Render cycles.
-    if render_objects.len() > 50 {
-        let mut cull_idx = None;
-        for (i, obj) in render_objects.iter().enumerate().rev() {
-            let is_opaque_mask = match obj {
-                RenderObject::Image(img) => {
-                    // Check if image covers ~98% of the page area
-                    img.width >= pw * 0.98 && img.height >= ph * 0.98
-                }
-                _ => false,
-            };
-            if is_opaque_mask {
-                cull_idx = Some(i);
-                break;
-            }
-        }
-        if let Some(idx) = cull_idx {
-            if idx > 0 {
-                let dropped = idx;
-                crate::pdf_log!(
-                    2,
-                    "[PROF] Occlusion Culling: Dropped {} objects hidden beneath full-page mask at index {}",
-                    dropped,
-                    idx
-                );
-                crate::pdf_log!(
-                    2,
-                    "[PDF-CULL] Disabling drain for debug: would have culled {} objects",
-                    idx
-                );
-                // render_objects.drain(0..idx);
-            }
-        }
-    }
+    // --- Phase 8: Occlusion Culling ---
+    // V1 "full-page masking" culling was disabled (drain commented out) and has
+    // been removed; it only produced logs. Revisit with real culling if IPC
+    // payload size ever becomes the bottleneck.
 
     let palette = crate::infrastructure::pdf::models::VectorPalette {
         colors: palette_colors,

@@ -367,11 +367,9 @@ impl PdfDocumentService {
     }
 }
 
-/// Maximum snapshots kept per path in undo/redo history.
-const HISTORY_LIMIT: usize = 20;
-
 /// Pop the newest snapshot for `path` from `from`, archiving `current` into
-/// `to` (capped at [`HISTORY_LIMIT`]). Returns the snapshot to restore, if any.
+/// `to` (capped at [`crate::app_state::HISTORY_LIMIT`]). Returns the snapshot
+/// to restore, if any.
 fn transfer_snapshot(
     from: &mut HashMap<String, Vec<std::sync::Arc<Document>>>,
     to: &mut HashMap<String, Vec<std::sync::Arc<Document>>>,
@@ -382,7 +380,7 @@ fn transfer_snapshot(
     if let Some(current) = current {
         let history = to.entry(path.to_string()).or_insert_with(Vec::new);
         history.push(current);
-        if history.len() > HISTORY_LIMIT {
+        if history.len() > crate::app_state::HISTORY_LIMIT {
             history.remove(0);
         }
     }
@@ -392,6 +390,7 @@ fn transfer_snapshot(
 #[cfg(test)]
 mod history_tests {
     use super::*;
+    use crate::app_state::HISTORY_LIMIT;
 
     fn blank_doc() -> std::sync::Arc<Document> {
         std::sync::Arc::new(Document::with_version("1.4"))

@@ -7,35 +7,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { RustRenderFrame } from '../render/frame_plan';
+import { getDocumentSession, getReviewSession } from '../shared/session_singletons';
 import type { WasmModule } from '../shared/wasm_loader';
-import type { DocumentSession, ReviewSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
 type GetWasmApi = () => WasmModule;
-
-// ── Session singletons ─────────────────────────────────────────
-
-let _documentSession: DocumentSession | null = null;
-let _reviewSession: ReviewSession | null = null;
-
-function getDocumentSession(getWasmApi: GetWasmApi): DocumentSession | null {
-    if (!_documentSession) {
-        const api = getWasmApi();
-        if (typeof api?.DocumentSession === 'function') {
-            _documentSession = new api.DocumentSession();
-        }
-    }
-    return _documentSession;
-}
-
-function getReviewSession(getWasmApi: GetWasmApi): ReviewSession | null {
-    if (!_reviewSession) {
-        const api = getWasmApi();
-        if (typeof api?.ReviewSession === 'function') {
-            _reviewSession = new api.ReviewSession();
-        }
-    }
-    return _reviewSession;
-}
 
 // ─── Shared types (preserved for external callers) ───────────────────────────
 
@@ -141,12 +116,12 @@ function callMethod<T>(target: unknown, method: string, ...args: unknown[]): T |
 export function createEditorWasmApi(getWasmApi: GetWasmApi): EditorWasmApi {
     return {
         applyDocumentPatch(patch: unknown): void {
-            getDocumentSession(getWasmApi)?.applyPatch?.(patch);
+            getDocumentSession()?.applyPatch?.(patch);
         },
 
         buildRegionTextPatch(pageIndex, regionId, kind, originalText, newText) {
             return callMethod<unknown>(
-                getDocumentSession(getWasmApi),
+                getDocumentSession(),
                 'buildRegionPatch',
                 pageIndex,
                 regionId,
@@ -158,7 +133,7 @@ export function createEditorWasmApi(getWasmApi: GetWasmApi): EditorWasmApi {
 
         applyRegionTextReplacements(replacements, frameRequest) {
             return callMethod<RegionTextReplaceResult>(
-                getDocumentSession(getWasmApi),
+                getDocumentSession(),
                 'applyRegionReplacements',
                 replacements,
                 frameRequest,
@@ -167,7 +142,7 @@ export function createEditorWasmApi(getWasmApi: GetWasmApi): EditorWasmApi {
 
         requestDocumentRefresh(source, frameRequest) {
             return callMethod<DocumentRefreshResult>(
-                getDocumentSession(getWasmApi),
+                getDocumentSession(),
                 'requestRefresh',
                 source,
                 frameRequest,
@@ -175,12 +150,12 @@ export function createEditorWasmApi(getWasmApi: GetWasmApi): EditorWasmApi {
         },
 
         getReviewFeed() {
-            return callMethod<ReviewFeedResult>(getReviewSession(getWasmApi), 'readFeed');
+            return callMethod<ReviewFeedResult>(getReviewSession(), 'readFeed');
         },
 
         acceptReviewChange(patchKey) {
             return callMethod<AcceptReviewChangeResult>(
-                getReviewSession(getWasmApi),
+                getReviewSession(),
                 'accept',
                 patchKey,
             );
@@ -188,18 +163,18 @@ export function createEditorWasmApi(getWasmApi: GetWasmApi): EditorWasmApi {
 
         rejectReviewChange(patchKey) {
             return callMethod<RejectReviewChangeResult>(
-                getReviewSession(getWasmApi),
+                getReviewSession(),
                 'reject',
                 patchKey,
             );
         },
 
         acceptAllReviewChanges() {
-            return callMethod<ReviewBulkChangeResult>(getReviewSession(getWasmApi), 'acceptAll');
+            return callMethod<ReviewBulkChangeResult>(getReviewSession(), 'acceptAll');
         },
 
         rejectAllReviewChanges() {
-            return callMethod<ReviewBulkChangeResult>(getReviewSession(getWasmApi), 'rejectAll');
+            return callMethod<ReviewBulkChangeResult>(getReviewSession(), 'rejectAll');
         },
 
         async saveSession(path: string, pageIndex: number): Promise<unknown> {
