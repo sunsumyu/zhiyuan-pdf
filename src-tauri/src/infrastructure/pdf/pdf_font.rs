@@ -6,8 +6,8 @@ pub use pdf_viewer_core::models::FontHints;
 
 #[derive(Debug, Clone, Default)]
 pub struct CMap {
-    pub mappings: HashMap<u16, String>,
-    pub rev_mappings: HashMap<String, u16>,
+    pub mappings: HashMap<u32, String>,
+    pub rev_mappings: HashMap<String, u32>,
 }
 
 impl CMap {
@@ -15,7 +15,7 @@ impl CMap {
         Self::default()
     }
 
-    pub fn from_codepoint_pairs(pairs: Vec<(u16, String)>) -> Self {
+    pub fn from_codepoint_pairs(pairs: Vec<(u32, String)>) -> Self {
         let mut mappings = HashMap::new();
         let mut rev_mappings = HashMap::new();
         for (code, s) in pairs {
@@ -108,7 +108,7 @@ impl ParsedFont {
                 cmap.rev_mappings
                     .get(&c.to_string())
                     .copied()
-                    .unwrap_or(c as u32 as u16) as u32
+                    .unwrap_or(c as u32)
             } else {
                 c as u32
             };
@@ -168,14 +168,12 @@ pub fn resolve_glyph_geom(
             let cmap_hit = font
                 .cmap
                 .as_ref()
-                .and_then(|m| m.mappings.get(&(code as u16)))
+                .and_then(|m| m.mappings.get(&code))
                 .cloned();
             let had_hit = cmap_hit.is_some();
-            unicode = cmap_hit.unwrap_or_else(|| {
-                char::from_u32(code)
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| format!("[0x{:04X}]", code))
-            });
+            // Unmapped CIDs contribute geometry (width/origin) but no text:
+            // fabricating "[0x....]" noise corrupts the extracted string.
+            unicode = cmap_hit.unwrap_or_else(|| "".to_string());
             crate::pdf_log!(
                 2,
                 "[GLYPH-DECODE] 2byte code=0x{:04X} cmap_hit={} unicode={:?} (U+{:04X})",
@@ -190,7 +188,7 @@ pub fn resolve_glyph_geom(
             let cmap_hit = font
                 .cmap
                 .as_ref()
-                .and_then(|m| m.mappings.get(&(code as u16)))
+                .and_then(|m| m.mappings.get(&code))
                 .cloned();
             let had_hit = cmap_hit.is_some();
             unicode = cmap_hit.unwrap_or_else(|| {
@@ -302,7 +300,7 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                 let parts: Vec<&str> = mapping_line.split_whitespace().collect();
                 if parts.len() >= 2 {
                     let code =
-                        u16::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
+                        u32::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
                             .unwrap_or(0);
                     let val = hex_to_string(parts[1].trim_matches(|c| c == '<' || c == '>'));
                     cmap.rev_mappings.insert(val.clone(), code);
@@ -318,10 +316,10 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                 let parts: Vec<&str> = mapping_line.split_whitespace().collect();
                 if parts.len() >= 3 {
                     let start =
-                        u16::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
+                        u32::from_str_radix(parts[0].trim_matches(|c| c == '<' || c == '>'), 16)
                             .unwrap_or(0);
                     let end =
-                        u16::from_str_radix(parts[1].trim_matches(|c| c == '<' || c == '>'), 16)
+                        u32::from_str_radix(parts[1].trim_matches(|c| c == '<' || c == '>'), 16)
                             .unwrap_or(0);
                     if parts[2].starts_with('[') {
                         let array_content = parts[2..].join(" ");
@@ -330,27 +328,31 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                             .split_whitespace()
                             .collect();
                         for (idx, v_hex) in items.iter().enumerate() {
-                            let code = start + idx as u16;
+                            let code = start + idx as u32;
                             if code <= end {
-                                cmap.mappings.insert(
-                                    code,
-                                    hex_to_string(v_hex.trim_matches(|c| c == '<' || c == '>')),
-                                );
+                                let val =
+                                    hex_to_string(v_hex.trim_matches(|c| c == '<' || c == '>'));
+                                cmap.rev_mappings.insert(val.clone(), code);
+                                cmap.mappings.insert(code, val);
                             }
                         }
                     } else {
-                        let base_val = u16::from_str_radix(
-                            parts[2].trim_matches(|c| c == '<' || c == '>'),
-                            16,
-                        )
-                        .unwrap_or(0);
-                        for code in start..=end {
-                            let mapped_val = base_val + (code - start);
-                            let val = char::from_u32(mapped_val as u32)
-                                .map(|c| c.to_string())
-                                .unwrap_or_default();
-                            cmap.rev_mappings.insert(val.clone(), code);
-                            cmap.mappings.insert(code, val);
+                        let hex_str = parts[2].trim_matches(|c| c == '<' || c == '>');
+                        if let Ok(base_val) = u32::from_str_radix(hex_str, 16) {
+                            for code in start..=end {
+                                let mapped_val = base_val + (code - start);
+                                let val = char::from_u32(mapped_val)
+                                    .map(|c| c.to_string())
+                                    .unwrap_or_else(|| hex_to_string(&format!("{:04X}", mapped_val)));
+                                cmap.rev_mappings.insert(val.clone(), code);
+                                cmap.mappings.insert(code, val);
+                            }
+                        } else {
+                            let val = hex_to_string(hex_str);
+                            for code in start..=end {
+                                cmap.rev_mappings.insert(val.clone(), code);
+                                cmap.mappings.insert(code, val.clone());
+                            }
                         }
                     }
                 }
@@ -362,12 +364,21 @@ pub fn read_cmap(data: &[u8]) -> CMap {
 
 fn hex_to_string(hex: &str) -> String {
     let mut res = String::new();
+    let mut u16_units = Vec::new();
     for i in (0..hex.len()).step_by(4) {
         if i + 4 <= hex.len() {
             if let Ok(u) = u16::from_str_radix(&hex[i..i + 4], 16) {
-                if let Some(c) = char::from_u32(u as u32) {
-                    res.push(c);
-                }
+                u16_units.push(u);
+            }
+        }
+    }
+    if !u16_units.is_empty() {
+        // ToUnicode targets are UTF-16BE: decode surrogate pairs instead of
+        // mapping each unit independently (which yields lone-surrogate garbage
+        // for chars outside the BMP).
+        for c in std::char::decode_utf16(u16_units.iter().copied()) {
+            if let Ok(ch) = c {
+                res.push(ch);
             }
         }
     }
@@ -708,4 +719,80 @@ pub fn parse_font_from_dict(
         has_embedded_font_file: false,
         has_to_unicode_cmap,
     })
+}
+
+#[cfg(test)]
+mod cmap_tests {
+    use super::*;
+
+    #[test]
+    fn hex_to_string_decodes_utf16_surrogate_pairs() {
+        // U+20BB7 (CJK ext B) as UTF-16BE: high D842 + low DFB7.
+        assert_eq!(hex_to_string("D842DFB7"), "\u{20BB7}".to_string());
+        // BMP char passes through unchanged.
+        assert_eq!(hex_to_string("4E2D"), "中".to_string());
+    }
+
+    #[test]
+    fn hex_to_string_keeps_short_hex_fallback() {
+        assert_eq!(hex_to_string("41"), "A".to_string());
+    }
+
+    #[test]
+    fn read_cmap_bfchar_maps_both_directions() {
+        let cmap = read_cmap(
+            b"begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n\
+              1 beginbfchar\n<0003> <4E2D>\nendbfchar\nendcmap",
+        );
+        assert_eq!(cmap.mappings.get(&0x0003).map(String::as_str), Some("中"));
+        assert_eq!(cmap.rev_mappings.get("中"), Some(&0x0003u32));
+    }
+
+    #[test]
+    fn read_cmap_bfrange_array_populates_both_directions() {
+        let cmap = read_cmap(
+            b"begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n\
+              1 beginbfrange\n<0010> <0012> [<4E00> <4E8C> <4E09>]\nendbfrange\nendcmap",
+        );
+        assert_eq!(cmap.mappings.get(&0x0011).map(String::as_str), Some("二"));
+        assert_eq!(cmap.rev_mappings.get("三"), Some(&0x0012u32));
+    }
+
+    #[test]
+    fn read_cmap_bfrange_scalar_maps_contiguous_codes() {
+        let cmap = read_cmap(
+            b"begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n\
+              1 beginbfrange\n<0020> <0022> <0041>\nendbfrange\nendcmap",
+        );
+        assert_eq!(cmap.mappings.get(&0x0020).map(String::as_str), Some("A"));
+        assert_eq!(cmap.mappings.get(&0x0022).map(String::as_str), Some("C"));
+        assert_eq!(cmap.rev_mappings.get("B"), Some(&0x0021u32));
+    }
+
+    #[test]
+    fn resolve_glyph_geom_drops_unmapped_cid_text_but_keeps_geometry() {
+        let font = ParsedFont {
+            name: "Test".to_string(),
+            base_font: "Test".to_string(),
+            font_subtype: Some("Type0".to_string()),
+            cmap: None,
+            widths: HashMap::from([(0x4E2Du32, 1000.0)]),
+            default_width: 500.0,
+            hints: None,
+            post_script_name: None,
+            family_hint: None,
+            embedded_font_key: None,
+            has_embedded_font_file: false,
+            has_to_unicode_cmap: false,
+        };
+        let (text, origins, widths, codes, advance) =
+            resolve_glyph_geom(&[0x4E, 0x2D], &font, 10.0, 1.0, 0.0, 0.0);
+        // No CMap hit: the CID contributes no text ...
+        assert_eq!(text, "");
+        // ... but its width/origin/code geometry survives for layout.
+        assert_eq!(origins.len(), 1);
+        assert_eq!(widths.len(), 1);
+        assert_eq!(codes, vec![0x4E2Du32]);
+        assert!((advance - 10.0).abs() < 0.001);
+    }
 }

@@ -723,6 +723,22 @@ fn emit_text_line_ops(run: &PersistedTextLinePlan, user_unit: f32) -> (Vec<lopdf
         ));
     }
 
+    // Preserve the original render mode; stroke-enabled modes get a faux-bold
+    // stroke weight proportional to the font size.
+    if run.render_mode != 0 {
+        ops.push(lopdf::content::Operation::new(
+            "Tr",
+            vec![Object::Integer(run.render_mode as i64)],
+        ));
+        if run.render_mode == 1 || run.render_mode == 2 {
+            let bold_stroke = (adj_font_size * 0.03).max(0.3);
+            ops.push(lopdf::content::Operation::new(
+                "w",
+                vec![Object::Real(bold_stroke)],
+            ));
+        }
+    }
+
     ops.push(lopdf::content::Operation::new(
         "Tm",
         vec![
@@ -748,6 +764,12 @@ fn emit_text_line_ops(run: &PersistedTextLinePlan, user_unit: f32) -> (Vec<lopdf
             lopdf::StringFormat::Hexadecimal,
         )],
     ));
+    if run.render_mode != 0 {
+        ops.push(lopdf::content::Operation::new(
+            "Tr",
+            vec![Object::Integer(0)],
+        ));
+    }
 
     let underline = if run.is_underline && adj_width > 0.0 {
         Some(UnderlineSpec {
@@ -881,16 +903,52 @@ fn patch_atomic_reflow_recursive(
                             &patch.new_text,
                         )?;
                         let active_font = Arc::new(font_info.parsed_font.clone());
+                        let target_wrap = patch.wrap_width.unwrap_or(0.0);
+                        let mut effective_h_scaling = patch.horizontal_scaling;
+                        let mut effective_char_spacing = patch.char_spacing;
+
+                        // Measure the natural (unadjusted) layout first: when a
+                        // single line must fit an exact wrap width, apply a
+                        // gentle micro-fit via Tz (±15%) or Tc so the replaced
+                        // text lands seamlessly in the original slot.
+                        let initial_layout = break_text_into_lines(
+                            &patch.new_text,
+                            patch.new_runs.as_ref(),
+                            &active_font,
+                            state.font_size,
+                            target_wrap,
+                            patch.alignment,
+                            patch.line_height,
+                            effective_char_spacing,
+                            effective_h_scaling,
+                        );
+                        if target_wrap > 1.0 && initial_layout.lines.len() == 1 {
+                            let nat_w = initial_layout.lines[0].width;
+                            if nat_w > 0.1 && (nat_w - target_wrap).abs() > 0.5 {
+                                let ratio = target_wrap / nat_w;
+                                if ratio >= 0.85 && ratio <= 1.15 {
+                                    effective_h_scaling *= ratio;
+                                } else {
+                                    let char_count = patch.new_text.chars().count();
+                                    if char_count > 1 {
+                                        let delta =
+                                            (target_wrap - nat_w) / ((char_count - 1) as f32);
+                                        effective_char_spacing += delta;
+                                    }
+                                }
+                            }
+                        }
+
                         let layout = break_text_into_lines(
                             &patch.new_text,
                             patch.new_runs.as_ref(),
                             &active_font,
                             state.font_size,
-                            patch.wrap_width.unwrap_or(0.0),
+                            target_wrap,
                             patch.alignment,
                             patch.line_height,
-                            patch.char_spacing,
-                            patch.horizontal_scaling,
+                            effective_char_spacing,
+                            effective_h_scaling,
                         );
 
                         let trm = state.core.text_render_matrix();
@@ -919,7 +977,12 @@ fn patch_atomic_reflow_recursive(
                                 width: line.width * psx,
                                 color: resolve_line_color(line),
                                 is_underline: resolve_line_underline(line),
-                                horizontal_scaling: patch.horizontal_scaling,
+                                // Fold the document's current Tz state (percent)
+                                // into the emitted line scaling.
+                                horizontal_scaling: effective_h_scaling
+                                    * state.horizontal_scaling
+                                    / 100.0,
+                                render_mode: state.render_mode,
                                 patch_idx: target_idx,
                                 line_seq: idx,
                             });
