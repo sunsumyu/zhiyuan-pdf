@@ -30,7 +30,7 @@ pub fn parse_content_stream(
             "cm" => {
                 if let Ok(m) = operands_to_f32(&op.operands) {
                     if m.len() == 6 {
-                        state.concat_ctm([m[0], m[1], m[2], m[3], m[4], m[5]]);
+                        state.text.op_cm([m[0], m[1], m[2], m[3], m[4], m[5]]);
                     }
                 }
             }
@@ -192,7 +192,7 @@ pub fn parse_content_stream(
             "m" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 2 {
-                        let pt = state.transform_point(p[0], p[1]);
+                        let pt = state.text.transform_point(p[0], p[1]);
                         current_segments.push(PathSegment {
                             command: "move".into(),
                             points: vec![[pt[0], pt[1]]],
@@ -203,7 +203,7 @@ pub fn parse_content_stream(
             "l" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 2 {
-                        let pt = state.transform_point(p[0], p[1]);
+                        let pt = state.text.transform_point(p[0], p[1]);
                         current_segments.push(PathSegment {
                             command: "line".into(),
                             points: vec![[pt[0], pt[1]]],
@@ -219,10 +219,10 @@ pub fn parse_content_stream(
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 4 {
                         let (x, y, w, h) = (p[0], p[1], p[2], p[3]);
-                        let p1 = state.transform_point(x, y);
-                        let p2 = state.transform_point(x + w, y);
-                        let p3 = state.transform_point(x + w, y + h);
-                        let p4 = state.transform_point(x, y + h);
+                        let p1 = state.text.transform_point(x, y);
+                        let p2 = state.text.transform_point(x + w, y);
+                        let p3 = state.text.transform_point(x + w, y + h);
+                        let p4 = state.text.transform_point(x, y + h);
                         current_segments.push(PathSegment {
                             command: "move".into(),
                             points: vec![[p1[0], p1[1]]],
@@ -247,7 +247,7 @@ pub fn parse_content_stream(
                 }
             }
             "BT" => {
-                state.begin_text();
+                state.text.op_bt();
             }
             "Tf" => {
                 if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
@@ -259,8 +259,8 @@ pub fn parse_content_stream(
                                 .ok()
                                 .or_else(|| o.as_i64().ok().map(|i| i as f32))
                         })
-                        .unwrap_or(state.font_size);
-                    state.font_size = size;
+                        .unwrap_or(state.text.font_size);
+                    state.text.font_size = size;
                     if let Some(font_id) = flat_resources
                         .get(b"Font" as &[u8])
                         .and_then(|m| m.get(name))
@@ -286,23 +286,23 @@ pub fn parse_content_stream(
                         .or_else(|| o.as_i64().ok().map(|i| i as f32))
                 }) {
                     match op_str {
-                        "TL" => state.tl = v,
-                        "Tc" => state.char_spacing = v,
-                        "Tw" => state.word_spacing = v,
-                        "Tz" => state.horizontal_scaling = v,
+                        "TL" => state.text.tl = v,
+                        "Tc" => state.text.char_spacing = v,
+                        "Tw" => state.text.word_spacing = v,
+                        "Tz" => state.text.horizontal_scaling = v,
                         _ => state.text_rise = v,
                     }
                 }
             }
             "Tr" => {
                 if let Some(v) = op.operands.get(0).and_then(|o| o.as_i64().ok()) {
-                    state.render_mode = v;
+                    state.text.render_mode = v as i32;
                 }
             }
             "Td" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 2 {
-                        state.translate_text(p[0], p[1]);
+                        state.text.op_td(p[0], p[1]);
                     }
                 }
             }
@@ -310,32 +310,31 @@ pub fn parse_content_stream(
             "TD" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 2 {
-                        state.tl = -p[1];
-                        state.translate_text(p[0], p[1]);
+                        state.text.op_td_with_leading(p[0], p[1]);
                     }
                 }
             }
             // `T*` moves to the next line by the text leading (`TL`).
-            "T*" => state.translate_text(0.0, -state.tl),
+            "T*" => state.text.op_t_star(),
             "Tm" => {
                 if let Ok(m) = operands_to_f32(&op.operands) {
                     if m.len() >= 6 {
-                        state.set_text_matrix([m[0], m[1], m[2], m[3], m[4], m[5]]);
+                        state.text.op_tm([m[0], m[1], m[2], m[3], m[4], m[5]]);
                     }
                 }
             }
             "Tj" | "TJ" => {
                 *obj_counter += 1;
                 if let Some(ref font) = state.current_font {
-                    let h_scale = state.horizontal_scaling / 100.0;
+                    let h_scale = state.text.horizontal_scaling / 100.0;
                     let (text, origins, widths, codes, advance) = if op_str == "Tj" {
                         resolve_glyph_geom(
                             op.operands[0].as_str().unwrap_or(&[]),
                             font,
-                            state.font_size,
+                            state.text.font_size,
                             h_scale,
-                            state.char_spacing,
-                            state.word_spacing,
+                            state.text.char_spacing,
+                            state.text.word_spacing,
                         )
                     } else {
                         op.operands[0]
@@ -344,16 +343,16 @@ pub fn parse_content_stream(
                                 resolve_tj_array_text(
                                     arr,
                                     font,
-                                    state.font_size,
+                                    state.text.font_size,
                                     h_scale,
-                                    state.char_spacing,
-                                    state.word_spacing,
+                                    state.text.char_spacing,
+                                    state.text.word_spacing,
                                 )
                             })
                             .unwrap_or_default()
                     };
 
-                    let trm = state.text_render_matrix();
+                    let trm = state.text.text_render_matrix();
                     // char_origins and char_widths from resolve_glyph_geom are in TEXT
                     // SPACE (pre-matrix).  The rest of the pipeline (LayoutRun, caret
                     // stops, overlay rendering) expects PAGE SPACE values.  Scale by the
@@ -367,7 +366,7 @@ pub fn parse_content_stream(
                         tx: trm[4],
                         ty: trm[5],
                         width: page_advance,
-                        font_size: (state.font_size * trm[3]).abs(),
+                        font_size: (state.text.font_size * trm[3]).abs(),
                         font_name: font.name.clone(),
                         char_origins: page_origins,
                         char_widths: page_widths,
@@ -378,14 +377,14 @@ pub fn parse_content_stream(
                         b: trm[1],
                         c: trm[2],
                         d: trm[3],
-                        horizontal_scaling: state.horizontal_scaling,
-                        char_spacing: state.char_spacing,
-                        word_spacing: state.word_spacing,
-                        render_mode: state.render_mode,
+                        horizontal_scaling: state.text.horizontal_scaling,
+                        char_spacing: state.text.char_spacing,
+                        word_spacing: state.text.word_spacing,
+                        render_mode: state.text.render_mode as i64,
                         ..Default::default()
                     });
                     // Tm update uses the original text-space advance (not page-scaled)
-                    state.advance_text(advance);
+                    state.text.core.advance_text(advance);
                 }
             }
             "S" | "s" | "f" | "F" | "f*" | "B" | "b" | "B*" | "b*" => {
@@ -464,7 +463,7 @@ pub fn parse_content_stream(
                                                 if let Ok(m_arr) = m_obj.as_array() {
                                                     if let Ok(m) = operands_to_f32(m_arr) {
                                                         if m.len() == 6 {
-                                                            sub_state.concat_ctm([
+                                                            sub_state.text.op_cm([
                                                                 m[0], m[1], m[2], m[3], m[4],
                                                                 m[5],
                                                             ]);
@@ -534,17 +533,17 @@ pub fn parse_content_stream(
                                                     let mut cache = crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE.lock().unwrap();
                                                     cache.insert(asset_id.clone(), data);
                                                 }
-                                                let ctm = state.ctm();
+                                                let ctm = state.text.ctm();
                                                 crate::pdf_log!(
                                                     3,
                                                     "[PDF-IMG] Do image id={} {}x{} ctm=[{:.1},{:.1},{:.1},{:.1},{:.1},{:.1}] jpeg={}",
                                                     asset_id, img_w, img_h, ctm[0], ctm[1], ctm[2], ctm[3], ctm[4], ctm[5], is_jpeg
                                                 );
                                                 let corners = [
-                                                    state.transform_point(0.0, 0.0),
-                                                    state.transform_point(1.0, 0.0),
-                                                    state.transform_point(0.0, 1.0),
-                                                    state.transform_point(1.0, 1.0),
+                                                    state.text.transform_point(0.0, 0.0),
+                                                    state.text.transform_point(1.0, 0.0),
+                                                    state.text.transform_point(0.0, 1.0),
+                                                    state.text.transform_point(1.0, 1.0),
                                                 ];
                                                 let min_x = corners
                                                     .iter()
