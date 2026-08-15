@@ -1,6 +1,6 @@
 //! Region-patch application command.
 
-use super::ipc_converters::execute_region_patches;
+use crate::application::pdf::edit_commands::execute_region_patches;
 use crate::log_step;
 use pdf_viewer_core::persistence::models::PersistableRegionPatch;
 use tauri::command;

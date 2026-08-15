@@ -56,7 +56,7 @@ pub async fn read_preview(
     }
 
     // 2. Ensure lopdf Document is loaded (reuses cached Arc<Document>)
-    crate::interfaces::pdf::ensure_document_loaded(&state, &path).await?;
+    crate::application::pdf::edit_commands::ensure_document_loaded(&state, &path).await?;
 
     // 3. Get the cached lopdf Document
     let doc_arc = {

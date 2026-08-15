@@ -31,6 +31,5 @@ pub use system::*;
 // ── Helper re-exports (used by `crate::application::pdf::*` modules) ─────
 
 pub(crate) use ipc_converters::{
-    apply_highlight_annotation, apply_text_comment, delete_annotation_internal,
-    ensure_document_loaded, update_text_comment,
+    delete_annotation_internal, update_text_comment,
 };

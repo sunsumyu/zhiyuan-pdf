@@ -1,5 +1,5 @@
+use crate::application::pdf::edit_commands::ensure_document_loaded;
 use crate::application::pdf::page_annotation::list_page_comments;
-use crate::interfaces::pdf::ensure_document_loaded;
 
 pub use pdf_viewer_core::annotation::{
     PdfCommentReviewPageSummary, PdfCommentReviewRequest, PdfCommentReviewResult,
