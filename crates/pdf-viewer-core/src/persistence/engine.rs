@@ -33,7 +33,7 @@ pub fn collect_persistable_region_patches(
                     wrap_width: None,
                     align: Some(crate::models::LayoutAlignment::Left),
                     char_spacing: group.pair.value_style.char_spacing,
-                    horizontal_scaling: group.pair.value_style.scale_x,
+                    horizontal_scaling: group.pair.value_style.scale_x * 100.0,
                     ..Default::default()
                 });
             }
@@ -64,7 +64,7 @@ pub fn collect_persistable_region_patches(
                 wrap_width,
                 align: Some(crate::models::LayoutAlignment::Left),
                 char_spacing,
-                horizontal_scaling: scale_x,
+                horizontal_scaling: scale_x * 100.0,
                 ..Default::default()
             });
         }
