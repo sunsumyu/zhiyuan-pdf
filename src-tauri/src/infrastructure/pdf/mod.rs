@@ -29,6 +29,7 @@ pub mod save_engine;
 pub mod save_text_write_plan;
 pub mod spatial_graph;
 pub mod text_matrix;
+pub mod text_state;
 pub mod vector_engine;
 pub mod vello_renderer;
 
