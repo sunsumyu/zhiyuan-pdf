@@ -2,6 +2,20 @@
 
 > 2026-08-04 · 源自用户反馈的 3 个缩放 bug + `codex/refactor-split` 分支已有的修复
 
+> **状态（2026-08-15）：已实现（经 salvage，非合并）--勿再执行本合并。**
+>
+> - main 已通过 salvage 批次吸收整条 zoom 修复序列：`578c058`（源自
+>   `f968c9b..87bf89a`，含 Rust 布局契约、TS 布局同步、双倍缩放闪烁修复及其单测），
+>   已随 salvage 批次推送至 origin/main。
+> - 全量合并 `codex/refactor-split` 会产生 33 个冲突并引入一套被 main 深模块重构
+>   取代的平行架构（host->platform 重命名、模块拆分等），已评估并放弃。
+> - 自动化验证全绿（2026-08-15，main）：core 75 passed；ui wasm 9 passed
+>   （5 个 `host::layout` 取消保证测试经 `6f7b614` 修复为 wasm 可运行后全过）；
+>   `npm run build`、`npm run wasm:pdf-viewer-ui` 均 exit 0。
+> - 剩余唯一未完成项：人工 E2E（场景 A-D），见
+>   `fix/zoom-layout-tests-wasm-runnable` 分支上的
+>   `docs/runbooks/manual-zoom-e2e-verification.md`。
+
 ## Problem Statement
 
 用户在 `main` 分支上打开 PDF 后，缩放时有 3 个 bug：
