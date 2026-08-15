@@ -16,8 +16,13 @@ src-tauri/gen/
 # Editor / IDE
 .vscode/
 .idea/
+.zed/
 *.swp
 *.swo
+
+# Agent / tool session state
+.zcode/
+.scratch/
 
 # Logs and dumps
 *.log
