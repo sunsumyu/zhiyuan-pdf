@@ -48,5 +48,8 @@ memmap2 = "0.9.10"
 flate2 = "1.0"
 chrono = "0.4"
 
+[dev-dependencies]
+tempfile = "3"
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]
