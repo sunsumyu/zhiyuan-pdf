@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use pdf_viewer_core::models::{GlyphPaintPlan, VectorPageModel};
 
-use crate::editor::bridge::build_paragraph_render_target;
+use pdf_viewer_core::edit::bridge::build_paragraph_render_target;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };

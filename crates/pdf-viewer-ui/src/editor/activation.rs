@@ -6,7 +6,7 @@ use pdf_viewer_core::geometry::coordinate_transform::{
 use pdf_viewer_core::models::BoundingBox;
 
 use crate::document::patch_persistence::{has_persistable_patches, save_persistable_patches};
-use crate::editor::bridge::{collect_paragraph_interaction_targets, ParagraphInteractionTarget};
+use pdf_viewer_core::edit::bridge::{collect_paragraph_interaction_targets, ParagraphInteractionTarget};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };

@@ -287,7 +287,7 @@ pub fn build_active_editor_patch(new_text: String) -> Option<PersistableRegionPa
     };
     with_page_state(|page_state| {
         let paragraph_id = active_edit_paragraph_id()?;
-        let mut patch = crate::editor::bridge::build_paragraph_patch_with_runs(
+        let mut patch = pdf_viewer_core::edit::bridge::build_paragraph_patch_with_runs(
             page_state.paint_plan.as_ref()?,
             page_state.vector_model.as_ref(),
             &paragraph_id,

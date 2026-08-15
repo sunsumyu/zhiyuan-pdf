@@ -228,8 +228,7 @@ impl EditorSession {
             Err(js) => return js,
         };
 
-        use crate::editor::activation::MoveCaretToClientPointRequest;
-        use crate::editor::host_workflow::move_caret_to_client_point;
+        use crate::editor::activation::{MoveCaretToClientPointRequest, move_caret_to_client_point};
 
         let move_request = MoveCaretToClientPointRequest {
             client_x: request.client_x,
@@ -665,7 +664,7 @@ impl EditorSession {
     /// Save the editor session to disk.
     #[wasm_bindgen(js_name = "saveSession")]
     pub async fn save_session(&self, path: String, page_index: u16) -> JsValue {
-        use crate::editor::host_workflow::save_editor_session;
+        use crate::editor::activation::save_editor_session;
         to_value(&save_editor_session(path, page_index).await).unwrap_or(JsValue::NULL)
     }
 
@@ -1107,8 +1106,8 @@ fn build_frame_request() -> crate::present::plan_builder::FramePlanRequest {
 fn resolve_target_at_page_point(
     page_x: f32,
     page_y: f32,
-) -> Option<crate::editor::bridge::ParagraphInteractionTarget> {
-    use crate::editor::bridge::collect_paragraph_interaction_targets;
+) -> Option<pdf_viewer_core::edit::bridge::ParagraphInteractionTarget> {
+    use pdf_viewer_core::edit::bridge::collect_paragraph_interaction_targets;
     use crate::page::page_store::with_page_state;
 
     let targets = with_page_state(|state| {
@@ -1137,7 +1136,7 @@ fn resolve_target_at_page_point(
 }
 
 fn collect_text_blocks() -> Vec<TextBlockInfo> {
-    use crate::editor::bridge::collect_paragraph_interaction_targets;
+    use pdf_viewer_core::edit::bridge::collect_paragraph_interaction_targets;
     use crate::page::page_store::with_page_state;
 
     with_page_state(|state| {

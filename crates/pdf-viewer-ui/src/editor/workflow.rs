@@ -2,7 +2,7 @@ use pdf_viewer_core::models::PageState;
 use wasm_bindgen::JsValue;
 
 use super::target_resolution::{is_supported_region_kind, resolve_region_target_from_page_state};
-use crate::editor::bridge::{
+use pdf_viewer_core::edit::bridge::{
     build_active_editor_target, build_paragraph_patch as core_build_paragraph_patch,
     collect_paragraph_interaction_targets,
     resolve_paragraph_shell_bbox as bridge_resolve_paragraph_shell_bbox,

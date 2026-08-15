@@ -1,17 +1,28 @@
 //! ReviewSession — P2 struct-based WASM API for change-review (accept/reject patches).
 //!
 //! Mirrors the P0 `EditorSession` / P1 `DocumentSession` / P2 `FindSession` pattern.
-//! Delegates to `crate::document::review`. The legacy `review::facade::reviewFacade*`
+//! Delegates to `crate::ui_state_store`. The legacy `review::facade::reviewFacade*`
 //! functions remain for backward compatibility.
 
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
-use crate::document::review::{
-    accept_all_review_changes, accept_review_change, collect_review_changes, read_review_feed,
-    reject_all_review_changes, reject_review_change,
+use pdf_viewer_core::persistence::review_types::ReviewFeedResult;
+
+use crate::ui_state_store::{
+    accept_all_review_changes, accept_review_change, collect_review_changes,
+    current_patch_revision, reject_all_review_changes, reject_review_change,
 };
+
+fn read_review_feed() -> ReviewFeedResult {
+    let changes = collect_review_changes();
+    ReviewFeedResult {
+        revision: current_patch_revision(),
+        pending_count: changes.len(),
+        changes,
+    }
+}
 
 // ── ReviewSessionState (Batch 2 sec 4) ──────────────────────────
 //

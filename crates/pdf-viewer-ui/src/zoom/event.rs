@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::present::plan_builder::{FramePlanRequest, FramePlanResult};
 use crate::present::present_store::build_frame_plan_result;
-use crate::zoom::host::{
+use pdf_viewer_core::render::zoom_host::{
     resolve_preview_tick_decision, resolve_wheel_render_decision, PreviewTickDecision,
     PreviewTickDecisionRequest, WheelRenderDecision, WheelRenderDecisionRequest,
 };

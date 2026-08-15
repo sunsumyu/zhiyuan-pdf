@@ -7,4 +7,3 @@
 //!   queries, overlay loading) on top of the same backend storage.
 
 pub mod annotation_api;
-pub mod annotation_types;

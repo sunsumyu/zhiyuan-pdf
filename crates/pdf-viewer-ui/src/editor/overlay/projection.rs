@@ -1,4 +1,4 @@
-use crate::editor::bridge::ParagraphInteractionTarget;
+use pdf_viewer_core::edit::bridge::ParagraphInteractionTarget;
 use crate::editor::editor_controller::collect_paragraph_targets;
 use crate::editor::mode::read_active_editor_state;
 use pdf_viewer_core::geometry::coordinate_transform::PdfToPageViewTransform;

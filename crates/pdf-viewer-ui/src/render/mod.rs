@@ -2,7 +2,6 @@ pub mod canvas;
 pub mod canvas_overlay;
 pub mod commit;
 pub mod effective_page_plan;
-pub mod facade;
 pub mod frame_cache;
 pub mod free_api;
 pub mod host_runtime;

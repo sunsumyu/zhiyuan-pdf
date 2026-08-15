@@ -20,7 +20,7 @@ use crate::present::present_store::{
     touch_frame_cache_entry as inner_touch_frame_cache_entry,
 };
 use crate::render::commit::commit_render_result as inner_commit_render_result;
-use crate::render::facade::resolve_progressive_render_policy_request;
+use pdf_viewer_core::render::progressive::resolve_progressive_render_policy_request;
 use crate::render::host_runtime::{
     advance_render_loop_frame as inner_advance_render_loop_frame,
     queue_render_loop_frame as inner_queue_render_loop_frame,
@@ -43,7 +43,7 @@ use crate::zoom::event::{
     execute_wheel_zoom as inner_handle_wheel_zoom_host,
     step_preview_host as inner_step_preview_host, PreviewHostStepRequest, WheelZoomHostRequest,
 };
-use crate::zoom::host::{
+use pdf_viewer_core::render::zoom_host::{
     resolve_preview_tick_decision as inner_resolve_preview_tick_decision,
     resolve_wheel_render_decision as inner_resolve_wheel_render_decision,
     PreviewTickDecisionRequest, WheelRenderDecisionRequest,

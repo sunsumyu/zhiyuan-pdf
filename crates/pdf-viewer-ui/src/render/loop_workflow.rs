@@ -2,7 +2,7 @@ use crate::present::plan_builder::FramePlanRequest;
 use crate::present::present_store::schedule_render_frame_request;
 use crate::render::workflow::RenderFrameEnvelope;
 use crate::viewer::viewer_controller::set_zoom;
-use crate::zoom::host::{resolve_render_follow_up_decision, RenderFollowUpDecision};
+use pdf_viewer_core::render::zoom_host::{resolve_render_follow_up_decision, RenderFollowUpDecision};
 use crate::zoom::zoom_controller::read_zoom_state;
 
 pub fn resolve_render_follow_up_runtime(
