@@ -373,17 +373,20 @@ mod tests {
     #[test]
     fn test_user_scanned_pdf() {
         let path = r"H:\迅雷下载\book\SSM企业级框架实战.pdf";
-        if !std::path::Path::new(path).exists() {
-            println!("User PDF path does not exist on this machine, skipping");
-            let fallback_path = r"H:\迅雷下载\book\Java EE框架整合开发入门到实战：Spring+Spring MVC+MyBatis（微课版）.pdf";
-            if !std::path::Path::new(fallback_path).exists() {
-                return;
-            }
-        }
-        let doc = Document::load(path).unwrap_or_else(|e| {
-            println!("Failed to load SSM PDF directly via lopdf: {}", e);
-            let raw_bytes = std::fs::read(path).expect("Failed to read SSM PDF bytes");
-            Document::load_mem(&raw_bytes).expect("Failed to load SSM PDF from memory")
+        let fallback_path = r"H:\迅雷下载\book\Java EE框架整合开发入门到实战：Spring+Spring MVC+MyBatis（微课版）.pdf";
+        let actual_path = if std::path::Path::new(path).exists() {
+            path
+        } else if std::path::Path::new(fallback_path).exists() {
+            println!("Primary path missing, using fallback");
+            fallback_path
+        } else {
+            println!("No fixture PDF on this machine, skipping");
+            return;
+        };
+        let doc = Document::load(actual_path).unwrap_or_else(|e| {
+            println!("Failed to load PDF directly via lopdf: {}", e);
+            let raw_bytes = std::fs::read(actual_path).expect("Failed to read PDF bytes");
+            Document::load_mem(&raw_bytes).expect("Failed to load PDF from memory")
         });
         println!("User PDF page count: {}", doc.get_pages().len());
         for page_index in 0..5 {
