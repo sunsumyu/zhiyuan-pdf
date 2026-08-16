@@ -20,7 +20,7 @@ pub fn init_page_context(
     viewport_width: Option<f32>,
     viewport_height: Option<f32>,
 ) {
-    let vector_model: VectorPageModel =
+    let mut vector_model: VectorPageModel =
         serde_json::from_str(&vector_model_json).unwrap_or_else(|e| {
             crate::editor::debug_trace::record_editor_debug_event(
                 "wasm.init",
@@ -35,6 +35,9 @@ pub fn init_page_context(
             );
             VectorPageModel::default()
         });
+    // 解压调色板：后端将高频颜色替换为 palette 索引以减小 IPC 体积，
+    // 前端需要在此还原为实际颜色字符串，否则路径会因 fill/stroke color 为 None 而消失。
+    vector_model.decompress_palette();
     crate::editor::debug_trace::record_editor_debug_event(
         "wasm.init",
         "model_parsed",

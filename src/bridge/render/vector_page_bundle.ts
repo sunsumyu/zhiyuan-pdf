@@ -357,39 +357,9 @@ export async function resolveVectorPageBundle(
         };
         insertCachedBundle(newBundle);
 
-        try {
-            const wasm = getWasmApi();
-            if (wasm?.initPageContext) {
-                const dpr = typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio)
-                    ? window.devicePixelRatio
-                    : 1;
-                wasm.initPageContext(
-                    JSON.stringify(model),
-                    JSON.stringify(paintPlan),
-                    1.0,
-                    dpr,
-                    0,
-                    0,
-                    model?.width ?? 0,
-                    model?.height ?? 0,
-                );
-                const regionCount = Array.isArray(paintPlan?.regions) ? paintPlan.regions.length : 0;
-                const paragraphCount = Array.isArray(paintPlan?.regions)
-                    ? paintPlan.regions.reduce((acc: number, r: any) => acc + (Array.isArray(r?.paragraphs) ? r.paragraphs.length : 0), 0)
-                    : 0;
-                logPdfLayoutTrace('page-bundle.wasm-hydrated', {
-                    pageIndex,
-                    regionCount,
-                    paragraphCount,
-                    modelWidth: model?.width,
-                    modelHeight: model?.height,
-                });
-            } else {
-                console.warn('[EDITOR-DIAG] wasm.initPageContext unavailable');
-            }
-        } catch (err) {
-            console.error('[EDITOR-DIAG] page-bundle.wasm-hydrate-error', { pageIndex, error: String(err) });
-        }
+        // WASM hydration removed: initPageContext is now called only from
+        // vector_host.ts with the correct render zoom, eliminating the
+        // zoom=1.0 flash frame that occurred between the two calls.
 
         emitPdfDiagnostic('render-bundle', 'load', {
             path,

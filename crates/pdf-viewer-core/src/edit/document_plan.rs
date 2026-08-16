@@ -1411,6 +1411,7 @@ mod tests {
                 ],
                 z_index: 0,
             })],
+            ..Default::default()
         };
 
         let document_plan =
@@ -1462,6 +1463,7 @@ mod tests {
                 )],
                 z_index: 0,
             })],
+            ..Default::default()
         };
 
         let document_plan =
@@ -1519,6 +1521,7 @@ mod tests {
                 )],
                 z_index: 0,
             })],
+            ..Default::default()
         };
 
         let document_plan =
@@ -1555,6 +1558,7 @@ mod tests {
             stroke: false,
             stroke_width: 0.0,
             z_index: 1,
+            ..Default::default()
         })
     }
 
@@ -1571,6 +1575,7 @@ mod tests {
                 bullet_image("bullet-img", 10.0, 44.0, 8.0),
                 decorative_path("deco-bar", 0.0, 48.0, 400.0, 2.0),
             ],
+            ..Default::default()
         };
 
         let plan = build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
@@ -1599,6 +1604,7 @@ mod tests {
             width: 400.0,
             height: 200.0,
             objects: vec![bullet_image("bullet-img", 10.0, 44.0, 8.0)],
+            ..Default::default()
         };
 
         let plan = build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
