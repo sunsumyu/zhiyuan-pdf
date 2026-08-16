@@ -1,7 +1,7 @@
 use crate::infrastructure::pdf::layout_engine::LayoutGraphAnalyzer as CoreAnalyzer;
 use crate::infrastructure::pdf::models::{LayoutInferenceResult, StyledRun};
 
-/// 甯冨眬鍒嗘瀽寮曟搸 - V3 (Tauri 瀹夸富浠ｇ悊)
+/// 布局分析引擎 - V3 (Tauri 宿主代理)
 pub struct LayoutGraphAnalyzer {
     inner: CoreAnalyzer,
 }
@@ -12,9 +12,9 @@ impl LayoutGraphAnalyzer {
         }
     }
 
-    /// 鎵ц涓夐樁娈垫帓鐗堟帹鏂?(濮旀淳缁欐牳蹇冨簱)
+    /// 执行三阶段排版推断 (委派给核心库)
     pub fn analyze(&self, runs: Vec<StyledRun>) -> LayoutInferenceResult {
-        // [V3] 鏍稿績閫昏緫宸蹭笅娌夎嚦 pdf-viewer-core
+        // [V3] 核心逻辑已下沉至 pdf-viewer-core
         let layout_runs = runs
             .iter()
             .map(pdf_viewer_core::models::LayoutRun::from_styled)
@@ -22,9 +22,9 @@ impl LayoutGraphAnalyzer {
         self.inner.resolve_regions(layout_runs)
     }
 
-    /// 鎺ㄦ祴鍒楀甫 (濮旀淳缁欐牳蹇冨簱)
+    /// 推测列带 (委派给核心库)
     pub fn detect_column_bands(&self, _runs: &[StyledRun]) -> Vec<f32> {
-        // TODO: 鍚庣画灏?detect_column_bands 鐨勫疄鐜颁篃鎼縼鑷虫牳蹇冨簱
+        // TODO: 后续将 detect_column_bands 的实现也迁移至核心库
         Vec::new()
     }
 }

@@ -1,8 +1,8 @@
 use crate::infrastructure::pdf::commands::PdfEditCommand;
 use lopdf::Document;
 
-/// PDF 淇敼鎵ц涓績 (Command Invoker)
-/// 璇ユ湇鍔¤礋璐ｇ鐞嗘枃浠剁殑澹版槑鍛ㄦ湡锛屽苟鎸夐『搴忔墽琛屾墍鏈夌紪杈戞寚浠ゃ€?
+/// PDF 修改执行中心 (Command Invoker)
+/// 该服务负责管理文件的声明周期，并按顺序执行所有编辑指令。
 pub fn apply_pdf_commands(
     mut doc: Document,
     page_index: u16,

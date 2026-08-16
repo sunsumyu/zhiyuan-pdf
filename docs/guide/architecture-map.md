@@ -140,7 +140,7 @@ and are re-exported flat via `src/interfaces/pdf/mod.rs:22-29`.
 **Also at top level:**
 | Module | Lines | Role |
 |---|---|---|
-| `pdf_read/` (sibling dir) | ~780 | pdf-rs fallback backend: `scanned_backend.rs` (514), `classification.rs` (221) |
+| `pdf_fallback/` (sibling dir) | ~780 | pdf-rs fallback backend: `scanned_backend.rs` (514), `classification.rs` (221). Renamed from `pdf_read/` 2026-08-16 to stop colliding with `pdf/pdf_read/` |
 
 > Removed 2026-08-15: `vello_renderer.rs` (1130 lines, dead GPU renderer),
 > `pdf_read/facade.rs` + `pdf_read/vector_backend.rs` (no callers),
@@ -452,7 +452,15 @@ The TS bridge never calls Tauri commands directly; wasm calls
   `app_state::HISTORY_LIMIT`, used by both `document_service.rs` and `edit_commands.rs`
 
 ### Naming hazards
-- Two `pdf_read/` dirs: `src-tauri/src/infrastructure/pdf/pdf_read/` (lopdf parsing)
-  vs `src-tauri/src/infrastructure/pdf_read/` (pdf-rs backends)
-- `font/layout.rs` shadows std `layout` name
-- Many files contain GBK-mojibake Chinese comments (UTF-8/GBK round-trip damage)
+- ~~Two `pdf_read/` dirs~~ -- RESOLVED 2026-08-16: `src-tauri/src/infrastructure/pdf_read/`
+  renamed to `infrastructure/pdf_fallback/` (it is the pdf-rs *fallback* for scanned PDFs;
+  the lopdf parser remains at `infrastructure/pdf/pdf_read/`)
+- `font/layout.rs` "shadows" the std `layout` name -- **non-issue**: `std::layout` does not
+  exist on stable Rust. The module is a thin wrapper delegating to
+  `pdf-viewer-core::geometry::layout_engine::layout_paragraph`. Leave as-is.
+- **GBK-mojibake font-name string literals in `font/catalog.rs` + `font/match_mod.rs` are
+  DELIBERATE -- do not "repair" them.** PDFs often carry font names that were GBK-misdecoded
+  (e.g. `寰蒋闆呴粦` = `微软雅黑`); `name_variants()` maps these to canonical Windows names
+  (`微软雅黑` -> `Microsoft YaHei`). Mojibake in *comments* was repaired 2026-08-16
+  (~30 lines across `canvas.rs`, `layout_analyzer.rs`, `vector_engine.rs`, `save_engine.rs`,
+  `catalog.rs`, `match_mod.rs`); only these functional literals remain, on purpose.

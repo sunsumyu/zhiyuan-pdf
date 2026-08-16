@@ -31,7 +31,7 @@ pub fn resolve_display_list(
     )
 }
 
-/// 瑙ｆ瀽 PDF 鍗曢〉鐨勭函鍚戦噺鏁版嵁 (V206.55 - Optimized Memory Cache 鐗
+/// 解析 PDF 单页的纯向量数据 (V206.55 - Optimized Memory Cache 版本)
 pub fn resolve_model(
     doc: &lopdf::Document,
     page_index: u16,
@@ -62,7 +62,7 @@ pub fn build_vector_page_model_from_display_list(
     let pw = display_list.width;
     let ph = display_list.height;
 
-    // 鎸?Z-index 鎺掑簭
+    // 按 Z-index 排序
     render_objects.sort_by_key(|o| match o {
         RenderObject::Text(t) => t.z_index,
         RenderObject::Path(p) => p.z_index,
@@ -73,7 +73,7 @@ pub fn build_vector_page_model_from_display_list(
         let mut runs = text_runs;
         let _start_reflow = Instant::now();
 
-        // 缁存寔 V195 鏂囨湰鑱氬悎閫昏緫
+        // 维持 V195 文本聚合逻辑
         runs.sort_by(|a, b| b.ty.partial_cmp(&a.ty).unwrap_or(std::cmp::Ordering::Equal));
         let mut grouped_runs: Vec<Vec<StyledRun>> = Vec::new();
         if let Some(first) = runs.first() {
@@ -429,7 +429,7 @@ pub fn build_vector_page_model_from_display_list(
     Ok(model)
 }
 
-/// 鎵ц V3 绾у竷灞€鎺ㄦ柇 (涓夐樁娈靛浘椹卞姩)
+/// 执行 V3 级布局推断 (三阶段图驱动)
 pub fn resolve_layout_inference(
     doc: &lopdf::Document,
     page_index: u16,

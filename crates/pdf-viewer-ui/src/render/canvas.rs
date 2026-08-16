@@ -171,7 +171,7 @@ impl CanvasRenderer {
             .dyn_into::<HtmlCanvasElement>()
             .ok()?;
 
-        // 娉ㄦ剰锛氬姭鎸佹ā寮忎笅鎴戜滑涓嶈缃?alpha: false锛屽洜涓烘垜浠淇濈暀骞舵搷浣滅幇鏈夌殑 Context
+        // 注意：劫持模式下我们不设置 alpha: false，因为我们要保留并操作现有的 Context
         let ctx = canvas
             .get_context("2d")
             .ok()?
@@ -204,13 +204,13 @@ impl CanvasRenderer {
         })
     }
 
-    /// 鍒涘缓涓€涓凡鐭ュ昂瀵镐笖宸插垵濮嬪寲鐨勬覆鏌撳櫒锛堜緵 standalone 妯″紡浣跨敤锛?
+    /// （原 new_with_size 已移除：canvas 由外部创建并直接传入。）
     // Unused new_with_size() purged
 
-    /// 鏍规嵁褰撳墠瀹瑰櫒灏哄鍚屾 Canvas 澶у皬
+    /// 根据当前容器尺寸同步 Canvas 大小
     pub fn sync_size(&self, width: f32, height: f32, zoom: f32) {
         if self.is_hijacked {
-            // 鍦ㄥ姭鎸佹ā寮忎笅锛屼笉搴斾慨鏀瑰閮ㄧ敾甯冪殑鐗╃悊灏哄
+            // 在劫持模式下，不应修改外部画布的物理尺寸
             return;
         }
         self.canvas_height.set(height);
@@ -224,8 +224,8 @@ impl CanvasRenderer {
             .set_property("height", &format!("{}px", height))
             .unwrap();
 
-        // 缂栬緫鍣?canvas 浣跨敤鏈湴鍧愭爣绯伙細宸︿笂瑙掍负鍘熺偣锛孻 杞村悜涓嬨€?
-        // [Architectural Correction] 鍐呴儴缁樺浘鍗曚綅搴斾负 PDF Points锛屽洜姝ら渶瑕佸悓鏃朵箻浠?zoom 鍜?dpr
+        // 编辑器 canvas 使用本地坐标系：左上角为原点，Y 轴向下。
+        // [Architectural Correction] 内部绘图单位应为 PDF Points，因此需要同时乘以 zoom 和 dpr
         let combined_scale = (self.dpr * zoom) as f64;
         let _ = self
             .ctx
@@ -309,10 +309,10 @@ impl CanvasRenderer {
             );
             return;
         }
-        // 鍦ㄥ姭鎸佹ā寮忎笅锛屼富鐢诲竷鍙兘宸茬粡澶勪簬鏌愮鍙樻崲锛堝 Zoom锛変箣涓?
-        // 鎴戜滑鐩存帴鍦ㄥ綋鍓嶅潗鏍囩┖闂翠笅缁樺浘浠ヤ繚鎸佷竴鑷?
+        // 在劫持模式下，主画布可能已经处于某种变换（如 Zoom）之中
+        // 我们直接在当前坐标空间下绘图以保持一致
         self.ctx.set_fill_style_str("#ffffff");
-        // 澧炲姞灏戦噺 buffer 纭繚鎿﹂櫎骞插噣
+        // 增加少量 buffer 确保擦除干净
         self.ctx.fill_rect(
             x as f64 - 0.5,
             y as f64 - 0.5,
@@ -321,10 +321,10 @@ impl CanvasRenderer {
         );
     }
 
-    // 鍔寔妯″紡涓嬶紝鎴戜滑杩涘叆鐩稿浜庨敋鐐圭殑鍧愭爣绌洪棿
+    // 加速模式下，我们进入相对于锚点的坐标空间
     // Legacy begin_anchor_render purged.
 
-    /// [Architectural Core] 缁熶竴鍏ㄩ〉闈㈢姸鎬佸寲娓叉煋
+    /// [Architectural Core] 统一全页面状态化渲染
     fn prepare_page_surface(&self, state: &PageState, _page_width: f32, _page_height: f32) {
         let page_scale = (state.zoom * state.dpr) as f64;
         let viewport_left_px = (state.viewport_left * state.dpr).max(0.0) as f64;
@@ -1013,7 +1013,7 @@ impl PdfRenderer for CanvasRenderer {
 
     fn clear(&mut self) {
         if self.is_hijacked {
-            // 鍦ㄤ富鐢诲竷妯″紡涓嬶紝绂佹杩涜鍏ㄧ敾甯冩竻鐞嗭紝鍚﹀垯浼氭摝鎺夋暣椤?PDF
+            // 在主画布模式下，禁止进行全画布清理，否则会抹掉整页 PDF
             return;
         }
         let w = self.canvas.width() as f64;
