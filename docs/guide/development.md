@@ -1,93 +1,93 @@
-# Development Guide -- Build, Test, Debug, Fix
+# 开发指南 -- 构建、测试、调试、修复
 
-> Practical reference for working on the Sovereignty PDF Viewer.
-> All commands verified against the working tree on `refactor/architecture-improvements`.
+> Sovereignty PDF Viewer 的实用参考。
+> 所有命令均在 `refactor/architecture-improvements` 分支的工作树上验证过。
 
 ---
 
-## 1. Prerequisites
+## 1. 环境准备
 
-- **Rust** (stable, with `wasm32-unknown-unknown` target installed)
+- **Rust**（stable，且已安装 `wasm32-unknown-unknown` target）
 - **Node.js** + npm
-- **wasm-pack** (`cargo install wasm-pack`)
-- **wasm-bindgen-cli 0.2.120** -- MUST match the `wasm-bindgen` version in `Cargo.lock` exactly. Different versions cause a schema mismatch error. Install with:
+- **wasm-pack**（`cargo install wasm-pack`）
+- **wasm-bindgen-cli 0.2.120** -- 必须与 `Cargo.lock` 里的 `wasm-bindgen` 版本
+  完全一致。版本不同会报 schema 不匹配错误。安装：
   ```
   cargo install wasm-bindgen-cli --version 0.2.120
   ```
-  Verify: `wasm-bindgen-test-runner -V` should print `0.2.120`.
-- **Tauri CLI** (`npx tauri --version`) for desktop app
-- **Chrome or Edge** for headless wasm tests and E2E
+  验证：`wasm-bindgen-test-runner -V` 应输出 `0.2.120`。
+- **Tauri CLI**（`npx tauri --version`），用于桌面应用
+- **Chrome 或 Edge**，用于无头 wasm 测试和 E2E
 
 ---
 
-## 2. Build Commands
+## 2. 构建命令
 
-### WASM (required before any TS work)
+### WASM（任何 TS 工作之前必须先构建）
 
 ```bash
 npm run wasm:pdf-viewer-ui
-# equivalent to: wasm-pack build ./crates/pdf-viewer-ui --target web
-# Output: crates/pdf-viewer-ui/pkg/ (auto-generated, gitignored)
+# 等价于: wasm-pack build ./crates/pdf-viewer-ui --target web
+# 输出: crates/pdf-viewer-ui/pkg/（自动生成，已 gitignore）
 ```
 
-### Frontend (TS + CSS)
+### 前端（TS + CSS）
 
 ```bash
 npm run build
 # tsc + vite build -> dist/
 ```
 
-### Desktop app
+### 桌面应用
 
 ```bash
-npm run tauri:dev        # Full Tauri + Vite dev server (opens desktop window)
-# OR
-npm run dev              # Vite-only, browser at http://127.0.0.1:5000
-                         # WARNING: cannot open PDFs (open_pdf requires Tauri backend)
+npm run tauri:dev        # 完整 Tauri + Vite 开发服务器（打开桌面窗口）
+# 或
+npm run dev              # 仅 Vite，浏览器访问 http://127.0.0.1:5000
+                         # 注意：无法打开 PDF（open_pdf 依赖 Tauri 后端）
 ```
 
-### Backend (Tauri Rust)
+### 后端（Tauri Rust）
 
 ```bash
 cd src-tauri && cargo build
-# OR just let tauri:dev handle it
+# 或者直接让 tauri:dev 代劳
 ```
 
 ---
 
-## 3. Test Commands
+## 3. 测试命令
 
-### `pdf-viewer-core` (pure Rust, host target)
+### `pdf-viewer-core`（纯 Rust，宿主 target）
 
 ```bash
 cargo test -p pdf-viewer-core
-# Result on main: 75 passed, 0 failed (2026-08-15)
+# main 上的结果: 75 通过, 0 失败 (2026-08-15)
 ```
 
-This always works -- no wasm deps.
+这个永远能跑--没有任何 wasm 依赖。
 
-### `pdf-viewer-ui` (wasm target ONLY)
+### `pdf-viewer-ui`（仅限 wasm target）
 
 ```bash
-# MUST be on the wasm target. Host target fails to compile by design
-# (wasm deps gated to cfg(target_arch = "wasm32")).
+# 必须用 wasm target。宿主 target 按设计就无法编译
+# （wasm 依赖都锁在 cfg(target_arch = "wasm32") 里）。
 
 set CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner
 cargo test -p pdf-viewer-ui --target wasm32-unknown-unknown
-# Result on main: 9 passed (5 zoom layout + 4 overlay) (2026-08-15)
+# main 上的结果: 9 通过（5 个缩放布局 + 4 个 overlay）(2026-08-15)
 ```
 
-**Gotcha:** `wasm-bindgen-test-runner` (v0.2.120) takes NO flags like `--headless`
-or `--node`. Just set it as the runner and let cargo invoke it. If you get:
+**坑：** `wasm-bindgen-test-runner`（v0.2.120）不接受 `--headless`、`--node`
+这类 flag。把它设为 runner 然后让 cargo 调用即可。如果报：
 
 ```
 error: unexpected argument '--headless' found
 ```
 
-You're using a runner version that doesn't support that flag, or passing flags
-incorrectly. The correct invocation is just setting the env var.
+说明你的 runner 版本不支持该 flag，或者传参方式不对。正确做法就是设环境变量。
 
-**Gotcha:** If you get:
+**坑：** 如果报：
 
 ```
 it looks like the Rust project used to create this Wasm file was linked against
@@ -96,61 +96,61 @@ version of wasm-bindgen that uses a different bindgen format than this binary:
      this binary schema version: 0.2.126
 ```
 
-Your globally installed `wasm-bindgen-cli` version doesn't match `Cargo.lock`.
-Install the matching version (see Prerequisites).
+说明全局安装的 `wasm-bindgen-cli` 版本与 `Cargo.lock` 不匹配。
+装匹配的版本（见"环境准备"）。
 
-### `src-tauri` tests
+### `src-tauri` 测试
 
 ```bash
-cargo test -p pdf-viewer-standalone  # (workspace name from Cargo.toml)
-# 17 integration tests + ~150 unit tests across infrastructure/pdf modules
-# Some tests have hard-coded absolute paths (machine-specific, will fail on other machines)
+cargo test -p pdf-viewer-standalone  # （Cargo.toml 里的 workspace 包名）
+# 17 个集成测试 + infrastructure/pdf 各模块约 150 个单元测试
+# 部分测试硬编码了绝对路径（机器相关，换机器会失败）
 ```
 
 ### TypeScript
 
 ```bash
-npx vitest              # vitest (node env, src/**/*.test.ts)
-# Currently only: src/__tests__/diagnostics.test.ts (59 lines)
+npx vitest              # vitest（node 环境，src/**/*.test.ts）
+# 目前只有: src/__tests__/diagnostics.test.ts（59 行）
 ```
 
-### E2E (requires tauri-driver)
+### E2E（需要 tauri-driver）
 
 ```bash
 npm run e2e:build       # tauri build --debug --no-bundle
 npm run e2e             # wdio run tests/e2e/wdio.conf.ts
-# Specs: load_pdf, hello, page_presentation_runtime, editor_bugs (skipped)
-# Requires tauri-driver to be installed globally
+# Specs: load_pdf, hello, page_presentation_runtime, editor_bugs（跳过）
+# 需要全局安装 tauri-driver
 ```
 
 ---
 
-## 4. Bug Investigation Decision Tree
+## 4. Bug 排查决策树
 
-When you encounter a bug, use this flow to locate the relevant layer and files.
+遇到 bug 时，按这个流程定位所在层和相关文件。
 
-### Step 1: What symptom do you see?
+### 第 1 步：看到什么症状？
 
-| Symptom | Likely Layer | Start here |
+| 症状 | 可能的层 | 从这里入手 |
 |---|---|---|
-| Page renders blank / white | Tauri backend (read pipeline) or TS render loop | Check `vector_engine.rs`, `path_resolver.rs`, `render_flow.ts` |
-| Page renders garbled / wrong colors | Backend content parser | `pdf_read/content_parser.rs` |
-| Text is blurry at certain zoom levels | Zoom layout contract | `host/layout.rs`, `pdf_layout_sync.ts` |
-| Zoom jumps / flashes | Zoom layout contract (solved 2026-08-15) | `host/layout.rs`, `zoom_controller.ts`, `vector_canvas_host.ts` |
-| Edit doesn't save | Edit pipeline | `editor/editor_api.rs`, `document_edit_api.ts`, `edit_commands.rs` |
-| Fonts look wrong (weight, bold) | Font engine | `font/match_mod.rs`, `font/embed.rs`, `font/parse.rs` |
-| Annotations / highlights missing | Annotation pipeline | `annotation_store.rs`, `page_annotation.rs`, `pdf_annotation_controller.ts` |
-| Search finds nothing | Search pipeline | `page_search.rs`, `find_facade.ts`, `pdf_find_controller.ts` |
-| PDF won't open | Loader / Tauri open path | `pdf_loader.rs`, `document_service.rs:117` |
-| Crash / panic in Rust | Backend | Check `src-tauri/src/` stack trace |
-| UI button does nothing | TS wiring | `main.ts`, `pdf_viewer_api.ts`, check if handler exists |
-| Slow page turn / render | Prefetch / cache | `page_asset.rs`, `vector_page_bundle.ts`, `raster_image_cache.ts` |
+| 页面渲染空白 / 全白 | Tauri 后端（读取管线）或 TS 渲染循环 | 查 `vector_engine.rs`, `path_resolver.rs`, `render_flow.ts` |
+| 页面渲染乱码 / 颜色错误 | 后端内容解析器 | `pdf_read/content_parser.rs` |
+| 特定缩放级别下文字发虚 | 缩放布局契约 | `host/layout.rs`, `pdf_layout_sync.ts` |
+| 缩放跳动 / 闪烁 | 缩放布局契约（2026-08-15 已解决） | `host/layout.rs`, `zoom_controller.ts`, `vector_canvas_host.ts` |
+| 编辑不保存 | 编辑管线 | `editor/editor_api.rs`, `document_edit_api.ts`, `edit_commands.rs` |
+| 字体不对（字重、加粗） | 字体引擎 | `font/match_mod.rs`, `font/embed.rs`, `font/parse.rs` |
+| 批注 / 高亮丢失 | 批注管线 | `annotation_store.rs`, `page_annotation.rs`, `pdf_annotation_controller.ts` |
+| 搜索搜不到 | 搜索管线 | `page_search.rs`, `find_facade.ts`, `pdf_find_controller.ts` |
+| PDF 打不开 | 加载器 / Tauri 打开路径 | `pdf_loader.rs`, `document_service.rs:117` |
+| Rust 崩溃 / panic | 后端 | 看 `src-tauri/src/` 的堆栈 |
+| UI 按钮无反应 | TS 接线 | `main.ts`, `pdf_viewer_api.ts`，确认 handler 存在 |
+| 翻页 / 渲染慢 | 预取 / 缓存 | `page_asset.rs`, `vector_page_bundle.ts`, `raster_image_cache.ts` |
 
-### Step 2: Trace the call chain
+### 第 2 步：追踪调用链
 
-Once you know the layer, trace from the entry point:
+确定层之后，从入口开始追：
 
-**Rendering bug:**
+**渲染 bug：**
 ```
 render_scheduler.ts:175 (requestRender)
   -> pdf_runtime.ts:483 (executeRender)
@@ -164,127 +164,123 @@ render_scheduler.ts:175 (requestRender)
   -> pdf_layout_sync.ts:27 (syncLayoutBox -> wasm syncHostLayout)
 ```
 
-**Zoom bug:**
+**缩放 bug：**
 ```
 zoom_controller.ts:397 (bindWheelZoom)
   -> frame_plan.ts:342 (handleWheelZoomHost -> wasm)
-  -> zoom_controller.ts:221 (startSmoothZoomPreview -> RAF loop)
+  -> zoom_controller.ts:221 (startSmoothZoomPreview -> RAF 循环)
   -> zoom_controller.ts:289 (commitRenderedFrame -> syncLayoutBox)
   -> pdf_layout_sync.ts:27 (syncLayoutBox -> wasm syncHostLayout)
     -> host/layout.rs:44 (SyncHostLayoutRequest -> SyncHostLayoutResult)
-       Contract: dom_width * css_scale == display_width
+       契约: dom_width * css_scale == display_width
 ```
 
-**Edit/Save bug:**
+**编辑/保存 bug：**
 ```
 editor/index.ts:465 (commitEditor -> api.commit)
   -> editor/api.ts:168 (saveSession -> wasm EditorSession)
   -> document_edit_api.ts:79 (refreshDocument)
   -> pdf_runtime.ts:161 (invalidateVectorRenderCache)
-  -> render cycle
-  OR
-save_pdf button -> pdf_viewer_api.ts:180 (save)
+  -> 渲染循环
+  或
+save_pdf 按钮 -> pdf_viewer_api.ts:180 (save)
   -> editor/index.ts:662 (saveEdits)
   -> editor_wasm_api.ts:205 (saveSession -> wasm)
   -> Tauri save_pdf -> document_service.rs:199
     -> region_materializer.rs -> pdf_write/reflow.rs
 ```
 
-### Step 3: Add diagnostic logging
+### 第 3 步：加诊断日志
 
-The project has a built-in diagnostic system:
+项目内置了诊断系统：
 
-- **Rust side:** `pdf_log!()` macro (`log_service.rs`) with levels 0-3.
-  Set with Tauri command `set_log_level(level)`.
-- **TS side:** `emitPdfDiagnostic()` (`shared/diagnostics.ts`) logs to console +
-  `window.__PDF_DIAGNOSTICS_HISTORY` + Tauri `terminal_log`.
-- **Event log:** `read_pdf_event_log` / `clear_pdf_event_log` commands expose a
-  512-entry ring buffer.
-- **Layout trace:** `src/bridge/render/layout_trace.ts` logs DOM geometry on
-  mismatch/transform/verbose.
-- **Editor self-test:** `window.verifyEditorBugs()` in DevTools console
-  (`src/dev/verify_editor_bugs.ts`).
+- **Rust 侧：** `pdf_log!()` 宏（`log_service.rs`），0-3 级。
+  用 Tauri 命令 `set_log_level(level)` 设置。
+- **TS 侧：** `emitPdfDiagnostic()`（`shared/diagnostics.ts`）输出到 console +
+  `window.__PDF_DIAGNOSTICS_HISTORY` + Tauri `terminal_log`。
+- **事件日志：** `read_pdf_event_log` / `clear_pdf_event_log` 命令暴露一个
+  512 条的环形缓冲。
+- **布局追踪：** `src/bridge/render/layout_trace.ts` 在 mismatch/transform/verbose
+  时记录 DOM 几何。
+- **编辑器自检：** DevTools console 里执行 `window.verifyEditorBugs()`
+  （`src/dev/verify_editor_bugs.ts`）。
 
-### Step 4: Write a test before fixing
+### 第 4 步：修复前先写测试
 
-**For Rust (core/ui crate):** Write a `#[test]` or `#[wasm_bindgen_test]` that
-reproduces the bug. See `host/layout.rs` tests (lines 108-200) for the pattern:
-pure-function call with `assert_close`.
+**Rust（core/ui crate）：** 写一个能复现 bug 的 `#[test]` 或
+`#[wasm_bindgen_test]`。模式参考 `host/layout.rs` 的测试（108-200 行）：
+纯函数调用 + `assert_close`。
 
-**For src-tauri:** Write a `#[cfg(test)]` unit test. Many modules already have
-them (`color.rs` 22 tests, `glyph_mapping.rs` 18, `pdf_write/reflow.rs` 15,
-etc.).
+**src-tauri：** 写 `#[cfg(test)]` 单元测试。很多模块已有（`color.rs` 22 个、
+`glyph_mapping.rs` 18 个、`pdf_write/reflow.rs` 15 个等）。
 
-**For TS:** Write a vitest in `src/__tests__/`. The harness exists
-(`vitest.config.ts`) but coverage is minimal.
+**TS：** 在 `src/__tests__/` 里写 vitest。测试架子已就位（`vitest.config.ts`），
+但覆盖还很薄。
 
-**For E2E:** Add a spec in `tests/e2e/specs/` (requires tauri-driver).
+**E2E：** 在 `tests/e2e/specs/` 里加 spec（需要 tauri-driver）。
 
-### Step 5: Common fix patterns
+### 第 5 步：常见修复模式
 
-**Rendering misalignment at zoom:**
-The zoom layout contract in `host/layout.rs` (`dom_width * css_scale == display_width`)
-is the single source of truth. If the visual doesn't match expected, dump the
-`SyncHostLayoutResult` fields and check which invariant breaks.
+**缩放时渲染错位：**
+`host/layout.rs` 里的缩放布局契约（`dom_width * css_scale == display_width`）
+是唯一事实源。视觉与预期不符时，打印 `SyncHostLayoutResult` 的各字段，
+看哪条不变量被破坏。
 
-**Font rendering wrong:**
-Check `font/match_mod.rs` for system font substitution -- it does weight matching
-and CJK fallback. The font parse chain is `parse.rs` -> `face.rs` -> `embed.rs`.
+**字体渲染错误：**
+查 `font/match_mod.rs` 的系统字体替换--它做字重匹配和 CJK 回退。
+字体解析链是 `parse.rs` -> `face.rs` -> `embed.rs`。
 
-**Edit patch not applied:**
-Trace `region_materializer.rs::build_region_materialization_plan` -- it merges
-region_patches + text_reflows into effective `TextReflowPatch` entries. Check
-the materialization report in `cache.pdf_materialization_reports`.
+**编辑补丁未生效：**
+追 `region_materializer.rs::build_region_materialization_plan`--它把
+region_patches + text_reflows 合成生效的 `TextReflowPatch` 条目。
+查 `cache.pdf_materialization_reports` 里的物化报告。
 
-**Page data stale after edit:**
-Invalidate caches explicitly: `invalidate_pdf_page_cache` (prefix-based) in
-`cache.rs`. The edit path in `edit_commands.rs` does this automatically; manual
-editors must call `requestRefresh`.
+**编辑后页面数据过期：**
+显式失效缓存：`cache.rs` 里的 `invalidate_pdf_page_cache`（按前缀）。
+`edit_commands.rs` 的编辑路径会自动做；手工改数据的必须调 `requestRefresh`。
 
 ---
 
-## 5. Working on `main` vs `refactor/architecture-improvements`
+## 5. 在 `main` 还是 `refactor/architecture-improvements` 上工作
 
-**`main`** is the production branch. It contains all salvaged bug fixes (marker,
-font, zoom, dialog) plus deep module refactoring (TextState, TextMatrixCore,
-module deletion). Always PR against main.
+**`main`** 是生产分支。包含全部抢救回来的 bug 修复（marker、字体、缩放、
+对话框）以及深度模块重构（TextState、TextMatrixCore、模块删除）。
+PR 一律对着 main。
 
-**`refactor/architecture-improvements`** is the active architecture branch.
-Recent commits:
-- Domain glossary (`CONTEXT.md`) and zoom spec (`2026-08-04-zoom-bug-fix-via-merge.md`)
-- Vitest frontend test harness (`diagnostics.test.ts`)
-- Shallow module removal, delegating to `pdf-viewer-core`
-- Dependency inversion fixes
+**`refactor/architecture-improvements`** 是当前活跃的架构分支。
+近期提交：
+- 领域词汇表（`CONTEXT.md`）和缩放规格书（`2026-08-04-zoom-bug-fix-via-merge.md`）
+- Vitest 前端测试架子（`diagnostics.test.ts`）
+- 浅层模块删除，委托给 `pdf-viewer-core`
+- 依赖倒置修复
 
-**`fix/zoom-layout-tests-wasm-runnable`** is a small branch (2 commits) that
-fixes the zoom cancellation tests to be wasm-runnable and ports the manual E2E
-runbook. PR candidate for main.
+**`fix/zoom-layout-tests-wasm-runnable`** 是个小分支（2 个提交），把缩放抵消
+测试修成 wasm 可运行，并移植了手动 E2E 手册。是 main 的 PR 候选。
 
-**`codex/refactor-split`** is historical. DO NOT merge into main -- the zoom fixes
-and font/marker/dialog fixes have already been salvaged into main via batch
-salvage. A full merge would import a parallel architecture through 33 conflicts.
+**`codex/refactor-split`** 是历史分支。不要合入 main--缩放修复和字体/marker/
+对话框修复已经通过批量抢救进入 main。整体合并会经由 33 处冲突引入一套平行
+架构。
 
 ---
 
-## 6. Key Invariants to Preserve
+## 6. 必须保持的关键不变量
 
-1. **Zoom contract:** `dom_width * css_scale == display_width` (enforced by 5 wasm
-   tests in `host/layout.rs`). Never write `displayWidth` into the container
-   directly; always go through `syncHostLayout`.
+1. **缩放契约：** `dom_width * css_scale == display_width`（由 `host/layout.rs`
+   的 5 个 wasm 测试守护）。绝不把 `displayWidth` 直接写进容器；
+   一律走 `syncHostLayout`。
 
-2. **Edit ordering:** `clearVectorHost()` MUST be called BEFORE `session.open()` to
-   cancel in-flight renders. This is enforced only by call order in
-   `pdf_document_runtime.ts:96-100`, not by the API shape.
+2. **编辑顺序：** `clearVectorHost()` 必须在 `session.open()` **之前**调用，
+   以取消渲染中的请求。这只靠 `pdf_document_runtime.ts:96-100` 的调用顺序
+   保证，API 形状本身不强制。
 
-3. **Cache invalidation:** After any document mutation, invalidate:
-   `pdf_page_cache`, `pdf_page_intermediate_cache`, `pdf_layout_cache`,
-   `PDF_RESOLVE_PATHS_CACHE` (prefix-matched by doc pointer).
+3. **缓存失效：** 任何文档变更后，失效：
+   `pdf_page_cache`、`pdf_page_intermediate_cache`、`pdf_layout_cache`、
+   `PDF_RESOLVE_PATHS_CACHE`（按文档指针前缀匹配）。
 
-4. **Wasm singletons:** `DocumentSession`, `ViewerSession`, `EditorSession`,
-   `ReviewSession`, `PagePresentationRuntime` are lazily constructed singletons
-   backed by wasm thread_local state. The TS objects are just handles -- the
-   real state lives in wasm.
+4. **Wasm 单例：** `DocumentSession`、`ViewerSession`、`EditorSession`、
+   `ReviewSession`、`PagePresentationRuntime` 是惰性构造的单例，背后是 wasm
+   的 thread_local 状态。TS 对象只是句柄--真实状态在 wasm 里。
 
-5. **Working copy lifecycle:** `resolve_working_path` copies to
-   `%TEMP%\working_{md5}.pdf`. ALL saves write to the ORIGINAL path. The
-   working copy goes stale after edits and is only re-created when absent.
+5. **工作副本生命周期：** `resolve_working_path` 会复制到
+   `%TEMP%\working_{md5}.pdf`。所有保存都写**原始路径**。工作副本在编辑后
+   过期，只有在文件不存在时才会重建。
