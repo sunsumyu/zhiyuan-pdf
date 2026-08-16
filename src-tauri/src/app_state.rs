@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 use crate::infrastructure::pdf::models::{
     NativeVectorPageModel, PageDisplayList, PdfMaterializationReport,
 };
-use crate::infrastructure::pdf_read::types::PagePreview;
+use crate::infrastructure::pdf_fallback::types::PagePreview;
 use crate::state::LoadingStatus;
 
 /// Owned PDF documents and their load lifecycle.

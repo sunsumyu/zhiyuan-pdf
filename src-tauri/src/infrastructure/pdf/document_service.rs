@@ -1,7 +1,7 @@
 use crate::infrastructure::pdf::models::PdfModifications;
 use crate::infrastructure::pdf::region_materializer::build_region_materialization_plan;
-use crate::infrastructure::pdf_read::backend::PdfReadBackend;
-use crate::infrastructure::pdf_read::scanned_backend::ScannedReadBackend;
+use crate::infrastructure::pdf_fallback::backend::PdfReadBackend;
+use crate::infrastructure::pdf_fallback::scanned_backend::ScannedReadBackend;
 use lopdf::Document;
 use std::collections::HashMap;
 use std::fs;

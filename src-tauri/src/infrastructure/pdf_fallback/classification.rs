@@ -1,4 +1,4 @@
-use crate::infrastructure::pdf_read::types::{ClassificationReason, PdfDocumentKind};
+use crate::infrastructure::pdf_fallback::types::{ClassificationReason, PdfDocumentKind};
 
 const SCANNED_MIN_PAGE_COVERAGE: f32 = 0.70;
 const SCANNED_MIN_WIDTH_RATIO: f32 = 0.75;

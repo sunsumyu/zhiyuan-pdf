@@ -7,7 +7,7 @@
 
 use crate::application::pdf::page_asset::{PageAssetAdmissionService, PageAssetKind};
 use crate::infrastructure::pdf::preview_engine;
-use crate::infrastructure::pdf_read::types::{PagePreview, PdfDocumentKind};
+use crate::infrastructure::pdf_fallback::types::{PagePreview, PdfDocumentKind};
 use crate::log_step;
 use tauri::command;
 
@@ -75,8 +75,8 @@ pub async fn read_preview(
         );
         let path_clone = path.clone();
         let preview = tokio::task::spawn_blocking(move || {
-            use crate::infrastructure::pdf_read::backend::PdfReadBackend;
-            use crate::infrastructure::pdf_read::scanned_backend::ScannedReadBackend;
+            use crate::infrastructure::pdf_fallback::backend::PdfReadBackend;
+            use crate::infrastructure::pdf_fallback::scanned_backend::ScannedReadBackend;
             ScannedReadBackend::new().read_page_preview(&path_clone, page_index)
         })
         .await

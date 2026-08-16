@@ -1,10 +1,10 @@
 use crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE;
-use crate::infrastructure::pdf_read::backend::PdfReadBackend;
-use crate::infrastructure::pdf_read::classification::{
+use crate::infrastructure::pdf_fallback::backend::PdfReadBackend;
+use crate::infrastructure::pdf_fallback::classification::{
     classify_open_decision, likely_ocr_scanned_document, qualifies_as_scanned_page,
     ClassificationDecision,
 };
-use crate::infrastructure::pdf_read::types::{PagePreview, PdfDocumentKind, ReadDocumentMeta};
+use crate::infrastructure::pdf_fallback::types::{PagePreview, PdfDocumentKind, ReadDocumentMeta};
 use crate::log_step;
 use crate::pdf_log;
 use memmap2::Mmap;
