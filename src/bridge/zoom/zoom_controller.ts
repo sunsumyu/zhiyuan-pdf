@@ -113,7 +113,6 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         });
         container.style.transformOrigin = '0 0';
         container.style.transition = '';
-        container.style.transform = '';
         deps.clearPreviewPresent();
         deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
         scrollContainer.scrollLeft = frame.scrollLeft;
