@@ -160,7 +160,9 @@ export function ensureVectorCanvasHost(): VectorHostRefs | null {
             'position: relative',
             'display: block',
             'background: white',
-            'overflow: hidden',
+            // 缩放预览期间 canvas 会按 cssScale 放大超出容器盒，
+            // overflow:hidden 会把超出部分裁掉（用户已确认的裁切 bug）。
+            'overflow: visible',
             'transform-origin: 0 0',
             'will-change: transform',
         ].join(';');
@@ -245,17 +247,27 @@ export function applyViewportCanvasFrame(
     // scaled via css); only the canvases are re-boxed here, in render-zoom
     // units. Writing displayWidth into the container double-scales during
     // zoom previews.
-    const domWidth =
-        frame.displayZoom > 0.0001 && frame.baseRenderZoom > 0.0001
-            ? (frame.displayWidth / frame.displayZoom) * frame.baseRenderZoom
-            : frame.displayWidth;
-    const domHeight =
-        frame.displayZoom > 0.0001 && frame.baseRenderZoom > 0.0001
-            ? (frame.displayHeight / frame.displayZoom) * frame.baseRenderZoom
-            : frame.displayHeight;
+    //
+    // While the visible present is deferred (double buffering), the onscreen
+    // canvases must keep the committed frame's CSS box: the container is
+    // still laid out at the previous rendered zoom with the preview scale on
+    // top, so re-boxing the visible canvas to the new render zoom here makes
+    // it collapse to pageWidth * newRenderZoom * previewScale until the
+    // commit resyncs the container. presentViewportCanvasFromSource re-boxes
+    // the visible canvas atomically at present time.
+    if (!deferVisibleFrame) {
+        const domWidth =
+            frame.displayZoom > 0.0001 && frame.baseRenderZoom > 0.0001
+                ? (frame.displayWidth / frame.displayZoom) * frame.baseRenderZoom
+                : frame.displayWidth;
+        const domHeight =
+            frame.displayZoom > 0.0001 && frame.baseRenderZoom > 0.0001
+                ? (frame.displayHeight / frame.displayZoom) * frame.baseRenderZoom
+                : frame.displayHeight;
 
-    applyCanvasCssBox(refs.mainCanvas, 0, 0, domWidth, domHeight);
-    applyCanvasCssBox(refs.backCanvas, frame.viewportLeft, frame.viewportTop, frame.viewportWidth, frame.viewportHeight);
+        applyCanvasCssBox(refs.mainCanvas, 0, 0, domWidth, domHeight);
+        applyCanvasCssBox(refs.backCanvas, frame.viewportLeft, frame.viewportTop, frame.viewportWidth, frame.viewportHeight);
+    }
 
     const baseScale =
         frame.displayZoom > 0.0001

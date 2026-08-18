@@ -107,17 +107,33 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         const scrollContainer = deps.getScrollContainer();
         if (!container || !scrollContainer) return;
 
+        const zs = deps.getZoomState();
         logPdfLayoutTrace('zoom.apply-committed-frame.before', {
             frame,
-            zoomState: deps.getZoomState(),
+            zoomState: zs,
         });
         container.style.transformOrigin = '0 0';
         container.style.transition = '';
         deps.clearPreviewPresent();
         deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
+
+        // When the preview loop is active, the CSS transform set by
+        // syncLayoutBox (identity scale) must be overridden with the
+        // preview's visual scale so the user sees no jump.
+        if (wheelZoomRafId !== null) {
+            const baseZoom = frame.renderZoom > 0 ? frame.renderZoom : 1.0;
+            const cssScale = zs.visualZoom / baseZoom;
+            if (Math.abs(cssScale - 1.0) < 0.001) {
+                container.style.transform = '';
+            } else {
+                container.style.transform = `scale(${cssScale})`;
+            }
+        }
+
         scrollContainer.scrollLeft = frame.scrollLeft;
         scrollContainer.scrollTop = frame.scrollTop;
         deps.clearPendingAnchor();
+
         logPdfLayoutTrace('zoom.apply-committed-frame.after', {
             frame,
             zoomState: deps.getZoomState(),
@@ -187,6 +203,7 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         } else {
             container.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) scale(${cssScale})`;
         }
+
         logPdfLayoutTrace('zoom.preview-frame.apply.after', {
             preview,
             translateX,
@@ -289,10 +306,11 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         const container = deps.getVectorContainer();
         if (!container) return;
 
+        const zs = deps.getZoomState();
         logPdfLayoutTrace('zoom.commit-rendered-frame.received', {
             frame,
             immediateMutation: isImmediateMutationFrame(frame as any),
-            zoomState: deps.getZoomState(),
+            zoomState: zs,
         });
         if (isImmediateMutationFrame(frame as any)) {
             stopSmoothZoomPreview();
@@ -311,7 +329,21 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
             return;
         }
 
+        // Preview is active: update container DOM to match committed zoom
+        // so the preview loop's CSS scale calculation has correct base
+        // dimensions. Without this, the container stays at the old
+        // lastRenderedZoom size, causing a visible jump when the preview
+        // loop computes cssScale = visualZoom / newLastRenderedZoom.
+        deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
+        const baseZoom = frame.renderZoom > 0 ? frame.renderZoom : 1.0;
+        const cssScale = zoomState.visualZoom / baseZoom;
         container.style.transformOrigin = '0 0';
+        if (Math.abs(cssScale - 1.0) < 0.001) {
+            container.style.transform = '';
+        } else {
+            container.style.transform = `scale(${cssScale})`;
+        }
+
         startSmoothZoomPreview();
     }
 
