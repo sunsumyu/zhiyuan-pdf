@@ -131,6 +131,21 @@ pub fn find_reusable_base_layer(
     )
 }
 
+/// A reusable base-layer hit only means "no render needed" when the matched
+/// layer is the one already on screen (`active_base_layer`). A hit from
+/// `recent_base_layers` is just a cache candidate: nothing re-presents it, so
+/// treating it as displayed skips the settle render and strands the previous
+/// zoom's bitmap under a stale preview scale (persistent blur after zoom).
+pub fn reusable_base_layer_is_displayed(
+    reusable: Option<&BaseLayerCacheEntry>,
+    active: Option<&BaseLayerCacheEntry>,
+) -> bool {
+    match (reusable, active) {
+        (Some(reusable), Some(active)) => reusable.key == active.key,
+        _ => false,
+    }
+}
+
 pub fn find_reusable_detail_tile(
     state: &HostPresentState,
     scene_key: &str,
@@ -394,4 +409,61 @@ fn detail_tile_covers_viewport_geometry(
         && visible_top >= tile.tile_top + DETAIL_TILE_REUSE_MARGIN
         && visible_right <= tile_right - DETAIL_TILE_REUSE_MARGIN
         && visible_bottom <= tile_bottom - DETAIL_TILE_REUSE_MARGIN
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_layer(key: &str, cache_zoom: f32) -> BaseLayerCacheEntry {
+        BaseLayerCacheEntry {
+            key: key.to_string(),
+            cache_zoom,
+            scene_key: "scene-a".to_string(),
+        }
+    }
+
+    #[test]
+    fn recent_hit_that_is_not_the_active_layer_is_not_displayed() {
+        // Zoom 1.0 -> 0.63 -> 1.0: the 0.99-bucket hit comes from
+        // recent_base_layers while the screen still shows the 0.63 render.
+        // Treating it as displayed would skip the settle render and strand the
+        // 0.63 bitmap under a stale preview scale (persistent blur).
+        let active = base_layer("doc.pdf|1|scene-a|base|0.6300|1.2500", 0.63);
+        let reusable = base_layer("doc.pdf|1|scene-a|base|0.9900|1.2500", 0.99);
+        assert!(!reusable_base_layer_is_displayed(
+            Some(&reusable),
+            Some(&active)
+        ));
+    }
+
+    #[test]
+    fn hit_matching_the_active_layer_is_displayed() {
+        let active = base_layer("doc.pdf|1|scene-a|base|0.9900|1.2500", 0.99);
+        let reusable = base_layer("doc.pdf|1|scene-a|base|0.9900|1.2500", 0.99);
+        assert!(reusable_base_layer_is_displayed(
+            Some(&reusable),
+            Some(&active)
+        ));
+    }
+
+    #[test]
+    fn display_requires_both_reusable_and_active_layers() {
+        let layer = base_layer("doc.pdf|1|scene-a|base|0.9900|1.2500", 0.99);
+        assert!(!reusable_base_layer_is_displayed(None, Some(&layer)));
+        assert!(!reusable_base_layer_is_displayed(Some(&layer), None));
+        assert!(!reusable_base_layer_is_displayed(None, None));
+    }
+
+    #[test]
+    fn identity_is_the_cache_key_not_zoom_proximity() {
+        // Same quantized zoom but different keys (different scene) must not
+        // count as the displayed layer.
+        let active = base_layer("doc.pdf|1|scene-b|base|0.9900|1.2500", 0.99);
+        let reusable = base_layer("doc.pdf|1|scene-a|base|0.9900|1.2500", 0.99);
+        assert!(!reusable_base_layer_is_displayed(
+            Some(&reusable),
+            Some(&active)
+        ));
+    }
 }

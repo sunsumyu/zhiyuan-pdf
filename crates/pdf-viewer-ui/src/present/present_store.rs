@@ -95,14 +95,6 @@ pub fn reset_present_runtime(reset_cache: bool, reset_refresh: bool) {
 
 pub fn schedule_render_frame_request(request: &FramePlanRequest) -> Option<RenderFrameEnvelope> {
     let frame_plan = build_frame_plan_result(request, false);
-    eprintln!(
-        "[DEBUG-RENDER] schedule_render_frame_request: render_reason={}, render_base_layer={}, render_detail_layer={}, display_zoom={}, base_cache_key={}",
-        frame_plan.render_reason,
-        frame_plan.render_base_layer,
-        frame_plan.render_detail_layer,
-        frame_plan.display_zoom,
-        frame_plan.base_cache_key
-    );
     // Editor-driven renders carry a fresh scene_revision per keystroke, so any
     // pending in-flight frame is stale and will never be committed by JS (the
     // active token is overwritten before progressive completes). To avoid

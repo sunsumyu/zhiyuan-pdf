@@ -4,7 +4,7 @@ pub use pdf_viewer_core::render::plan_builder::*;
 use crate::present::plan::{preview_is_settled, quantize_cache_zoom, resolve_present_policy};
 use crate::render::tile_cache::{
     build_base_cache_key, build_detail_cache_key, find_reusable_base_layer,
-    find_reusable_detail_tile, HostPresentState,
+    find_reusable_detail_tile, reusable_base_layer_is_displayed, HostPresentState,
 };
 use crate::common::sanitize::sanitize_positive;
 use crate::viewer::viewer_store::HostViewerSession;
@@ -206,12 +206,20 @@ pub fn build_frame_plan_result(
         }
     };
 
+    // Only a hit on the layer already on screen spares the settle render. A
+    // recent-but-inactive hit must still schedule a frame: the TS frame-cache
+    // path presents it cheaply, otherwise the previous zoom's bitmap stays
+    // scaled by the frozen preview ratio (persistent blur after zoom).
+    let has_displayed_base_layer = reusable_base_layer_is_displayed(
+        reusable_base_layer.as_ref(),
+        present_state.active_base_layer.as_ref(),
+    );
     let present_policy = resolve_present_policy(
         target_zoom,
         visual_zoom,
         render.use_viewport_tile,
         zoom_state.pending_anchor.is_some(),
-        reusable_base_layer.is_some(),
+        has_displayed_base_layer,
         reusable_detail_tile.is_some(),
     );
 
