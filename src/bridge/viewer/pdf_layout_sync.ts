@@ -90,7 +90,8 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             container.style.height = `${domHeight}px`;
             container.style.margin = '0';
             container.style.transformOrigin = '0 0';
-            container.style.transform = Math.abs(cssScale - 1.0) < 0.001 ? '' : `scale(${cssScale})`;
+            // CSS transform is NOT set here — callers manage it explicitly
+            // via applyPreviewFrame (preview) or applyCommittedFrame (settle).
         }
 
         const rasterCanvas = document.getElementById('pdf-render-target') as HTMLCanvasElement | null;
@@ -102,7 +103,7 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             rasterCanvas.style.height = `${domHeight}px`;
             rasterCanvas.style.margin = '0';
             rasterCanvas.style.transformOrigin = '0 0';
-            rasterCanvas.style.transform = Math.abs(cssScale - 1.0) < 0.001 ? '' : `scale(${cssScale})`;
+            // CSS transform is NOT set here — callers manage it explicitly.
         }
 
         scrollContainer.style.overflowX = 'auto';

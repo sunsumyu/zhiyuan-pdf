@@ -61,10 +61,11 @@ describe('zoom commit frame anti-flash', () => {
     expect(setsVisible).toBe(true);
   });
 
-  it('syncLayoutBox sets transform unconditionally', async () => {
-    // syncLayoutBox should always set container.style.transform
-    // (either to scale(...) or to '' if cssScale ≈ 1.0).
-    // This means there's no need to clear it beforehand.
+  it('syncLayoutBox does NOT set CSS transform (callers manage it)', async () => {
+    // syncLayoutBox only updates container dimensions (position, size).
+    // CSS transform is managed by the zoom controller (applyPreviewFrame,
+    // applyCommittedFrame, applyVisualZoomPreview) to avoid stale scales
+    // persisting when the preview tick loop stops.
     const fs = await import('fs');
     const path = await import('path');
     const layout = fs.readFileSync(
@@ -72,9 +73,13 @@ describe('zoom commit frame anti-flash', () => {
       'utf8',
     );
 
-    // syncLayoutBox sets container.style.transform based on cssScale
-    const setsTransform = /container\.style\.transform\s*=/.test(layout);
-    expect(setsTransform).toBe(true);
+    // syncLayoutBox must NOT set container.style.transform
+    const syncFnBody = layout.substring(
+      layout.indexOf('function syncLayoutBox'),
+      layout.indexOf('logPdfLayoutTrace(\'layout.sync.after\''),
+    );
+    const setsTransform = /container\.style\.transform\s*=/.test(syncFnBody);
+    expect(setsTransform).toBe(false);
   });
 
   it('commitRenderedFrame updates container DOM when preview is active', async () => {
@@ -84,8 +89,8 @@ describe('zoom commit frame anti-flash', () => {
     // at the old lastRenderedZoom size, causing a visible jump when the
     // preview loop computes cssScale = visualZoom / newLastRenderedZoom.
     //
-    // After syncLayoutBox, the CSS transform is overridden with the visual
-    // scale for continuity.
+    // CSS transform is NOT set here — the preview loop (applyPreviewFrame)
+    // manages it to avoid stale scales persisting when the tick stops.
     const fs = await import('fs');
     const path = await import('path');
     const controller = fs.readFileSync(
@@ -103,10 +108,6 @@ describe('zoom commit frame anti-flash', () => {
     // Must call syncLayoutBox to update container DOM during preview
     const hasSync = /deps\.syncLayoutBox\(frame\.displayZoom, frame\.renderZoom, frame\)/.test(fn);
     expect(hasSync).toBe(true);
-
-    // Must override CSS transform for visual continuity
-    const hasTransformOverride = /container\.style\.transform/.test(fn);
-    expect(hasTransformOverride).toBe(true);
   });
 
   it('applyViewportCanvasFrame skips visible-canvas re-box when deferVisibleFrame is set', async () => {
