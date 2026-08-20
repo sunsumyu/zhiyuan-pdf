@@ -86,10 +86,52 @@ export type ZoomController = {
     clearPendingAnchor: () => void;
 };
 
+type ZoomTransformMode = 'idle' | 'preview' | 'committed';
+
+type ZoomTransformState = {
+    mode: ZoomTransformMode;
+    cssScale: number;
+    translateX: number;
+    translateY: number;
+};
+
 export function createZoomController(deps: ZoomControllerDeps): ZoomController {
     let wheelZoomBound = false;
     let wheelZoomRafId: number | null = null;
     let wheelZoomRenderTimerId: number | null = null;
+
+    const transformState: ZoomTransformState = {
+        mode: 'idle',
+        cssScale: 1.0,
+        translateX: 0,
+        translateY: 0,
+    };
+
+    function computeCssScale(): number {
+        const zs = deps.getZoomState();
+        const baseZoom = zs.lastRenderedZoom > 0 ? zs.lastRenderedZoom : 1.0;
+        return zs.visualZoom / baseZoom;
+    }
+
+    function applyZoomTransform(): void {
+        const container = deps.getVectorContainer();
+        if (!container) return;
+
+        if (transformState.mode === 'idle') {
+            container.style.transform = '';
+        } else {
+            const { cssScale, translateX, translateY } = transformState;
+            const hasTranslate = Math.abs(translateX) >= 0.01 || Math.abs(translateY) >= 0.01;
+            const hasScale = Math.abs(cssScale - 1.0) >= 0.001;
+            if (!hasScale && !hasTranslate) {
+                container.style.transform = '';
+            } else if (!hasTranslate) {
+                container.style.transform = `scale(${cssScale})`;
+            } else {
+                container.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) scale(${cssScale})`;
+            }
+        }
+    }
 
     function isImmediateMutationFrame(frame: { renderReason?: string }): boolean {
         return frame.renderReason === 'editorVisibility' || frame.renderReason === 'documentMutation';
@@ -102,10 +144,11 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         }
         // Safety: clear any leftover preview CSS scale when the tick loop
         // is cancelled externally (e.g. by commitRenderedFrame).
-        const container = deps.getVectorContainer();
-        if (container) {
-            container.style.transform = '';
-        }
+        transformState.mode = 'idle';
+        transformState.cssScale = 1.0;
+        transformState.translateX = 0;
+        transformState.translateY = 0;
+        applyZoomTransform();
     }
 
     function applyCommittedFrame(frame: AnchorViewportLayout & { displayZoom: number; renderZoom: number; }): void {
@@ -123,17 +166,21 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         deps.clearPreviewPresent();
         deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
 
-        // Always clear any leftover preview CSS scale.  When the preview
-        // loop is still active, re-apply the visual offset so the user
-        // sees no jump; otherwise leave the transform at identity.
-        container.style.transform = '';
+        // Update CSS transform through centralized state.
         if (wheelZoomRafId !== null) {
-            const baseZoom = frame.renderZoom > 0 ? frame.renderZoom : 1.0;
-            const cssScale = zs.visualZoom / baseZoom;
-            if (Math.abs(cssScale - 1.0) >= 0.001) {
-                container.style.transform = `scale(${cssScale})`;
-            }
+            // Preview loop is active: re-apply the visual offset so the user sees no jump.
+            transformState.mode = 'preview';
+            transformState.cssScale = computeCssScale();
+            transformState.translateX = 0;
+            transformState.translateY = 0;
+        } else {
+            // Preview is idle: clear any leftover preview CSS scale.
+            transformState.mode = 'idle';
+            transformState.cssScale = 1.0;
+            transformState.translateX = 0;
+            transformState.translateY = 0;
         }
+        applyZoomTransform();
 
         scrollContainer.scrollLeft = frame.scrollLeft;
         scrollContainer.scrollTop = frame.scrollTop;
@@ -194,11 +241,11 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         // Only set the transform when the preview is stopping (error path)
         // or there is no active preview.
         if (!options?.skipTransform) {
-            if (Math.abs(cssScale - 1.0) < 0.001) {
-                container.style.transform = '';
-            } else {
-                container.style.transform = `scale(${cssScale})`;
-            }
+            transformState.mode = wheelZoomRafId !== null ? 'preview' : 'idle';
+            transformState.cssScale = cssScale;
+            transformState.translateX = 0;
+            transformState.translateY = 0;
+            applyZoomTransform();
         }
 
         if (scrollContainer) {
@@ -232,15 +279,12 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         const translateY = Number.isFinite(previewPresent.translateY) ? previewPresent.translateY : 0;
         const cssScale = Number.isFinite(previewPresent.cssScale) ? previewPresent.cssScale : preview.cssScale;
 
-        if (
-            Math.abs(cssScale - 1.0) < 0.001 &&
-            Math.abs(translateX) < 0.01 &&
-            Math.abs(translateY) < 0.01
-        ) {
-            container.style.transform = '';
-        } else {
-            container.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) scale(${cssScale})`;
-        }
+        // Update centralized transform state and apply.
+        transformState.mode = 'preview';
+        transformState.cssScale = cssScale;
+        transformState.translateX = translateX;
+        transformState.translateY = translateY;
+        applyZoomTransform();
 
         logPdfLayoutTrace('zoom.preview-frame.apply.after', {
             preview,
@@ -257,7 +301,6 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
             zoomState: deps.getZoomState(),
         });
         if (container) {
-            container.style.transform = '';
             container.style.transformOrigin = '0 0';
         }
         deps.clearPreviewPresent();
@@ -308,7 +351,11 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
                     deps.clearPreviewPresent();
                     deps.resetZoomPreviewState();
                     applyVisualZoomPreview(zoomState.targetZoom);
-                    container.style.transform = '';
+                    transformState.mode = 'idle';
+                    transformState.cssScale = 1.0;
+                    transformState.translateX = 0;
+                    transformState.translateY = 0;
+                    applyZoomTransform();
                     flushCommittedFrameIfSettled();
                     return;
                 }
@@ -329,7 +376,11 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
                     // from the preview loop so the container shows the bitmap
                     // at its native size.  Then schedule a settle render at the
                     // correct zoom so the bitmap matches the display.
-                    container.style.transform = '';
+                    transformState.mode = 'idle';
+                    transformState.cssScale = 1.0;
+                    transformState.translateX = 0;
+                    transformState.translateY = 0;
+                    applyZoomTransform();
                     container.style.transformOrigin = '0 0';
                     container.dataset.settledClear = String(Date.now());
                     if (!tickDecision?.requestRenderNow) {
@@ -348,10 +399,11 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
                 // the CSS transform so the container doesn't show a stale
                 // preview scale, and stop the RAF loop.
                 console.error('[PDF-ZOOM] tick error, clearing preview CSS', error);
-                const container = deps.getVectorContainer();
-                if (container) {
-                    container.style.transform = '';
-                }
+                transformState.mode = 'idle';
+                transformState.cssScale = 1.0;
+                transformState.translateX = 0;
+                transformState.translateY = 0;
+                applyZoomTransform();
                 wheelZoomRafId = null;
             }
         };
@@ -362,17 +414,18 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
     function restorePendingAnchor(targetZoom: number): void {
         const scrollContainer = deps.getScrollContainer();
         if (!scrollContainer) return;
-        const container = deps.getVectorContainer();
         const renderedZoom = deps.getZoomState().lastRenderedZoom > 0 ? deps.getZoomState().lastRenderedZoom : targetZoom;
 
         const nextLayout = deps.takeFramePlan(targetZoom);
         if (nextLayout) {
             deps.syncLayoutBox(targetZoom, renderedZoom, nextLayout);
-            // syncLayoutBox no longer sets the CSS transform — apply it here.
-            if (container) {
-                const cssScale = targetZoom / renderedZoom;
-                container.style.transform = Math.abs(cssScale - 1.0) < 0.001 ? '' : `scale(${cssScale})`;
-            }
+            // Update CSS transform through centralized state.
+            const cssScale = targetZoom / renderedZoom;
+            transformState.mode = Math.abs(cssScale - 1.0) < 0.001 ? 'idle' : 'committed';
+            transformState.cssScale = cssScale;
+            transformState.translateX = 0;
+            transformState.translateY = 0;
+            applyZoomTransform();
             scrollContainer.scrollLeft = nextLayout.scrollLeft;
             scrollContainer.scrollTop = nextLayout.scrollTop;
             return;
@@ -432,7 +485,7 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         // loop computes cssScale = visualZoom / newLastRenderedZoom.
         deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
 
-        // Immediately resync the CSS scale to match the new renderZoom.
+        // Immediately resync the CSS scale through centralized state.
         // Before this fix, syncLayoutBox updated container dimensions to
         // renderZoom while the CSS transform still used the old
         // lastRenderedZoom as base: visual size = renderZoom * cssScale
@@ -440,13 +493,11 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         // when renderZoom > oldRenderedZoom (flash big) then corrects on
         // the next tick (flash small).  Applying the correct scale here
         // eliminates the one-frame gap.
-        const baseZoom = frame.renderZoom > 0 ? frame.renderZoom : 1.0;
-        const cssScale = zs.visualZoom / baseZoom;
-        if (Math.abs(cssScale - 1.0) < 0.001) {
-            container.style.transform = '';
-        } else {
-            container.style.transform = `scale(${cssScale})`;
-        }
+        transformState.mode = 'preview';
+        transformState.cssScale = computeCssScale();
+        transformState.translateX = 0;
+        transformState.translateY = 0;
+        applyZoomTransform();
 
         startSmoothZoomPreview();
     }
@@ -466,7 +517,6 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         deps.resetZoomPreviewState();
         container.style.transformOrigin = '0 0';
         container.style.transition = '';
-        container.style.transform = '';
         deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
         scrollContainer.scrollLeft = frame.scrollLeft;
         scrollContainer.scrollTop = frame.scrollTop;
@@ -604,6 +654,11 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
 
             container.style.transformOrigin = '0 0';
             deps.syncZoomSelect();
+            transformState.mode = 'preview';
+            transformState.cssScale = computeCssScale();
+            transformState.translateX = 0;
+            transformState.translateY = 0;
+            applyZoomTransform();
             startSmoothZoomPreview();
             scheduleWheelZoomRender();
         }, { passive: false });
