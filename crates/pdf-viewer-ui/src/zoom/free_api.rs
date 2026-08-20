@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::viewer::viewer_controller;
 use crate::zoom::interaction::WheelZoomRequest;
-use crate::zoom::{request, zoom_controller};
+use crate::zoom::{request, zoom_controller, preview_host};
 
 #[wasm_bindgen(js_name = "resolveWheelZoom")]
 pub fn resolve_wheel_zoom(request_js: JsValue) -> JsValue {
@@ -64,4 +64,33 @@ pub fn sync_host_layout_wasm(request_js: JsValue) -> JsValue {
     let request: crate::host::layout::SyncHostLayoutRequest = from_value(request_js).unwrap_or_default();
     let result = crate::host::layout::sync_host_layout(request);
     to_value(&result).unwrap_or(JsValue::NULL)
+}
+
+/// Single-read snapshot of all zoom state fields the TS bridge needs.
+/// Avoids multiple WASM round-trips that could see stale intermediate values.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZoomSnapshot {
+    pub current_zoom: f32,
+    pub target_zoom: f32,
+    pub visual_zoom: f32,
+    pub last_rendered_zoom: f32,
+    pub css_scale: f32,
+    pub preview_active: bool,
+    pub wheel_render_pending: bool,
+}
+
+#[wasm_bindgen(js_name = "readZoomSnapshot")]
+pub fn read_zoom_snapshot() -> JsValue {
+    let state = zoom_controller::read_zoom_state();
+    let snapshot = ZoomSnapshot {
+        current_zoom: state.current_zoom,
+        target_zoom: state.target_zoom,
+        visual_zoom: state.visual_zoom,
+        last_rendered_zoom: state.last_rendered_zoom,
+        css_scale: state.css_scale,
+        preview_active: preview_host::is_preview_active(),
+        wheel_render_pending: preview_host::is_wheel_render_pending(),
+    };
+    to_value(&snapshot).unwrap_or(JsValue::NULL)
 }

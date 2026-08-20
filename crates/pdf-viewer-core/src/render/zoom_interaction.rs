@@ -388,14 +388,10 @@ pub fn advance_zoom_animation_state(
     if preview_is_settled(target_zoom, visual_zoom) {
         state.visual_zoom = target_zoom;
         state.last_animation_timestamp_ms = 0.0;
-        let base_zoom = if state.last_rendered_zoom > 0.0 {
-            state.last_rendered_zoom
-        } else {
-            1.0
-        };
+        state.recompute_css_scale();
         return ZoomAnimationStep {
             visual_zoom: state.visual_zoom,
-            css_scale: state.visual_zoom / base_zoom,
+            css_scale: state.css_scale,
             settled: true,
         };
     }
@@ -431,14 +427,10 @@ pub fn advance_zoom_animation_state(
         let alpha = 1.0 - (-response * dt).exp();
         state.visual_zoom += diff * alpha;
     }
-    let base_zoom = if state.last_rendered_zoom > 0.0 {
-        state.last_rendered_zoom
-    } else {
-        1.0
-    };
+    state.recompute_css_scale();
     ZoomAnimationStep {
         visual_zoom: state.visual_zoom,
-        css_scale: state.visual_zoom / base_zoom,
+        css_scale: state.css_scale,
         settled: settled || (state.target_zoom - state.visual_zoom).abs() < 0.001,
     }
 }
@@ -455,6 +447,7 @@ pub fn commit_rendered_zoom(state: &mut HostZoomState, rendered_zoom: f32) {
     if preview_is_settled(state.target_zoom, state.visual_zoom) {
         state.visual_zoom = state.target_zoom;
     }
+    state.recompute_css_scale();
     state.last_animation_timestamp_ms = 0.0;
     state.preview_transform = None;
 }

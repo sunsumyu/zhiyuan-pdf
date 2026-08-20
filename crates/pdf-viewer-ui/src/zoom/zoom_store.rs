@@ -74,6 +74,7 @@ pub fn reset_zoom_state(initial_zoom: f32) {
             target_zoom: zoom,
             visual_zoom: zoom,
             last_rendered_zoom: zoom,
+            css_scale: 1.0,
             last_animation_timestamp_ms: 0.0,
             pending_anchor: None,
             visual_layout: None,

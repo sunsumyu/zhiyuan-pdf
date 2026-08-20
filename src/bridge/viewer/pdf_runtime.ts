@@ -124,6 +124,28 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         }
     }
 
+    function readZoomSnapshot(): {
+        currentZoom: number; targetZoom: number; visualZoom: number;
+        lastRenderedZoom: number; cssScale: number;
+        previewActive: boolean; wheelRenderPending: boolean;
+    } {
+        try {
+            const wasm = getWasmApi();
+            const snap = (wasm as any).readZoomSnapshot?.();
+            if (snap) return snap;
+        } catch { /* fall through */ }
+        const session = viewerSession.read();
+        return {
+            currentZoom: session.currentZoom,
+            targetZoom: session.currentZoom,
+            visualZoom: session.currentZoom,
+            lastRenderedZoom: session.currentZoom,
+            cssScale: 1.0,
+            previewActive: false,
+            wheelRenderPending: false,
+        };
+    }
+
     const framePlanAdapter = createFramePlanAdapter({
         getWasmApi: () => getWasmApi(),
         getScrollContainer,
@@ -236,6 +258,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
     const zoomController = createZoomController({
         getCurrentPath: () => viewerSession.read().path,
         getZoomState: readZoomState,
+        readZoomSnapshot,
         resetZoomPreviewState: () => {
             try {
                 const wasm = getWasmApi();

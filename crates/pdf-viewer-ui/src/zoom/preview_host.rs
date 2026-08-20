@@ -29,6 +29,7 @@ pub fn settle_zoom_preview_at_target() {
         state.visual_zoom = target_zoom;
         // fix: do not overwrite `last_rendered_zoom`, let the render pipeline update it via commit
         // otherwise it causes the CSS scale to drop to 1.0 immediately before the new canvas is ready.
+        state.recompute_css_scale();
         state.last_animation_timestamp_ms = 0.0;
         state.pending_anchor = None;
         state.preview_transform = None;

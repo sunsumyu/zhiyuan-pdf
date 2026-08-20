@@ -34,6 +34,16 @@ type RustWheelZoomHostResult = {
     renderDecision: RustWheelRenderDecision;
 };
 
+type ZoomSnapshot = {
+    currentZoom: number;
+    targetZoom: number;
+    visualZoom: number;
+    lastRenderedZoom: number;
+    cssScale: number;
+    previewActive: boolean;
+    wheelRenderPending: boolean;
+};
+
 type RustPreviewHostStepResult = {
     preview: {
         settled: boolean;
@@ -53,6 +63,7 @@ type RustPreviewHostStepResult = {
 export type ZoomControllerDeps = {
     getCurrentPath: () => string | null;
     getZoomState: () => { targetZoom: number; visualZoom: number; lastRenderedZoom: number; };
+    readZoomSnapshot: () => ZoomSnapshot;
     resetZoomPreviewState: () => void;
     getCurrentPageWidth: () => number;
     getCurrentPageHeight: () => number;
@@ -107,12 +118,6 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         translateY: 0,
     };
 
-    function computeCssScale(): number {
-        const zs = deps.getZoomState();
-        const baseZoom = zs.lastRenderedZoom > 0 ? zs.lastRenderedZoom : 1.0;
-        return zs.visualZoom / baseZoom;
-    }
-
     function applyZoomTransform(): void {
         const container = deps.getVectorContainer();
         if (!container) return;
@@ -156,10 +161,10 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         const scrollContainer = deps.getScrollContainer();
         if (!container || !scrollContainer) return;
 
-        const zs = deps.getZoomState();
+        const snapshot = deps.readZoomSnapshot();
         logPdfLayoutTrace('zoom.apply-committed-frame.before', {
             frame,
-            zoomState: zs,
+            zoomState: snapshot,
         });
         container.style.transformOrigin = '0 0';
         container.style.transition = '';
@@ -170,7 +175,7 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         if (wheelZoomRafId !== null) {
             // Preview loop is active: re-apply the visual offset so the user sees no jump.
             transformState.mode = 'preview';
-            transformState.cssScale = computeCssScale();
+            transformState.cssScale = snapshot.cssScale;
             transformState.translateX = 0;
             transformState.translateY = 0;
         } else {
@@ -202,7 +207,7 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         // with scale(1.6)).  Skip the flush and force a fresh settle
         // render at the correct zoom instead.  Using 'documentMutation'
         // bypasses the wasm reuse check (stable_document_frame=true).
-        const zoomState = deps.getZoomState();
+        const zoomState = deps.readZoomSnapshot();
         const frameZoom = pendingCommittedFrame.renderZoom;
         const settledZoom = zoomState.targetZoom;
         if (Math.abs(frameZoom - settledZoom) / Math.max(settledZoom, 0.01) > 0.10) {
@@ -227,11 +232,15 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         const scrollContainer = deps.getScrollContainer();
         if (!container) return;
 
+        const snapshot = deps.readZoomSnapshot();
         logPdfLayoutTrace('zoom.preview.apply.before', {
             previewZoom,
-            zoomState: deps.getZoomState(),
+            zoomState: snapshot,
         });
-        const baseZoom = deps.getZoomState().lastRenderedZoom > 0 ? deps.getZoomState().lastRenderedZoom : 1.0;
+        // NOTE: cssScale here uses previewZoom (caller-provided) as numerator,
+        // not snapshot.cssScale which uses visualZoom. This is intentional —
+        // this function is called for zoom-to-fit and direct zoom selection.
+        const baseZoom = snapshot.lastRenderedZoom > 0 ? snapshot.lastRenderedZoom : 1.0;
         const cssScale = previewZoom / baseZoom;
         const anchorLayout = deps.peekFramePlan(previewZoom);
         deps.syncLayoutBox(previewZoom, baseZoom, anchorLayout);
@@ -259,7 +268,7 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
             baseZoom,
             cssScale,
             anchorLayout,
-            zoomState: deps.getZoomState(),
+            zoomState: snapshot,
         });
     }
 
@@ -326,17 +335,17 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
                     return;
                 }
 
-                const zoomState = deps.getZoomState();
+                const zoomSnapshot = deps.readZoomSnapshot();
                 let previewHostResult: RustPreviewHostStepResult | null = null;
                 try {
                     previewHostResult = deps.stepPreviewHost(
-                        zoomState.targetZoom,
+                        zoomSnapshot.targetZoom,
                         timestampMs,
                     );
                 } catch (error) {
                     console.error('[PDF-ZOOM] Rust preview frame failed, using host preview fallback', {
                         error,
-                        targetZoom: zoomState.targetZoom,
+                        targetZoom: zoomSnapshot.targetZoom,
                     });
                 }
                 if (!previewHostResult?.preview) {
@@ -345,12 +354,12 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
                     // container shows the bitmap at its native size.
                     logPdfLayoutTrace('zoom.tick.error-path', {
                         reason: previewHostResult ? 'no-preview' : 'host-threw',
-                        zoomState: deps.getZoomState(),
+                        zoomState: zoomSnapshot,
                     });
                     wheelZoomRafId = null;
                     deps.clearPreviewPresent();
                     deps.resetZoomPreviewState();
-                    applyVisualZoomPreview(zoomState.targetZoom);
+                    applyVisualZoomPreview(zoomSnapshot.targetZoom);
                     transformState.mode = 'idle';
                     transformState.cssScale = 1.0;
                     transformState.translateX = 0;
@@ -414,7 +423,8 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
     function restorePendingAnchor(targetZoom: number): void {
         const scrollContainer = deps.getScrollContainer();
         if (!scrollContainer) return;
-        const renderedZoom = deps.getZoomState().lastRenderedZoom > 0 ? deps.getZoomState().lastRenderedZoom : targetZoom;
+        const snapshot = deps.readZoomSnapshot();
+        const renderedZoom = snapshot.lastRenderedZoom > 0 ? snapshot.lastRenderedZoom : targetZoom;
 
         const nextLayout = deps.takeFramePlan(targetZoom);
         if (nextLayout) {
@@ -436,11 +446,11 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         const container = deps.getVectorContainer();
         if (!container) return;
 
-        const zs = deps.getZoomState();
+        const snapshot = deps.readZoomSnapshot();
         logPdfLayoutTrace('zoom.commit-rendered-frame.received', {
             frame,
             immediateMutation: isImmediateMutationFrame(frame as any),
-            zoomState: zs,
+            zoomState: snapshot,
         });
         if (isImmediateMutationFrame(frame as any)) {
             stopSmoothZoomPreview();
@@ -451,20 +461,19 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
 
         deps.queueCommittedFrame(frame);
 
-        const zoomState = deps.getZoomState();
-        if (Math.abs(zoomState.targetZoom - zoomState.visualZoom) < 0.001) {
+        if (Math.abs(snapshot.targetZoom - snapshot.visualZoom) < 0.001) {
             // Preview is settled.  If the committed frame was rendered at a
             // zoom far from the settled target (e.g. throttle rendered at
             // visualZoom=0.63 while settling at 1.0), applying it would
             // strand a blurry bitmap under a stale CSS scale.  Skip the
             // apply and force a fresh settle render at the correct zoom.
             const frameZoom = frame.renderZoom;
-            const settledZoom = zoomState.targetZoom;
+            const settledZoom = snapshot.targetZoom;
             if (Math.abs(frameZoom - settledZoom) / Math.max(settledZoom, 0.01) > 0.10) {
                 logPdfLayoutTrace('zoom.commit-rendered-frame.skip-stale', {
                     frameZoom,
                     settledZoom,
-                    zoomState,
+                    zoomState: snapshot,
                 });
                 deps.setWheelRenderPending(false);
                 window.requestAnimationFrame(() => {
@@ -480,21 +489,12 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
 
         // Preview is active: update container DOM to match committed zoom
         // so the preview loop's CSS scale calculation has correct base
-        // dimensions. Without this, the container stays at the old
-        // lastRenderedZoom size, causing a visible jump when the preview
-        // loop computes cssScale = visualZoom / newLastRenderedZoom.
+        // dimensions.
         deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
 
         // Immediately resync the CSS scale through centralized state.
-        // Before this fix, syncLayoutBox updated container dimensions to
-        // renderZoom while the CSS transform still used the old
-        // lastRenderedZoom as base: visual size = renderZoom * cssScale
-        // = renderZoom * (visualZoom / oldRenderedZoom), which overshoots
-        // when renderZoom > oldRenderedZoom (flash big) then corrects on
-        // the next tick (flash small).  Applying the correct scale here
-        // eliminates the one-frame gap.
         transformState.mode = 'preview';
-        transformState.cssScale = computeCssScale();
+        transformState.cssScale = snapshot.cssScale;
         transformState.translateX = 0;
         transformState.translateY = 0;
         applyZoomTransform();
@@ -541,12 +541,12 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
             return;
         }
 
-        const zoomState = deps.getZoomState();
-        const framePlan = deps.peekFramePlan(zoomState.targetZoom);
+        const snapshot = deps.readZoomSnapshot();
+        const framePlan = deps.peekFramePlan(snapshot.targetZoom);
         const decision = deps.resolveWheelRenderDecision({
-            targetZoom: zoomState.targetZoom,
-            visualZoom: zoomState.visualZoom,
-            lastRenderedZoom: zoomState.lastRenderedZoom,
+            targetZoom: snapshot.targetZoom,
+            visualZoom: snapshot.visualZoom,
+            lastRenderedZoom: snapshot.lastRenderedZoom,
             previewActive: wheelZoomRafId !== null,
             allowRenderDuringPreview: !!framePlan?.allowRenderDuringPreview,
         });
@@ -556,29 +556,28 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
 
         wheelZoomRenderTimerId = window.setTimeout(() => {
             wheelZoomRenderTimerId = null;
-            const zoomState = deps.getZoomState();
-            const framePlan = deps.peekFramePlan(zoomState.targetZoom);
-            const decision = deps.resolveWheelRenderDecision({
-                targetZoom: zoomState.targetZoom,
-                visualZoom: zoomState.visualZoom,
-                lastRenderedZoom: zoomState.lastRenderedZoom,
+            const innerSnapshot = deps.readZoomSnapshot();
+            const innerFramePlan = deps.peekFramePlan(innerSnapshot.targetZoom);
+            const innerDecision = deps.resolveWheelRenderDecision({
+                targetZoom: innerSnapshot.targetZoom,
+                visualZoom: innerSnapshot.visualZoom,
+                lastRenderedZoom: innerSnapshot.lastRenderedZoom,
                 previewActive: wheelZoomRafId !== null,
-                allowRenderDuringPreview: !!framePlan?.allowRenderDuringPreview,
+                allowRenderDuringPreview: !!innerFramePlan?.allowRenderDuringPreview,
             });
-            if (decision?.skipRender) {
-                // skipTransform: the preview loop manages the CSS transform.
-                applyVisualZoomPreview(zoomState.targetZoom, { skipTransform: true });
+            if (innerDecision?.skipRender) {
+                applyVisualZoomPreview(innerSnapshot.targetZoom, { skipTransform: true });
                 deps.setWheelRenderPending(false);
                 return;
             }
-            if (decision?.requestRenderNow) {
+            if (innerDecision?.requestRenderNow) {
                 deps.setWheelRenderPending(false);
                 window.requestAnimationFrame(() => {
                     deps.requestRender('zoom');
                 });
                 return;
             }
-            if (decision?.deferUntilSettled) {
+            if (innerDecision?.deferUntilSettled) {
                 deps.setWheelRenderPending(true);
                 return;
             }
@@ -611,8 +610,8 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
             const rect = scrollContainer.getBoundingClientRect();
             const viewportX = event.clientX - rect.left;
             const viewportY = event.clientY - rect.top;
-            const zoomState = deps.getZoomState();
-            const currentDisplayZoom = zoomState.visualZoom > 0 ? zoomState.visualZoom : zoomState.targetZoom;
+            const zoomSnapshot = deps.readZoomSnapshot();
+            const currentDisplayZoom = zoomSnapshot.visualZoom > 0 ? zoomSnapshot.visualZoom : zoomSnapshot.targetZoom;
             const displayWidth = deps.getCurrentPageWidth() * currentDisplayZoom;
             const displayHeight = deps.getCurrentPageHeight() * currentDisplayZoom;
             const request = {
@@ -627,12 +626,12 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
                 scrollTop: scrollContainer.scrollTop,
                 contentWidth: displayWidth,
                 contentHeight: displayHeight,
-                targetZoom: zoomState.targetZoom,
+                targetZoom: zoomSnapshot.targetZoom,
                 minZoom: 0.1,
                 maxZoom: deps.getMaxZoom(),
             };
             const wheelHostResult = deps.handleWheelZoomHost(
-                zoomState.targetZoom,
+                zoomSnapshot.targetZoom,
                 request,
             );
             if (!wheelHostResult) {
@@ -654,8 +653,9 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
 
             container.style.transformOrigin = '0 0';
             deps.syncZoomSelect();
+            const snapshot = deps.readZoomSnapshot();
             transformState.mode = 'preview';
-            transformState.cssScale = computeCssScale();
+            transformState.cssScale = snapshot.cssScale;
             transformState.translateX = 0;
             transformState.translateY = 0;
             applyZoomTransform();
