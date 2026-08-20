@@ -82,15 +82,17 @@ describe('zoom commit frame anti-flash', () => {
     expect(setsTransform).toBe(false);
   });
 
-  it('commitRenderedFrame updates container DOM when preview is active', async () => {
+  it('commitRenderedFrame defers syncLayoutBox when preview is active', async () => {
     // When the preview rAF loop is active and a committed frame arrives,
-    // commitRenderedFrame must call syncLayoutBox to update the container
-    // DOM to match the committed zoom. Without this, the container stays
-    // at the old lastRenderedZoom size, causing a visible jump when the
-    // preview loop computes cssScale = visualZoom / newLastRenderedZoom.
+    // commitRenderedFrame must NOT call syncLayoutBox directly — it queues
+    // the frame via queueCommittedFrame and lets the tick loop handle the
+    // visual transition. Calling syncLayoutBox here forces an intermediate
+    // layout render (via getBoundingClientRect inside syncLayoutBox) with
+    // stale CSS scale, causing a one-frame flash.
     //
-    // CSS transform is NOT set here — the preview loop (applyPreviewFrame)
-    // manages it to avoid stale scales persisting when the tick stops.
+    // The tick loop's flushCommittedFrameIfSettled → applyCommittedFrame
+    // handles the final container dimensions, CSS transform, and scroll
+    // position when the preview settles.
     const fs = await import('fs');
     const path = await import('path');
     const controller = fs.readFileSync(
@@ -105,9 +107,22 @@ describe('zoom commit frame anti-flash', () => {
     expect(fnMatch).not.toBeNull();
     const fn = fnMatch![0];
 
-    // Must call syncLayoutBox to update container DOM during preview
-    const hasSync = /deps\.syncLayoutBox\(frame\.displayZoom, frame\.renderZoom, frame\)/.test(fn);
-    expect(hasSync).toBe(true);
+    // Must call queueCommittedFrame to defer the frame
+    const hasQueue = /deps\.queueCommittedFrame\(frame\)/.test(fn);
+    expect(hasQueue).toBe(true);
+
+    // Must call startSmoothPreview to keep the tick loop running
+    const hasStartPreview = /startSmoothZoomPreview\(\)/.test(fn);
+    expect(hasStartPreview).toBe(true);
+
+    // The preview-active path must NOT set CSS transform directly
+    // (the preview loop via applyPreviewFrame manages it).
+    // After the settled check return, only queueCommittedFrame and
+    // startSmoothZoomPreview should remain — no transformState assignment.
+    const settledReturnIdx = fn.indexOf('startSmoothZoomPreview');
+    const previewPath = fn.substring(settledReturnIdx);
+    const setsTransformInPreview = /transformState\.mode\s*=/.test(previewPath);
+    expect(setsTransformInPreview).toBe(false);
   });
 
   it('applyViewportCanvasFrame skips visible-canvas re-box when deferVisibleFrame is set', async () => {

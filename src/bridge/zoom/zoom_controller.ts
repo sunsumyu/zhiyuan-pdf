@@ -169,23 +169,26 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         container.style.transformOrigin = '0 0';
         container.style.transition = '';
         deps.clearPreviewPresent();
-        deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
 
-        // Update CSS transform through centralized state.
+        // CRITICAL ORDER: set the CSS transform BEFORE syncLayoutBox.
+        // syncLayoutBox calls getBoundingClientRect() which forces a
+        // layout calculation, committing all pending style changes.
+        // If the CSS transform is already pending when that happens,
+        // the browser applies both the dimension change AND the scale
+        // in the same composite frame — no intermediate flash.
         if (wheelZoomRafId !== null) {
-            // Preview loop is active: re-apply the visual offset so the user sees no jump.
             transformState.mode = 'preview';
             transformState.cssScale = snapshot.cssScale;
             transformState.translateX = 0;
             transformState.translateY = 0;
         } else {
-            // Preview is idle: clear any leftover preview CSS scale.
             transformState.mode = 'idle';
             transformState.cssScale = 1.0;
             transformState.translateX = 0;
             transformState.translateY = 0;
         }
         applyZoomTransform();
+        deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
 
         scrollContainer.scrollLeft = frame.scrollLeft;
         scrollContainer.scrollTop = frame.scrollTop;
@@ -243,12 +246,13 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         const baseZoom = snapshot.lastRenderedZoom > 0 ? snapshot.lastRenderedZoom : 1.0;
         const cssScale = previewZoom / baseZoom;
         const anchorLayout = deps.peekFramePlan(previewZoom);
-        deps.syncLayoutBox(previewZoom, baseZoom, anchorLayout);
 
-        // When the preview loop is active, skipTransform should be true —
-        // the preview loop (applyPreviewFrame) manages the CSS transform.
-        // Only set the transform when the preview is stopping (error path)
-        // or there is no active preview.
+        // CRITICAL ORDER: set the CSS transform BEFORE syncLayoutBox
+        // (when not skipped). syncLayoutBox calls getBoundingClientRect()
+        // which forces a layout calculation, committing all pending style
+        // changes. If the CSS transform is already pending, the browser
+        // applies both the dimension change AND the scale in the same
+        // composite frame — no intermediate flash.
         if (!options?.skipTransform) {
             transformState.mode = wheelZoomRafId !== null ? 'preview' : 'idle';
             transformState.cssScale = cssScale;
@@ -256,6 +260,7 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
             transformState.translateY = 0;
             applyZoomTransform();
         }
+        deps.syncLayoutBox(previewZoom, baseZoom, anchorLayout);
 
         if (scrollContainer) {
             if (anchorLayout) {
@@ -373,7 +378,19 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
                 applyPreviewFrame(preview);
                 const tickDecision = previewHostResult.decision;
                 if (tickDecision?.flushCommittedFrame) {
+                    console.warn('[ZOOM-FLASH] TICK FLUSH', {
+                        previewCssScale: preview.cssScale,
+                        previewVisualZoom: preview.visualZoom,
+                        previewRenderedBaseZoom: preview.renderedBaseZoom,
+                        containerWidth: container?.style.width,
+                        containerTransform: container?.style.transform,
+                        tickDecision,
+                    });
                     flushCommittedFrameIfSettled();
+                    console.warn('[ZOOM-FLASH] TICK FLUSH AFTER', {
+                        containerWidth: container?.style.width,
+                        containerTransform: container?.style.transform,
+                    });
                 }
                 if (tickDecision?.requestRenderNow) {
                     window.requestAnimationFrame(() => {
@@ -428,14 +445,16 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
 
         const nextLayout = deps.takeFramePlan(targetZoom);
         if (nextLayout) {
-            deps.syncLayoutBox(targetZoom, renderedZoom, nextLayout);
-            // Update CSS transform through centralized state.
+            // CRITICAL ORDER: set the CSS transform BEFORE syncLayoutBox.
+            // syncLayoutBox calls getBoundingClientRect() which forces a
+            // layout calculation, committing all pending style changes.
             const cssScale = targetZoom / renderedZoom;
             transformState.mode = Math.abs(cssScale - 1.0) < 0.001 ? 'idle' : 'committed';
             transformState.cssScale = cssScale;
             transformState.translateX = 0;
             transformState.translateY = 0;
             applyZoomTransform();
+            deps.syncLayoutBox(targetZoom, renderedZoom, nextLayout);
             scrollContainer.scrollLeft = nextLayout.scrollLeft;
             scrollContainer.scrollTop = nextLayout.scrollTop;
             return;
@@ -488,16 +507,45 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
         }
 
         // Preview is active: update container DOM to match committed zoom
-        // so the preview loop's CSS scale calculation has correct base
-        // dimensions.
-        deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
-
-        // Immediately resync the CSS scale through centralized state.
+        // so the bitmap dimensions align with the rendered canvas.
+        //
+        // CRITICAL ORDER: set the CSS transform BEFORE syncLayoutBox.
+        // syncLayoutBox calls getBoundingClientRect() which forces a
+        // layout calculation, committing all pending style changes.
+        // If the CSS transform is already pending when that happens,
+        // the browser applies both the dimension change AND the scale
+        // in the same composite frame — no intermediate flash.
+        const _preContainer = container;
+        const _preWidth = _preContainer?.style.width;
+        const _preHeight = _preContainer?.style.height;
+        const _preTransform = _preContainer?.style.transform;
+        console.warn('[ZOOM-FLASH] commitRenderedFrame PREVIEW PATH', {
+            frameRenderZoom: frame.renderZoom,
+            frameDisplayZoom: frame.displayZoom,
+            snapshotTarget: snapshot.targetZoom,
+            snapshotVisual: snapshot.visualZoom,
+            snapshotLastRendered: snapshot.lastRenderedZoom,
+            snapshotCssScale: snapshot.cssScale,
+            containerWidthBefore: _preWidth,
+            containerHeightBefore: _preHeight,
+            containerTransformBefore: _preTransform,
+            transformStateBefore: { ...transformState },
+        });
         transformState.mode = 'preview';
         transformState.cssScale = snapshot.cssScale;
         transformState.translateX = 0;
         transformState.translateY = 0;
         applyZoomTransform();
+        console.warn('[ZOOM-FLASH] commitRenderedFrame AFTER APPLY TRANSFORM', {
+            containerTransformAfter: container?.style.transform,
+            transformStateAfter: { ...transformState },
+        });
+        deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
+        console.warn('[ZOOM-FLASH] commitRenderedFrame AFTER SYNC LAYOUT', {
+            containerWidthAfter: container?.style.width,
+            containerHeightAfter: container?.style.height,
+            containerTransformFinal: container?.style.transform,
+        });
 
         startSmoothZoomPreview();
     }
@@ -654,6 +702,17 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
             container.style.transformOrigin = '0 0';
             deps.syncZoomSelect();
             const snapshot = deps.readZoomSnapshot();
+            console.warn('[ZOOM-FLASH] WHEEL EVENT', {
+                preMutationTarget: zoomSnapshot.targetZoom,
+                preMutationVisual: zoomSnapshot.visualZoom,
+                preMutationLastRendered: zoomSnapshot.lastRenderedZoom,
+                postMutationTarget: snapshot.targetZoom,
+                postMutationVisual: snapshot.visualZoom,
+                postMutationLastRendered: snapshot.lastRenderedZoom,
+                postMutationCssScale: snapshot.cssScale,
+                containerWidth: container?.style.width,
+                containerTransform: container?.style.transform,
+            });
             transformState.mode = 'preview';
             transformState.cssScale = snapshot.cssScale;
             transformState.translateX = 0;
