@@ -1,10 +1,11 @@
 import { ensureWasmInitialized, getWasmApi, targetInvokeV3 } from '../shared/wasm_loader';
 import type { WasmModule } from '../shared/wasm_loader';
-import { clearVectorHost, invalidateVectorRenderCache } from '../render/vector_host';
+import { clearVectorHost, cancelWorkerRender, invalidateVectorRenderCache } from '../render/vector_host';
 import { configureVectorPageBundleRuntime, prefetchAdjacentPages, findCachedBundle } from '../render/vector_page_bundle';
 import { updateTextLayer } from '../render/text_layer';
 import { clearRasterImageCache, warmRasterImage } from '../render/raster_image_cache';
 import { createZoomController } from '../zoom/zoom_controller';
+import { createTileLayer } from '../render/tile_layer';
 import { createViewerSessionAdapter } from './viewer_session';
 import { createPagePresentationRuntimeAdapter } from './page_presentation_runtime';
 import { createRenderFlow, type VisibleSurface } from '../render/render_flow';
@@ -62,6 +63,7 @@ export type PdfViewerRuntime = {
     commentController: ReturnType<typeof createPdfCommentController>;
     reviewController: ReturnType<typeof createPdfReviewController>;
     geometryProbe: ReturnType<typeof createViewerGeometryProbe>;
+    tileLayer: ReturnType<typeof createTileLayer>;
     renderScheduler: RenderScheduler;
     renderCurrentPage: (reason?: RenderReason) => Promise<void>;
     openTextPdfFlow: (path: string) => Promise<void>;
@@ -71,6 +73,7 @@ export type PdfViewerRuntime = {
     syncZoomSelect: () => void;
     syncTextEditButton: () => void;
     bindTileRefreshOnScroll: () => void;
+    bindTileLayerScroll: () => void;
     bindWheelZoom: () => void;
     handlePdfViewerKeydown: (event: KeyboardEvent) => void;
     defaultPageWidth: number;
@@ -122,28 +125,6 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
                 lastRenderedZoom: session.currentZoom,
             };
         }
-    }
-
-    function readZoomSnapshot(): {
-        currentZoom: number; targetZoom: number; visualZoom: number;
-        lastRenderedZoom: number; cssScale: number;
-        previewActive: boolean; wheelRenderPending: boolean;
-    } {
-        try {
-            const wasm = getWasmApi();
-            const snap = (wasm as any).readZoomSnapshot?.();
-            if (snap) return snap;
-        } catch { /* fall through */ }
-        const session = viewerSession.read();
-        return {
-            currentZoom: session.currentZoom,
-            targetZoom: session.currentZoom,
-            visualZoom: session.currentZoom,
-            lastRenderedZoom: session.currentZoom,
-            cssScale: 1.0,
-            previewActive: false,
-            wheelRenderPending: false,
-        };
     }
 
     const framePlanAdapter = createFramePlanAdapter({
@@ -255,48 +236,64 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         syncViewerState: () => resumeAiController.syncViewerState(),
     });
 
+    // Tile layer (ADR-0003): presents TileManager tiles inside the vector
+    // container at settle. Created before the zoom controller so the gesture
+    // hook can wake its pump loop.
+    const tileLayer = createTileLayer({
+        getZoomState: readZoomState,
+        getCurrentPath: () => viewerSession.read().path,
+        getCurrentPage: () => viewerSession.read().currentPage,
+        getDocumentRevision: () => viewerSession.read().documentRevision,
+        getPageWidth: () => getCurrentPageWidthValue(),
+        getPageHeight: () => getCurrentPageHeightValue(),
+        getScrollContainer,
+        getVectorContainer,
+    });
+
     const zoomController = createZoomController({
         getCurrentPath: () => viewerSession.read().path,
         getZoomState: readZoomState,
-        readZoomSnapshot,
-        resetZoomPreviewState: () => {
-            try {
-                const wasm = getWasmApi();
-                wasm.clear_zoom_preview_host_state?.(false);
-            } catch {
-            }
-        },
         getCurrentPageWidth: () => getCurrentPageWidthValue(),
         getCurrentPageHeight: () => getCurrentPageHeightValue(),
         getWrapper,
         getScrollContainer,
         getVectorContainer,
-        syncLayoutBox,
         syncZoomSelect,
         requestRender: (reason) => {
             void documentRuntime.renderCurrentPage(reason ?? 'zoom');
         },
-        peekFramePlan: (displayZoom) => framePlanAdapter.peek(displayZoom),
-        takeFramePlan: (displayZoom) => framePlanAdapter.take(displayZoom),
         getMaxZoom: getDynamicMaxZoom,
-        clearPendingAnchor: () => {
-            const wasm = getWasmApi();
-            wasm.clearPendingAnchor?.();
+        // New Rust-driven RAF loop APIs
+        startZoomRafLoop: () => {
+            try { (getWasmApi() as any).startZoomRafLoop?.(); } catch {}
         },
-        clearPreviewPresent: () => {
-            const wasm = getWasmApi();
-            wasm.clearPreviewPresent?.();
+        stopZoomRafLoop: () => {
+            try { (getWasmApi() as any).stopZoomRafLoop?.(); } catch {}
         },
-        resolveWheelRenderDecision: (request) => framePlanAdapter.resolveWheelRenderDecision(request),
-        handleWheelZoomHost: (displayZoom, wheelRequest) =>
-            framePlanAdapter.handleWheelZoomHost(displayZoom, wheelRequest),
-        stepPreviewHost: (displayZoom, timestampMs) =>
-            framePlanAdapter.stepPreviewHost(displayZoom, timestampMs),
-        setWheelRenderPending: (pending) => framePlanAdapter.setWheelRenderPending(pending),
-        getWheelRenderPending: () => framePlanAdapter.getWheelRenderPending(),
-        queueCommittedFrame: (frame) => framePlanAdapter.queueCommittedFrame(frame),
-        takeReadyCommittedFrame: () => framePlanAdapter.takeReadyCommittedFrame(),
+        onWheelEvent: (input) => {
+            try { return (getWasmApi() as any).onWheelEvent?.(input) ?? null; } catch (e) { console.error('[ZOOM-WASM] onWheelEvent failed', e); return null; }
+        },
+        commitRenderedFrameToQueue: (frame) => {
+            try { (getWasmApi() as any).commitRenderedFrameToQueue?.(frame); } catch {}
+        },
+        isImmediateMutationFrame: (reason) => {
+            try { return !!(getWasmApi() as any).isImmediateMutationFrame?.(reason); } catch { return false; }
+        },
+        onZoomGesture: () => tileLayer.notifyZoomGesture(),
     });
+
+    // Settle envelope knock (ADR-0001) + mid-animation re-render knock
+    // (ADR-0002). Rust calls this fixed global once per settle and, throttled,
+    // during long gestures when css_scale blur exceeds the reknock threshold.
+    // No registrable callback, no init-order race — the property is assigned
+    // here and Rust only ever invokes whatever single function sits there.
+    //
+    // Renders at visualZoom (C1: render tracks visual): mid-gesture this keeps
+    // renderZoom == displayZoom so committed frames are seamless; at settle
+    // visualZoom == targetZoom so the final frame is unchanged.
+    (window as any).__pdfDrainPendingRenderFrame = () => {
+        void renderFlow.renderCurrentPage('zoom', readZoomState().visualZoom);
+    };
 
     renderFlow = createRenderFlow({
         targetInvokeV3,
@@ -332,21 +329,30 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
                 isNewDocument = false; // reset the flag so it only triggers once per document
                 const scrollContainer = getScrollContainer();
                 const vpWidth = scrollContainer?.clientWidth || 0;
-                if (vpWidth > 0 && width > vpWidth) {
-                    const fitZoom = clampZoom(vpWidth / width);
-                    const wasm = getWasmApi();
-                    const res = wasm.applyZoomSelection?.(fitZoom);
-                    logPdfLayoutTrace('viewer.auto-fit.applied', {
-                        viewportWidth: vpWidth,
-                        pageWidth: width,
-                        fitZoom,
-                        changed: !!res?.changed,
-                    });
-                    syncZoomSelectState(readZoomState());
-                    void renderScheduler.requestRender('default');
+                if (vpWidth > 0) {
+                    const fitResult = framePlanAdapter.resolveFitToWidth(vpWidth, width);
+                    if (fitResult?.shouldFit) {
+                        const fitZoom = fitResult.fitZoom;
+                        const wasm = getWasmApi();
+                        const res = wasm.applyZoomSelection?.(fitZoom);
+                        logPdfLayoutTrace('viewer.auto-fit.applied', {
+                            viewportWidth: vpWidth,
+                            pageWidth: width,
+                            fitZoom,
+                            changed: !!res?.changed,
+                        });
+                        syncZoomSelectState(readZoomState());
+                        void renderScheduler.requestRender('default');
+                    } else {
+                        logPdfLayoutTrace('viewer.auto-fit.skipped', {
+                            reason: 'pageFitsViewport',
+                            viewportWidth: vpWidth,
+                            pageWidth: width,
+                        });
+                    }
                 } else {
                     logPdfLayoutTrace('viewer.auto-fit.skipped', {
-                        reason: 'pageFitsViewport',
+                        reason: 'viewportZero',
                         viewportWidth: vpWidth,
                         pageWidth: width,
                     });
@@ -387,7 +393,11 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
             });
             return result;
         },
-        onRenderCommitted: () => { renderScheduler.notifyCommit(); },
+        onRenderCommitted: () => {
+            renderScheduler.notifyCommit();
+            // A committed frame means a settle landed — reschedule viewport tiles.
+            tileLayer.notifyViewportChanged();
+        },
     });
 
     resumeAiController = createResumeAiController({
@@ -611,6 +621,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         isNewDocument = false;
         pagePresentationRuntime.reset();
         clearRasterImageCache();
+        tileLayer.clear();
         documentRuntime.resetPdfViewerState();
         annotationController?.clear();
         commentController?.clear();
@@ -633,6 +644,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         commentController: commentController!,
         reviewController: reviewController!,
         geometryProbe,
+        tileLayer,
         renderScheduler,
         renderCurrentPage,
         openTextPdfFlow,
@@ -642,6 +654,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         syncZoomSelect,
         syncTextEditButton,
         bindTileRefreshOnScroll: documentRuntime.bindTileRefreshOnScroll,
+        bindTileLayerScroll: () => tileLayer.bindScrollRefresh(),
         bindWheelZoom: () => zoomController.bindWheelZoom(),
         handlePdfViewerKeydown,
         defaultPageWidth: DEFAULT_PAGE_WIDTH,

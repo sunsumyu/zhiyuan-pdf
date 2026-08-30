@@ -140,6 +140,38 @@ function abortStaleFrameIfNeeded(
     return true;
 }
 
+export function cancelWorkerRender(): void {
+    if (vectorWorker) {
+        try { vectorWorker.postMessage({ type: 'CANCEL_RENDER' } as VectorWorkerRequest); } catch {}
+    }
+}
+
+/**
+ * Whether the worker's page context already matches (path, page, revision) —
+ * read-only peek used to decide if images must be re-cloned before claiming.
+ */
+function workerContextMatches(path: string, pageIndex: number, revision: number): boolean {
+    return (
+        workerLastPath === path &&
+        workerLastPageIndex === pageIndex &&
+        workerLastRevision === revision
+    );
+}
+
+/**
+ * Claim the worker's page context for (path, page, revision). Must be called
+ * synchronously right before worker.postMessage — an await between claim and
+ * post lets another render claim the worker first and the stale isSamePage
+ * flag would render the wrong page's content.
+ */
+function claimWorkerPageContext(path: string, pageIndex: number, revision: number): boolean {
+    const isSamePage = workerContextMatches(path, pageIndex, revision);
+    workerLastPath = path;
+    workerLastPageIndex = pageIndex;
+    workerLastRevision = revision;
+    return isSamePage;
+}
+
 export function clearVectorHost(): void {
     logPdfLayoutTrace('vector-host.clear.before');
     try {
@@ -802,10 +834,19 @@ async function renderViewportProgressiveIfNeeded(
 
     const worker = ensureVectorWorker();
     const msgId = ++msgIdCounter;
-    
+
+    // Clone page images only when the worker's context differs — repeat
+    // renders on the same page/bundle reuse the worker's stored map. The
+    // claim itself must sit synchronously right before postMessage.
+    const willReuseWorkerImages =
+        path !== undefined &&
+        pageIndex !== undefined &&
+        revision !== undefined &&
+        workerContextMatches(path, pageIndex, revision);
+
     const clonedImageCacheMap = new Map<string, ImageBitmap>();
     const transferList: Transferable[] = [];
-    if (imageCacheMap && imageCacheMap.size > 0) {
+    if (!willReuseWorkerImages && imageCacheMap && imageCacheMap.size > 0) {
         await Promise.all(
             Array.from(imageCacheMap.entries()).map(async ([key, bmp]) => {
                 const clone = await createImageBitmap(bmp);
@@ -818,22 +859,14 @@ async function renderViewportProgressiveIfNeeded(
     const promise = new Promise<ImageBitmap>((resolve, reject) => {
         pendingVectorTasks.set(msgId, { resolve, reject });
     });
-    
+
     const dpr = window.devicePixelRatio || 1;
 
     const isSamePage =
         path !== undefined &&
         pageIndex !== undefined &&
         revision !== undefined &&
-        workerLastPath === path &&
-        workerLastPageIndex === pageIndex &&
-        workerLastRevision === revision;
-
-    if (path !== undefined && pageIndex !== undefined && revision !== undefined) {
-        workerLastPath = path;
-        workerLastPageIndex = pageIndex;
-        workerLastRevision = revision;
-    }
+        claimWorkerPageContext(path, pageIndex, revision);
 
     worker.postMessage({
         type: 'RENDER_PAGE',
@@ -847,7 +880,7 @@ async function renderViewportProgressiveIfNeeded(
         viewportTop: viewportTop ?? 0,
         viewportWidth: viewportWidth ?? model?.width ?? 0,
         viewportHeight: viewportHeight ?? model?.height ?? 0,
-        imageCacheMap: clonedImageCacheMap,
+        imageCacheMap: isSamePage ? undefined : clonedImageCacheMap,
         width: renderTarget.width,
         height: renderTarget.height,
         budgetMs: Number.isFinite(policy?.budgetMs) ? Number(policy?.budgetMs) : 1.6,
@@ -879,7 +912,78 @@ async function renderViewportProgressiveIfNeeded(
         ctx.drawImage(bitmap, 0, 0);
     }
     bitmap.close();
-    
+
     return null;
+}
+
+export type TileRegionRenderParams = {
+    path: string;
+    pageIndex: number;
+    /** Render zoom — the visual zoom the tile bitmap is rendered at. */
+    zoom: number;
+    dpr: number;
+    /** Display-space rectangle of the tile region (clipped to the page). */
+    regionLeft: number;
+    regionTop: number;
+    regionWidth: number;
+    regionHeight: number;
+    /** Device-pixel size of the output bitmap. */
+    bitmapWidth: number;
+    bitmapHeight: number;
+};
+
+/**
+ * Render a single tile region through the vector worker and resolve with the
+ * ImageBitmap. The worker processes messages sequentially, so a tile render
+ * never interleaves with an in-flight full-page render; it only queues after
+ * it. Page images are transferred to the worker once per page context — tile
+ * renders on an already-loaded page reuse the worker's stored map.
+ */
+export async function renderTileRegion(params: TileRegionRenderParams): Promise<ImageBitmap> {
+    const { bundle } = await resolveVectorPageBundle(params.path, params.pageIndex);
+    const worker = ensureVectorWorker();
+
+    // Clone page images BEFORE claiming the worker context: the claim must be
+    // immediately followed by postMessage with no await in between.
+    const transferList: Transferable[] = [];
+    let imageCacheMap: Map<string, ImageBitmap> | undefined;
+    if (!workerContextMatches(params.path, params.pageIndex, bundle.documentRevision)) {
+        imageCacheMap = new Map();
+        await Promise.all(
+            Array.from(bundle.imageCacheMap.entries()).map(async ([key, bmp]) => {
+                const clone = await createImageBitmap(bmp);
+                imageCacheMap!.set(key, clone);
+                transferList.push(clone);
+            }),
+        );
+    }
+
+    const msgId = ++msgIdCounter;
+    const isSamePage = claimWorkerPageContext(params.path, params.pageIndex, bundle.documentRevision);
+    const promise = new Promise<ImageBitmap>((resolve, reject) => {
+        pendingVectorTasks.set(msgId, { resolve, reject });
+    });
+
+    worker.postMessage({
+        type: 'RENDER_PAGE',
+        msgId,
+        isSamePage,
+        modelJson: isSamePage ? undefined : JSON.stringify(bundle.model),
+        paintPlanJson: isSamePage ? undefined : JSON.stringify(bundle.paintPlan),
+        zoom: params.zoom,
+        dpr: params.dpr,
+        viewportLeft: params.regionLeft,
+        viewportTop: params.regionTop,
+        viewportWidth: params.regionWidth,
+        viewportHeight: params.regionHeight,
+        imageCacheMap,
+        width: params.bitmapWidth,
+        height: params.bitmapHeight,
+        budgetMs: 1.6,
+        maxItems: 8,
+        useProgressive: false,
+    }, transferList);
+
+    return promise;
 }
 

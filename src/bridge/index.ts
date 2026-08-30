@@ -20,6 +20,7 @@ export const plugin = {
 
         runtime.bindWheelZoom();
         runtime.bindTileRefreshOnScroll();
+        runtime.bindTileLayerScroll();
         runtime.syncZoomSelect();
         runtime.syncTextEditButton();
         performance.mark('plugin-controller-init-start');

@@ -1,3 +1,17 @@
+/**
+ * Zoom controller — simplified for Rust-driven RAF architecture.
+ *
+ * The Rust RAF loop (raf_loop.rs) handles:
+ *   - Animation state machine (advance_zoom_animation_state)
+ *   - CSS transform application (web-sys)
+ *   - Committed frame queue polling
+ *   - Drawing delay after settle
+ *
+ * TS only needs to:
+ *   1. Bind wheel events → Rust onWheelEvent()
+ *   2. Push committed frames from render pipeline → Rust commitRenderedFrameToQueue()
+ */
+
 import { logPdfLayoutTrace } from '../render/layout_trace';
 
 type AnchorViewportLayout = {
@@ -17,624 +31,61 @@ type RustAnchorFramePlan = AnchorViewportLayout & {
     allowRenderDuringPreview?: boolean;
 };
 
-type RustWheelRenderDecision = {
-    requestRenderNow: boolean;
-    deferUntilSettled: boolean;
-    skipRender: boolean;
-};
-
-type RustPreviewTickDecision = {
-    continuePreview: boolean;
-    flushCommittedFrame: boolean;
-    requestRenderNow: boolean;
-    keepWheelRenderPending: boolean;
-};
-
-type RustWheelZoomHostResult = {
-    renderDecision: RustWheelRenderDecision;
-};
-
-type ZoomSnapshot = {
-    currentZoom: number;
-    targetZoom: number;
-    visualZoom: number;
-    lastRenderedZoom: number;
-    cssScale: number;
-    previewActive: boolean;
-    wheelRenderPending: boolean;
-};
-
-type RustPreviewHostStepResult = {
-    preview: {
-        settled: boolean;
-        visualZoom: number;
-        renderedBaseZoom: number;
-        cssScale: number;
-        previewPresent?: {
-            translateX: number;
-            translateY: number;
-            cssScale: number;
-        };
-        framePlan: RustAnchorFramePlan;
-    };
-    decision: RustPreviewTickDecision;
-};
-
 export type ZoomControllerDeps = {
     getCurrentPath: () => string | null;
-    getZoomState: () => { targetZoom: number; visualZoom: number; lastRenderedZoom: number; };
-    readZoomSnapshot: () => ZoomSnapshot;
-    resetZoomPreviewState: () => void;
+    getZoomState: () => { targetZoom: number; visualZoom: number; lastRenderedZoom: number };
     getCurrentPageWidth: () => number;
     getCurrentPageHeight: () => number;
     getWrapper: () => HTMLElement | null;
     getScrollContainer: () => HTMLElement | null;
     getVectorContainer: () => HTMLElement | null;
-    syncLayoutBox: (displayZoom: number, renderedZoom: number, layout?: AnchorViewportLayout | null) => void;
     syncZoomSelect: () => void;
     requestRender: (reason?: 'default' | 'zoom' | 'editorVisibility' | 'documentMutation') => void;
-    peekFramePlan: (displayZoom: number) => RustAnchorFramePlan | null;
-    takeFramePlan: (displayZoom: number) => RustAnchorFramePlan | null;
     getMaxZoom: () => number;
-    clearPendingAnchor: () => void;
-    clearPreviewPresent: () => void;
-    resolveWheelRenderDecision: (request: Record<string, boolean | number>) => RustWheelRenderDecision | null;
-    handleWheelZoomHost: (displayZoom: number, wheelRequest: Record<string, number>) => RustWheelZoomHostResult | null;
-    stepPreviewHost: (displayZoom: number, timestampMs?: number) => RustPreviewHostStepResult | null;
-    setWheelRenderPending: (pending: boolean) => void;
-    getWheelRenderPending: () => boolean;
-    queueCommittedFrame: (frame: RustAnchorFramePlan) => void;
-    takeReadyCommittedFrame: () => RustAnchorFramePlan | null;
+    // New Rust-driven APIs
+    startZoomRafLoop: () => void;
+    stopZoomRafLoop: () => void;
+    onWheelEvent: (input: WheelEventInput) => WheelEventOutput | null;
+    commitRenderedFrameToQueue: (frame: RustAnchorFramePlan) => void;
+    isImmediateMutationFrame: (renderReason: string) => boolean;
+    /** Optional side-channel for zoom listeners (e.g. the tile layer). */
+    onZoomGesture?: () => void;
+};
+
+type WheelEventInput = {
+    deltaY: number;
+    viewportX: number;
+    viewportY: number;
+    viewportWidth: number;
+    viewportHeight: number;
+    pageWidth: number;
+    pageHeight: number;
+    scrollLeft: number;
+    scrollTop: number;
+    timestampMs: number;
+};
+
+type WheelEventOutput = {
+    targetZoom: number;
+    visualZoom: number;
+    cssScale: number;
 };
 
 export type ZoomController = {
     bindWheelZoom: () => void;
-    resetVisualZoomPreview: () => void;
-    applyVisualZoomPreview: (previewZoom: number) => void;
-    prepareImmediateRenderFrame: (frame: RustAnchorFramePlan) => void;
     commitRenderedFrame: (frame: RustAnchorFramePlan) => void;
-    restorePendingAnchor: (targetZoom: number) => void;
+    prepareImmediateRenderFrame: (frame: RustAnchorFramePlan) => void;
+    // Legacy methods — delegated to Rust RAF loop
     clearPendingAnchor: () => void;
+    resetVisualZoomPreview: () => void;
 };
 
-type ZoomTransformMode = 'idle' | 'preview' | 'committed';
-
-type ZoomTransformState = {
-    mode: ZoomTransformMode;
-    cssScale: number;
-    translateX: number;
-    translateY: number;
-};
+function isImmediateMutationFrame(frame: { renderReason?: string }): boolean {
+    return frame.renderReason === 'editorVisibility' || frame.renderReason === 'documentMutation';
+}
 
 export function createZoomController(deps: ZoomControllerDeps): ZoomController {
     let wheelZoomBound = false;
-    let wheelZoomRafId: number | null = null;
-    let wheelZoomRenderTimerId: number | null = null;
-
-    const transformState: ZoomTransformState = {
-        mode: 'idle',
-        cssScale: 1.0,
-        translateX: 0,
-        translateY: 0,
-    };
-
-    function applyZoomTransform(): void {
-        const container = deps.getVectorContainer();
-        if (!container) return;
-
-        if (transformState.mode === 'idle') {
-            container.style.transform = '';
-        } else {
-            const { cssScale, translateX, translateY } = transformState;
-            const hasTranslate = Math.abs(translateX) >= 0.01 || Math.abs(translateY) >= 0.01;
-            const hasScale = Math.abs(cssScale - 1.0) >= 0.001;
-            if (!hasScale && !hasTranslate) {
-                container.style.transform = '';
-            } else if (!hasTranslate) {
-                container.style.transform = `scale(${cssScale})`;
-            } else {
-                container.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) scale(${cssScale})`;
-            }
-        }
-    }
-
-    function isImmediateMutationFrame(frame: { renderReason?: string }): boolean {
-        return frame.renderReason === 'editorVisibility' || frame.renderReason === 'documentMutation';
-    }
-
-    function stopSmoothZoomPreview(): void {
-        if (wheelZoomRafId !== null) {
-            window.cancelAnimationFrame(wheelZoomRafId);
-            wheelZoomRafId = null;
-        }
-        // Safety: clear any leftover preview CSS scale when the tick loop
-        // is cancelled externally (e.g. by commitRenderedFrame).
-        transformState.mode = 'idle';
-        transformState.cssScale = 1.0;
-        transformState.translateX = 0;
-        transformState.translateY = 0;
-        applyZoomTransform();
-    }
-
-    function applyCommittedFrame(frame: AnchorViewportLayout & { displayZoom: number; renderZoom: number; }): void {
-        const container = deps.getVectorContainer();
-        const scrollContainer = deps.getScrollContainer();
-        if (!container || !scrollContainer) return;
-
-        const snapshot = deps.readZoomSnapshot();
-        logPdfLayoutTrace('zoom.apply-committed-frame.before', {
-            frame,
-            zoomState: snapshot,
-        });
-        container.style.transformOrigin = '0 0';
-        container.style.transition = '';
-        deps.clearPreviewPresent();
-
-        // CRITICAL ORDER: set the CSS transform BEFORE syncLayoutBox.
-        // syncLayoutBox calls getBoundingClientRect() which forces a
-        // layout calculation, committing all pending style changes.
-        // If the CSS transform is already pending when that happens,
-        // the browser applies both the dimension change AND the scale
-        // in the same composite frame — no intermediate flash.
-        if (wheelZoomRafId !== null) {
-            transformState.mode = 'preview';
-            transformState.cssScale = snapshot.cssScale;
-            transformState.translateX = 0;
-            transformState.translateY = 0;
-        } else {
-            transformState.mode = 'idle';
-            transformState.cssScale = 1.0;
-            transformState.translateX = 0;
-            transformState.translateY = 0;
-        }
-        applyZoomTransform();
-        deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
-
-        scrollContainer.scrollLeft = frame.scrollLeft;
-        scrollContainer.scrollTop = frame.scrollTop;
-        deps.clearPendingAnchor();
-
-        logPdfLayoutTrace('zoom.apply-committed-frame.after', {
-            frame,
-            zoomState: deps.getZoomState(),
-        });
-    }
-
-    function flushCommittedFrameIfSettled(): boolean {
-        const pendingCommittedFrame = deps.takeReadyCommittedFrame();
-        if (!pendingCommittedFrame) return false;
-
-        // When the committed frame's renderZoom is far from the settled
-        // targetZoom, applying it would strand a blurry bitmap under a
-        // stale CSS scale (e.g. bitmap at zoom 0.63 displayed at zoom 1.0
-        // with scale(1.6)).  Skip the flush and force a fresh settle
-        // render at the correct zoom instead.  Using 'documentMutation'
-        // bypasses the wasm reuse check (stable_document_frame=true).
-        const zoomState = deps.readZoomSnapshot();
-        const frameZoom = pendingCommittedFrame.renderZoom;
-        const settledZoom = zoomState.targetZoom;
-        if (Math.abs(frameZoom - settledZoom) / Math.max(settledZoom, 0.01) > 0.10) {
-            logPdfLayoutTrace('zoom.flush-settled.skip-stale', {
-                frameZoom,
-                settledZoom,
-                zoomState,
-            });
-            deps.setWheelRenderPending(false);
-            window.requestAnimationFrame(() => {
-                deps.requestRender('documentMutation');
-            });
-            return false;
-        }
-
-        applyCommittedFrame(pendingCommittedFrame);
-        return true;
-    }
-
-    function applyVisualZoomPreview(previewZoom: number, options?: { skipTransform?: boolean }): void {
-        const container = deps.getVectorContainer();
-        const scrollContainer = deps.getScrollContainer();
-        if (!container) return;
-
-        const snapshot = deps.readZoomSnapshot();
-        logPdfLayoutTrace('zoom.preview.apply.before', {
-            previewZoom,
-            zoomState: snapshot,
-        });
-        // NOTE: cssScale here uses previewZoom (caller-provided) as numerator,
-        // not snapshot.cssScale which uses visualZoom. This is intentional —
-        // this function is called for zoom-to-fit and direct zoom selection.
-        const baseZoom = snapshot.lastRenderedZoom > 0 ? snapshot.lastRenderedZoom : 1.0;
-        const cssScale = previewZoom / baseZoom;
-        const anchorLayout = deps.peekFramePlan(previewZoom);
-
-        // CRITICAL ORDER: set the CSS transform BEFORE syncLayoutBox
-        // (when not skipped). syncLayoutBox calls getBoundingClientRect()
-        // which forces a layout calculation, committing all pending style
-        // changes. If the CSS transform is already pending, the browser
-        // applies both the dimension change AND the scale in the same
-        // composite frame — no intermediate flash.
-        if (!options?.skipTransform) {
-            transformState.mode = wheelZoomRafId !== null ? 'preview' : 'idle';
-            transformState.cssScale = cssScale;
-            transformState.translateX = 0;
-            transformState.translateY = 0;
-            applyZoomTransform();
-        }
-        deps.syncLayoutBox(previewZoom, baseZoom, anchorLayout);
-
-        if (scrollContainer) {
-            if (anchorLayout) {
-                scrollContainer.scrollLeft = anchorLayout.scrollLeft;
-                scrollContainer.scrollTop = anchorLayout.scrollTop;
-            }
-        }
-        logPdfLayoutTrace('zoom.preview.apply.after', {
-            previewZoom,
-            baseZoom,
-            cssScale,
-            anchorLayout,
-            zoomState: snapshot,
-        });
-    }
-
-    function applyPreviewFrame(preview: { visualZoom: number; renderedBaseZoom: number; cssScale: number; framePlan: AnchorViewportLayout & { displayZoom: number; renderZoom: number; }; }): void {
-        const container = deps.getVectorContainer();
-        if (!container) return;
-        logPdfLayoutTrace('zoom.preview-frame.apply.before', {
-            preview,
-            zoomState: deps.getZoomState(),
-        });
-        const previewPresent = (preview as any).previewPresent || {
-            translateX: 0,
-            translateY: 0,
-            cssScale: preview.cssScale,
-        };
-        const translateX = Number.isFinite(previewPresent.translateX) ? previewPresent.translateX : 0;
-        const translateY = Number.isFinite(previewPresent.translateY) ? previewPresent.translateY : 0;
-        const cssScale = Number.isFinite(previewPresent.cssScale) ? previewPresent.cssScale : preview.cssScale;
-
-        // Update centralized transform state and apply.
-        transformState.mode = 'preview';
-        transformState.cssScale = cssScale;
-        transformState.translateX = translateX;
-        transformState.translateY = translateY;
-        applyZoomTransform();
-
-        logPdfLayoutTrace('zoom.preview-frame.apply.after', {
-            preview,
-            translateX,
-            translateY,
-            cssScale,
-            zoomState: deps.getZoomState(),
-        });
-    }
-
-    function resetVisualZoomPreview(): void {
-        const container = deps.getVectorContainer();
-        logPdfLayoutTrace('zoom.preview.reset.before', {
-            zoomState: deps.getZoomState(),
-        });
-        if (container) {
-            container.style.transformOrigin = '0 0';
-        }
-        deps.clearPreviewPresent();
-        deps.resetZoomPreviewState();
-        stopSmoothZoomPreview();
-        if (wheelZoomRenderTimerId !== null) {
-            window.clearTimeout(wheelZoomRenderTimerId);
-            wheelZoomRenderTimerId = null;
-        }
-        logPdfLayoutTrace('zoom.preview.reset.after', {
-            zoomState: deps.getZoomState(),
-        });
-    }
-
-    function startSmoothZoomPreview(): void {
-        if (wheelZoomRafId !== null) return;
-
-        const tick = (timestampMs: number) => {
-            try {
-                const container = deps.getVectorContainer();
-                if (!container) {
-                    wheelZoomRafId = null;
-                    return;
-                }
-
-                const zoomSnapshot = deps.readZoomSnapshot();
-                let previewHostResult: RustPreviewHostStepResult | null = null;
-                try {
-                    previewHostResult = deps.stepPreviewHost(
-                        zoomSnapshot.targetZoom,
-                        timestampMs,
-                    );
-                } catch (error) {
-                    console.error('[PDF-ZOOM] Rust preview frame failed, using host preview fallback', {
-                        error,
-                        targetZoom: zoomSnapshot.targetZoom,
-                    });
-                }
-                if (!previewHostResult?.preview) {
-                    // The wasm preview host failed or returned no preview data.
-                    // Stop the preview loop and clear any CSS transform so the
-                    // container shows the bitmap at its native size.
-                    logPdfLayoutTrace('zoom.tick.error-path', {
-                        reason: previewHostResult ? 'no-preview' : 'host-threw',
-                        zoomState: zoomSnapshot,
-                    });
-                    wheelZoomRafId = null;
-                    deps.clearPreviewPresent();
-                    deps.resetZoomPreviewState();
-                    applyVisualZoomPreview(zoomSnapshot.targetZoom);
-                    transformState.mode = 'idle';
-                    transformState.cssScale = 1.0;
-                    transformState.translateX = 0;
-                    transformState.translateY = 0;
-                    applyZoomTransform();
-                    flushCommittedFrameIfSettled();
-                    return;
-                }
-
-                const preview = previewHostResult.preview;
-                applyPreviewFrame(preview);
-                const tickDecision = previewHostResult.decision;
-                if (tickDecision?.flushCommittedFrame) {
-                    console.warn('[ZOOM-FLASH] TICK FLUSH', {
-                        previewCssScale: preview.cssScale,
-                        previewVisualZoom: preview.visualZoom,
-                        previewRenderedBaseZoom: preview.renderedBaseZoom,
-                        containerWidth: container?.style.width,
-                        containerTransform: container?.style.transform,
-                        tickDecision,
-                    });
-                    flushCommittedFrameIfSettled();
-                    console.warn('[ZOOM-FLASH] TICK FLUSH AFTER', {
-                        containerWidth: container?.style.width,
-                        containerTransform: container?.style.transform,
-                    });
-                }
-                if (tickDecision?.requestRenderNow) {
-                    window.requestAnimationFrame(() => {
-                        deps.requestRender('zoom');
-                    });
-                }
-                if (!tickDecision?.continuePreview) {
-                    // The preview has settled.  Clear any leftover CSS scale
-                    // from the preview loop so the container shows the bitmap
-                    // at its native size.  Then schedule a settle render at the
-                    // correct zoom so the bitmap matches the display.
-                    transformState.mode = 'idle';
-                    transformState.cssScale = 1.0;
-                    transformState.translateX = 0;
-                    transformState.translateY = 0;
-                    applyZoomTransform();
-                    container.style.transformOrigin = '0 0';
-                    container.dataset.settledClear = String(Date.now());
-                    if (!tickDecision?.requestRenderNow) {
-                        window.requestAnimationFrame(() => {
-                            deps.requestRender('default');
-                        });
-                    }
-                    wheelZoomRafId = null;
-                    return;
-                }
-
-                wheelZoomRafId = window.requestAnimationFrame((nextTimestampMs) => tick(nextTimestampMs));
-            } catch (error) {
-                // Safety net: if anything in the tick body throws (e.g.
-                // applyPreviewFrame or flushCommittedFrameIfSettled), clear
-                // the CSS transform so the container doesn't show a stale
-                // preview scale, and stop the RAF loop.
-                console.error('[PDF-ZOOM] tick error, clearing preview CSS', error);
-                transformState.mode = 'idle';
-                transformState.cssScale = 1.0;
-                transformState.translateX = 0;
-                transformState.translateY = 0;
-                applyZoomTransform();
-                wheelZoomRafId = null;
-            }
-        };
-
-        tick(performance.now());
-    }
-
-    function restorePendingAnchor(targetZoom: number): void {
-        const scrollContainer = deps.getScrollContainer();
-        if (!scrollContainer) return;
-        const snapshot = deps.readZoomSnapshot();
-        const renderedZoom = snapshot.lastRenderedZoom > 0 ? snapshot.lastRenderedZoom : targetZoom;
-
-        const nextLayout = deps.takeFramePlan(targetZoom);
-        if (nextLayout) {
-            // CRITICAL ORDER: set the CSS transform BEFORE syncLayoutBox.
-            // syncLayoutBox calls getBoundingClientRect() which forces a
-            // layout calculation, committing all pending style changes.
-            const cssScale = targetZoom / renderedZoom;
-            transformState.mode = Math.abs(cssScale - 1.0) < 0.001 ? 'idle' : 'committed';
-            transformState.cssScale = cssScale;
-            transformState.translateX = 0;
-            transformState.translateY = 0;
-            applyZoomTransform();
-            deps.syncLayoutBox(targetZoom, renderedZoom, nextLayout);
-            scrollContainer.scrollLeft = nextLayout.scrollLeft;
-            scrollContainer.scrollTop = nextLayout.scrollTop;
-            return;
-        }
-    }
-
-    function commitRenderedFrame(frame: AnchorViewportLayout & { displayZoom: number; renderZoom: number; }): void {
-        const container = deps.getVectorContainer();
-        if (!container) return;
-
-        const snapshot = deps.readZoomSnapshot();
-        logPdfLayoutTrace('zoom.commit-rendered-frame.received', {
-            frame,
-            immediateMutation: isImmediateMutationFrame(frame as any),
-            zoomState: snapshot,
-        });
-        if (isImmediateMutationFrame(frame as any)) {
-            stopSmoothZoomPreview();
-            deps.resetZoomPreviewState();
-            applyCommittedFrame(frame);
-            return;
-        }
-
-        deps.queueCommittedFrame(frame);
-
-        if (Math.abs(snapshot.targetZoom - snapshot.visualZoom) < 0.001) {
-            // Preview is settled.  If the committed frame was rendered at a
-            // zoom far from the settled target (e.g. throttle rendered at
-            // visualZoom=0.63 while settling at 1.0), applying it would
-            // strand a blurry bitmap under a stale CSS scale.  Skip the
-            // apply and force a fresh settle render at the correct zoom.
-            const frameZoom = frame.renderZoom;
-            const settledZoom = snapshot.targetZoom;
-            if (Math.abs(frameZoom - settledZoom) / Math.max(settledZoom, 0.01) > 0.10) {
-                logPdfLayoutTrace('zoom.commit-rendered-frame.skip-stale', {
-                    frameZoom,
-                    settledZoom,
-                    zoomState: snapshot,
-                });
-                deps.setWheelRenderPending(false);
-                window.requestAnimationFrame(() => {
-                    deps.requestRender('documentMutation');
-                });
-                return;
-            }
-            stopSmoothZoomPreview();
-            deps.resetZoomPreviewState();
-            applyCommittedFrame(frame);
-            return;
-        }
-
-        // Preview is active: update container DOM to match committed zoom
-        // so the bitmap dimensions align with the rendered canvas.
-        //
-        // CRITICAL ORDER: set the CSS transform BEFORE syncLayoutBox.
-        // syncLayoutBox calls getBoundingClientRect() which forces a
-        // layout calculation, committing all pending style changes.
-        // If the CSS transform is already pending when that happens,
-        // the browser applies both the dimension change AND the scale
-        // in the same composite frame — no intermediate flash.
-        const _preContainer = container;
-        const _preWidth = _preContainer?.style.width;
-        const _preHeight = _preContainer?.style.height;
-        const _preTransform = _preContainer?.style.transform;
-        console.warn('[ZOOM-FLASH] commitRenderedFrame PREVIEW PATH', {
-            frameRenderZoom: frame.renderZoom,
-            frameDisplayZoom: frame.displayZoom,
-            snapshotTarget: snapshot.targetZoom,
-            snapshotVisual: snapshot.visualZoom,
-            snapshotLastRendered: snapshot.lastRenderedZoom,
-            snapshotCssScale: snapshot.cssScale,
-            containerWidthBefore: _preWidth,
-            containerHeightBefore: _preHeight,
-            containerTransformBefore: _preTransform,
-            transformStateBefore: { ...transformState },
-        });
-        transformState.mode = 'preview';
-        transformState.cssScale = snapshot.cssScale;
-        transformState.translateX = 0;
-        transformState.translateY = 0;
-        applyZoomTransform();
-        console.warn('[ZOOM-FLASH] commitRenderedFrame AFTER APPLY TRANSFORM', {
-            containerTransformAfter: container?.style.transform,
-            transformStateAfter: { ...transformState },
-        });
-        deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
-        console.warn('[ZOOM-FLASH] commitRenderedFrame AFTER SYNC LAYOUT', {
-            containerWidthAfter: container?.style.width,
-            containerHeightAfter: container?.style.height,
-            containerTransformFinal: container?.style.transform,
-        });
-
-        startSmoothZoomPreview();
-    }
-
-    function prepareImmediateRenderFrame(frame: RustAnchorFramePlan): void {
-        if (!isImmediateMutationFrame(frame)) return;
-        if (frame.prepareVisibleLayout === false) return;
-        const container = deps.getVectorContainer();
-        const scrollContainer = deps.getScrollContainer();
-        if (!container || !scrollContainer) return;
-
-        logPdfLayoutTrace('zoom.prepare-immediate.before', {
-            frame,
-            zoomState: deps.getZoomState(),
-        });
-        stopSmoothZoomPreview();
-        deps.resetZoomPreviewState();
-        container.style.transformOrigin = '0 0';
-        container.style.transition = '';
-        deps.syncLayoutBox(frame.displayZoom, frame.renderZoom, frame);
-        scrollContainer.scrollLeft = frame.scrollLeft;
-        scrollContainer.scrollTop = frame.scrollTop;
-        deps.clearPendingAnchor();
-        logPdfLayoutTrace('zoom.prepare-immediate.after', {
-            frame,
-            zoomState: deps.getZoomState(),
-        });
-    }
-
-    function scheduleWheelZoomRender(): void {
-        // Throttle, not debounce: once a render timer is scheduled, let it
-        // fire on its own cadence instead of resetting on every wheel tick.
-        // The old debounce cleared the timer on every wheel event, which
-        // meant continuous scrolling never triggered a render — the bitmap
-        // stayed at the old zoom while CSS preview scaled it further and
-        // further (cssScale 1.0→1.6, density 0.62), producing severe
-        // alternating blur/clear.  With throttle, a render fires at most
-        // every delayMs (≈72 ms during preview), keeping lastRenderedZoom
-        // close to visualZoom and cssScale near 1.0.
-        if (wheelZoomRenderTimerId !== null) {
-            return;
-        }
-
-        const snapshot = deps.readZoomSnapshot();
-        const framePlan = deps.peekFramePlan(snapshot.targetZoom);
-        const decision = deps.resolveWheelRenderDecision({
-            targetZoom: snapshot.targetZoom,
-            visualZoom: snapshot.visualZoom,
-            lastRenderedZoom: snapshot.lastRenderedZoom,
-            previewActive: wheelZoomRafId !== null,
-            allowRenderDuringPreview: !!framePlan?.allowRenderDuringPreview,
-        });
-        const delayMs = Number.isFinite((decision as any)?.delayMs)
-            ? Math.max(0, Number((decision as any).delayMs))
-            : 96;
-
-        wheelZoomRenderTimerId = window.setTimeout(() => {
-            wheelZoomRenderTimerId = null;
-            const innerSnapshot = deps.readZoomSnapshot();
-            const innerFramePlan = deps.peekFramePlan(innerSnapshot.targetZoom);
-            const innerDecision = deps.resolveWheelRenderDecision({
-                targetZoom: innerSnapshot.targetZoom,
-                visualZoom: innerSnapshot.visualZoom,
-                lastRenderedZoom: innerSnapshot.lastRenderedZoom,
-                previewActive: wheelZoomRafId !== null,
-                allowRenderDuringPreview: !!innerFramePlan?.allowRenderDuringPreview,
-            });
-            if (innerDecision?.skipRender) {
-                applyVisualZoomPreview(innerSnapshot.targetZoom, { skipTransform: true });
-                deps.setWheelRenderPending(false);
-                return;
-            }
-            if (innerDecision?.requestRenderNow) {
-                deps.setWheelRenderPending(false);
-                window.requestAnimationFrame(() => {
-                    deps.requestRender('zoom');
-                });
-                return;
-            }
-            if (innerDecision?.deferUntilSettled) {
-                deps.setWheelRenderPending(true);
-                return;
-            }
-            deps.setWheelRenderPending(false);
-            window.requestAnimationFrame(() => {
-                deps.requestRender('zoom');
-            });
-        }, delayMs);
-    }
 
     function bindWheelZoom(): void {
         if (wheelZoomBound) return;
@@ -645,98 +96,95 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
             return;
         }
 
+        // NOTE: the RAF loop is NOT started here. It self-stops shortly after
+        // settle, so a loop started at bind time would die before the first
+        // wheel event. `onWheelEvent` (Rust) restarts it on every gesture.
+
         scrollContainer.addEventListener('wheel', (event: WheelEvent) => {
             if (!(event.ctrlKey || event.metaKey) || !deps.getCurrentPath()) return;
-
-            const container = deps.getVectorContainer();
-            if (!container) return;
 
             event.preventDefault();
             event.stopPropagation();
             event.stopImmediatePropagation();
 
             const rect = scrollContainer.getBoundingClientRect();
-            const viewportX = event.clientX - rect.left;
-            const viewportY = event.clientY - rect.top;
-            const zoomSnapshot = deps.readZoomSnapshot();
-            const currentDisplayZoom = zoomSnapshot.visualZoom > 0 ? zoomSnapshot.visualZoom : zoomSnapshot.targetZoom;
-            const displayWidth = deps.getCurrentPageWidth() * currentDisplayZoom;
-            const displayHeight = deps.getCurrentPageHeight() * currentDisplayZoom;
-            const request = {
+
+            // Collect raw DOM values — Rust does all computation
+            const input: WheelEventInput = {
                 deltaY: event.deltaY,
-                viewportX,
-                viewportY,
+                viewportX: event.clientX - rect.left,
+                viewportY: event.clientY - rect.top,
                 viewportWidth: scrollContainer.clientWidth || rect.width || 0,
                 viewportHeight: scrollContainer.clientHeight || rect.height || 0,
                 pageWidth: deps.getCurrentPageWidth(),
                 pageHeight: deps.getCurrentPageHeight(),
                 scrollLeft: scrollContainer.scrollLeft,
                 scrollTop: scrollContainer.scrollTop,
-                contentWidth: displayWidth,
-                contentHeight: displayHeight,
-                targetZoom: zoomSnapshot.targetZoom,
-                minZoom: 0.1,
-                maxZoom: deps.getMaxZoom(),
+                timestampMs: performance.now(),
             };
-            const wheelHostResult = deps.handleWheelZoomHost(
-                zoomSnapshot.targetZoom,
-                request,
-            );
-            if (!wheelHostResult) {
-                console.error('[PDF-ZOOM] Rust wheel host workflow failed', { request });
-                return;
-            }
-            try {
-                const decision = wheelHostResult.renderDecision;
-                if (decision?.skipRender) {
-                    deps.setWheelRenderPending(false);
-                }
-            } catch (error) {
-                console.error('[PDF-ZOOM] Rust wheel host workflow failed', {
-                    error,
-                    request,
-                });
-                return;
-            }
 
-            container.style.transformOrigin = '0 0';
+            // Single WASM call — replaces 4-5 old calls
+            const result = deps.onWheelEvent(input);
+            // Wake zoom listeners (tile layer marks animation start/end).
+            try { deps.onZoomGesture?.(); } catch {}
+
             deps.syncZoomSelect();
-            const snapshot = deps.readZoomSnapshot();
-            console.warn('[ZOOM-FLASH] WHEEL EVENT', {
-                preMutationTarget: zoomSnapshot.targetZoom,
-                preMutationVisual: zoomSnapshot.visualZoom,
-                preMutationLastRendered: zoomSnapshot.lastRenderedZoom,
-                postMutationTarget: snapshot.targetZoom,
-                postMutationVisual: snapshot.visualZoom,
-                postMutationLastRendered: snapshot.lastRenderedZoom,
-                postMutationCssScale: snapshot.cssScale,
-                containerWidth: container?.style.width,
-                containerTransform: container?.style.transform,
-            });
-            transformState.mode = 'preview';
-            transformState.cssScale = snapshot.cssScale;
-            transformState.translateX = 0;
-            transformState.translateY = 0;
-            applyZoomTransform();
-            startSmoothZoomPreview();
-            scheduleWheelZoomRender();
         }, { passive: false });
 
         wheelZoomBound = true;
     }
 
+    function commitRenderedFrame(frame: RustAnchorFramePlan): void {
+        logPdfLayoutTrace('zoom.commit-rendered-frame.received', {
+            frame,
+            immediateMutation: isImmediateMutationFrame(frame),
+        });
+
+        if (isImmediateMutationFrame(frame)) {
+            // Immediate mutations bypass the RAF queue — apply directly via Rust
+            // For now, push to queue and let Rust handle it
+            deps.commitRenderedFrameToQueue(frame);
+            return;
+        }
+
+        // Push to Rust committed frame queue — RAF loop will apply it
+        deps.commitRenderedFrameToQueue(frame);
+    }
+
+    function prepareImmediateRenderFrame(frame: RustAnchorFramePlan): void {
+        if (!isImmediateMutationFrame(frame)) return;
+        if (frame.prepareVisibleLayout === false) return;
+
+        logPdfLayoutTrace('zoom.prepare-immediate.before', {
+            frame,
+            zoomState: deps.getZoomState(),
+        });
+
+        // For immediate mutations, push to queue — Rust RAF will apply
+        deps.commitRenderedFrameToQueue(frame);
+
+        logPdfLayoutTrace('zoom.prepare-immediate.after', {
+            frame,
+            zoomState: deps.getZoomState(),
+        });
+    }
+
     function clearPendingAnchor(): void {
-        deps.clearPendingAnchor();
+        // In the new architecture, the RAF loop handles anchor state.
+        // This is a no-op for backward compatibility with renderFlow deps.
+    }
+
+    function resetVisualZoomPreview(): void {
+        // In the new architecture, the RAF loop manages preview state.
+        // Stop the RAF loop and reset zoom state via Rust.
+        deps.stopZoomRafLoop();
     }
 
     return {
         bindWheelZoom,
-        resetVisualZoomPreview,
-        applyVisualZoomPreview,
-        prepareImmediateRenderFrame,
         commitRenderedFrame,
-        restorePendingAnchor,
+        prepareImmediateRenderFrame,
         clearPendingAnchor,
+        resetVisualZoomPreview,
     };
 }
-
