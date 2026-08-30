@@ -116,6 +116,174 @@ pub fn facade_reset_cache() {
     reset_frame_cache();
 }
 
+// ─── Tile-based rendering (C1) ──────────────────────────────────────────────
+//
+// All entrypoints share ONE TileManager via render::tile_host. Do NOT declare
+// function-local thread_locals here — they would be distinct statics.
+
+use crate::render::tile_host::with_tile_manager;
+
+/// Update viewport and schedule tile rendering
+#[wasm_bindgen(js_name = "renderFacadeUpdateViewport")]
+pub fn facade_update_viewport(
+    page: u16,
+    zoom: f32,
+    dpr: f32,
+    viewport_x: f32,
+    viewport_y: f32,
+    viewport_width: f32,
+    viewport_height: f32,
+    frame_token: u32,
+) -> JsValue {
+    with_tile_manager(|mgr| {
+        mgr.update_viewport(page, zoom, dpr, viewport_x, viewport_y, viewport_width, viewport_height, frame_token);
+        to_value(&mgr.stats()).unwrap_or(JsValue::NULL)
+    })
+}
+
+/// Start zoom animation (marks tiles eligible for eviction)
+#[wasm_bindgen(js_name = "renderFacadeStartTileAnimation")]
+pub fn facade_start_tile_animation(target_zoom: f32) {
+    with_tile_manager(|mgr| mgr.start_animation(target_zoom));
+}
+
+/// Update animation state (called each frame during zoom)
+#[wasm_bindgen(js_name = "renderFacadeUpdateTileAnimation")]
+pub fn facade_update_tile_animation(visual_zoom: f32, frame_token: u32) {
+    with_tile_manager(|mgr| mgr.update_animation(visual_zoom, frame_token));
+}
+
+/// End zoom animation (schedules final high-res tiles)
+#[wasm_bindgen(js_name = "renderFacadeEndTileAnimation")]
+pub fn facade_end_tile_animation(frame_token: u32) {
+    with_tile_manager(|mgr| mgr.end_animation(frame_token));
+}
+
+/// Get next tile render request from queue
+#[wasm_bindgen(js_name = "renderFacadeNextTileRequest")]
+pub fn facade_next_tile_request() -> JsValue {
+    with_tile_manager(|mgr| match mgr.next_render_request() {
+        Some(request) => to_value(&request).unwrap_or(JsValue::NULL),
+        None => JsValue::NULL,
+    })
+}
+
+/// Mark a tile as rendering
+#[wasm_bindgen(js_name = "renderFacadeMarkTileRendering")]
+pub fn facade_mark_tile_rendering(page: u16, zoom: f32, dpr: f32, x: i32, y: i32) -> bool {
+    let key = pdf_viewer_core::render::tile_v2::TileKey::new(page, zoom, dpr, x, y);
+    with_tile_manager(|mgr| mgr.mark_rendering(&key))
+}
+
+/// Mark a tile as ready
+#[wasm_bindgen(js_name = "renderFacadeMarkTileReady")]
+pub fn facade_mark_tile_ready(page: u16, zoom: f32, dpr: f32, x: i32, y: i32) -> bool {
+    let key = pdf_viewer_core::render::tile_v2::TileKey::new(page, zoom, dpr, x, y);
+    with_tile_manager(|mgr| mgr.mark_ready(&key))
+}
+
+/// Flip a Rendering tile back to Pending (dropped render / render error)
+#[wasm_bindgen(js_name = "renderFacadeResetTile")]
+pub fn facade_reset_tile(page: u16, zoom: f32, dpr: f32, x: i32, y: i32) -> bool {
+    let key = pdf_viewer_core::render::tile_v2::TileKey::new(page, zoom, dpr, x, y);
+    with_tile_manager(|mgr| mgr.reset_stale_rendering(&key))
+}
+
+/// Check if a tile is ready for display
+#[wasm_bindgen(js_name = "renderFacadeIsTileReady")]
+pub fn facade_is_tile_ready(page: u16, zoom: f32, dpr: f32, x: i32, y: i32) -> bool {
+    let key = pdf_viewer_core::render::tile_v2::TileKey::new(page, zoom, dpr, x, y);
+    with_tile_manager(|mgr| mgr.is_tile_ready(&key))
+}
+
+/// Clear tile cache for a specific page
+#[wasm_bindgen(js_name = "renderFacadeClearTileCache")]
+pub fn facade_clear_tile_cache(page: u16) {
+    with_tile_manager(|mgr| mgr.clear_page(page));
+}
+
+/// Get tile cache statistics
+#[wasm_bindgen(js_name = "renderFacadeTileStats")]
+pub fn facade_tile_stats() -> JsValue {
+    with_tile_manager(|mgr| to_value(&mgr.stats()).unwrap_or(JsValue::NULL))
+}
+
+// ─── Progressive Quality Rendering (ADR-0004) ────────────────────────────────
+
+/// Start animation quality state machine (reset to Low quality)
+#[wasm_bindgen(js_name = "renderFacadeStartQualityAnimation")]
+pub fn facade_start_quality_animation() {
+    use pdf_viewer_core::render::quality::QualityStateMachine;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static QUALITY_SM: RefCell<QualityStateMachine> = RefCell::new(QualityStateMachine::new());
+    }
+
+    QUALITY_SM.with(|sm| {
+        sm.borrow_mut().start_animation();
+    });
+}
+
+/// Update quality based on animation state
+#[wasm_bindgen(js_name = "renderFacadeUpdateQuality")]
+pub fn facade_update_quality(is_animating: bool, settled: bool) -> u32 {
+    use pdf_viewer_core::render::quality::QualityStateMachine;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static QUALITY_SM: RefCell<QualityStateMachine> = RefCell::new(QualityStateMachine::new());
+    }
+
+    QUALITY_SM.with(|sm| {
+        let quality = sm.borrow_mut().update(is_animating, settled);
+        quality as u32
+    })
+}
+
+/// Get current quality level
+#[wasm_bindgen(js_name = "renderFacadeGetQuality")]
+pub fn facade_get_quality() -> u32 {
+    use pdf_viewer_core::render::quality::QualityStateMachine;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static QUALITY_SM: RefCell<QualityStateMachine> = RefCell::new(QualityStateMachine::new());
+    }
+
+    QUALITY_SM.with(|sm| {
+        sm.borrow().current() as u32
+    })
+}
+
+/// Get quality DPI multiplier
+#[wasm_bindgen(js_name = "renderFacadeGetQualityDpi")]
+pub fn facade_get_quality_dpi(quality: u32) -> f32 {
+    use pdf_viewer_core::render::quality::RenderQuality;
+
+    let q = match quality {
+        0 => RenderQuality::Low,
+        1 => RenderQuality::Medium,
+        2 => RenderQuality::High,
+        _ => RenderQuality::Medium,
+    };
+    q.dpi_multiplier()
+}
+
+/// Get quality budget in milliseconds
+#[wasm_bindgen(js_name = "renderFacadeGetQualityBudget")]
+pub fn facade_get_quality_budget(quality: u32) -> f64 {
+    use pdf_viewer_core::render::quality::RenderQuality;
+
+    let q = match quality {
+        0 => RenderQuality::Low,
+        1 => RenderQuality::Medium,
+        2 => RenderQuality::High,
+        _ => RenderQuality::Medium,
+    };
+    q.budget_ms()
+}
+
 // ─── Stubs ───────────────────────────────────────────────────────────────────
 
 /// Reserved: render the current page off-screen and return a PNG buffer.

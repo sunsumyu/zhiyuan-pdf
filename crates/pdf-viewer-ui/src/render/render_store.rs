@@ -73,7 +73,10 @@ pub fn schedule_render_frame<TPlan: Clone>(
             let token = allocate_render_frame_token(&mut state);
             state.queued_frame_token = token;
             state.queued_frame_plan = Some(to_value_plan(frame_plan));
-            state.active_frame_token = token;
+            // Do NOT update active_frame_token here — the in-flight frame
+            // is still rendering and must remain "current" until it settles.
+            // Updating it prematurely causes the render loop to treat the
+            // in-flight frame as stale and abort it, leaving the queue stuck.
             None
         }
     })

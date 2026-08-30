@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::JsValue;
 
-use super::target_resolution::{is_supported_region_kind, resolve_region_target_from_page_state};
+use pdf_viewer_core::edit::target_resolution::{is_supported_region_kind, resolve_region_target_from_page_state};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };

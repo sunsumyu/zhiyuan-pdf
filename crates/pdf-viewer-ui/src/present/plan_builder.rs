@@ -120,6 +120,7 @@ pub fn build_frame_plan_result(
     let target_zoom = sanitize_positive(zoom_state.target_zoom, render.display_zoom);
     let visual_zoom = sanitize_positive(zoom_state.visual_zoom, render.display_zoom);
     let preview_settled = preview_is_settled(target_zoom, visual_zoom);
+
     let base_cache_zoom = quantize_cache_zoom(render.base_render_zoom, false);
     let detail_cache_zoom = quantize_cache_zoom(render.render_zoom, render.use_viewport_tile);
     let (visible_left, visible_top, visible_right, visible_bottom) = compute_visible_content_rect(

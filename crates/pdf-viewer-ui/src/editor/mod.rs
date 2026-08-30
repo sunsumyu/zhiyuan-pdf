@@ -35,12 +35,8 @@ pub use pdf_viewer_core::geometry::source_geometry;
 
 pub use overlay::navigation;
 pub use overlay::paragraph_overlay;
-pub use overlay::paragraph_scene;
 pub use overlay::projection;
 pub use overlay::visual;
 
 pub use format::list_format;
-pub use format::target_resolution;
 pub use format::text_geometry;
-pub use format::text_index;
-pub use format::text_model;

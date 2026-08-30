@@ -13,8 +13,8 @@ pub use pdf_viewer_core::render::zoom_state::*;
 //
 // Derived from HostZoomState fields on demand:
 //
-//   Idle        current_zoom == target_zoom, no preview
-//   Animating   current_zoom != target_zoom (zoom-to-fit / pinch release)
+//   Idle        visual_zoom == target_zoom, no preview
+//   Animating   visual_zoom != target_zoom (zoom-to-fit / pinch release)
 //   Previewing  preview_transform is Some (live pinch/scroll gesture)
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,7 +41,7 @@ pub fn read_zoom_session_state() -> ZoomSessionState {
         let s = state.borrow();
         if s.preview_transform.is_some() {
             ZoomSessionState::Previewing
-        } else if (s.current_zoom - s.target_zoom).abs() > f32::EPSILON {
+        } else if (s.visual_zoom - s.target_zoom).abs() > f32::EPSILON {
             ZoomSessionState::Animating
         } else {
             ZoomSessionState::Idle
@@ -70,7 +70,6 @@ pub fn reset_zoom_state(initial_zoom: f32) {
     let zoom = sanitize_zoom(initial_zoom);
     ZOOM_STATE.with(|state| {
         *state.borrow_mut() = HostZoomState {
-            current_zoom: zoom,
             target_zoom: zoom,
             visual_zoom: zoom,
             last_rendered_zoom: zoom,
@@ -80,6 +79,7 @@ pub fn reset_zoom_state(initial_zoom: f32) {
             visual_layout: None,
             preview_transform: None,
             preview_host: PreviewHostState::default(),
+            drawing_delay: DrawingDelayState::default(),
         };
     });
 }

@@ -553,14 +553,14 @@ impl EditorSession {
     /// Convert a UTF-16 offset to a Rust char index.
     #[wasm_bindgen(js_name = "utf16ToCharIndex")]
     pub fn utf16_to_char_index(&self, text: &str, utf16_offset: u32) -> u32 {
-        use crate::editor::text_index::utf16_offset_to_char_index;
+        use pdf_viewer_core::text::index_convert::utf16_offset_to_char_index;
         utf16_offset_to_char_index(text, utf16_offset as usize) as u32
     }
 
     /// Convert a Rust char index to a UTF-16 offset.
     #[wasm_bindgen(js_name = "charToUtf16Offset")]
     pub fn char_to_utf16_offset(&self, text: &str, char_index: u32) -> u32 {
-        use crate::editor::text_index::char_index_to_utf16_offset;
+        use pdf_viewer_core::text::index_convert::char_index_to_utf16_offset;
         char_index_to_utf16_offset(text, char_index as usize) as u32
     }
 

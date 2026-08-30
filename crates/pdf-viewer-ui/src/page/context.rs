@@ -46,5 +46,6 @@ pub fn update_page_viewport_workflow(
         viewport_width,
         viewport_height,
     );
-    viewer_store::set_current_zoom(zoom);
+    // 权威单入口（ADR-0001）—— 不再写 session 存储
+    crate::zoom::zoom_controller::set_target_zoom_authoritative(zoom);
 }

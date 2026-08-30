@@ -7,13 +7,13 @@ use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
 use crate::viewer::viewer_controller;
-use crate::zoom::interaction::WheelZoomRequest;
-use crate::zoom::{request, zoom_controller, preview_host};
+use pdf_viewer_core::render::zoom::animation::WheelZoomRequest;
+use crate::zoom::zoom_controller;
 
 #[wasm_bindgen(js_name = "resolveWheelZoom")]
 pub fn resolve_wheel_zoom(request_js: JsValue) -> JsValue {
     let request: WheelZoomRequest = from_value(request_js).unwrap_or_default();
-    let result = request::resolve_wheel_zoom(&request);
+    let result = zoom_controller::resolve_wheel_zoom(&request);
     to_value(&result).unwrap_or(JsValue::NULL)
 }
 
@@ -59,6 +59,16 @@ pub fn clear_preview_present() {
     zoom_controller::clear_preview_present();
 }
 
+#[wasm_bindgen(js_name = "cancelDrawingDelay")]
+pub fn cancel_drawing_delay() {
+    zoom_controller::cancel_drawing_delay();
+}
+
+#[wasm_bindgen(js_name = "takeCancelPendingRender")]
+pub fn take_cancel_pending_render() -> bool {
+    zoom_controller::take_cancel_pending_render()
+}
+
 #[wasm_bindgen(js_name = "syncHostLayout")]
 pub fn sync_host_layout_wasm(request_js: JsValue) -> JsValue {
     let request: crate::host::layout::SyncHostLayoutRequest = from_value(request_js).unwrap_or_default();
@@ -68,6 +78,8 @@ pub fn sync_host_layout_wasm(request_js: JsValue) -> JsValue {
 
 /// Single-read snapshot of all zoom state fields the TS bridge needs.
 /// Avoids multiple WASM round-trips that could see stale intermediate values.
+///
+/// `currentZoom` 是权威派生投影：恒等于 targetZoom（ADR-0001）。
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZoomSnapshot {
@@ -84,13 +96,65 @@ pub struct ZoomSnapshot {
 pub fn read_zoom_snapshot() -> JsValue {
     let state = zoom_controller::read_zoom_state();
     let snapshot = ZoomSnapshot {
-        current_zoom: state.current_zoom,
+        current_zoom: state.target_zoom,
         target_zoom: state.target_zoom,
         visual_zoom: state.visual_zoom,
         last_rendered_zoom: state.last_rendered_zoom,
         css_scale: state.css_scale,
-        preview_active: preview_host::is_preview_active(),
-        wheel_render_pending: preview_host::is_wheel_render_pending(),
+        preview_active: zoom_controller::is_preview_active(),
+        wheel_render_pending: zoom_controller::is_wheel_render_pending(),
     };
     to_value(&snapshot).unwrap_or(JsValue::NULL)
 }
+
+/// Zoom state machine: one call per RAF frame.
+/// TS passes DOM reads, receives DomOps + AsyncOps to execute.
+#[wasm_bindgen(js_name = "tickZoomState")]
+pub fn tick_zoom_state(input_js: JsValue) -> JsValue {
+    let input: pdf_viewer_core::render::zoom_host::ZoomTickInput =
+        from_value(input_js).unwrap_or_default();
+    let output = zoom_controller::tick_zoom_state(input);
+    to_value(&output).unwrap_or(JsValue::NULL)
+}
+
+// ─── RAF loop API (new) ───────────────────────────────────────────
+
+/// Start the Rust-driven zoom RAF loop.
+#[wasm_bindgen(js_name = "startZoomRafLoop")]
+pub fn start_zoom_raf_loop() {
+    crate::zoom::raf_loop::start_zoom_raf_loop();
+}
+
+/// Stop the Rust-driven zoom RAF loop.
+#[wasm_bindgen(js_name = "stopZoomRafLoop")]
+pub fn stop_zoom_raf_loop() {
+    crate::zoom::raf_loop::stop_zoom_raf_loop();
+}
+
+/// Check if the RAF loop is running.
+#[wasm_bindgen(js_name = "isZoomRafLoopRunning")]
+pub fn is_zoom_raf_loop_running() -> bool {
+    crate::zoom::raf_loop::is_raf_loop_running()
+}
+
+/// Handle a complete wheel event. TS passes raw DOM values.
+#[wasm_bindgen(js_name = "onWheelEvent")]
+pub fn on_wheel_event(input_js: JsValue) -> JsValue {
+    let input: crate::zoom::raf_loop::WheelEventInput =
+        from_value(input_js).unwrap_or_default();
+    let output = crate::zoom::raf_loop::on_wheel_event(input);
+    // The loop self-stops after settle; every real wheel gesture must
+    // guarantee it is ticking again, otherwise zoom state changes are
+    // never rendered.
+    crate::zoom::raf_loop::ensure_raf_loop_after_wheel();
+    to_value(&output).unwrap_or(JsValue::NULL)
+}
+
+/// Push a committed frame from the render pipeline.
+#[wasm_bindgen(js_name = "commitRenderedFrameToQueue")]
+pub fn commit_rendered_frame_to_queue(frame_js: JsValue) {
+    if let Ok(frame) = from_value::<crate::zoom::raf_loop::CommittedFrame>(frame_js) {
+        crate::zoom::raf_loop::commit_rendered_frame(frame);
+    }
+}
+

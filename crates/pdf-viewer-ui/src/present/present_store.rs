@@ -39,8 +39,12 @@ pub fn build_frame_plan_result(
     request: &FramePlanRequest,
     consume_anchor: bool,
 ) -> FramePlanResult {
+    // Read the viewer session BEFORE borrowing ZOOM_STATE mutably.
+    // read_viewer_session() reads ZOOM_STATE.target_zoom (ADR-0001), so it
+    // cannot run inside with_zoom_state_mut — that would double-borrow the
+    // RefCell and panic at runtime, silently killing the render pipeline.
+    let viewer_session = viewer_store::read_viewer_session();
     zoom_store::with_zoom_state_mut(|zoom_state| {
-        let viewer_session = viewer_store::read_viewer_session();
         PRESENT_STATE.with(|present_state| {
             inner_build_frame_plan_result(
                 request,

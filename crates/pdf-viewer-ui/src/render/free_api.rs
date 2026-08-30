@@ -30,7 +30,9 @@ use crate::render::layer::{
     resolve_layer_present_decision as inner_resolve_layer_present_decision,
     resolve_render_execution_plan as inner_resolve_render_execution_plan,
 };
-use crate::render::loop_workflow::schedule_render_follow_up_runtime;
+use pdf_viewer_core::render::zoom_host::resolve_render_follow_up_decision;
+use crate::viewer::viewer_controller::set_zoom;
+use crate::zoom::zoom_controller::read_zoom_state;
 use crate::render::progressive_workflow::{
     cancel_progressive_render as inner_cancel_progressive_render, render_page as inner_render_page,
     render_page_offscreen as inner_render_page_offscreen,
@@ -39,17 +41,30 @@ use crate::render::progressive_workflow::{
     step_progressive_render_offscreen as inner_step_progressive_render_offscreen,
 };
 use crate::render::workflow::RenderFrameEnvelope;
-use crate::zoom::event::{
+use crate::zoom::zoom_controller::{
     execute_wheel_zoom as inner_handle_wheel_zoom_host,
     step_preview_host as inner_step_preview_host, PreviewHostStepRequest, WheelZoomHostRequest,
 };
 use pdf_viewer_core::render::zoom_host::{
+    resolve_flush_decision as resolve_flush_decision_inner,
+    resolve_fit_to_width as resolve_fit_to_width_inner,
+    resolve_layout_fallback as resolve_layout_fallback_inner,
+    resolve_css_transform as resolve_css_transform_inner,
+    resolve_css_transform_string as resolve_css_transform_string_inner,
+    resolve_canvas_css_box as resolve_canvas_css_box_inner,
+    is_immediate_mutation_frame as is_immediate_mutation_frame_inner,
+    resolve_settled_transform as resolve_settled_transform_inner,
     resolve_preview_tick_decision as inner_resolve_preview_tick_decision,
     resolve_wheel_render_decision as inner_resolve_wheel_render_decision,
-    PreviewTickDecisionRequest, WheelRenderDecisionRequest,
+    resolve_wheel_request_params as resolve_wheel_request_params_inner,
+    resolve_zoom_commit_decision as resolve_zoom_commit_decision_inner,
+    CssTransformRequest, LayoutFallbackRequest, PreviewTickDecisionRequest,
+    WheelRenderDecisionRequest, WheelRequestParamsRequest,
+    ZoomCommitDecisionRequest, ZoomFlushDecisionRequest,
+    MIN_ZOOM, MAX_ZOOM,
 };
-use crate::zoom::preview_host::{
-    clear_zoom_preview_host_state as inner_clear_zoom_preview_host_state,
+use crate::zoom::zoom_controller::{
+    clear_preview_host_with_anchor as inner_clear_preview_host_with_anchor,
     is_wheel_render_pending as inner_get_wheel_render_pending,
     queue_committed_frame as inner_queue_committed_frame,
     set_wheel_render_pending as inner_set_wheel_render_pending,
@@ -117,7 +132,17 @@ pub fn is_render_frame_current(frame_token: u32) -> bool {
 #[wasm_bindgen(js_name = "scheduleRenderFollowUp")]
 pub fn schedule_render_follow_up(rendered_display_zoom: f32, request_js: JsValue) -> JsValue {
     let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
-    match schedule_render_follow_up_runtime(rendered_display_zoom, &request) {
+    let zoom_state = read_zoom_state();
+    let decision = resolve_render_follow_up_decision(
+        rendered_display_zoom,
+        zoom_state.target_zoom,
+        zoom_state.visual_zoom,
+    );
+    if !decision.schedule_latest_target {
+        return JsValue::NULL;
+    }
+    set_zoom(decision.target_zoom);
+    match schedule_render_frame_request(&request) {
         Some(frame) => to_value(&frame).unwrap_or(JsValue::NULL),
         None => JsValue::NULL,
     }
@@ -165,7 +190,7 @@ pub fn resolve_host_scroll_refresh(request_js: JsValue) -> JsValue {
 
 #[wasm_bindgen]
 pub fn clear_zoom_preview_host_state(clear_anchor: bool) {
-    inner_clear_zoom_preview_host_state(clear_anchor);
+    inner_clear_preview_host_with_anchor(clear_anchor);
 }
 
 #[wasm_bindgen(js_name = "resolveWheelRenderDecision")]
@@ -178,6 +203,107 @@ pub fn resolve_wheel_render_decision(request_js: JsValue) -> JsValue {
 pub fn resolve_preview_tick_decision(request_js: JsValue) -> JsValue {
     let request: PreviewTickDecisionRequest = from_value(request_js).unwrap_or_default();
     to_value(&inner_resolve_preview_tick_decision(request)).unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen(js_name = "resolveZoomCommitDecision")]
+pub fn resolve_zoom_commit_decision(request_js: JsValue) -> JsValue {
+    let request: ZoomCommitDecisionRequest = from_value(request_js).unwrap_or_default();
+    to_value(&resolve_zoom_commit_decision_inner(request)).unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen(js_name = "resolveFlushDecision")]
+pub fn resolve_flush_decision(request_js: JsValue) -> JsValue {
+    let request: ZoomFlushDecisionRequest = from_value(request_js).unwrap_or_default();
+    to_value(&resolve_flush_decision_inner(request)).unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen(js_name = "resolveCssTransform")]
+pub fn resolve_css_transform(request_js: JsValue) -> JsValue {
+    let request: CssTransformRequest = from_value(request_js).unwrap_or_default();
+    to_value(&resolve_css_transform_inner(request)).unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen(js_name = "resolveWheelRequestParams")]
+pub fn resolve_wheel_request_params(request_js: JsValue) -> JsValue {
+    let request: WheelRequestParamsRequest = from_value(request_js).unwrap_or_default();
+    to_value(&resolve_wheel_request_params_inner(request)).unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen(js_name = "resolveLayoutFallback")]
+pub fn resolve_layout_fallback(request_js: JsValue) -> JsValue {
+    let request: LayoutFallbackRequest = from_value(request_js).unwrap_or_default();
+    to_value(&resolve_layout_fallback_inner(request)).unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen(js_name = "resolveFitToWidth")]
+pub fn resolve_fit_to_width(viewport_width: f32, page_width: f32) -> JsValue {
+    to_value(&resolve_fit_to_width_inner(viewport_width, page_width)).unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen(js_name = "MIN_ZOOM")]
+pub fn min_zoom() -> f32 {
+    MIN_ZOOM
+}
+
+#[wasm_bindgen(js_name = "MAX_ZOOM")]
+pub fn max_zoom() -> f32 {
+    MAX_ZOOM
+}
+
+#[wasm_bindgen(js_name = "resolveCssTransformString")]
+pub fn resolve_css_transform_string(
+    translate_x: f32,
+    translate_y: f32,
+    css_scale: f32,
+) -> String {
+    resolve_css_transform_string_inner(translate_x, translate_y, css_scale)
+}
+
+#[wasm_bindgen(js_name = "resolveCanvasCssBox")]
+pub fn resolve_canvas_css_box(
+    display_zoom: f32,
+    base_render_zoom: f32,
+    display_width: f32,
+    display_height: f32,
+) -> JsValue {
+    to_value(&resolve_canvas_css_box_inner(
+        display_zoom,
+        base_render_zoom,
+        display_width,
+        display_height,
+    ))
+    .unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen(js_name = "isImmediateMutationFrame")]
+pub fn is_immediate_mutation_frame(render_reason: &str) -> bool {
+    is_immediate_mutation_frame_inner(render_reason)
+}
+
+#[wasm_bindgen(js_name = "resolveSettledTransform")]
+pub fn resolve_settled_transform(
+    preview_content_left: f32,
+    preview_content_top: f32,
+    preview_scroll_left: f32,
+    preview_scroll_top: f32,
+    preview_css_scale: f32,
+    settled_content_left: f32,
+    settled_content_top: f32,
+    settled_scroll_left: f32,
+    settled_scroll_top: f32,
+) -> JsValue {
+    to_value(&resolve_settled_transform_inner(
+        preview_content_left,
+        preview_content_top,
+        preview_scroll_left,
+        preview_scroll_top,
+        preview_css_scale,
+        settled_content_left,
+        settled_content_top,
+        settled_scroll_left,
+        settled_scroll_top,
+    ))
+    .unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = "handleWheelZoomHost")]
