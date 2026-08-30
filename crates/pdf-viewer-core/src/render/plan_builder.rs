@@ -338,6 +338,10 @@ pub fn resolve_render_zoom_result(request: &RenderZoomRequest) -> RenderZoomResu
         display_zoom.min(safe_render_zoom)
     };
     let base_render_zoom = display_zoom.min(safe_render_zoom);
+    // ADR-0004 (revised): this ratio compensates canvas-dimension clamping —
+    // when display_zoom exceeds the 10240px bitmap limit the canvas renders at
+    // render_zoom and the DOM box must scale it back up (display/render).
+    // Pinning to 1.0 collapses the canvas box and makes zoom jump violently.
     let css_scale = if render_zoom > 0.0 && !use_viewport_tile {
         display_zoom / render_zoom
     } else {
