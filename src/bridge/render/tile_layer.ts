@@ -329,8 +329,16 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
         const pageW = deps.getPageWidth() * key.zoom;
         const pageH = deps.getPageHeight() * key.zoom;
         const rect = tileDisplayRect(key.x, key.y, key.zoom, deps.getPageWidth(), deps.getPageHeight());
-        if (rect.left >= pageW || rect.top >= pageH) {
-            // Entirely outside the page — nothing to render.
+        // Rust's near-viewport margin schedules tiles at negative indices and
+        // beyond the right/bottom edges — skip every tile whose rect does not
+        // actually intersect the page's display rect (they render as blank
+        // white boxes floating outside the page otherwise).
+        const intersectsPage =
+            rect.left < pageW &&
+            rect.top < pageH &&
+            rect.left + rect.width > 0 &&
+            rect.top + rect.height > 0;
+        if (!intersectsPage) {
             scheduleTick();
             return;
         }

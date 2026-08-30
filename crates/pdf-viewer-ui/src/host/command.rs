@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::viewer::viewer_controller::{
     read_session, reset_session, set_document, set_page, set_page_size, set_zoom,
 };
-use crate::zoom::zoom_controller::{reset_zoom_runtime, set_target_zoom};
+use crate::zoom::zoom_controller::{reset_zoom_runtime, set_target_zoom_instant};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -100,7 +100,9 @@ pub fn apply_zoom_selection(zoom: f32) -> HostActionResult {
             current_zoom: session.current_zoom,
         };
     }
-    set_target_zoom(zoom);
+    // Programmatic zoom = instant jump: visual snaps to target (see
+    // set_target_zoom_instant) so the committed frame lands with s == 1.0.
+    set_target_zoom_instant(zoom);
     set_zoom(zoom);
     HostActionResult {
         changed: true,

@@ -170,7 +170,9 @@ export function createViewerGeometryProbe(deps: GeometryProbeDeps): GeometryProb
         });
 
         const nextZoom = deps.clampZoom(Number(wheelPlan?.targetZoom || zoomState.targetZoom));
-        deps.getWasmApi().setTargetZoom?.(nextZoom);
+        // Instant jump: this probe renders synchronously with no RAF animation,
+        // so visual_zoom must snap to target or css_scale inverts on commit.
+        deps.getWasmApi().setTargetZoomInstant?.(nextZoom);
         deps.viewerSession.setCurrentZoom(nextZoom);
 
         const plan = deps.framePlanAdapter.take(nextZoom) ?? deps.framePlanAdapter.peek(nextZoom);

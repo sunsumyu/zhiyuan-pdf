@@ -38,6 +38,12 @@ pub fn set_target_zoom(target_zoom: f32) {
     zoom_controller::set_target_zoom(target_zoom);
 }
 
+/// Instant zoom jump for programmatic changes — visual snaps to target.
+#[wasm_bindgen(js_name = "setTargetZoomInstant")]
+pub fn set_target_zoom_instant(target_zoom: f32) {
+    zoom_controller::set_target_zoom_instant(target_zoom);
+}
+
 #[wasm_bindgen(js_name = "markRenderedZoom")]
 pub fn mark_rendered_zoom(rendered_zoom: f32) {
     zoom_controller::mark_rendered_zoom(rendered_zoom);

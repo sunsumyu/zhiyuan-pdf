@@ -33,6 +33,21 @@ pub fn set_target_zoom(target_zoom: f32) {
     });
 }
 
+/// Programmatic zoom jump (zoom-select dropdown, fit-to-width, geometry
+/// probe): an instant change of intent, NOT a wheel gesture. Nothing drives
+/// the RAF animation for these, so visual_zoom must snap to the new target
+/// here — leaving it behind makes css_scale = visual / last_rendered explode
+/// to target⁻¹ once the commit lands (observed as scale(2.083) on a 48%
+/// select: visual stuck at 1.0, base 0.48).
+pub fn set_target_zoom_instant(target_zoom: f32) {
+    set_target_zoom(target_zoom);
+    ZOOM_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.visual_zoom = state.target_zoom;
+        state.recompute_css_scale();
+    });
+}
+
 /// 缩放权威的唯一写入入口（ADR-0001）。
 ///
 /// ZOOM_STATE.target_zoom 是缩放事实的家；`VIEWER_SESSION` 快照中的

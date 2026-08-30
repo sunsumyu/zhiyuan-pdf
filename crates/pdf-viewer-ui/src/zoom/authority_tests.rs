@@ -54,3 +54,50 @@ fn i3_wheel_path_no_longer_mirrors_into_session_store() {
     assert!((read_viewer_session().current_zoom - 1.75).abs() < 0.001);
     set_target_zoom_authoritative(1.0);
 }
+
+#[wasm_bindgen_test::wasm_bindgen_test]
+fn i4_instant_zoom_snaps_visual_and_commit_lands_at_scale_one() {
+    // 回归：程序化缩放（下拉框/自适应宽度）只写 target、没有 RAF 推进
+    // visual，提交 0.48 渲染后 css_scale = visual/last_rendered = 1/0.48
+    // = 2.0833，页面被放大 2 倍（用户报告的"内容双份/巨大"）。
+    // set_target_zoom_instant 必须把 visual 快照到 target。
+    use crate::zoom::zoom_controller::{mark_rendered_zoom, set_target_zoom_instant};
+
+    // 前置：布局已提交在 1.0
+    mark_rendered_zoom(1.0);
+    set_target_zoom_authoritative(1.0);
+    mark_rendered_zoom(1.0);
+
+    // 程序化跳到 48%：target 与 visual 必须同时到位
+    set_target_zoom_instant(0.48);
+    let state = read_zoom_state();
+    assert!(
+        (state.target_zoom - 0.48).abs() < 0.001,
+        "target {} != 0.48",
+        state.target_zoom
+    );
+    assert!(
+        (state.visual_zoom - 0.48).abs() < 0.001,
+        "visual {} did not snap to target",
+        state.visual_zoom
+    );
+    // 提交前：s = visual/layout = 0.48/1.0（正确缩小，I1 成立）
+    assert!(
+        (state.css_scale - 0.48).abs() < 0.005,
+        "pre-commit css_scale {} != 0.48",
+        state.css_scale
+    );
+
+    // 提交 0.48 渲染后：s 必须精确回到 1.0（禁止 1/0.48 反转）
+    mark_rendered_zoom(0.48);
+    let state = read_zoom_state();
+    assert!(
+        (state.css_scale - 1.0).abs() < 0.001,
+        "post-commit css_scale {} != 1.0 (inverted ratio regression)",
+        state.css_scale
+    );
+
+    // 还原
+    set_target_zoom_instant(1.0);
+    mark_rendered_zoom(1.0);
+}
