@@ -70,30 +70,21 @@ export type RustViewportRefreshDecision = {
     delayMs: number;
 };
 
-export type RustWheelRenderDecision = {
-    requestRenderNow: boolean;
-    deferUntilSettled: boolean;
-    skipRender: boolean;
+export type RustLayoutFallback = {
+    domWidth: number;
+    domHeight: number;
+    displayWidth: number;
+    displayHeight: number;
+    hostWidth: number;
+    hostHeight: number;
+    contentLeft: number;
+    contentTop: number;
+    cssScale: number;
 };
 
-export type RustPreviewTickDecision = {
-    continuePreview: boolean;
-    flushCommittedFrame: boolean;
-    requestRenderNow: boolean;
-    keepWheelRenderPending: boolean;
-};
-
-export type RustWheelZoomHostResult = {
-    zoom: {
-        targetZoom: number;
-    };
-    renderDecision: RustWheelRenderDecision;
-    framePlan: RustFramePlan;
-};
-
-export type RustPreviewHostStepResult = {
-    preview: RustPreviewFrame;
-    decision: RustPreviewTickDecision;
+export type RustFitToWidthResult = {
+    fitZoom: number;
+    shouldFit: boolean;
 };
 
 export type RustLayerExecutionPlan = {
@@ -107,17 +98,6 @@ export type RustLayerExecutionPlan = {
 export type RustLayerPresentDecision = {
     showDetailOverlay: boolean;
     retainDetailOverlay: boolean;
-};
-
-type RustCommittedFrame = {
-    displayZoom: number;
-    renderZoom: number;
-    hostWidth: number;
-    hostHeight: number;
-    contentLeft: number;
-    contentTop: number;
-    scrollLeft: number;
-    scrollTop: number;
 };
 
 type FramePlanAdapterDeps = {
@@ -142,17 +122,11 @@ export type FramePlanAdapter = {
     settleRender: (frameToken: number | null, renderedZoom: number) => RustRenderTransition | null;
     abortRender: (frameToken: number | null) => RustRenderTransition | null;
     commitRenderResult: (frameToken: number, renderedZoom: number, pageWidth: number, pageHeight: number) => RustRenderCommitResult | null;
-    resolveWheelRenderDecision: (request: Record<string, boolean | number>) => RustWheelRenderDecision | null;
-    resolvePreviewTickDecision: (request: Record<string, boolean | number>) => RustPreviewTickDecision | null;
+    isImmediateMutationFrame: (renderReason: string) => boolean;
+    resolveFitToWidth: (viewportWidth: number, pageWidth: number) => RustFitToWidthResult | null;
     scheduleRenderFollowUp: (renderedDisplayZoom: number) => RustRenderFrame | null;
-    handleWheelZoomHost: (displayZoom: number, wheelRequest: Record<string, number>) => RustWheelZoomHostResult | null;
-    stepPreviewHost: (displayZoom: number, timestampMs?: number) => RustPreviewHostStepResult | null;
     resolveLayerExecutionPlan: (bundleChanged: boolean, framePlan: RustFramePlan) => RustLayerExecutionPlan | null;
     resolveLayerPresentDecision: (useDetailLayer: boolean, framePlan: RustFramePlan) => RustLayerPresentDecision | null;
-    setWheelRenderPending: (pending: boolean) => void;
-    getWheelRenderPending: () => boolean;
-    queueCommittedFrame: (frame: RustCommittedFrame) => void;
-    takeReadyCommittedFrame: () => RustCommittedFrame | null;
     isRenderFrameCurrent: (frameToken: number | null) => boolean;
     queueRenderLoopFrame: (frame: RustRenderFrame | null) => RustRenderFrame | null;
     advanceRenderLoopFrame: (frame: RustRenderFrame | null) => RustRenderFrame | null;
@@ -312,17 +286,17 @@ export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAda
         }
     }
 
-    function resolveWheelRenderDecision(request: Record<string, boolean | number>): RustWheelRenderDecision | null {
+    function isImmediateMutationFrame(renderReason: string): boolean {
         try {
-            return renderApi.resolveWheelRenderDecision(request) as RustWheelRenderDecision;
+            return renderApi.isImmediateMutationFrame(renderReason);
         } catch {
-            return null;
+            return renderReason === 'editorVisibility' || renderReason === 'documentMutation';
         }
     }
 
-    function resolvePreviewTickDecision(request: Record<string, boolean | number>): RustPreviewTickDecision | null {
+    function resolveFitToWidth(viewportWidth: number, pageWidth: number): RustFitToWidthResult | null {
         try {
-            return renderApi.resolvePreviewTickDecision(request) as RustPreviewTickDecision;
+            return renderApi.resolveFitToWidth(viewportWidth, pageWidth) as RustFitToWidthResult;
         } catch {
             return null;
         }
@@ -334,74 +308,6 @@ export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAda
                 renderedDisplayZoom,
                 buildRequest(renderedDisplayZoom, 'zoom'),
             ) as RustRenderFrame;
-        } catch {
-            return null;
-        }
-    }
-
-    function handleWheelZoomHost(
-        displayZoom: number,
-        wheelRequest: Record<string, number>,
-    ): RustWheelZoomHostResult | null {
-        try {
-            return renderApi.handleWheelZoomHost({
-                wheel: wheelRequest,
-                frame: buildRequest(displayZoom),
-            }) as RustWheelZoomHostResult;
-        } catch (error) {
-            console.error('[PDF-FRAME] wasm_handle_wheel_zoom_host failed', {
-                error,
-                displayZoom,
-                wheelRequest,
-            });
-            return null;
-        }
-    }
-
-    function stepPreviewHost(displayZoom: number, timestampMs?: number): RustPreviewHostStepResult | null {
-        try {
-            const frame = buildRequest(displayZoom, 'zoom');
-            if (Number.isFinite(timestampMs as number)) {
-                frame.timestampMs = timestampMs as number;
-            }
-            return renderApi.stepPreviewHost({
-                frame,
-            }) as RustPreviewHostStepResult;
-        } catch (error) {
-            console.error('[PDF-FRAME] wasm_step_preview_host failed', {
-                error,
-                displayZoom,
-                timestampMs,
-            });
-            return null;
-        }
-    }
-
-    function setWheelRenderPending(pending: boolean): void {
-        try {
-            renderApi.setWheelRenderPending(pending);
-        } catch {
-        }
-    }
-
-    function getWheelRenderPending(): boolean {
-        try {
-            return renderApi.getWheelRenderPending();
-        } catch {
-            return false;
-        }
-    }
-
-    function queueCommittedFrame(frame: RustCommittedFrame): void {
-        try {
-            renderApi.queueCommittedFrame(frame);
-        } catch {
-        }
-    }
-
-    function takeReadyCommittedFrame(): RustCommittedFrame | null {
-        try {
-            return renderApi.takeReadyCommittedFrame() as RustCommittedFrame;
         } catch {
             return null;
         }
@@ -465,17 +371,11 @@ export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAda
         settleRender,
         abortRender,
         commitRenderResult,
-        resolveWheelRenderDecision,
-        resolvePreviewTickDecision,
         scheduleRenderFollowUp,
-        handleWheelZoomHost,
-        stepPreviewHost,
         resolveLayerExecutionPlan,
         resolveLayerPresentDecision,
-        setWheelRenderPending,
-        getWheelRenderPending,
-        queueCommittedFrame,
-        takeReadyCommittedFrame,
+        isImmediateMutationFrame,
+        resolveFitToWidth,
         isRenderFrameCurrent,
         queueRenderLoopFrame,
         advanceRenderLoopFrame,

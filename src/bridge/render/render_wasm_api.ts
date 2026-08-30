@@ -2,14 +2,10 @@ import type {
     RustLayerExecutionPlan,
     RustLayerPresentDecision,
     RustPreviewFrame,
-    RustPreviewHostStepResult,
-    RustPreviewTickDecision,
     RustRenderCommitResult,
     RustRenderFrame,
     RustRenderTransition,
     RustViewportRefreshDecision,
-    RustWheelRenderDecision,
-    RustWheelZoomHostResult,
 } from './frame_plan';
 
 import type { WasmModule } from '../shared/wasm_loader';
@@ -67,15 +63,11 @@ export type RenderWasmApi = {
         pageWidth: number,
         pageHeight: number,
     ) => RustRenderCommitResult | null;
-    resolveWheelRenderDecision: (request: Record<string, boolean | number>) => RustWheelRenderDecision | null;
-    resolvePreviewTickDecision: (request: Record<string, boolean | number>) => RustPreviewTickDecision | null;
+    resolveLayoutFallback: (request: Record<string, number>) => { domWidth: number; domHeight: number; displayWidth: number; displayHeight: number; hostWidth: number; hostHeight: number; contentLeft: number; contentTop: number; cssScale: number } | null;
+    resolveFitToWidth: (viewportWidth: number, pageWidth: number) => { fitZoom: number; shouldFit: boolean } | null;
+    resolveCanvasCssBox: (displayZoom: number, baseRenderZoom: number, displayWidth: number, displayHeight: number) => { domWidth: number; domHeight: number; baseScale: number } | null;
+    isImmediateMutationFrame: (renderReason: string) => boolean;
     scheduleRenderFollowUp: (renderedDisplayZoom: number, frameRequest: Record<string, unknown>) => RustRenderFrame | null;
-    handleWheelZoomHost: (request: Record<string, unknown>) => RustWheelZoomHostResult | null;
-    stepPreviewHost: (request: Record<string, unknown>) => RustPreviewHostStepResult | null;
-    setWheelRenderPending: (pending: boolean) => void;
-    getWheelRenderPending: () => boolean;
-    queueCommittedFrame: (frame: Record<string, unknown>) => void;
-    takeReadyCommittedFrame: () => Record<string, unknown> | null;
     isRenderFrameCurrent: (frameToken: number) => boolean;
     queueRenderLoopFrame: (frame: RustRenderFrame | null) => RustRenderFrame | null;
     advanceRenderLoopFrame: (frame: RustRenderFrame | null) => RustRenderFrame | null;
@@ -84,6 +76,12 @@ export type RenderWasmApi = {
     resolveLayerPresentDecision: (useDetailLayer: boolean, framePlan: unknown) => RustLayerPresentDecision | null;
     cancelProgressiveRender: () => void;
     resetFrameCache: () => void;
+    // RAF loop API (new)
+    startZoomRafLoop: () => void;
+    stopZoomRafLoop: () => void;
+    isZoomRafLoopRunning: () => boolean;
+    onWheelEvent: (input: Record<string, unknown>) => { targetZoom: number; visualZoom: number; cssScale: number } | null;
+    commitRenderedFrameToQueue: (frame: Record<string, unknown>) => void;
     initPageContext: (
         modelJson: string,
         paintPlanJson: string,
@@ -160,35 +158,23 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
                 pageHeight,
             ) ?? null;
         },
-        resolveWheelRenderDecision(request) {
-            return getWasmApi().resolveWheelRenderDecision?.(request) ?? null;
+        resolveLayoutFallback(request) {
+            return getWasmApi().resolveLayoutFallback?.(request) ?? null;
         },
-        resolvePreviewTickDecision(request) {
-            return getWasmApi().resolvePreviewTickDecision?.(request) ?? null;
+        resolveFitToWidth(viewportWidth, pageWidth) {
+            return getWasmApi().resolveFitToWidth?.(viewportWidth, pageWidth) ?? null;
+        },
+        resolveCanvasCssBox(displayZoom, baseRenderZoom, displayWidth, displayHeight) {
+            return getWasmApi().resolveCanvasCssBox?.(displayZoom, baseRenderZoom, displayWidth, displayHeight) ?? null;
+        },
+        isImmediateMutationFrame(renderReason) {
+            return !!getWasmApi().isImmediateMutationFrame?.(renderReason);
         },
         scheduleRenderFollowUp(renderedDisplayZoom, frameRequest) {
             return getWasmApi().scheduleRenderFollowUp?.(
                 renderedDisplayZoom,
                 frameRequest,
             ) ?? null;
-        },
-        handleWheelZoomHost(request) {
-            return getWasmApi().handleWheelZoomHost?.(request) ?? null;
-        },
-        stepPreviewHost(request) {
-            return getWasmApi().stepPreviewHost?.(request) ?? null;
-        },
-        setWheelRenderPending(pending) {
-            getWasmApi().setWheelRenderPending?.(pending);
-        },
-        getWheelRenderPending() {
-            return !!getWasmApi().getWheelRenderPending?.();
-        },
-        queueCommittedFrame(frame) {
-            getWasmApi().queueCommittedFrame?.(frame);
-        },
-        takeReadyCommittedFrame() {
-            return getWasmApi().takeReadyCommittedFrame?.() ?? null;
         },
         isRenderFrameCurrent(frameToken) {
             return getWasmApi().isRenderFrameCurrent?.(frameToken) !== false;
@@ -213,6 +199,22 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
         },
         resetFrameCache() {
             getWasmApi().resetFrameCache?.();
+        },
+        // RAF loop API (new)
+        startZoomRafLoop() {
+            getWasmApi().startZoomRafLoop?.();
+        },
+        stopZoomRafLoop() {
+            getWasmApi().stopZoomRafLoop?.();
+        },
+        isZoomRafLoopRunning() {
+            return !!getWasmApi().isZoomRafLoopRunning?.();
+        },
+        onWheelEvent(input) {
+            return getWasmApi().onWheelEvent?.(input) ?? null;
+        },
+        commitRenderedFrameToQueue(frame) {
+            getWasmApi().commitRenderedFrameToQueue?.(frame);
         },
         initPageContext(modelJson, paintPlanJson, zoom, dpr, viewportLeft, viewportTop, viewportWidth, viewportHeight) {
             getWasmApi().initPageContext?.(

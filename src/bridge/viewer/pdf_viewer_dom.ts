@@ -2,6 +2,8 @@ import { VECTOR_CONTAINER_ID } from '../render/vector_host';
 
 export const DEFAULT_PAGE_WIDTH = 595;
 export const DEFAULT_PAGE_HEIGHT = 842;
+// Host-side safety bounds — must mirror Rust zoom_host::MIN_ZOOM / MAX_ZOOM.
+// These are NOT domain rules; they are DOM safety clamps for the host layer.
 export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 30.0;
 export const MAX_CANVAS_DIM = 10240;

@@ -1,12 +1,8 @@
 import { describe, it, expect } from 'vitest';
 
-describe('zoom commit frame anti-flash', () => {
-  it('applyCommittedFrame calls syncLayoutBox unconditionally (no preview guard)', async () => {
-    // The new approach: syncLayoutBox is always called in applyCommittedFrame,
-    // even when the preview rAF loop is active. This ensures the container DOM
-    // dimensions stay consistent with lastRenderedZoom.
-    // After syncLayoutBox, if preview is active, the CSS transform is overridden
-    // with the visual scale for continuity.
+describe('zoom Rust RAF loop architecture', () => {
+  it('zoom_controller.ts binds wheel to onWheelEvent', async () => {
+    // The new architecture delegates all wheel logic to Rust via a single onWheelEvent call.
     const fs = await import('fs');
     const path = await import('path');
     const controller = fs.readFileSync(
@@ -14,26 +10,76 @@ describe('zoom commit frame anti-flash', () => {
       'utf8',
     );
 
-    // Find the applyCommittedFrame function
-    const fnMatch = controller.match(
-      /function applyCommittedFrame\([\s\S]*?\n    \}/,
+    // Must NOT start the RAF loop at bind time — the loop self-stops after
+    // settle, so a bind-time start would die before the first wheel event.
+    // Restarting is Rust's job: onWheelEvent calls ensure_raf_loop_after_wheel.
+    const hasBindTimeStart = /deps\.startZoomRafLoop\(\)/.test(controller);
+    expect(hasBindTimeStart).toBe(false);
+
+    // Must call onWheelEvent for wheel events
+    const hasOnWheelEvent = /deps\.onWheelEvent\(input\)/.test(controller);
+    expect(hasOnWheelEvent).toBe(true);
+
+    // Must NOT have the old tick loop (startSmoothZoomPreview)
+    const hasOldTickLoop = /startSmoothZoomPreview/.test(controller);
+    expect(hasOldTickLoop).toBe(false);
+  });
+
+  it('commitRenderedFrame delegates to Rust queue', async () => {
+    // The new architecture pushes committed frames to the Rust queue.
+    const fs = await import('fs');
+    const path = await import('path');
+    const controller = fs.readFileSync(
+      path.resolve(__dirname, '../bridge/zoom/zoom_controller.ts'),
+      'utf8',
     );
-    expect(fnMatch).not.toBeNull();
-    const fn = fnMatch![0];
 
-    // syncLayoutBox must be called unconditionally (not inside a guard)
-    const hasSync = /deps\.syncLayoutBox\(frame\.displayZoom, frame\.renderZoom, frame\)/.test(fn);
-    expect(hasSync).toBe(true);
+    // Must call commitRenderedFrameToQueue
+    const hasQueue = /deps\.commitRenderedFrameToQueue\(frame\)/.test(controller);
+    expect(hasQueue).toBe(true);
 
-    // When preview is active, CSS transform should be overridden
-    const hasPreviewOverride = /wheelZoomRafId !== null/.test(fn);
-    expect(hasPreviewOverride).toBe(true);
+    // Must NOT have the old complex applyCommittedFrame logic
+    const hasOldApply = /function applyCommittedFrame/.test(controller);
+    expect(hasOldApply).toBe(false);
+  });
+
+  it('RAF loop runs in Rust via web-sys', async () => {
+    // The RAF loop is implemented in Rust using requestAnimationFrame + web-sys DOM ops.
+    // DOM ops were extracted to raf_transform.rs and raf_committed.rs.
+    const fs = await import('fs');
+    const path = await import('path');
+    const rafLoop = fs.readFileSync(
+      path.resolve(__dirname, '../../crates/pdf-viewer-ui/src/zoom/raf_loop.rs'),
+      'utf8',
+    );
+    const rafTransform = fs.readFileSync(
+      path.resolve(__dirname, '../../crates/pdf-viewer-ui/src/zoom/raf_transform.rs'),
+      'utf8',
+    );
+    const rafCommitted = fs.readFileSync(
+      path.resolve(__dirname, '../../crates/pdf-viewer-ui/src/zoom/raf_committed.rs'),
+      'utf8',
+    );
+    const all = rafLoop + rafTransform + rafCommitted;
+
+    // Must use requestAnimationFrame
+    const hasRaf = /request_animation_frame/.test(rafLoop);
+    expect(hasRaf).toBe(true);
+
+    // Must use web-sys for CSS transform (in raf_transform or raf_committed)
+    const hasCssTransform = /set_property.*transform/.test(all);
+    expect(hasCssTransform).toBe(true);
+
+    // Must use web-sys for scroll (in raf_committed)
+    const hasScroll = /set_scroll_left/.test(all);
+    expect(hasScroll).toBe(true);
+
+    // Wheel path must guarantee the loop is running (loop self-stops after settle)
+    const hasWheelRestart = /fn ensure_raf_loop_after_wheel/.test(rafLoop);
+    expect(hasWheelRestart).toBe(true);
   });
 
   it('vector canvas container uses overflow:visible so cssScale preview is not clipped', async () => {
-    // 缩放预览期间 canvas 按 cssScale 放大后可能超出容器的布局盒；
-    // overflow:hidden 会把预览画面裁掉（用户确认过的裁切 bug）。
-    // 容器必须在创建时就使用 overflow:visible。
     const fs = await import('fs');
     const path = await import('path');
     const canvasHost = fs.readFileSync(
@@ -47,8 +93,6 @@ describe('zoom commit frame anti-flash', () => {
   });
 
   it('presentViewportCanvas sets container visible', async () => {
-    // presentViewportCanvas must restore container visibility after the
-    // bitmap has been drawn, completing the hide-draw-show cycle.
     const fs = await import('fs');
     const path = await import('path');
     const canvasHost = fs.readFileSync(
@@ -56,83 +100,11 @@ describe('zoom commit frame anti-flash', () => {
       'utf8',
     );
 
-    // presentViewportCanvas sets container visible
     const setsVisible = /container\.style\.visibility\s*=\s*['"]visible['"]/.test(canvasHost);
     expect(setsVisible).toBe(true);
   });
 
-  it('syncLayoutBox does NOT set CSS transform (callers manage it)', async () => {
-    // syncLayoutBox only updates container dimensions (position, size).
-    // CSS transform is managed by the zoom controller (applyPreviewFrame,
-    // applyCommittedFrame, applyVisualZoomPreview) to avoid stale scales
-    // persisting when the preview tick loop stops.
-    const fs = await import('fs');
-    const path = await import('path');
-    const layout = fs.readFileSync(
-      path.resolve(__dirname, '../bridge/viewer/pdf_layout_sync.ts'),
-      'utf8',
-    );
-
-    // syncLayoutBox must NOT set container.style.transform
-    const syncFnBody = layout.substring(
-      layout.indexOf('function syncLayoutBox'),
-      layout.indexOf('logPdfLayoutTrace(\'layout.sync.after\''),
-    );
-    const setsTransform = /container\.style\.transform\s*=/.test(syncFnBody);
-    expect(setsTransform).toBe(false);
-  });
-
-  it('commitRenderedFrame defers syncLayoutBox when preview is active', async () => {
-    // When the preview rAF loop is active and a committed frame arrives,
-    // commitRenderedFrame must NOT call syncLayoutBox directly — it queues
-    // the frame via queueCommittedFrame and lets the tick loop handle the
-    // visual transition. Calling syncLayoutBox here forces an intermediate
-    // layout render (via getBoundingClientRect inside syncLayoutBox) with
-    // stale CSS scale, causing a one-frame flash.
-    //
-    // The tick loop's flushCommittedFrameIfSettled → applyCommittedFrame
-    // handles the final container dimensions, CSS transform, and scroll
-    // position when the preview settles.
-    const fs = await import('fs');
-    const path = await import('path');
-    const controller = fs.readFileSync(
-      path.resolve(__dirname, '../bridge/zoom/zoom_controller.ts'),
-      'utf8',
-    );
-
-    // Find the commitRenderedFrame function
-    const fnMatch = controller.match(
-      /function commitRenderedFrame\([\s\S]*?\n    \}/,
-    );
-    expect(fnMatch).not.toBeNull();
-    const fn = fnMatch![0];
-
-    // Must call queueCommittedFrame to defer the frame
-    const hasQueue = /deps\.queueCommittedFrame\(frame\)/.test(fn);
-    expect(hasQueue).toBe(true);
-
-    // Must call startSmoothPreview to keep the tick loop running
-    const hasStartPreview = /startSmoothZoomPreview\(\)/.test(fn);
-    expect(hasStartPreview).toBe(true);
-
-    // The preview-active path must NOT set CSS transform directly
-    // (the preview loop via applyPreviewFrame manages it).
-    // After the settled check return, only queueCommittedFrame and
-    // startSmoothZoomPreview should remain — no transformState assignment.
-    const settledReturnIdx = fn.indexOf('startSmoothZoomPreview');
-    const previewPath = fn.substring(settledReturnIdx);
-    const setsTransformInPreview = /transformState\.mode\s*=/.test(previewPath);
-    expect(setsTransformInPreview).toBe(false);
-  });
-
   it('applyViewportCanvasFrame skips visible-canvas re-box when deferVisibleFrame is set', async () => {
-    // 缩放预览期间渲染开始时，container 仍处于上一次提交的 render zoom
-    // 布局并带着 preview scale（visualZoom / lastRenderedZoom）。如果此时
-    // 把可见 mainCanvas/backCanvas 的 CSS 重排成新 render zoom 的尺寸，
-    // canvas 视觉宽度会变成 pageWidth * newRenderZoom * previewScale，
-    // 在 commit 同步 container 之前呈现为骤缩/骤放（用户看到的闪烁）。
-    // 双缓冲（deferVisibleFrame=true）时必须保持已提交帧的 CSS 盒，
-    // 由 presentViewportCanvasFromSource 在 present 时原子重排。
     const fs = await import('fs');
     const path = await import('path');
     const canvasHost = fs.readFileSync(
@@ -146,16 +118,13 @@ describe('zoom commit frame anti-flash', () => {
     expect(fnMatch).not.toBeNull();
     const fn = fnMatch![0];
 
-    // 可见 canvas 的重排必须被 deferVisibleFrame 守卫
     const guardedBox = /if \(!deferVisibleFrame\) \{[\s\S]*?applyCanvasCssBox\(refs\.mainCanvas[\s\S]*?applyCanvasCssBox\(refs\.backCanvas[\s\S]*?\n    \}/.test(fn);
     expect(guardedBox).toBe(true);
 
-    // 守卫之外不得再直接重排可见 canvas
     const outside = fn.replace(/if \(!deferVisibleFrame\) \{[\s\S]*?\n    \}/, '');
     expect(/applyCanvasCssBox\(refs\.mainCanvas/.test(outside)).toBe(false);
     expect(/applyCanvasCssBox\(refs\.backCanvas/.test(outside)).toBe(false);
 
-    // 离屏 stage 位图尺寸仍无条件设置（present 需要正确的缓冲大小）
     expect(/ensureCanvasBitmap\(refs\.mainStageCanvas/.test(fn)).toBe(true);
   });
 });

@@ -29,6 +29,378 @@ type RenderFlowDeps = {
 
 export type VisibleSurface = 'preview' | 'vector' | 'detail' | 'raster';
 
+// ─── Strategy result ──────────────────────────────────────────────
+
+type StrategyResult = {
+    /** Whether this strategy handled the frame (true = loop continues with nextFrame). */
+    handled: boolean;
+    /** Next frame to render, or null to stop the loop. */
+    nextFrame: RustRenderFrame | null;
+};
+
+// ─── Shared render context ────────────────────────────────────────
+
+type RenderFlowContext = {
+    deps: RenderFlowDeps;
+    currentFrame: RustRenderFrame;
+    session: { path: string | null; currentPage: number; pageCount: number; pageWidth: number; pageHeight: number; currentZoom: number };
+    targetPageIndex: number;
+    preview: any;
+    pagePresenter: ReturnType<typeof createPagePresenter>;
+    isPageProgress: (pageIndex: number) => boolean;
+    logRenderFlow: (node: string, details: Record<string, unknown>) => void;
+    /** Mutable state shared across strategies. */
+    state: {
+        lastVisibleSurface: VisibleSurface | null;
+        lastRenderedPageIndex: number | null;
+    };
+};
+
+// ─── Helper: compute next frame from transition ───────────────────
+
+function nextFrameFromTransition(
+    transition: RustRenderCommitResult | null,
+    renderPlan: { renderReason?: string; displayZoom: number },
+    deps: RenderFlowDeps,
+): RustRenderFrame | null {
+    return (
+        transition?.nextFrame ??
+        (renderPlan.renderReason === 'zoom'
+            ? deps.scheduleRenderFollowUp(renderPlan.displayZoom)
+            : null) ??
+        null
+    );
+}
+
+// ─── Strategy 1: Scanned PDF fast path ────────────────────────────
+// If the page is classified as scanned and has a ready preview image,
+// render it directly via raster and bypass Vello entirely.
+
+async function strategyScannedFastPath(ctx: RenderFlowContext): Promise<StrategyResult> {
+    const { deps, currentFrame, session, targetPageIndex, preview, pagePresenter, isPageProgress, logRenderFlow, state } = ctx;
+
+    if (!preview?.imageUrl || preview?.kind !== 'scanned') {
+        return { handled: false, nextFrame: null };
+    }
+
+    logRenderFlow('scanned-preview-fast-path', {
+        page: targetPageIndex,
+        hasImage: true,
+    });
+    const frameStartTs = performance.now();
+    const width = preview.width || session.pageWidth;
+    const height = preview.height || session.pageHeight;
+    const renderPlan = currentFrame.framePlan;
+    const transition = deps.commitRenderResult(
+        currentFrame.frameToken,
+        renderPlan.renderZoom,
+        width,
+        height,
+    );
+
+    if (transition?.accepted) {
+        if (isPageProgress(targetPageIndex)) {
+            deps.onPageDimensionsResolved(width, height);
+            const presented = await pagePresenter.presentRaster(
+                preview.imageUrl,
+                width,
+                height,
+                renderPlan.displayZoom,
+                { role: 'current', pageIndex: targetPageIndex },
+            );
+            if (presented) {
+                state.lastVisibleSurface = 'raster';
+                state.lastRenderedPageIndex = targetPageIndex;
+                deps.clearPendingAnchor();
+                deps.clearEditorOverlay();
+                deps.showWrapper();
+                deps.commitRenderedFrame(renderPlan);
+                deps.onRenderCommitted();
+
+                const totalTime = performance.now() - frameStartTs;
+                emitPdfDiagnostic('PROF', 'page-render-duration-raster-visible', {
+                    page: targetPageIndex,
+                    totalTimeMs: totalTime,
+                });
+                emitPdfDiagnostic('PROF', 'page-render-duration-fast', {
+                    page: targetPageIndex,
+                    totalTimeMs: totalTime,
+                });
+            }
+        }
+    }
+
+    const nextFrame = nextFrameFromTransition(transition, renderPlan, deps);
+    return { handled: true, nextFrame };
+}
+
+// ─── Strategy 2: Preview-first presentation ───────────────────────
+// For default/navigation reasons, present the preview image immediately
+// while Vello renders in the background.
+
+async function strategyPreviewFirst(ctx: RenderFlowContext): Promise<StrategyResult> {
+    const { deps, currentFrame, session, targetPageIndex, preview, pagePresenter, isPageProgress, logRenderFlow, state } = ctx;
+
+    const renderPlan = currentFrame.framePlan;
+    if (
+        !preview?.imageUrl ||
+        !(renderPlan.renderReason === 'default' || renderPlan.renderReason === 'navigation') ||
+        !deps.framePlanAdapter.isRenderFrameCurrent(currentFrame.frameToken)
+    ) {
+        return { handled: false, nextFrame: null };
+    }
+
+    if (!isPageProgress(targetPageIndex)) {
+        return { handled: false, nextFrame: null };
+    }
+
+    const admission = deps.pagePresentationRuntime.admitPageAsset(
+        targetPageIndex,
+        'current',
+        'preview',
+    );
+    if (!admission.accepted) {
+        return { handled: false, nextFrame: null };
+    }
+
+    const width = preview.width || session.pageWidth;
+    const height = preview.height || session.pageHeight;
+    deps.onPageDimensionsResolved(width, height);
+
+    // Ready-only commit: present immediately if preview is already decoded.
+    const readyPresented = pagePresenter.commitReadySurfaceOrFallback(
+        preview.imageUrl,
+        width,
+        height,
+        renderPlan.displayZoom,
+        {
+            hideVectorOnly: true,
+            role: 'preview',
+            pageIndex: targetPageIndex,
+        },
+    );
+
+    if (readyPresented) {
+        state.lastVisibleSurface = 'preview';
+        state.lastRenderedPageIndex = targetPageIndex;
+        deps.clearPendingAnchor();
+        deps.clearEditorOverlay();
+        deps.pagePresentationRuntime.markPageVisible(targetPageIndex, 'preview');
+        deps.commitRenderedFrame(renderPlan);
+        logRenderFlow('preview-first-frame.presented', {
+            page: targetPageIndex,
+            width,
+            height,
+            frameToken: currentFrame.frameToken,
+            renderReason: renderPlan.renderReason,
+            readyOnly: true,
+        });
+    } else {
+        // Async decode — present when ready
+        void pagePresenter.presentRaster(
+            preview.imageUrl,
+            width,
+            height,
+            renderPlan.displayZoom,
+            {
+                hideVectorOnly: true,
+                role: 'preview',
+                pageIndex: targetPageIndex,
+            }
+        ).then((presented) => {
+            if (presented) {
+                if (isPageProgress(targetPageIndex)) {
+                    state.lastVisibleSurface = 'preview';
+                    state.lastRenderedPageIndex = targetPageIndex;
+                    deps.clearPendingAnchor();
+                    deps.clearEditorOverlay();
+                    deps.pagePresentationRuntime.markPageVisible(targetPageIndex, 'preview');
+                    deps.commitRenderedFrame(renderPlan);
+                }
+            }
+        });
+    }
+
+    // Preview-first doesn't consume the frame — vector rendering continues below.
+    return { handled: false, nextFrame: null };
+}
+
+// ─── Strategy 3: Vector (Vello) rendering ─────────────────────────
+// Full WASM vector render with dual-layer support.
+
+async function strategyVectorRender(ctx: RenderFlowContext): Promise<StrategyResult> {
+    const { deps, currentFrame, session, targetPageIndex, isPageProgress, logRenderFlow, state } = ctx;
+
+    const renderPlan = currentFrame.framePlan;
+    const frameStartTs = performance.now();
+
+    try {
+        logPdfLayoutTrace('render-loop.frame.begin', {
+            frameToken: currentFrame.frameToken,
+            framePlan: currentFrame.framePlan,
+            session,
+        });
+        ensureVectorHost();
+        deps.showWrapper();
+
+        if (renderPlan.prepareVisibleLayout === false) {
+            logRenderFlow('defer-visible-layout', {
+                frameToken: currentFrame.frameToken,
+                reason: renderPlan.renderReason,
+                displayZoom: renderPlan.displayZoom,
+                renderZoom: renderPlan.renderZoom,
+            });
+        } else {
+            deps.prepareRenderFrame(currentFrame);
+        }
+
+        const result = await renderVectorPageWithPlan(
+            session.path!,
+            targetPageIndex,
+            renderPlan,
+            currentFrame.frameToken,
+        );
+
+        if (result.aborted) {
+            const nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
+            return { handled: true, nextFrame };
+        }
+
+        // Staleness check after render
+        if (!deps.framePlanAdapter.isRenderFrameCurrent(currentFrame.frameToken) || !isPageProgress(targetPageIndex)) {
+            logRenderFlow('stale.before-commit', {
+                frameToken: currentFrame.frameToken,
+                reason: renderPlan.renderReason,
+                displayZoom: renderPlan.displayZoom,
+                renderZoom: renderPlan.renderZoom,
+                isCurrent: deps.framePlanAdapter.isRenderFrameCurrent(currentFrame.frameToken),
+                isProgress: isPageProgress(targetPageIndex),
+            });
+            const nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
+            return { handled: true, nextFrame };
+        }
+
+        const transition = deps.commitRenderResult(
+            currentFrame.frameToken,
+            renderPlan.renderZoom,
+            result.width,
+            result.height,
+        );
+        logPdfLayoutTrace('render-loop.commit-result.accepted', {
+            frameToken: currentFrame.frameToken,
+            renderPlan,
+            resultWidth: result.width,
+            resultHeight: result.height,
+            transition,
+        });
+
+        if (transition?.accepted) {
+            if (isPageProgress(targetPageIndex)) {
+                deps.onPageDimensionsResolved(result.width, result.height);
+
+                // Commit layout + present vector result
+                const beforePresentCb = () => {
+                    deps.commitRenderedFrame(renderPlan);
+                    const traceNode = renderPlan.prepareVisibleLayout === false
+                        ? 'render-loop.deferred.commit-layout.after'
+                        : 'render-loop.commit-layout.after';
+                    logPdfLayoutTrace(traceNode, { frameToken: currentFrame.frameToken, renderPlan });
+                };
+
+                logPdfLayoutTrace(
+                    renderPlan.prepareVisibleLayout === false
+                        ? 'render-loop.deferred.present.before'
+                        : 'render-loop.present.before',
+                    { frameToken: currentFrame.frameToken, pendingPresentCount: result.pendingPresents?.length ?? 0 },
+                );
+
+                commitVectorRenderResult(result, { beforePresent: beforePresentCb });
+
+                logPdfLayoutTrace(
+                    renderPlan.prepareVisibleLayout === false
+                        ? 'render-loop.deferred.present.after'
+                        : 'render-loop.present.after',
+                    { frameToken: currentFrame.frameToken, pendingPresentCount: result.pendingPresents?.length ?? 0 },
+                );
+
+                state.lastVisibleSurface = 'vector';
+                state.lastRenderedPageIndex = targetPageIndex;
+                deps.syncEditorOverlay(renderPlan.displayZoom);
+                deps.onRenderCommitted();
+
+                const totalTime = performance.now() - frameStartTs;
+                emitPdfDiagnostic('PROF', 'page-render-duration', {
+                    page: targetPageIndex,
+                    reason: renderPlan.renderReason,
+                    totalTimeMs: totalTime,
+                });
+            }
+        }
+
+        const nextFrame = nextFrameFromTransition(transition, renderPlan, deps);
+        return { handled: true, nextFrame };
+    } catch (error) {
+        console.warn('[PDF-VECTOR] vector render failed, falling back to preview', error);
+        return { handled: false, nextFrame: null };
+    }
+}
+
+// ─── Strategy 4: Raster fallback ──────────────────────────────────
+// If vector rendering fails, fall back to preview raster image.
+
+async function strategyRasterFallback(ctx: RenderFlowContext): Promise<StrategyResult> {
+    const { deps, currentFrame, session, targetPageIndex, preview: initialPreview, isPageProgress, state } = ctx;
+
+    if (!isPageProgress(targetPageIndex)) {
+        return { handled: false, nextFrame: null };
+    }
+
+    try {
+        const preview = session.path ? initialPreview : null;
+        if (!preview?.imageUrl) {
+            return { handled: false, nextFrame: null };
+        }
+
+        const width = preview.width || session.pageWidth;
+        const height = preview.height || session.pageHeight;
+        const renderPlan = currentFrame.framePlan;
+        const transition = deps.commitRenderResult(
+            currentFrame.frameToken,
+            renderPlan.renderZoom,
+            width,
+            height,
+        );
+
+        if (transition?.accepted) {
+            if (isPageProgress(targetPageIndex)) {
+                deps.onPageDimensionsResolved(width, height);
+                const presented = await ctx.pagePresenter.presentRaster(
+                    preview.imageUrl,
+                    width,
+                    height,
+                    renderPlan.displayZoom,
+                    { role: 'current', pageIndex: targetPageIndex },
+                );
+                if (presented) {
+                    state.lastVisibleSurface = 'raster';
+                    state.lastRenderedPageIndex = targetPageIndex;
+                    deps.clearPendingAnchor();
+                    deps.clearEditorOverlay();
+                    deps.commitRenderedFrame(renderPlan);
+                }
+            }
+        }
+
+        const nextFrame = nextFrameFromTransition(transition, renderPlan, deps);
+        return { handled: true, nextFrame };
+    } catch (error) {
+        console.error('[PDF-VECTOR] preview fallback failed', error);
+        return { handled: false, nextFrame: null };
+    }
+}
+
+// ─── Main render loop ─────────────────────────────────────────────
+
 export function createRenderFlow(deps: RenderFlowDeps) {
     let lastVisibleSurface: VisibleSurface | null = null;
     let lastRenderedPageIndex: number | null = null;
@@ -81,26 +453,30 @@ export function createRenderFlow(deps: RenderFlowDeps) {
         emitPdfDiagnostic('render-flow', node, details, { verboseOnly: true });
     }
 
-    function shouldPresentPreviewFirst(renderReason: string | undefined): boolean {
-        return renderReason === 'default' || renderReason === 'navigation';
-    }
-
     async function runRenderLoop(initialFrame: RustRenderFrame | null): Promise<void> {
         let renderFrame = deps.framePlanAdapter.queueRenderLoopFrame(initialFrame);
         if (!renderFrame) {
             return;
         }
 
+        // Shared mutable state across strategies
+        const sharedState = {
+            lastVisibleSurface: null as VisibleSurface | null,
+            lastRenderedPageIndex: null as number | null,
+        };
+
         while (renderFrame) {
             const currentFrame = renderFrame;
             const session = deps.viewerSession.read();
-            let nextFrame: RustRenderFrame | null = null;
+
+            // ── Guard: no path ──
             if (!session.path) {
-                nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
+                const nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
                 renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
                 continue;
             }
 
+            // ── Guard: frame stale ──
             if (!deps.framePlanAdapter.isRenderFrameCurrent(currentFrame.frameToken)) {
                 logRenderFlow('stale.before-prepare', {
                     frameToken: currentFrame.frameToken,
@@ -108,18 +484,18 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                     displayZoom: currentFrame.framePlan.displayZoom,
                     renderZoom: currentFrame.framePlan.renderZoom,
                 });
-                nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
+                const nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
                 renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
                 continue;
             }
 
             const targetPageIndex = session.currentPage;
 
+            // ── Update page indicator ──
             const indicator = deps.getPageIndicator();
             if (indicator) {
                 indicator.textContent = `Page ${targetPageIndex + 1} / ${session.pageCount}`;
             }
-            // Update the actual UI elements present in index.html
             const currentPageInput = document.getElementById('pdf-current-page-input') as HTMLInputElement | null;
             if (currentPageInput) {
                 currentPageInput.value = String(targetPageIndex + 1);
@@ -129,349 +505,78 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                 totalPagesSpan.textContent = String(session.pageCount);
             }
 
-            // Scanned PDF fast path: if the page is classified as scanned and has a ready preview image,
-            // render it directly via updateRasterFallback and bypass Vello entirely.
-            let preview: any = null;
-            if (session.path) {
-                preview = await getPagePreview(session.path, targetPageIndex);
-            }
+            // ── Fetch preview ──
+            const preview = await getPagePreview(session.path, targetPageIndex);
 
-            // Check if page has progressed after fetching the preview
+            // ── Guard: page progressed during preview fetch ──
             if (!isPageProgress(targetPageIndex)) {
                 logRenderFlow('stale.after-preview-fetch', {
                     frameToken: currentFrame.frameToken,
                     targetPageIndex,
                 });
-                nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
+                const nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
                 renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
                 continue;
             }
 
-            if (preview?.imageUrl && preview?.kind === 'scanned') {
-                logRenderFlow('scanned-preview-fast-path', {
-                    page: targetPageIndex,
-                    hasImage: true,
-                });
-                const frameStartTs = performance.now();
-                const width = preview.width || session.pageWidth;
-                const height = preview.height || session.pageHeight;
-                const renderPlan = currentFrame.framePlan;
-                const transition = deps.commitRenderResult(
-                    currentFrame.frameToken,
-                    renderPlan.renderZoom,
-                    width,
-                    height,
-                );
+            // ── Build render context ──
+            const ctx: RenderFlowContext = {
+                deps,
+                currentFrame,
+                session,
+                targetPageIndex,
+                preview,
+                pagePresenter,
+                isPageProgress,
+                logRenderFlow,
+                state: sharedState,
+            };
 
-                if (transition?.accepted) {
-                    if (isPageProgress(targetPageIndex)) {
-                        deps.onPageDimensionsResolved(width, height);
-                        const presented = await updateRasterFallback(preview.imageUrl, width, height, renderPlan.displayZoom, {
-                            role: 'current',
-                            pageIndex: targetPageIndex,
-                        });
-                        if (presented) {
-                            lastVisibleSurface = 'raster';
-                            lastRenderedPageIndex = targetPageIndex;
-                            deps.clearPendingAnchor();
-                            deps.clearEditorOverlay();
-                            deps.showWrapper();
-                            deps.commitRenderedFrame(renderPlan);
-                            deps.onRenderCommitted();
-
-                            const totalTime = performance.now() - frameStartTs;
-                            emitPdfDiagnostic('PROF', 'page-render-duration-raster-visible', {
-                                page: targetPageIndex,
-                                totalTimeMs: totalTime,
-                            });
-                            emitPdfDiagnostic('PROF', 'page-render-duration-fast', {
-                                page: targetPageIndex,
-                                totalTimeMs: totalTime,
-                            });
-                        }
-                    }
-                }
-
-                nextFrame =
-                    transition?.nextFrame ??
-                    (renderPlan.renderReason === 'zoom'
-                        ? deps.scheduleRenderFollowUp(renderPlan.displayZoom)
-                        : null) ??
-                    null;
-                renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
+            // ── Strategy 1: Scanned fast path ──
+            const scanned = await strategyScannedFastPath(ctx);
+            if (scanned.handled) {
+                lastVisibleSurface = sharedState.lastVisibleSurface;
+                lastRenderedPageIndex = sharedState.lastRenderedPageIndex;
+                renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(scanned.nextFrame);
                 continue;
             }
 
-            const renderPlan = currentFrame.framePlan;
-            if (
-                preview?.imageUrl &&
-                shouldPresentPreviewFirst(renderPlan.renderReason) &&
-                deps.framePlanAdapter.isRenderFrameCurrent(currentFrame.frameToken)
-            ) {
-                if (isPageProgress(targetPageIndex)) {
-                    const admission = deps.pagePresentationRuntime.admitPageAsset(
-                        targetPageIndex,
-                        'current',
-                        'preview',
-                    );
-                    if (admission.accepted) {
-                        const width = preview.width || session.pageWidth;
-                        const height = preview.height || session.pageHeight;
-                        deps.onPageDimensionsResolved(width, height);
-                        // ready-only commit: 仅当 preview 已解码时立即提交，不等待 decode 阻塞 current 可见路径。
-                        // miss 时打性能违规日志，vector 渲染继续在后台执行。
-                        const readyPresented = pagePresenter.commitReadySurfaceOrFallback(
-                            preview.imageUrl,
-                            width,
-                            height,
-                            renderPlan.displayZoom,
-                            {
-                                hideVectorOnly: true,
-                                role: 'preview',
-                                pageIndex: targetPageIndex,
-                            },
-                        );
-                        if (readyPresented) {
-                            lastVisibleSurface = 'preview';
-                            lastRenderedPageIndex = targetPageIndex;
-                            deps.clearPendingAnchor();
-                            deps.clearEditorOverlay();
-                            deps.pagePresentationRuntime.markPageVisible(targetPageIndex, 'preview');
-                            deps.commitRenderedFrame(renderPlan);
-                            logRenderFlow('preview-first-frame.presented', {
-                                page: targetPageIndex,
-                                width,
-                                height,
-                                frameToken: currentFrame.frameToken,
-                                renderReason: renderPlan.renderReason,
-                                readyOnly: true,
-                            });
-                        } else {
-                            void pagePresenter.presentRaster(
-                                preview.imageUrl,
-                                width,
-                                height,
-                                renderPlan.displayZoom,
-                                {
-                                    hideVectorOnly: true,
-                                    role: 'preview',
-                                    pageIndex: targetPageIndex,
-                                }
-                            ).then((presented) => {
-                                if (presented) {
-                                    if (isPageProgress(targetPageIndex)) {
-                                        lastVisibleSurface = 'preview';
-                                        lastRenderedPageIndex = targetPageIndex;
-                                        deps.clearPendingAnchor();
-                                        deps.clearEditorOverlay();
-                                        deps.pagePresentationRuntime.markPageVisible(targetPageIndex, 'preview');
-                                        deps.commitRenderedFrame(renderPlan);
-                                    }
-                                }
-                            });
-                        }
-                    }
-                }
-            }
+            // ── Strategy 2: Preview-first (non-consuming) ──
+            await strategyPreviewFirst(ctx);
+            lastVisibleSurface = sharedState.lastVisibleSurface;
+            lastRenderedPageIndex = sharedState.lastRenderedPageIndex;
 
-            // Check if page has progressed before starting Vello rendering
+            // ── Guard: page progressed before vector render ──
             if (!isPageProgress(targetPageIndex)) {
                 logRenderFlow('stale.before-vector-render', {
                     frameToken: currentFrame.frameToken,
                     targetPageIndex,
                 });
-                nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
+                const nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
                 renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
                 continue;
             }
 
-            try {
-                const frameStartTs = performance.now();
-                logPdfLayoutTrace('render-loop.frame.begin', {
-                    frameToken: currentFrame.frameToken,
-                    framePlan: currentFrame.framePlan,
-                    session,
-                });
-                ensureVectorHost();
-                deps.showWrapper();
-
-                if (renderPlan.prepareVisibleLayout === false) {
-                    logRenderFlow('defer-visible-layout', {
-                        frameToken: currentFrame.frameToken,
-                        reason: renderPlan.renderReason,
-                        displayZoom: renderPlan.displayZoom,
-                        renderZoom: renderPlan.renderZoom,
-                    });
-                } else {
-                    deps.prepareRenderFrame(currentFrame);
-                }
-                const result = await renderVectorPageWithPlan(
-                    session.path,
-                    targetPageIndex,
-                    renderPlan,
-                    currentFrame.frameToken,
-                );
-                if (result.aborted) {
-                    nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
-                    renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
-                    continue;
-                }
-                // Check if page has progressed or if frame is stale after Vello rendering completes
-                if (!deps.framePlanAdapter.isRenderFrameCurrent(currentFrame.frameToken) || !isPageProgress(targetPageIndex)) {
-                    logRenderFlow('stale.before-commit', {
-                        frameToken: currentFrame.frameToken,
-                        reason: renderPlan.renderReason,
-                        displayZoom: renderPlan.displayZoom,
-                        renderZoom: renderPlan.renderZoom,
-                        isCurrent: deps.framePlanAdapter.isRenderFrameCurrent(currentFrame.frameToken),
-                        isProgress: isPageProgress(targetPageIndex),
-                    });
-                    nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
-                    renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
-                    continue;
-                }
-                const transition = deps.commitRenderResult(
-                    currentFrame.frameToken,
-                    renderPlan.renderZoom,
-                    result.width,
-                    result.height,
-                );
-                logPdfLayoutTrace('render-loop.commit-result.accepted', {
-                    frameToken: currentFrame.frameToken,
-                    renderPlan,
-                    resultWidth: result.width,
-                    resultHeight: result.height,
-                    transition,
-                });
-
-                if (transition?.accepted) {
-                    if (isPageProgress(targetPageIndex)) {
-                        deps.onPageDimensionsResolved(result.width, result.height);
-                        if (renderPlan.prepareVisibleLayout === false) {
-                            logRenderFlow('commit.deferred-layout-first', {
-                                frameToken: currentFrame.frameToken,
-                                reason: renderPlan.renderReason,
-                                displayZoom: renderPlan.displayZoom,
-                                renderZoom: renderPlan.renderZoom,
-                            });
-                            logPdfLayoutTrace('render-loop.deferred.commit-layout.before', {
-                                frameToken: currentFrame.frameToken,
-                                renderPlan,
-                            });
-                            logPdfLayoutTrace('render-loop.deferred.present.before', {
-                                frameToken: currentFrame.frameToken,
-                                pendingPresentCount: result.pendingPresents?.length ?? 0,
-                            });
-                            commitVectorRenderResult(result, {
-                                beforePresent: () => {
-                                    deps.commitRenderedFrame(renderPlan);
-                                    logPdfLayoutTrace('render-loop.deferred.commit-layout.after', {
-                                        frameToken: currentFrame.frameToken,
-                                        renderPlan,
-                                    });
-                                },
-                            });
-                            lastVisibleSurface = 'vector';
-                            lastRenderedPageIndex = targetPageIndex;
-                            logPdfLayoutTrace('render-loop.deferred.present.after', {
-                                frameToken: currentFrame.frameToken,
-                                pendingPresentCount: result.pendingPresents?.length ?? 0,
-                            });
-                        } else {
-                            logPdfLayoutTrace('render-loop.commit-layout.before', {
-                                frameToken: currentFrame.frameToken,
-                                renderPlan,
-                            });
-                            logPdfLayoutTrace('render-loop.present.before', {
-                                frameToken: currentFrame.frameToken,
-                                pendingPresentCount: result.pendingPresents?.length ?? 0,
-                            });
-                            commitVectorRenderResult(result, {
-                                beforePresent: () => {
-                                    deps.commitRenderedFrame(renderPlan);
-                                    logPdfLayoutTrace('render-loop.commit-layout.after', {
-                                        frameToken: currentFrame.frameToken,
-                                        renderPlan,
-                                    });
-                                },
-                            });
-                            lastVisibleSurface = 'vector';
-                            lastRenderedPageIndex = targetPageIndex;
-                            logPdfLayoutTrace('render-loop.present.after', {
-                                frameToken: currentFrame.frameToken,
-                                pendingPresentCount: result.pendingPresents?.length ?? 0,
-                            });
-                        }
-                        deps.syncEditorOverlay(renderPlan.displayZoom);
-                        deps.onRenderCommitted();
-
-                        const totalTime = performance.now() - frameStartTs;
-                        emitPdfDiagnostic('PROF', 'page-render-duration', {
-                            page: targetPageIndex,
-                            reason: renderPlan.renderReason,
-                            totalTimeMs: totalTime,
-                        });
-                    }
-                }
-
-                nextFrame =
-                    transition?.nextFrame ??
-                    (renderPlan.renderReason === 'zoom'
-                        ? deps.scheduleRenderFollowUp(renderPlan.displayZoom)
-                        : null) ??
-                    null;
-                renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
+            // ── Strategy 3: Vector render ──
+            const vector = await strategyVectorRender(ctx);
+            if (vector.handled) {
+                lastVisibleSurface = sharedState.lastVisibleSurface;
+                lastRenderedPageIndex = sharedState.lastRenderedPageIndex;
+                renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(vector.nextFrame);
                 continue;
-            } catch (error) {
-                console.warn('[PDF-VECTOR] vector render failed, falling back to preview', error);
             }
 
-            try {
-                if (isPageProgress(targetPageIndex)) {
-                    const preview = session.path ? await getPagePreview(session.path, targetPageIndex) : null;
-                    if (preview?.imageUrl) {
-                        const width = preview.width || session.pageWidth;
-                        const height = preview.height || session.pageHeight;
-                        const renderPlan = currentFrame.framePlan;
-                        const transition = deps.commitRenderResult(
-                            currentFrame.frameToken,
-                            renderPlan.renderZoom,
-                            width,
-                            height,
-                        );
-
-                        if (transition?.accepted) {
-                            if (isPageProgress(targetPageIndex)) {
-                                deps.onPageDimensionsResolved(width, height);
-                                const presented = await updateRasterFallback(preview.imageUrl, width, height, renderPlan.displayZoom, {
-                                    role: 'current',
-                                    pageIndex: targetPageIndex,
-                                });
-                                if (presented) {
-                                    lastVisibleSurface = 'raster';
-                                    lastRenderedPageIndex = targetPageIndex;
-                                    deps.clearPendingAnchor();
-                                    deps.clearEditorOverlay();
-                                    deps.commitRenderedFrame(renderPlan);
-                                }
-                            }
-                        }
-
-                        nextFrame =
-                            transition?.nextFrame ??
-                            (renderPlan.renderReason === 'zoom'
-                                ? deps.scheduleRenderFollowUp(renderPlan.displayZoom)
-                                : null) ??
-                            null;
-                        renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
-                        continue;
-                    }
-                }
-            } catch (error) {
-                console.error('[PDF-VECTOR] preview fallback failed', error);
+            // ── Strategy 4: Raster fallback ──
+            const raster = await strategyRasterFallback(ctx);
+            lastVisibleSurface = sharedState.lastVisibleSurface;
+            lastRenderedPageIndex = sharedState.lastRenderedPageIndex;
+            if (raster.handled) {
+                renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(raster.nextFrame);
+                continue;
             }
 
-            nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
+            // ── Final fallback: abort ──
+            const nextFrame = deps.framePlanAdapter.abortRender(currentFrame.frameToken)?.nextFrame ?? null;
             renderFrame = deps.framePlanAdapter.advanceRenderLoopFrame(nextFrame);
         }
     }
@@ -502,11 +607,11 @@ export function createRenderFlow(deps: RenderFlowDeps) {
         return presented;
     }
 
-    async function renderCurrentPage(renderReason: RenderReason = 'default'): Promise<void> {
-        await executeActualRender(renderReason);
+    async function renderCurrentPage(renderReason: RenderReason = 'default', zoomOverride?: number): Promise<void> {
+        await executeActualRender(renderReason, zoomOverride);
     }
 
-    async function executeActualRender(renderReason: RenderReason): Promise<void> {
+    async function executeActualRender(renderReason: RenderReason, zoomOverride?: number): Promise<void> {
         let session = deps.viewerSession.read();
         if (session.path) {
             const preview = await getPagePreview(session.path, session.currentPage);
@@ -515,17 +620,20 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                 session = deps.viewerSession.read();
             }
         }
+        const effectiveZoom = Number.isFinite(zoomOverride)
+            ? (zoomOverride as number)
+            : session.currentZoom;
         const plan = session.path
-            ? deps.framePlanAdapter.peek(session.currentZoom, renderReason)
+            ? deps.framePlanAdapter.peek(effectiveZoom, renderReason)
             : null;
         const scheduled = session.path
-            ? deps.framePlanAdapter.scheduleRender(session.currentZoom, renderReason)
+            ? deps.framePlanAdapter.scheduleRender(effectiveZoom, renderReason)
             : null;
         logRenderFlow('render-current-page.scheduled', {
             hasPath: !!session.path,
             page: session.currentPage,
             pageCount: session.pageCount,
-            zoom: session.currentZoom,
+            zoom: effectiveZoom,
             scheduled: !!scheduled,
             reason: renderReason,
             planJson: JSON.stringify(plan),
@@ -592,4 +700,3 @@ export function createRenderFlow(deps: RenderFlowDeps) {
         presentPagePreview,
     };
 }
-

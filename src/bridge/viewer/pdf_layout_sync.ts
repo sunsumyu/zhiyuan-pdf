@@ -28,6 +28,7 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
         displayZoom: number,
         renderedZoom: number,
         layoutOverride?: LayoutOverride,
+        transform?: { cssTransform: string; transformOrigin?: string } | null,
     ): void {
         const wrapper = getWrapper();
         const container = getVectorContainer();
@@ -63,15 +64,25 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             } : null,
         }) ?? null;
 
-        const domWidth = Number.isFinite(layout?.domWidth) ? layout.domWidth : deps.getPageWidth() * (renderedZoom > 0 ? renderedZoom : safeDisplayZoom);
-        const domHeight = Number.isFinite(layout?.domHeight) ? layout.domHeight : deps.getPageHeight() * (renderedZoom > 0 ? renderedZoom : safeDisplayZoom);
-        const displayWidth = Number.isFinite(layout?.displayWidth) ? layout.displayWidth : deps.getPageWidth() * safeDisplayZoom;
-        const displayHeight = Number.isFinite(layout?.displayHeight) ? layout.displayHeight : deps.getPageHeight() * safeDisplayZoom;
-        const hostWidth = Number.isFinite(layout?.hostWidth) ? layout.hostWidth : displayWidth;
-        const hostHeight = Number.isFinite(layout?.hostHeight) ? layout.hostHeight : displayHeight;
-        const contentLeft = Number.isFinite(layout?.contentLeft) ? layout.contentLeft : 0;
-        const contentTop = Number.isFinite(layout?.contentTop) ? layout.contentTop : 0;
-        const cssScale = Number.isFinite(layout?.cssScale) ? layout.cssScale : (renderedZoom > 0 ? safeDisplayZoom / renderedZoom : 1.0);
+        // Rust owns fallback layout computation — no TS-side formulas.
+        let fallback = null as { domWidth: number; domHeight: number; displayWidth: number; displayHeight: number; hostWidth: number; hostHeight: number; contentLeft: number; contentTop: number; cssScale: number } | null;
+        try {
+            fallback = wasm.resolveLayoutFallback?.({
+                pageWidth: deps.getPageWidth(),
+                pageHeight: deps.getPageHeight(),
+                displayZoom: safeDisplayZoom,
+                renderedZoom: renderedZoom > 0 ? renderedZoom : safeDisplayZoom,
+            }) ?? null;
+        } catch { /* WASM not available */ }
+        const domWidth = Number.isFinite(layout?.domWidth) ? layout.domWidth : (fallback?.domWidth ?? deps.getPageWidth());
+        const domHeight = Number.isFinite(layout?.domHeight) ? layout.domHeight : (fallback?.domHeight ?? deps.getPageHeight());
+        const displayWidth = Number.isFinite(layout?.displayWidth) ? layout.displayWidth : (fallback?.displayWidth ?? deps.getPageWidth());
+        const displayHeight = Number.isFinite(layout?.displayHeight) ? layout.displayHeight : (fallback?.displayHeight ?? deps.getPageHeight());
+        const hostWidth = Number.isFinite(layout?.hostWidth) ? layout.hostWidth : (fallback?.hostWidth ?? displayWidth);
+        const hostHeight = Number.isFinite(layout?.hostHeight) ? layout.hostHeight : (fallback?.hostHeight ?? displayHeight);
+        const contentLeft = Number.isFinite(layout?.contentLeft) ? layout.contentLeft : (fallback?.contentLeft ?? 0);
+        const contentTop = Number.isFinite(layout?.contentTop) ? layout.contentTop : (fallback?.contentTop ?? 0);
+        const cssScale = Number.isFinite(layout?.cssScale) ? layout.cssScale : (fallback?.cssScale ?? 1.0);
 
         wrapper.style.display = 'block';
         wrapper.style.position = 'relative';
@@ -89,9 +100,12 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             container.style.width = `${domWidth}px`;
             container.style.height = `${domHeight}px`;
             container.style.margin = '0';
-            container.style.transformOrigin = '0 0';
-            // CSS transform is NOT set here — callers manage it explicitly
-            // via applyPreviewFrame (preview) or applyCommittedFrame (settle).
+            container.style.transformOrigin = transform?.transformOrigin ?? '0 0';
+            // When a transform is provided, apply it atomically with dimensions
+            // to prevent the flash caused by dimension changes under an active scale.
+            if (transform) {
+                container.style.transform = transform.cssTransform;
+            }
         }
 
         const rasterCanvas = document.getElementById('pdf-render-target') as HTMLCanvasElement | null;
@@ -111,7 +125,6 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
         scrollContainer.style.textAlign = 'left';
         scrollContainer.style.padding = '0';
         scrollContainer.style.position = 'relative';
-        scrollContainer.style.scrollbarGutter = 'stable both-edges';
         logPdfLayoutTrace('layout.sync.after', {
             displayZoom,
             renderedZoom,
