@@ -80,3 +80,131 @@ fn slice_chars(text: &str, start: usize, end: usize) -> String {
         .take(end.saturating_sub(start))
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── replace_query_matches ───────────────────────────────────────────
+
+    #[test]
+    fn replace_single_occurrence() {
+        let result = replace_query_matches(
+            "hello world",
+            "world",
+            "rust",
+            SearchReplaceOptions {
+                case_sensitive: true,
+                replace_all_occurrences: false,
+            },
+        );
+        assert_eq!(result, Some("hello rust".to_string()));
+    }
+
+    #[test]
+    fn replace_all_occurrences() {
+        let result = replace_query_matches(
+            "foo bar foo baz foo",
+            "foo",
+            "qux",
+            SearchReplaceOptions {
+                case_sensitive: true,
+                replace_all_occurrences: true,
+            },
+        );
+        assert_eq!(result, Some("qux bar qux baz qux".to_string()));
+    }
+
+    #[test]
+    fn replace_case_insensitive() {
+        let result = replace_query_matches(
+            "Hello HELLO hello",
+            "hello",
+            "hi",
+            SearchReplaceOptions {
+                case_sensitive: false,
+                replace_all_occurrences: true,
+            },
+        );
+        assert_eq!(result, Some("hi hi hi".to_string()));
+    }
+
+    #[test]
+    fn replace_no_match() {
+        let result = replace_query_matches(
+            "hello world",
+            "xyz",
+            "abc",
+            SearchReplaceOptions {
+                case_sensitive: true,
+                replace_all_occurrences: false,
+            },
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn replace_empty_query() {
+        let result = replace_query_matches(
+            "hello",
+            "",
+            "x",
+            SearchReplaceOptions {
+                case_sensitive: true,
+                replace_all_occurrences: false,
+            },
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn replace_whitespace_only_query() {
+        let result = replace_query_matches(
+            "hello",
+            "   ",
+            "x",
+            SearchReplaceOptions {
+                case_sensitive: true,
+                replace_all_occurrences: false,
+            },
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn replace_unicode() {
+        let result = replace_query_matches(
+            "你好世界",
+            "世界",
+            "Rust",
+            SearchReplaceOptions {
+                case_sensitive: true,
+                replace_all_occurrences: false,
+            },
+        );
+        // Function replaces "世界" with "Rust" without adding space
+        assert_eq!(result, Some("你好Rust".to_string()));
+    }
+
+    // ─── slice_chars ─────────────────────────────────────────────────────
+
+    #[test]
+    fn slice_chars_basic() {
+        assert_eq!(slice_chars("hello", 1, 4), "ell");
+    }
+
+    #[test]
+    fn slice_chars_unicode() {
+        assert_eq!(slice_chars("你好世界", 1, 3), "好世");
+    }
+
+    #[test]
+    fn slice_chars_empty() {
+        assert_eq!(slice_chars("hello", 2, 2), "");
+    }
+
+    #[test]
+    fn slice_chars_out_of_bounds() {
+        assert_eq!(slice_chars("hello", 0, 100), "hello");
+    }
+}

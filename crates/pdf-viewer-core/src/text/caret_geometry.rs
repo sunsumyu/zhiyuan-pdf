@@ -265,3 +265,155 @@ pub fn resolve_navigation_from_lines(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── resolve_caret_index_from_lines ────────────────────────────────────
+
+    #[test]
+    fn resolve_caret_index_exact_stop() {
+        let lines = vec![CaretLine {
+            baseline_y: 20.0,
+            height: 14.0,
+            stops: vec![
+                CaretStop { index: 0, left: 10.0 },
+                CaretStop { index: 5, left: 50.0 },
+                CaretStop { index: 10, left: 100.0 },
+            ],
+        }];
+        // Click near stop at index 5 (left=50)
+        let index = resolve_caret_index_from_lines(&lines, 52.0, 20.0);
+        assert_eq!(index, 5);
+    }
+
+    #[test]
+    fn resolve_caret_index_between_stops() {
+        let lines = vec![CaretLine {
+            baseline_y: 20.0,
+            height: 14.0,
+            stops: vec![
+                CaretStop { index: 0, left: 10.0 },
+                CaretStop { index: 5, left: 50.0 },
+            ],
+        }];
+        // Click between stops - should pick closest
+        let index = resolve_caret_index_from_lines(&lines, 30.0, 20.0);
+        assert!(index == 0 || index == 5);
+    }
+
+    #[test]
+    fn resolve_caret_index_empty_lines() {
+        let lines = vec![];
+        let index = resolve_caret_index_from_lines(&lines, 10.0, 10.0);
+        assert_eq!(index, 0);
+    }
+
+    #[test]
+    fn resolve_caret_index_empty_stops() {
+        let lines = vec![CaretLine {
+            baseline_y: 20.0,
+            height: 14.0,
+            stops: vec![],
+        }];
+        let index = resolve_caret_index_from_lines(&lines, 10.0, 10.0);
+        assert_eq!(index, 0);
+    }
+
+    // ── dedupe_caret_stops ─────────────────────────────────────────────────
+
+    #[test]
+    fn dedupe_caret_stops_removes_duplicates() {
+        let mut line = CaretLine {
+            baseline_y: 20.0,
+            height: 14.0,
+            stops: vec![
+                CaretStop { index: 0, left: 10.0 },
+                CaretStop { index: 0, left: 10.0 },
+                CaretStop { index: 5, left: 50.0 },
+            ],
+        };
+        dedupe_caret_stops(&mut line);
+        assert_eq!(line.stops.len(), 2);
+    }
+
+    #[test]
+    fn dedupe_caret_stops_preserves_unique() {
+        let mut line = CaretLine {
+            baseline_y: 20.0,
+            height: 14.0,
+            stops: vec![
+                CaretStop { index: 0, left: 10.0 },
+                CaretStop { index: 5, left: 50.0 },
+                CaretStop { index: 10, left: 100.0 },
+            ],
+        };
+        dedupe_caret_stops(&mut line);
+        assert_eq!(line.stops.len(), 3);
+    }
+
+    #[test]
+    fn dedupe_caret_stops_empty() {
+        let mut line = CaretLine {
+            baseline_y: 20.0,
+            height: 14.0,
+            stops: vec![],
+        };
+        dedupe_caret_stops(&mut line);
+        assert_eq!(line.stops.len(), 0);
+    }
+
+    // ─ same_existing_session_line ─────────────────────────────────────────
+
+    #[test]
+    fn same_existing_session_line_same_baseline() {
+        let run = crate::models::LayoutRun {
+            id: "test".to_string(),
+            text: "abc".to_string(),
+            style: crate::models::RunStyle {
+                font_name: "Arial".to_string(),
+                font_size: 12.0,
+                color: "#000000".to_string(),
+                is_bold: false,
+                is_italic: false,
+                ..Default::default()
+            },
+            bbox: crate::models::BoundingBox::default(),
+            origin_x: 0.0,
+            origin_y: 30.0,
+            char_origins: vec![],
+            char_widths: vec![],
+            object_ids: vec![],
+            object_indices: vec![],
+        };
+        // baseline_y = origin_y - anchor_top = 30 - 10 = 20
+        // tolerance = max(12 * 0.45, 2.0) = 5.4
+        assert!(same_existing_session_line(20.0, &run, 10.0));
+    }
+
+    #[test]
+    fn same_existing_session_line_different_baseline() {
+        let run = crate::models::LayoutRun {
+            id: "test".to_string(),
+            text: "abc".to_string(),
+            style: crate::models::RunStyle {
+                font_name: "Arial".to_string(),
+                font_size: 12.0,
+                color: "#000000".to_string(),
+                is_bold: false,
+                is_italic: false,
+                ..Default::default()
+            },
+            bbox: crate::models::BoundingBox::default(),
+            origin_x: 0.0,
+            origin_y: 100.0,
+            char_origins: vec![],
+            char_widths: vec![],
+            object_ids: vec![],
+            object_indices: vec![],
+        };
+        // baseline_y = 100 - 10 = 90, reference = 20, diff = 70 > tolerance
+        assert!(!same_existing_session_line(20.0, &run, 10.0));
+    }
+}

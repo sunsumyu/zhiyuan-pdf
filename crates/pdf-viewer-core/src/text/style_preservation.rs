@@ -290,3 +290,107 @@ pub fn preserve_changed_line_styles(
     }
     final_result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::page_region_context::StyleSource;
+
+    fn test_style() -> StyleSource {
+        StyleSource {
+            font_name: "Arial".to_string(),
+            font_size: 12.0,
+            color: "#000000".to_string(),
+            is_bold: false,
+            is_italic: false,
+            is_underline: false,
+            font_hints: None,
+            render_mode: 0,
+            char_spacing: 0.0,
+            scale_x: 1.0,
+        }
+    }
+
+    // ─── reindex_style_runs ──────────────────────────────────────────────
+
+    #[test]
+    fn reindex_style_runs_empty() {
+        let runs: Vec<StyleRunSnapshot> = vec![];
+        let result = reindex_style_runs(runs);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn reindex_style_runs_single() {
+        let runs = vec![make_style_run("r-1", "hello", &test_style())];
+        let result = reindex_style_runs(runs);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].start, 0);
+        assert_eq!(result[0].end, 5);
+    }
+
+    #[test]
+    fn reindex_style_runs_multiple() {
+        let runs = vec![
+            make_style_run("r-1", "hello", &test_style()),
+            make_style_run("r-2", "world", &test_style()),
+        ];
+        let result = reindex_style_runs(runs);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].start, 0);
+        assert_eq!(result[0].end, 5);
+        assert_eq!(result[1].start, 5);
+        assert_eq!(result[1].end, 10);
+    }
+
+    // ─── resolve_dominant_paragraph_style ────────────────────────────────
+
+    #[test]
+    fn resolve_dominant_paragraph_style_empty_runs() {
+        let runs: Vec<StyleRunSnapshot> = vec![];
+        let fallback = test_style();
+        let result = resolve_dominant_paragraph_style(&runs, &fallback);
+        assert_eq!(result.font_name, "Arial");
+    }
+
+    #[test]
+    fn resolve_dominant_paragraph_style_with_runs() {
+        let runs = vec![make_style_run("r-1", "hello", &test_style())];
+        let fallback = test_style();
+        let result = resolve_dominant_paragraph_style(&runs, &fallback);
+        assert_eq!(result.font_name, "Arial");
+    }
+
+    // ─── distribute_text_across_runs ─────────────────────────────────────
+
+    #[test]
+    fn distribute_text_across_runs_empty_text() {
+        let runs: Vec<StyleRunSnapshot> = vec![];
+        let fallback = test_style();
+        let result = distribute_text_across_runs("test", "", &runs, &fallback);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn distribute_text_across_runs_single_run() {
+        let runs = vec![make_style_run("r-1", "hello", &test_style())];
+        let fallback = test_style();
+        let result = distribute_text_across_runs("test", "world", &runs, &fallback);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text, "world");
+    }
+
+    // ─── is_decorative_run_text ──────────────────────────────────────────
+
+    #[test]
+    fn is_decorative_run_text_bullet() {
+        assert!(is_decorative_run_text("•"));
+        assert!(is_decorative_run_text("●"));
+    }
+
+    #[test]
+    fn is_decorative_run_text_normal() {
+        assert!(!is_decorative_run_text("hello"));
+        assert!(!is_decorative_run_text(""));
+    }
+}

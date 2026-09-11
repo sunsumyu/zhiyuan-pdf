@@ -348,3 +348,69 @@ pub fn build_editable_segments(
     }
     segments
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::StyledRun;
+
+    // ─── normalize_field_label ───────────────────────────────────────────
+
+    #[test]
+    fn normalize_field_label_removes_colons() {
+        assert_eq!(normalize_field_label("姓名："), "姓名");
+        assert_eq!(normalize_field_label("Name:"), "Name");
+    }
+
+    #[test]
+    fn normalize_field_label_removes_spaces() {
+        assert_eq!(normalize_field_label("姓 名"), "姓名");
+        assert_eq!(normalize_field_label("First Name"), "FirstName");
+    }
+
+    #[test]
+    fn normalize_field_label_mixed() {
+        assert_eq!(normalize_field_label("联 系 方 式 ："), "联系方式");
+        assert_eq!(normalize_field_label("E m a i l :"), "Email");
+    }
+
+    #[test]
+    fn normalize_field_label_empty() {
+        assert_eq!(normalize_field_label(""), "");
+        assert_eq!(normalize_field_label("   "), "");
+    }
+
+    // ─── is_colon_token ─────────────────────────────────────────────────
+
+    #[test]
+    fn is_colon_token_fullwidth() {
+        let run = StyledRun {
+            text: "：".to_string(),
+            ..Default::default()
+        };
+        assert!(is_colon_token(Some(&run)));
+    }
+
+    #[test]
+    fn is_colon_token_halfwidth() {
+        let run = StyledRun {
+            text: ":".to_string(),
+            ..Default::default()
+        };
+        assert!(is_colon_token(Some(&run)));
+    }
+
+    #[test]
+    fn is_colon_token_non_colon() {
+        let run = StyledRun {
+            text: "hello".to_string(),
+            ..Default::default()
+        };
+        assert!(!is_colon_token(Some(&run)));
+    }
+
+    #[test]
+    fn is_colon_token_none() {
+        assert!(!is_colon_token(None));
+    }
+}

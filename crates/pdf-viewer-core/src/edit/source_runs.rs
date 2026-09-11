@@ -447,3 +447,271 @@ fn layout_run_from_glyph_paint(run: &GlyphPaintRun, run_index: usize) -> LayoutR
         object_indices: run.object_indices.clone(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── bbox_intersection_width / height ────────────────────────────────
+
+    #[test]
+    fn bbox_intersection_width_overlapping() {
+        let a = BoundingBox { left: 0.0, top: 0.0, right: 10.0, bottom: 10.0 };
+        let b = BoundingBox { left: 5.0, top: 0.0, right: 15.0, bottom: 10.0 };
+        assert!((bbox_intersection_width(a, b) - 5.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn bbox_intersection_width_contained() {
+        let a = BoundingBox { left: 0.0, top: 0.0, right: 20.0, bottom: 10.0 };
+        let b = BoundingBox { left: 5.0, top: 0.0, right: 15.0, bottom: 10.0 };
+        assert!((bbox_intersection_width(a, b) - 10.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn bbox_intersection_width_disjoint() {
+        let a = BoundingBox { left: 0.0, top: 0.0, right: 5.0, bottom: 10.0 };
+        let b = BoundingBox { left: 10.0, top: 0.0, right: 15.0, bottom: 10.0 };
+        assert!((bbox_intersection_width(a, b) - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn bbox_intersection_height_overlapping() {
+        let a = BoundingBox { left: 0.0, top: 0.0, right: 10.0, bottom: 10.0 };
+        let b = BoundingBox { left: 0.0, top: 5.0, right: 10.0, bottom: 15.0 };
+        assert!((bbox_intersection_height(a, b) - 5.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn bbox_intersection_height_disjoint() {
+        let a = BoundingBox { left: 0.0, top: 0.0, right: 10.0, bottom: 5.0 };
+        let b = BoundingBox { left: 0.0, top: 10.0, right: 10.0, bottom: 15.0 };
+        assert!((bbox_intersection_height(a, b) - 0.0).abs() < 0.001);
+    }
+
+    // ─── expand_bbox ─────────────────────────────────────────────────────
+
+    #[test]
+    fn expand_bbox_symmetric() {
+        let bbox = BoundingBox { left: 10.0, top: 20.0, right: 30.0, bottom: 40.0 };
+        let expanded = expand_bbox(bbox, 5.0, 3.0);
+        assert!((expanded.left - 5.0).abs() < 0.001);
+        assert!((expanded.top - 17.0).abs() < 0.001);
+        assert!((expanded.right - 35.0).abs() < 0.001);
+        assert!((expanded.bottom - 43.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn expand_bbox_zero_padding() {
+        let bbox = BoundingBox { left: 10.0, top: 20.0, right: 30.0, bottom: 40.0 };
+        let expanded = expand_bbox(bbox, 0.0, 0.0);
+        assert!((expanded.left - 10.0).abs() < 0.001);
+        assert!((expanded.right - 30.0).abs() < 0.001);
+    }
+
+    // ─── vector_run_matches_paragraph_geometry ───────────────────────────
+
+    #[test]
+    fn vector_run_matches_paragraph_geometry_overlapping() {
+        let run = LayoutRun {
+            id: "test".to_string(),
+            text: "abc".to_string(),
+            style: crate::models::RunStyle {
+                font_name: "Arial".to_string(),
+                font_size: 12.0,
+                color: "#000000".to_string(),
+                is_bold: false,
+                is_italic: false,
+                ..Default::default()
+            },
+            bbox: BoundingBox { left: 0.0, top: 10.0, right: 30.0, bottom: 22.0 },
+            origin_x: 0.0,
+            origin_y: 22.0,
+            char_origins: vec![0.0, 10.0, 20.0, 30.0],
+            char_widths: vec![10.0, 10.0, 10.0],
+            object_ids: vec![],
+            object_indices: vec![],
+        };
+        // source_run_visual_bbox returns: top=origin_y-font_size=10, bottom=origin_y=22
+        // target_bbox overlaps with this visual bbox
+        let target_bbox = BoundingBox { left: 20.0, top: 10.0, right: 50.0, bottom: 22.0 };
+        assert!(vector_run_matches_paragraph_geometry(&run, target_bbox));
+    }
+
+    #[test]
+    fn vector_run_matches_paragraph_geometry_disjoint_x() {
+        let run = LayoutRun {
+            id: "test".to_string(),
+            text: "abc".to_string(),
+            style: crate::models::RunStyle {
+                font_name: "Arial".to_string(),
+                font_size: 12.0,
+                color: "#000000".to_string(),
+                is_bold: false,
+                is_italic: false,
+                ..Default::default()
+            },
+            bbox: BoundingBox { left: 0.0, top: 10.0, right: 30.0, bottom: 22.0 },
+            origin_x: 0.0,
+            origin_y: 10.0,
+            char_origins: vec![],
+            char_widths: vec![],
+            object_ids: vec![],
+            object_indices: vec![],
+        };
+        let target_bbox = BoundingBox { left: 100.0, top: 10.0, right: 130.0, bottom: 22.0 };
+        // No horizontal overlap
+        assert!(!vector_run_matches_paragraph_geometry(&run, target_bbox));
+    }
+
+    #[test]
+    fn vector_run_matches_paragraph_geometry_disjoint_y() {
+        let run = LayoutRun {
+            id: "test".to_string(),
+            text: "abc".to_string(),
+            style: crate::models::RunStyle {
+                font_name: "Arial".to_string(),
+                font_size: 12.0,
+                color: "#000000".to_string(),
+                is_bold: false,
+                is_italic: false,
+                ..Default::default()
+            },
+            bbox: BoundingBox { left: 0.0, top: 0.0, right: 30.0, bottom: 12.0 },
+            origin_x: 0.0,
+            origin_y: 0.0,
+            char_origins: vec![],
+            char_widths: vec![],
+            object_ids: vec![],
+            object_indices: vec![],
+        };
+        let target_bbox = BoundingBox { left: 0.0, top: 100.0, right: 30.0, bottom: 112.0 };
+        // No vertical overlap
+        assert!(!vector_run_matches_paragraph_geometry(&run, target_bbox));
+    }
+
+    // ── original_paint_runs_for_target ──────────────────────────────────
+
+    fn test_paragraph(runs: Vec<GlyphPaintRun>) -> GlyphPaintParagraph {
+        GlyphPaintParagraph {
+            id: "p-1".to_string(),
+            region_id: "r-1".to_string(),
+            bbox: BoundingBox::default(),
+            style: crate::models::ParagraphStyle::default(),
+            editor_session: ParagraphEditContext {
+                anchor_bbox: BoundingBox::default(),
+                paragraph: crate::models::LayoutParagraph {
+                    id: "p-1".to_string(),
+                    bbox: BoundingBox::default(),
+                    style: crate::models::ParagraphStyle::default(),
+                    runs: vec![],
+                    object_ids: vec![],
+                    origin_x: 0.0,
+                    origin_y: 0.0,
+                    wrap_width: 0.0,
+                },
+            },
+            control_style: crate::models::EditorControlStyle::default(),
+            semantic_role: crate::models::SemanticRole::default(),
+            runs,
+        }
+    }
+
+    fn test_body_session_with_runs(runs: Vec<LayoutRun>, object_ids: Vec<String>) -> ParagraphEditContext {
+        ParagraphEditContext {
+            anchor_bbox: BoundingBox::default(),
+            paragraph: crate::models::LayoutParagraph {
+                id: "body".to_string(),
+                bbox: BoundingBox::default(),
+                style: crate::models::ParagraphStyle::default(),
+                runs,
+                object_ids,
+                origin_x: 0.0,
+                origin_y: 0.0,
+                wrap_width: 0.0,
+            },
+        }
+    }
+
+    fn test_target() -> crate::edit::edit_target::EditorEditTarget {
+        crate::edit::edit_target::EditorEditTarget {
+            target_id: "p-1".to_string(),
+            base_paragraph_id: "p-1".to_string(),
+            session: test_body_session_with_runs(vec![], vec![]),
+            source_run_indices: vec![],
+            source_object_ids: std::collections::BTreeSet::new(),
+        }
+    }
+
+    #[test]
+    fn original_paint_runs_for_target_empty_paragraph() {
+        let paragraph = test_paragraph(vec![]);
+        let body_session = test_body_session_with_runs(vec![], vec![]);
+        let target = test_target();
+        let runs = original_paint_runs_for_target(&paragraph, &body_session, &target);
+        assert!(runs.is_empty());
+    }
+
+    #[test]
+    fn original_paint_runs_for_target_matching_object_ids() {
+        let paragraph = test_paragraph(vec![
+            GlyphPaintRun {
+                id: "run-1".to_string(),
+                object_ids: vec!["obj-1".to_string()],
+                ..Default::default()
+            },
+            GlyphPaintRun {
+                id: "run-2".to_string(),
+                object_ids: vec!["obj-2".to_string()],
+                ..Default::default()
+            },
+        ]);
+        let body_session = test_body_session_with_runs(
+            vec![LayoutRun {
+                id: "body-run".to_string(),
+                text: "hello".to_string(),
+                style: crate::models::RunStyle::default(),
+                bbox: BoundingBox::default(),
+                origin_x: 0.0,
+                origin_y: 0.0,
+                char_origins: vec![],
+                char_widths: vec![],
+                object_ids: vec!["obj-1".to_string()],
+                object_indices: vec![],
+            }],
+            vec!["obj-1".to_string()],
+        );
+        let target = test_target();
+        let runs = original_paint_runs_for_target(&paragraph, &body_session, &target);
+        // Should match run-1 via object_ids
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].id, "run-1");
+    }
+
+    // ─── summarize_layout_runs ───────────────────────────────────────────
+
+    #[test]
+    fn summarize_layout_runs_empty() {
+        let summary = summarize_layout_runs(&[]);
+        assert!(summary.is_empty());
+    }
+
+    #[test]
+    fn summarize_layout_runs_single() {
+        let runs = vec![LayoutRun {
+            id: "run-1".to_string(),
+            text: "hello world".to_string(),
+            style: crate::models::RunStyle::default(),
+            bbox: BoundingBox { left: 0.0, top: 0.0, right: 50.0, bottom: 12.0 },
+            origin_x: 0.0,
+            origin_y: 0.0,
+            char_origins: vec![],
+            char_widths: vec![],
+            object_ids: vec![],
+            object_indices: vec![],
+        }];
+        let summary = summarize_layout_runs(&runs);
+        assert!(summary.contains("#0"));
+        assert!(summary.contains("hello"));
+    }
+}
