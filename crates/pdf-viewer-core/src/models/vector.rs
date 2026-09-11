@@ -143,7 +143,12 @@ impl VectorPageModel {
 mod tests {
     use super::*;
 
-    fn make_path(fill: bool, stroke: bool, fill_color: Option<&str>, stroke_color: Option<&str>) -> VectorPathObject {
+    fn make_path(
+        fill: bool,
+        stroke: bool,
+        fill_color: Option<&str>,
+        stroke_color: Option<&str>,
+    ) -> VectorPathObject {
         VectorPathObject {
             id: "test".into(),
             segments: vec![],
@@ -161,13 +166,13 @@ mod tests {
     #[test]
     fn decompress_palette_resolves_fill_color_index() {
         let mut model = VectorPageModel {
-            palette: VectorPalette { colors: vec!["#0000ff".into()] },
-            objects: vec![
-                VectorRenderObject::Path(VectorPathObject {
-                    fill_color_index: Some(0),
-                    ..make_path(true, false, None, None)
-                }),
-            ],
+            palette: VectorPalette {
+                colors: vec!["#0000ff".into()],
+            },
+            objects: vec![VectorRenderObject::Path(VectorPathObject {
+                fill_color_index: Some(0),
+                ..make_path(true, false, None, None)
+            })],
             ..Default::default()
         };
         model.decompress_palette();
@@ -182,13 +187,13 @@ mod tests {
     #[test]
     fn decompress_palette_resolves_stroke_color_index() {
         let mut model = VectorPageModel {
-            palette: VectorPalette { colors: vec!["#ff0000".into(), "#00ff00".into()] },
-            objects: vec![
-                VectorRenderObject::Path(VectorPathObject {
-                    stroke_color_index: Some(1),
-                    ..make_path(false, true, None, None)
-                }),
-            ],
+            palette: VectorPalette {
+                colors: vec!["#ff0000".into(), "#00ff00".into()],
+            },
+            objects: vec![VectorRenderObject::Path(VectorPathObject {
+                stroke_color_index: Some(1),
+                ..make_path(false, true, None, None)
+            })],
             ..Default::default()
         };
         model.decompress_palette();
@@ -204,12 +209,10 @@ mod tests {
     fn decompress_palette_handles_empty_palette() {
         let mut model = VectorPageModel {
             palette: VectorPalette::default(),
-            objects: vec![
-                VectorRenderObject::Path(VectorPathObject {
-                    fill_color: Some("#aaa".into()),
-                    ..make_path(true, false, None, None)
-                }),
-            ],
+            objects: vec![VectorRenderObject::Path(VectorPathObject {
+                fill_color: Some("#aaa".into()),
+                ..make_path(true, false, None, None)
+            })],
             ..Default::default()
         };
         model.decompress_palette();
@@ -223,13 +226,13 @@ mod tests {
     #[test]
     fn decompress_palette_preserves_inline_colors() {
         let mut model = VectorPageModel {
-            palette: VectorPalette { colors: vec!["#ff0000".into()] },
-            objects: vec![
-                VectorRenderObject::Path(VectorPathObject {
-                    fill_color: Some("#123456".into()),
-                    ..make_path(true, false, None, None)
-                }),
-            ],
+            palette: VectorPalette {
+                colors: vec!["#ff0000".into()],
+            },
+            objects: vec![VectorRenderObject::Path(VectorPathObject {
+                fill_color: Some("#123456".into()),
+                ..make_path(true, false, None, None)
+            })],
             ..Default::default()
         };
         model.decompress_palette();
@@ -243,13 +246,13 @@ mod tests {
     #[test]
     fn decompress_palette_out_of_range_index_does_not_panic() {
         let mut model = VectorPageModel {
-            palette: VectorPalette { colors: vec!["#fff".into()] },
-            objects: vec![
-                VectorRenderObject::Path(VectorPathObject {
-                    fill_color_index: Some(99),
-                    ..make_path(true, false, None, None)
-                }),
-            ],
+            palette: VectorPalette {
+                colors: vec!["#fff".into()],
+            },
+            objects: vec![VectorRenderObject::Path(VectorPathObject {
+                fill_color_index: Some(99),
+                ..make_path(true, false, None, None)
+            })],
             ..Default::default()
         };
         model.decompress_palette();
@@ -263,7 +266,9 @@ mod tests {
     #[test]
     fn decompress_palette_multiple_paths() {
         let mut model = VectorPageModel {
-            palette: VectorPalette { colors: vec!["#aaa".into(), "#bbb".into(), "#ccc".into()] },
+            palette: VectorPalette {
+                colors: vec!["#aaa".into(), "#bbb".into(), "#ccc".into()],
+            },
             objects: vec![
                 VectorRenderObject::Path(VectorPathObject {
                     fill_color_index: Some(0),

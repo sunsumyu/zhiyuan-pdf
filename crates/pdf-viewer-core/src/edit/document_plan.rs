@@ -738,7 +738,13 @@ pub fn build_editor_document_plan_for_target(
     let target =
         resolve_edit_target_from_session(&paragraph.id, target_id, &full_session, click_page_point);
 
-    build_plan_for_target_session(paragraph, &full_session, target, vector_model, click_page_point)
+    build_plan_for_target_session(
+        paragraph,
+        &full_session,
+        target,
+        vector_model,
+        click_page_point,
+    )
 }
 /// Format up to `limit` codepoints of `text` as `U+XXXX(char)` for diagnostics.
 fn codepoint_preview(text: &str, limit: usize) -> String {
@@ -846,9 +852,15 @@ fn trace_open_caret_resolved(
             dbg_field("targetId", target_id),
             dbg_field("baseParagraphId", base_paragraph_id),
             dbg_field("fullSourceText", full_source_text),
-            dbg_field("fullSourceTextCodepoints", codepoint_preview(full_source_text, 12)),
+            dbg_field(
+                "fullSourceTextCodepoints",
+                codepoint_preview(full_source_text, 12),
+            ),
             dbg_field("bodySourceText", body_source_text),
-            dbg_field("bodySourceTextCodepoints", codepoint_preview(body_source_text, 12)),
+            dbg_field(
+                "bodySourceTextCodepoints",
+                codepoint_preview(body_source_text, 12),
+            ),
             dbg_field(
                 "runOrder",
                 full_session
@@ -932,7 +944,8 @@ fn build_plan_for_target_session(
     let body_text_plan = build_editor_session_text_plan(&split.body_session);
     let source_body_text = session_source_text(&split.body_session);
     let preliminary_shell_bbox = resolve_shell_bbox(&full_session, &split, &[]);
-    let graphic_markers = detect_graphic_markers(vector_model, &split.body_session, &preliminary_shell_bbox);
+    let graphic_markers =
+        detect_graphic_markers(vector_model, &split.body_session, &preliminary_shell_bbox);
     let shell_bbox = resolve_shell_bbox(&full_session, &split, &graphic_markers);
 
     let body_lines = build_body_line_plans(&split.body_session, &body_text_plan);
@@ -990,9 +1003,9 @@ mod tests {
     use super::*;
     use crate::models::{
         EditorControlStyle, FontSourceKind, PaintMode, ParagraphStyle, ResolvedFontFace,
-        ResolvedFontIdentity, RunStyle, SemanticRole, StyledRun, SymbolClass,
-        VectorImageObject, VectorPathObject, VectorPathSegment, VectorRenderObject,
-        VectorTextObject, VisualMarkerContent,
+        ResolvedFontIdentity, RunStyle, SemanticRole, StyledRun, SymbolClass, VectorImageObject,
+        VectorPathObject, VectorPathSegment, VectorRenderObject, VectorTextObject,
+        VisualMarkerContent,
     };
     use crate::text::glyph_layout::build_editor_session_text_plan;
 
@@ -1249,7 +1262,8 @@ mod tests {
         }
     }
 
-    fn test_styled_run(text: &str, left: f32, width: f32, z_index: usize) -> StyledRun {        StyledRun {
+    fn test_styled_run(text: &str, left: f32, width: f32, z_index: usize) -> StyledRun {
+        StyledRun {
             text: text.to_string(),
             color: "#000000".to_string(),
             tx: left,
@@ -1578,8 +1592,9 @@ mod tests {
             ..Default::default()
         };
 
-        let plan = build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
-            .expect("plan should resolve");
+        let plan =
+            build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
+                .expect("plan should resolve");
 
         let graphic_markers = &plan.graphic_markers;
         assert_eq!(
@@ -1607,8 +1622,9 @@ mod tests {
             ..Default::default()
         };
 
-        let plan = build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
-            .expect("plan should resolve");
+        let plan =
+            build_editor_document_plan_for_target(&paragraph, Some(&vector_model), "p1", None)
+                .expect("plan should resolve");
 
         assert!(plan.shell_bbox.left <= 10.0);
         assert!(plan.shell_bbox.right >= 120.0);

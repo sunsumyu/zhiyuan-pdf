@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 
-use crate::ui_state_store::{redo as redo_document_edit, undo as undo_document_edit};
 use crate::document::io::{
     open_pdf_file, pick_pdf_file, rotate_current_page, OpenPdfFileResult, RotateCurrentPageResult,
 };
@@ -9,6 +8,7 @@ use crate::host::command::{
     open_document_session, reset_host_document_session, HostActionResult,
     OpenDocumentSessionRequest,
 };
+use crate::ui_state_store::{redo as redo_document_edit, undo as undo_document_edit};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

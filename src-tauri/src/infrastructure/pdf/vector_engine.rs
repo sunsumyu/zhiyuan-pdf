@@ -434,8 +434,8 @@ pub fn resolve_layout_inference(
     doc: &lopdf::Document,
     page_index: u16,
 ) -> Result<LayoutInferenceResult, String> {
-    let display_list = resolve_display_list(doc, page_index)
-        .map_err(|e| format!("Extraction failed: {}", e))?;
+    let display_list =
+        resolve_display_list(doc, page_index).map_err(|e| format!("Extraction failed: {}", e))?;
     resolve_layout_inference_from_display_list(&display_list)
 }
 

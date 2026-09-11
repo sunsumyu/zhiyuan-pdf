@@ -50,9 +50,7 @@ impl PdfPageIntermediateService {
         };
 
         let display_list = tokio::task::spawn_blocking(move || {
-            crate::infrastructure::pdf::vector_engine::resolve_display_list(
-                &lopdf_doc, page_index,
-            )
+            crate::infrastructure::pdf::vector_engine::resolve_display_list(&lopdf_doc, page_index)
         })
         .await
         .map_err(|e| format!("Intermediate display list spawn error: {}", e))??;
@@ -227,10 +225,20 @@ impl PdfPageIntermediateService {
         .await?;
 
         if image_only.unwrap_or(false) {
-            model.objects.retain(|obj| !matches!(obj, crate::infrastructure::pdf::models::RenderObject::Text(_)));
+            model.objects.retain(|obj| {
+                !matches!(
+                    obj,
+                    crate::infrastructure::pdf::models::RenderObject::Text(_)
+                )
+            });
         }
         if text_only.unwrap_or(false) {
-            model.objects.retain(|obj| matches!(obj, crate::infrastructure::pdf::models::RenderObject::Text(_)));
+            model.objects.retain(|obj| {
+                matches!(
+                    obj,
+                    crate::infrastructure::pdf::models::RenderObject::Text(_)
+                )
+            });
         }
 
         let paint_plan = if image_only.unwrap_or(false) {
@@ -287,7 +295,9 @@ mod tests {
 
     #[tokio::test]
     async fn uses_seeded_display_list() {
-        let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX.lock().unwrap();
+        let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX
+            .lock()
+            .unwrap();
         crate::infrastructure::pdf::log_service::clear_pdf_event_log();
         let state = crate::AppState::new();
         let path = "cached-doc.pdf".to_string();

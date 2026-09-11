@@ -167,8 +167,7 @@ pub fn resolve_render_follow_up_decision(
 ) -> RenderFollowUpDecision {
     // Preview 期间用 visualZoom（bitmap 应追踪视觉状态），
     // settled 后用 targetZoom（精确到达目标）。
-    let preview_settled =
-        (current_target_zoom - current_visual_zoom).abs() < 0.001;
+    let preview_settled = (current_target_zoom - current_visual_zoom).abs() < 0.001;
     let effective_target = if preview_settled {
         current_target_zoom
     } else {
@@ -269,8 +268,7 @@ pub struct ZoomFlushDecision {
 pub fn resolve_flush_decision(request: ZoomFlushDecisionRequest) -> ZoomFlushDecision {
     let frame_zoom = request.frame_render_zoom;
     let settled_zoom = request.target_zoom;
-    let stale =
-        (frame_zoom - settled_zoom).abs() / settled_zoom.max(0.01) > FLUSH_STALE_RATIO;
+    let stale = (frame_zoom - settled_zoom).abs() / settled_zoom.max(0.01) > FLUSH_STALE_RATIO;
 
     ZoomFlushDecision {
         apply: !stale,
@@ -282,7 +280,12 @@ pub fn resolve_flush_decision(request: ZoomFlushDecisionRequest) -> ZoomFlushDec
 mod tests {
     use super::*;
 
-    fn commit_request(target: f32, visual: f32, last_rendered: f32, frame_render: f32) -> ZoomCommitDecisionRequest {
+    fn commit_request(
+        target: f32,
+        visual: f32,
+        last_rendered: f32,
+        frame_render: f32,
+    ) -> ZoomCommitDecisionRequest {
         ZoomCommitDecisionRequest {
             target_zoom: target,
             visual_zoom: visual,
@@ -291,7 +294,12 @@ mod tests {
         }
     }
 
-    fn flush_request(target: f32, visual: f32, last_rendered: f32, frame_render: f32) -> ZoomFlushDecisionRequest {
+    fn flush_request(
+        target: f32,
+        visual: f32,
+        last_rendered: f32,
+        frame_render: f32,
+    ) -> ZoomFlushDecisionRequest {
         ZoomFlushDecisionRequest {
             target_zoom: target,
             visual_zoom: visual,

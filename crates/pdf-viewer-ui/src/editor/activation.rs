@@ -6,7 +6,6 @@ use pdf_viewer_core::geometry::coordinate_transform::{
 use pdf_viewer_core::models::BoundingBox;
 
 use crate::document::patch_persistence::{has_persistable_patches, save_persistable_patches};
-use pdf_viewer_core::edit::bridge::{collect_paragraph_interaction_targets, ParagraphInteractionTarget};
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
@@ -18,6 +17,9 @@ use crate::editor::mode::{close_active_editor, read_active_editor_state};
 use crate::editor::orchestrator::commit::commit_pending_edit_if_any;
 use crate::editor::text_geometry::active_caret_index_at_shell_point;
 use crate::page::page_store::with_page_state;
+use pdf_viewer_core::edit::bridge::{
+    collect_paragraph_interaction_targets, ParagraphInteractionTarget,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

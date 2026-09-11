@@ -9,8 +9,8 @@ use crate::render::tile_cache::{
     DetailTileCacheEntry, HostPresentState,
 };
 use crate::viewport_refresh::{note_viewport_render_commit, HostViewportRefreshState};
-use pdf_viewer_core::render::zoom::animation::commit_rendered_zoom;
 use crate::zoom::zoom_store::HostZoomState;
+use pdf_viewer_core::render::zoom::animation::commit_rendered_zoom;
 
 use crate::present::plan_builder::FramePlanResult;
 

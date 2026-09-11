@@ -55,7 +55,12 @@ pub fn reset_viewer_session() {
 
 pub fn set_viewer_document(path: Option<String>, page_count: u16, initial_zoom: f32) {
     // zoom 不在此处存储 —— 权威是 ZOOM_STATE（ADR-0001）。
-    log::debug!("[AUTHORITY] set_viewer_document: path={:?}, page_count={}, initial_zoom={}", path, page_count, initial_zoom);
+    log::debug!(
+        "[AUTHORITY] set_viewer_document: path={:?}, page_count={}, initial_zoom={}",
+        path,
+        page_count,
+        initial_zoom
+    );
     crate::zoom::zoom_controller::set_target_zoom_authoritative(initial_zoom);
     VIEWER_SESSION.with(|session| {
         let mut session = session.borrow_mut();
@@ -92,7 +97,12 @@ pub fn read_viewer_session() -> HostViewerSession {
     let authority_zoom = crate::zoom::zoom_controller::read_zoom_state().target_zoom;
     let mut snapshot = VIEWER_SESSION.with(|session| session.borrow().clone());
     snapshot.current_zoom = authority_zoom;
-    log::debug!("[AUTHORITY] read_viewer_session: path={:?}, authority_zoom={}, page_count={}", snapshot.path, authority_zoom, snapshot.page_count);
+    log::debug!(
+        "[AUTHORITY] read_viewer_session: path={:?}, authority_zoom={}, page_count={}",
+        snapshot.path,
+        authority_zoom,
+        snapshot.page_count
+    );
     snapshot
 }
 

@@ -5,10 +5,8 @@
 
 use crate::present::present_store::reset_present_runtime;
 use crate::render::render_store::reset_render_state;
+use crate::zoom::zoom_store::{reset_zoom_state, HostZoomState, VisualLayoutState, ZOOM_STATE};
 use pdf_viewer_core::render::zoom::animation::commit_rendered_zoom;
-use crate::zoom::zoom_store::{
-    reset_zoom_state, HostZoomState, VisualLayoutState, ZOOM_STATE,
-};
 
 pub fn reset_zoom_runtime(initial_zoom: f32) {
     reset_zoom_state(initial_zoom);

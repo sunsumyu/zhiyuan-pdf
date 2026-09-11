@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use pdf_viewer_core::models::{GlyphPaintPlan, VectorPageModel};
 
-use pdf_viewer_core::edit::bridge::build_paragraph_render_target;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
@@ -14,6 +13,7 @@ use crate::editor::session::ActiveEditorTarget;
 use crate::editor::source_identity::collect_target_source_object_indices;
 use crate::page::page_store::PAGE_STATE;
 use crate::ui_state_store::read_patch_state;
+use pdf_viewer_core::edit::bridge::build_paragraph_render_target;
 
 // 数据结构已迁至 pdf_viewer_core::edit::paragraph_overlay。
 pub use pdf_viewer_core::edit::paragraph_overlay::{

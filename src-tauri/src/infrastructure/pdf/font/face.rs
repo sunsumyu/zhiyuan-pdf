@@ -1,7 +1,7 @@
-use super::ttc::extract_ttc_face_as_ttf;
-use super::parse::{CMap, ParsedFont};
-use super::SystemFont;
 use super::embed::sanitize_pdf_name;
+use super::parse::{CMap, ParsedFont};
+use super::ttc::extract_ttc_face_as_ttf;
+use super::SystemFont;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use ttf_parser::{Face, GlyphId};

@@ -9,19 +9,19 @@
 //! - `animation`: Animation interpolation and anchor computation
 //! - `decision`: Re-export hub for backward compatibility
 
+pub mod animation;
+pub mod decision;
 pub mod state;
 pub mod zoom_decide;
 pub mod zoom_layout;
 pub mod zoom_render;
 pub mod zoom_tick;
-pub mod animation;
-pub mod decision;
 
 // Re-export everything from sub-modules so external code can use
 // `pdf_viewer_core::render::zoom::HostZoomState` etc.
+pub use animation::*;
 pub use state::*;
 pub use zoom_decide::*;
 pub use zoom_layout::*;
 pub use zoom_render::*;
 pub use zoom_tick::*;
-pub use animation::*;

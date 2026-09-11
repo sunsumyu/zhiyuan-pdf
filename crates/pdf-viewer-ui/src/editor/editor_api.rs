@@ -228,7 +228,9 @@ impl EditorSession {
             Err(js) => return js,
         };
 
-        use crate::editor::activation::{MoveCaretToClientPointRequest, move_caret_to_client_point};
+        use crate::editor::activation::{
+            move_caret_to_client_point, MoveCaretToClientPointRequest,
+        };
 
         let move_request = MoveCaretToClientPointRequest {
             client_x: request.client_x,
@@ -759,8 +761,8 @@ impl EditorSession {
     pub fn undo(&self) -> JsValue {
         guard_state!(SessionState::EditingBlock, "undo");
 
-        use crate::editor::orchestrator::render_transaction::undo_active_editor_tx;
         use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::orchestrator::render_transaction::undo_active_editor_tx;
 
         let frame_request = build_frame_request();
         let result = undo_active_editor_tx(frame_request);
@@ -781,8 +783,8 @@ impl EditorSession {
     pub fn redo(&self) -> JsValue {
         guard_state!(SessionState::EditingBlock, "redo");
 
-        use crate::editor::orchestrator::render_transaction::redo_active_editor_tx;
         use crate::editor::host_snapshot::resolve_editor_host_snapshot;
+        use crate::editor::orchestrator::render_transaction::redo_active_editor_tx;
 
         let frame_request = build_frame_request();
         let result = redo_active_editor_tx(frame_request);
@@ -975,7 +977,6 @@ impl EditorSession {
         })
     }
 
-
     #[wasm_bindgen(js_name = "getTextContent")]
     pub fn read_text_content(&self) -> JsValue {
         err_response(EditorError::NotImplemented {
@@ -1107,8 +1108,8 @@ fn resolve_target_at_page_point(
     page_x: f32,
     page_y: f32,
 ) -> Option<pdf_viewer_core::edit::bridge::ParagraphInteractionTarget> {
-    use pdf_viewer_core::edit::bridge::collect_paragraph_interaction_targets;
     use crate::page::page_store::with_page_state;
+    use pdf_viewer_core::edit::bridge::collect_paragraph_interaction_targets;
 
     let targets = with_page_state(|state| {
         state
@@ -1136,8 +1137,8 @@ fn resolve_target_at_page_point(
 }
 
 fn collect_text_blocks() -> Vec<TextBlockInfo> {
-    use pdf_viewer_core::edit::bridge::collect_paragraph_interaction_targets;
     use crate::page::page_store::with_page_state;
+    use pdf_viewer_core::edit::bridge::collect_paragraph_interaction_targets;
 
     with_page_state(|state| {
         state

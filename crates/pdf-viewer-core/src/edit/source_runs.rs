@@ -3,12 +3,12 @@ use crate::models::{
     VectorPageModel, VectorRenderObject,
 };
 
+use crate::common::debug::truncate_debug_text;
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::geometry::bbox_ops::{bbox_height, bbox_width};
 use crate::geometry::source_geometry::{source_run_visual_bbox, source_visual_bbox_from_runs};
-use crate::common::debug::truncate_debug_text;
 
 pub fn original_paint_runs_for_target(
     paragraph: &GlyphPaintParagraph,
@@ -405,11 +405,7 @@ fn resolve_glyph_paint_runs(paragraph: &GlyphPaintParagraph) -> Option<Vec<Layou
     }
 }
 
-fn build_layout(
-    run: &StyledRun,
-    owner_object_id: &str,
-    run_index: usize,
-) -> LayoutRun {
+fn build_layout(run: &StyledRun, owner_object_id: &str, run_index: usize) -> LayoutRun {
     let mut layout_run = LayoutRun::from_styled(run);
     if layout_run.id.is_empty() {
         layout_run.id = format!("{owner_object_id}::run::{run_index}");
@@ -456,36 +452,86 @@ mod tests {
 
     #[test]
     fn bbox_intersection_width_overlapping() {
-        let a = BoundingBox { left: 0.0, top: 0.0, right: 10.0, bottom: 10.0 };
-        let b = BoundingBox { left: 5.0, top: 0.0, right: 15.0, bottom: 10.0 };
+        let a = BoundingBox {
+            left: 0.0,
+            top: 0.0,
+            right: 10.0,
+            bottom: 10.0,
+        };
+        let b = BoundingBox {
+            left: 5.0,
+            top: 0.0,
+            right: 15.0,
+            bottom: 10.0,
+        };
         assert!((bbox_intersection_width(a, b) - 5.0).abs() < 0.001);
     }
 
     #[test]
     fn bbox_intersection_width_contained() {
-        let a = BoundingBox { left: 0.0, top: 0.0, right: 20.0, bottom: 10.0 };
-        let b = BoundingBox { left: 5.0, top: 0.0, right: 15.0, bottom: 10.0 };
+        let a = BoundingBox {
+            left: 0.0,
+            top: 0.0,
+            right: 20.0,
+            bottom: 10.0,
+        };
+        let b = BoundingBox {
+            left: 5.0,
+            top: 0.0,
+            right: 15.0,
+            bottom: 10.0,
+        };
         assert!((bbox_intersection_width(a, b) - 10.0).abs() < 0.001);
     }
 
     #[test]
     fn bbox_intersection_width_disjoint() {
-        let a = BoundingBox { left: 0.0, top: 0.0, right: 5.0, bottom: 10.0 };
-        let b = BoundingBox { left: 10.0, top: 0.0, right: 15.0, bottom: 10.0 };
+        let a = BoundingBox {
+            left: 0.0,
+            top: 0.0,
+            right: 5.0,
+            bottom: 10.0,
+        };
+        let b = BoundingBox {
+            left: 10.0,
+            top: 0.0,
+            right: 15.0,
+            bottom: 10.0,
+        };
         assert!((bbox_intersection_width(a, b) - 0.0).abs() < 0.001);
     }
 
     #[test]
     fn bbox_intersection_height_overlapping() {
-        let a = BoundingBox { left: 0.0, top: 0.0, right: 10.0, bottom: 10.0 };
-        let b = BoundingBox { left: 0.0, top: 5.0, right: 10.0, bottom: 15.0 };
+        let a = BoundingBox {
+            left: 0.0,
+            top: 0.0,
+            right: 10.0,
+            bottom: 10.0,
+        };
+        let b = BoundingBox {
+            left: 0.0,
+            top: 5.0,
+            right: 10.0,
+            bottom: 15.0,
+        };
         assert!((bbox_intersection_height(a, b) - 5.0).abs() < 0.001);
     }
 
     #[test]
     fn bbox_intersection_height_disjoint() {
-        let a = BoundingBox { left: 0.0, top: 0.0, right: 10.0, bottom: 5.0 };
-        let b = BoundingBox { left: 0.0, top: 10.0, right: 10.0, bottom: 15.0 };
+        let a = BoundingBox {
+            left: 0.0,
+            top: 0.0,
+            right: 10.0,
+            bottom: 5.0,
+        };
+        let b = BoundingBox {
+            left: 0.0,
+            top: 10.0,
+            right: 10.0,
+            bottom: 15.0,
+        };
         assert!((bbox_intersection_height(a, b) - 0.0).abs() < 0.001);
     }
 
@@ -493,7 +539,12 @@ mod tests {
 
     #[test]
     fn expand_bbox_symmetric() {
-        let bbox = BoundingBox { left: 10.0, top: 20.0, right: 30.0, bottom: 40.0 };
+        let bbox = BoundingBox {
+            left: 10.0,
+            top: 20.0,
+            right: 30.0,
+            bottom: 40.0,
+        };
         let expanded = expand_bbox(bbox, 5.0, 3.0);
         assert!((expanded.left - 5.0).abs() < 0.001);
         assert!((expanded.top - 17.0).abs() < 0.001);
@@ -503,7 +554,12 @@ mod tests {
 
     #[test]
     fn expand_bbox_zero_padding() {
-        let bbox = BoundingBox { left: 10.0, top: 20.0, right: 30.0, bottom: 40.0 };
+        let bbox = BoundingBox {
+            left: 10.0,
+            top: 20.0,
+            right: 30.0,
+            bottom: 40.0,
+        };
         let expanded = expand_bbox(bbox, 0.0, 0.0);
         assert!((expanded.left - 10.0).abs() < 0.001);
         assert!((expanded.right - 30.0).abs() < 0.001);
@@ -524,7 +580,12 @@ mod tests {
                 is_italic: false,
                 ..Default::default()
             },
-            bbox: BoundingBox { left: 0.0, top: 10.0, right: 30.0, bottom: 22.0 },
+            bbox: BoundingBox {
+                left: 0.0,
+                top: 10.0,
+                right: 30.0,
+                bottom: 22.0,
+            },
             origin_x: 0.0,
             origin_y: 22.0,
             char_origins: vec![0.0, 10.0, 20.0, 30.0],
@@ -534,7 +595,12 @@ mod tests {
         };
         // source_run_visual_bbox returns: top=origin_y-font_size=10, bottom=origin_y=22
         // target_bbox overlaps with this visual bbox
-        let target_bbox = BoundingBox { left: 20.0, top: 10.0, right: 50.0, bottom: 22.0 };
+        let target_bbox = BoundingBox {
+            left: 20.0,
+            top: 10.0,
+            right: 50.0,
+            bottom: 22.0,
+        };
         assert!(vector_run_matches_paragraph_geometry(&run, target_bbox));
     }
 
@@ -551,7 +617,12 @@ mod tests {
                 is_italic: false,
                 ..Default::default()
             },
-            bbox: BoundingBox { left: 0.0, top: 10.0, right: 30.0, bottom: 22.0 },
+            bbox: BoundingBox {
+                left: 0.0,
+                top: 10.0,
+                right: 30.0,
+                bottom: 22.0,
+            },
             origin_x: 0.0,
             origin_y: 10.0,
             char_origins: vec![],
@@ -559,7 +630,12 @@ mod tests {
             object_ids: vec![],
             object_indices: vec![],
         };
-        let target_bbox = BoundingBox { left: 100.0, top: 10.0, right: 130.0, bottom: 22.0 };
+        let target_bbox = BoundingBox {
+            left: 100.0,
+            top: 10.0,
+            right: 130.0,
+            bottom: 22.0,
+        };
         // No horizontal overlap
         assert!(!vector_run_matches_paragraph_geometry(&run, target_bbox));
     }
@@ -577,7 +653,12 @@ mod tests {
                 is_italic: false,
                 ..Default::default()
             },
-            bbox: BoundingBox { left: 0.0, top: 0.0, right: 30.0, bottom: 12.0 },
+            bbox: BoundingBox {
+                left: 0.0,
+                top: 0.0,
+                right: 30.0,
+                bottom: 12.0,
+            },
             origin_x: 0.0,
             origin_y: 0.0,
             char_origins: vec![],
@@ -585,7 +666,12 @@ mod tests {
             object_ids: vec![],
             object_indices: vec![],
         };
-        let target_bbox = BoundingBox { left: 0.0, top: 100.0, right: 30.0, bottom: 112.0 };
+        let target_bbox = BoundingBox {
+            left: 0.0,
+            top: 100.0,
+            right: 30.0,
+            bottom: 112.0,
+        };
         // No vertical overlap
         assert!(!vector_run_matches_paragraph_geometry(&run, target_bbox));
     }
@@ -617,7 +703,10 @@ mod tests {
         }
     }
 
-    fn test_body_session_with_runs(runs: Vec<LayoutRun>, object_ids: Vec<String>) -> ParagraphEditContext {
+    fn test_body_session_with_runs(
+        runs: Vec<LayoutRun>,
+        object_ids: Vec<String>,
+    ) -> ParagraphEditContext {
         ParagraphEditContext {
             anchor_bbox: BoundingBox::default(),
             paragraph: crate::models::LayoutParagraph {
@@ -702,7 +791,12 @@ mod tests {
             id: "run-1".to_string(),
             text: "hello world".to_string(),
             style: crate::models::RunStyle::default(),
-            bbox: BoundingBox { left: 0.0, top: 0.0, right: 50.0, bottom: 12.0 },
+            bbox: BoundingBox {
+                left: 0.0,
+                top: 0.0,
+                right: 50.0,
+                bottom: 12.0,
+            },
             origin_x: 0.0,
             origin_y: 0.0,
             char_origins: vec![],

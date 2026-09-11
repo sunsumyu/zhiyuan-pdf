@@ -5,9 +5,9 @@
 //! - 无法处理图形 bullet（如 Image/Path 类型的蓝点图标）
 //! - 导致编辑正文时图形 marker 被误抑制
 
-use serde::{Deserialize, Serialize};
 use super::geometry::BoundingBox;
 use super::layout::LayoutRun;
+use serde::{Deserialize, Serialize};
 
 /// 视觉 Marker 类型枚举
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -15,10 +15,10 @@ use super::layout::LayoutRun;
 pub enum VisualMarkerKind {
     #[default]
     None,
-    TextBullet,      // 文本 bullet (•, ●, ▪ 等)
-    TextNumbering,   // 文本编号 (1., 2., (1) 等)
-    GraphicBullet,   // 图形 bullet (Image/Path)
-    Custom,          // 自定义 marker
+    TextBullet,    // 文本 bullet (•, ●, ▪ 等)
+    TextNumbering, // 文本编号 (1., 2., (1) 等)
+    GraphicBullet, // 图形 bullet (Image/Path)
+    Custom,        // 自定义 marker
 }
 
 /// 图形对象类型
@@ -54,16 +54,16 @@ pub enum VisualMarkerContent {
 pub struct VisualMarker {
     /// Marker 类型
     pub kind: VisualMarkerKind,
-    
+
     /// Marker 内容（文本或图形引用）
     pub content: VisualMarkerContent,
-    
+
     /// Marker 的边界框
     pub bbox: BoundingBox,
-    
+
     /// Marker 占用的水平宽度（用于 body 缩进）
     pub advance: f32,
-    
+
     /// VectorPageModel.objects 中的索引列表
     /// 对于文本 marker：从 runs.object_indices 收集
     /// 对于图形 marker：直接存储 object_index
@@ -84,7 +84,7 @@ impl VisualMarker {
             .iter()
             .flat_map(|run| run.object_indices.iter().copied())
             .collect();
-        
+
         VisualMarker {
             kind,
             content: VisualMarkerContent::Text { text, runs },
@@ -93,7 +93,7 @@ impl VisualMarker {
             object_indices,
         }
     }
-    
+
     /// 从图形对象创建
     pub fn from_graphic(
         object_index: usize,
@@ -103,7 +103,7 @@ impl VisualMarker {
     ) -> Self {
         // 计算 advance：从 bbox.left 到 bbox.right + 间隙
         let advance = (bbox.right - bbox.left).max(0.0) + 6.0; // 6px 间隙
-        
+
         VisualMarker {
             kind: VisualMarkerKind::GraphicBullet,
             content: VisualMarkerContent::Graphic {
@@ -116,12 +116,12 @@ impl VisualMarker {
             object_indices: vec![object_index],
         }
     }
-    
+
     /// 是否是图形 marker
     pub fn is_graphic(&self) -> bool {
         matches!(self.content, VisualMarkerContent::Graphic { .. })
     }
-    
+
     /// 是否包含指定的对象索引
     pub fn contains_object_index(&self, index: usize) -> bool {
         self.object_indices.contains(&index)
@@ -133,7 +133,7 @@ fn compute_bbox_from_runs(runs: &[LayoutRun]) -> BoundingBox {
     if runs.is_empty() {
         return BoundingBox::default();
     }
-    
+
     let mut bbox = runs[0].bbox;
     for run in runs.iter().skip(1) {
         bbox.left = bbox.left.min(run.bbox.left);
@@ -148,7 +148,7 @@ fn compute_bbox_from_runs(runs: &[LayoutRun]) -> BoundingBox {
 mod tests {
     use super::*;
     use crate::models::{BoundingBox, LayoutRun, RunStyle};
-    
+
     fn test_run(text: &str, left: f32, baseline_y: f32) -> LayoutRun {
         LayoutRun {
             id: "test-run".to_string(),
@@ -177,7 +177,7 @@ mod tests {
             object_indices: vec![42],
         }
     }
-    
+
     #[test]
     fn text_marker_collects_object_indices() {
         let marker = VisualMarker::from_text_marker(
@@ -186,11 +186,11 @@ mod tests {
             12.0,
             VisualMarkerKind::TextBullet,
         );
-        
+
         assert!(marker.object_indices.contains(&42));
         assert!(!marker.is_graphic());
     }
-    
+
     #[test]
     fn graphic_marker_stores_object_index() {
         let marker = VisualMarker::from_graphic(
@@ -204,7 +204,7 @@ mod tests {
                 bottom: 112.0,
             },
         );
-        
+
         assert!(marker.is_graphic());
         assert!(marker.contains_object_index(7));
         assert_eq!(marker.kind, VisualMarkerKind::GraphicBullet);

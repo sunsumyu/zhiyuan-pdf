@@ -38,7 +38,10 @@ pub struct TraceField {
 
 impl TraceField {
     pub fn new(key: impl Into<Cow<'static, str>>, value: impl ToString) -> Self {
-        Self { key: key.into(), value: value.to_string() }
+        Self {
+            key: key.into(),
+            value: value.to_string(),
+        }
     }
 }
 
@@ -92,7 +95,9 @@ pub fn emit(
     fields: Vec<TraceField>,
 ) {
     let pass = MAX_LEVEL.with(|m| *m.borrow() >= level);
-    if !pass { return; }
+    if !pass {
+        return;
+    }
 
     let event = TraceEvent {
         level,
@@ -173,7 +178,9 @@ impl TraceSpan {
 
 impl Drop for TraceSpan {
     fn drop(&mut self) {
-        if self.finished { return; }
+        if self.finished {
+            return;
+        }
         let mut fields = self.fields.clone();
         fields.push(field("result", "aborted"));
         fields.push(field("elapsedMs", self.start.elapsed().as_millis()));

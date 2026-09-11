@@ -10,11 +10,11 @@
 //! - 所有的几何排版只会在水平 (X轴) 发生推挤与拆行，垂直方向依靠 `font_size` 与 `line_height` 线性累加。
 //! - 禁则排版边界保证 (Kinsoku Shori)：强约束支持中日韩 (CJK) 标点的避头尾策略，例如逗号绝对不能出现在行首。
 
+use crate::common::debug::truncate_debug_text;
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::models::{BoundingBox, GlyphPaintPlan, LayoutAlignment, LayoutParagraph, LayoutRun};
-use crate::common::debug::truncate_debug_text;
 
 /// 表示在特定的容器宽度约束下，经历过物理换行算法生成的一行“视觉行”。
 ///

@@ -1,8 +1,8 @@
-use crate::infrastructure::pdf::models::{RenderObject, StyledRun};
 use crate::infrastructure::pdf::font::ResourceCache;
-use crate::infrastructure::pdf::pdf_read::resource_reader::read_resources;
+use crate::infrastructure::pdf::models::{RenderObject, StyledRun};
 use crate::infrastructure::pdf::pdf_read::content_parser::parse_content_stream;
 use crate::infrastructure::pdf::pdf_read::graphics_state::GraphicsState;
+use crate::infrastructure::pdf::pdf_read::resource_reader::read_resources;
 use lopdf::{content::Content, Document};
 use std::sync::Arc;
 lazy_static::lazy_static! {
@@ -87,8 +87,7 @@ pub fn resolve_paths(
     };
 
     // Support inherited /Rotate attribute in page dictionary tree
-    let rotation =
-        crate::infrastructure::pdf::pdf_utils::read_page_rotation(doc, page_id);
+    let rotation = crate::infrastructure::pdf::pdf_utils::read_page_rotation(doc, page_id);
     if rotation == 90 || rotation == 270 {
         std::mem::swap(&mut width, &mut height);
         crate::log_step!(
@@ -186,4 +185,3 @@ pub fn resolve_paths(
     }
     Ok(res)
 }
-

@@ -133,10 +133,7 @@ pub fn resolve_glyph_id(
     }
 
     if let Some(raw_code) = text.pdf_char_codes.get(glyph_index).copied() {
-        if prefers_pdf_code_glyph_mapping(text)
-            && raw_code > 0
-            && raw_code <= u16::MAX as u32
-        {
+        if prefers_pdf_code_glyph_mapping(text) && raw_code > 0 && raw_code <= u16::MAX as u32 {
             if is_suspect {
                 crate::pdf_log!(
                     3,

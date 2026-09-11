@@ -163,15 +163,8 @@ impl TileManager {
     /// Get all ready tiles for the current viewport
     pub fn get_ready_viewport_tiles(&self) -> Vec<&Tile> {
         let vp = self.scheduler.viewport_state();
-        self.cache.get_viewport_tiles(
-            vp.page,
-            vp.zoom,
-            vp.dpr,
-            vp.x,
-            vp.y,
-            vp.width,
-            vp.height,
-        )
+        self.cache
+            .get_viewport_tiles(vp.page, vp.zoom, vp.dpr, vp.x, vp.y, vp.width, vp.height)
     }
 
     /// Clear cache for a specific page
@@ -370,7 +363,10 @@ mod tests {
         manager.update_viewport(1, 1.0, 1.0, 0.0, 0.0, 512.0, 512.0, 1);
         let key = TileKey::new(1, 1.0, 1.0, 0, 0);
 
-        assert!(!manager.reset_stale_rendering(&key), "Pending stays Pending");
+        assert!(
+            !manager.reset_stale_rendering(&key),
+            "Pending stays Pending"
+        );
 
         assert!(manager.next_render_request().is_some());
         manager.mark_rendering(&key);

@@ -597,11 +597,7 @@ fn line_contextual_run_delta(runs: &[&LayoutRun], run_index: usize) -> Option<f3
     Some(deltas[index.min(deltas.len() - 1)].max(1.0))
 }
 
-fn needs_gap(
-    prev: &LayoutRun,
-    next: &LayoutRun,
-    line_typical_delta: Option<f32>,
-) -> bool {
+fn needs_gap(prev: &LayoutRun, next: &LayoutRun, line_typical_delta: Option<f32>) -> bool {
     if !same_visual_line(prev, next) {
         return false;
     }
@@ -790,7 +786,11 @@ mod tests {
     fn is_decorative_glyph_known_chars() {
         let decorative = ['•', '●', '▪', '◦', '·', '○', '-', '▶'];
         for ch in &decorative {
-            assert!(is_decorative_glyph(*ch), "expected '{}' to be decorative", ch);
+            assert!(
+                is_decorative_glyph(*ch),
+                "expected '{}' to be decorative",
+                ch
+            );
         }
     }
 
@@ -798,7 +798,11 @@ mod tests {
     fn is_decorative_glyph_non_decorative() {
         let non_decorative = ['a', '张', '1', '(', '。'];
         for ch in &non_decorative {
-            assert!(!is_decorative_glyph(*ch), "expected {} to be non-decorative", ch);
+            assert!(
+                !is_decorative_glyph(*ch),
+                "expected {} to be non-decorative",
+                ch
+            );
         }
     }
 
@@ -970,7 +974,11 @@ mod tests {
         for recon in 0..=3 {
             let raw = plan.map_reconstructed_to_raw(recon);
             let back_to_recon = plan.map_raw_to_reconstructed(raw);
-            assert_eq!(back_to_recon, recon, "round-trip failed for reconstructed={}", recon);
+            assert_eq!(
+                back_to_recon, recon,
+                "round-trip failed for reconstructed={}",
+                recon
+            );
         }
     }
 
@@ -981,8 +989,8 @@ mod tests {
         let plan = EditorSessionTextPlan {
             text: "a b".to_string(),
             slots: vec![],
-            raw_to_reconstructed: vec![0, 2],      // raw[0]->recon[0], raw[1]->recon[2]
-            reconstructed_to_raw: vec![0, 0, 1],   // recon[0]->raw[0], recon[1]->raw[0], recon[2]->raw[1]
+            raw_to_reconstructed: vec![0, 2], // raw[0]->recon[0], raw[1]->recon[2]
+            reconstructed_to_raw: vec![0, 0, 1], // recon[0]->raw[0], recon[1]->raw[0], recon[2]->raw[1]
         };
 
         assert_eq!(plan.map_raw_to_reconstructed(0), 0);
@@ -1090,7 +1098,10 @@ mod tests {
                 ..Default::default()
             },
             bbox: crate::models::BoundingBox {
-                left: 0.0, top: 0.0, right: 30.0, bottom: 12.0,
+                left: 0.0,
+                top: 0.0,
+                right: 30.0,
+                bottom: 12.0,
             },
             origin_x: 0.0,
             origin_y: 0.0,
@@ -1111,7 +1122,10 @@ mod tests {
                 ..Default::default()
             },
             bbox: crate::models::BoundingBox {
-                left: 100.0, top: 0.0, right: 130.0, bottom: 12.0,
+                left: 100.0,
+                top: 0.0,
+                right: 130.0,
+                bottom: 12.0,
             },
             origin_x: 100.0,
             origin_y: 0.0,
@@ -1140,7 +1154,10 @@ mod tests {
                 ..Default::default()
             },
             bbox: crate::models::BoundingBox {
-                left: 0.0, top: 0.0, right: 30.0, bottom: 12.0,
+                left: 0.0,
+                top: 0.0,
+                right: 30.0,
+                bottom: 12.0,
             },
             origin_x: 0.0,
             origin_y: 0.0,
@@ -1162,7 +1179,10 @@ mod tests {
                 ..Default::default()
             },
             bbox: crate::models::BoundingBox {
-                left: 31.0, top: 0.0, right: 61.0, bottom: 12.0,
+                left: 31.0,
+                top: 0.0,
+                right: 61.0,
+                bottom: 12.0,
             },
             origin_x: 31.0,
             origin_y: 0.0,
@@ -1188,7 +1208,10 @@ mod tests {
             text: "abc".to_string(),
             style: crate::models::RunStyle::default(),
             bbox: crate::models::BoundingBox {
-                left: 0.0, top: 10.0, right: 30.0, bottom: 22.0,
+                left: 0.0,
+                top: 10.0,
+                right: 30.0,
+                bottom: 22.0,
             },
             origin_x: 0.0,
             origin_y: 10.0,
@@ -1202,7 +1225,10 @@ mod tests {
             text: "xyz".to_string(),
             style: crate::models::RunStyle::default(),
             bbox: crate::models::BoundingBox {
-                left: 40.0, top: 10.0, right: 70.0, bottom: 22.0,
+                left: 40.0,
+                top: 10.0,
+                right: 70.0,
+                bottom: 22.0,
             },
             origin_x: 40.0,
             origin_y: 10.0,
@@ -1221,7 +1247,10 @@ mod tests {
             text: "abc".to_string(),
             style: crate::models::RunStyle::default(),
             bbox: crate::models::BoundingBox {
-                left: 0.0, top: 10.0, right: 30.0, bottom: 22.0,
+                left: 0.0,
+                top: 10.0,
+                right: 30.0,
+                bottom: 22.0,
             },
             origin_x: 0.0,
             origin_y: 10.0,
@@ -1235,7 +1264,10 @@ mod tests {
             text: "xyz".to_string(),
             style: crate::models::RunStyle::default(),
             bbox: crate::models::BoundingBox {
-                left: 0.0, top: 30.0, right: 30.0, bottom: 42.0,
+                left: 0.0,
+                top: 30.0,
+                right: 30.0,
+                bottom: 42.0,
             },
             origin_x: 0.0,
             origin_y: 30.0,
@@ -1262,7 +1294,10 @@ mod tests {
                     text: "abc".to_string(),
                     style: crate::models::RunStyle::default(),
                     bbox: crate::models::BoundingBox {
-                        left: 0.0, top: 0.0, right: 30.0, bottom: 12.0,
+                        left: 0.0,
+                        top: 0.0,
+                        right: 30.0,
+                        bottom: 12.0,
                     },
                     origin_x: 0.0,
                     origin_y: 0.0,
@@ -1297,7 +1332,10 @@ mod tests {
                     text: "abc".to_string(),
                     style: crate::models::RunStyle::default(),
                     bbox: crate::models::BoundingBox {
-                        left: 0.0, top: 0.0, right: 100.0, bottom: 12.0,
+                        left: 0.0,
+                        top: 0.0,
+                        right: 100.0,
+                        bottom: 12.0,
                     },
                     origin_x: 0.0,
                     origin_y: 0.0,
@@ -1332,7 +1370,10 @@ mod tests {
                     text: "•••".to_string(),
                     style: crate::models::RunStyle::default(),
                     bbox: crate::models::BoundingBox {
-                        left: 0.0, top: 0.0, right: 100.0, bottom: 12.0,
+                        left: 0.0,
+                        top: 0.0,
+                        right: 100.0,
+                        bottom: 12.0,
                     },
                     origin_x: 0.0,
                     origin_y: 0.0,
@@ -1347,11 +1388,7 @@ mod tests {
                 wrap_width: 0.0,
             },
         };
-        assert!(!has_suspicious_run_geometry(
-            &session,
-            |_| false,
-            |_| 10.0,
-        ));
+        assert!(!has_suspicious_run_geometry(&session, |_| false, |_| 10.0,));
     }
 
     #[test]
@@ -1370,7 +1407,10 @@ mod tests {
                         ..Default::default()
                     },
                     bbox: crate::models::BoundingBox {
-                        left: 0.0, top: 0.0, right: 100.0, bottom: 12.0,
+                        left: 0.0,
+                        top: 0.0,
+                        right: 100.0,
+                        bottom: 12.0,
                     },
                     origin_x: 0.0,
                     origin_y: 0.0,

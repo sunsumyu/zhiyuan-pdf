@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::JsValue;
 
-use pdf_viewer_core::edit::target_resolution::{is_supported_region_kind, resolve_region_target_from_page_state};
+use crate::common::sanitize::sanitize_positive;
 use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
@@ -18,8 +18,10 @@ use crate::editor::workflow::{
 };
 use crate::models::PersistableRegionPatch;
 use crate::page::page_store::with_page_state;
-use crate::common::sanitize::sanitize_positive;
 use crate::zoom::zoom_store;
+use pdf_viewer_core::edit::target_resolution::{
+    is_supported_region_kind, resolve_region_target_from_page_state,
+};
 use pdf_viewer_core::models::BoundingBox;
 use pdf_viewer_core::text::list_semantics::ListMarkerKind;
 

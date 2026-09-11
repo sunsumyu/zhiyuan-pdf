@@ -357,7 +357,7 @@ pub fn undo_active_editor() -> Option<ActiveEditorInputSyncResult> {
         };
         let prev = mode_ref.history.undo(live_state)?;
         *live_state = prev;
-        
+
         Some(ActiveEditorInputSyncResult {
             text_changed: true,
             caret_changed: true,
@@ -377,7 +377,7 @@ pub fn redo_active_editor() -> Option<ActiveEditorInputSyncResult> {
         };
         let next = mode_ref.history.redo(live_state)?;
         *live_state = next;
-        
+
         Some(ActiveEditorInputSyncResult {
             text_changed: true,
             caret_changed: true,

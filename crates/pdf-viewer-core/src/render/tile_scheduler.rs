@@ -188,11 +188,7 @@ impl TileScheduler {
         let margin = 1;
         for y in (start_tile_y - margin)..=(end_tile_y + margin) {
             for x in (start_tile_x - margin)..=(end_tile_x + margin) {
-                if x < start_tile_x
-                    || x > end_tile_x
-                    || y < start_tile_y
-                    || y > end_tile_y
-                {
+                if x < start_tile_x || x > end_tile_x || y < start_tile_y || y > end_tile_y {
                     let key = TileKey::new(page, zoom, dpr, x, y);
                     requests.push(TileRenderRequest {
                         tile_key: key,

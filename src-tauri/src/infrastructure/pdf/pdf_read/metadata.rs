@@ -25,5 +25,3 @@ pub fn extract_metadata(
     meta.page_count = doc.get_pages().len();
     Ok(meta)
 }
-
-

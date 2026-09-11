@@ -23,14 +23,12 @@ fn knock_render_loop() {
         Some(w) => w,
         None => return,
     };
-    let knock = js_sys::Reflect::get(
-        &window.into(),
-        &JsValue::from_str(DRAIN_KNOCK_GLOBAL),
-    )
-    .ok();
+    let knock = js_sys::Reflect::get(&window.into(), &JsValue::from_str(DRAIN_KNOCK_GLOBAL)).ok();
     if let Some(knock) = knock {
         if knock.is_function() {
-            let _ = knock.unchecked_into::<js_sys::Function>().call0(&JsValue::NULL);
+            let _ = knock
+                .unchecked_into::<js_sys::Function>()
+                .call0(&JsValue::NULL);
         }
     }
 }

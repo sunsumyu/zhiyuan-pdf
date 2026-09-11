@@ -154,7 +154,11 @@ fn last_declared_startxref_offset(raw: &[u8]) -> Option<usize> {
     while cursor < raw.len() && raw[cursor].is_ascii_whitespace() {
         cursor += 1;
     }
-    let digits_end = cursor + raw[cursor..].iter().take_while(|b| b.is_ascii_digit()).count();
+    let digits_end = cursor
+        + raw[cursor..]
+            .iter()
+            .take_while(|b| b.is_ascii_digit())
+            .count();
     std::str::from_utf8(&raw[cursor..digits_end])
         .ok()?
         .parse()
@@ -228,11 +232,11 @@ mod loader_tests {
             "Type" => "Catalog",
             "Pages" => pages_id,
         });
-        doc.trailer.set("Root", lopdf::Object::Reference(catalog_id));
+        doc.trailer
+            .set("Root", lopdf::Object::Reference(catalog_id));
         // lopdf defaults to xref streams (PDF 1.5+); force the classic
         // cross-reference table so the fixture exercises the 3b repair path.
-        doc.reference_table.cross_reference_type =
-            lopdf::xref::XrefType::CrossReferenceTable;
+        doc.reference_table.cross_reference_type = lopdf::xref::XrefType::CrossReferenceTable;
         let mut buf = Vec::new();
         doc.save_to(&mut buf).expect("serialize in-memory PDF");
         buf
@@ -251,7 +255,8 @@ mod loader_tests {
             "Type" => "Catalog",
             "Pages" => pages_id,
         });
-        doc.trailer.set("Root", lopdf::Object::Reference(catalog_id));
+        doc.trailer
+            .set("Root", lopdf::Object::Reference(catalog_id));
         let mut buf = Vec::new();
         doc.save_to(&mut buf).expect("serialize in-memory PDF");
         buf
@@ -287,7 +292,11 @@ mod loader_tests {
         let mut bytes = valid_pdf_bytes();
         bytes.extend_from_slice(b"JUNK-JUNK-JUNK");
         let doc = repair_and_load(&bytes);
-        assert!(doc.is_ok(), "3a should trim garbage after %%EOF: {:?}", doc.err());
+        assert!(
+            doc.is_ok(),
+            "3a should trim garbage after %%EOF: {:?}",
+            doc.err()
+        );
     }
 
     #[test]
@@ -355,7 +364,11 @@ mod loader_tests {
         corrupted.extend_from_slice(&[0xFF, 0xFE, 0x80, b'J', b'U', b'N', b'K']);
 
         let doc = repair_and_load(&corrupted);
-        assert!(doc.is_ok(), "byte-level repair must not misalign: {:?}", doc.err());
+        assert!(
+            doc.is_ok(),
+            "byte-level repair must not misalign: {:?}",
+            doc.err()
+        );
     }
 
     #[test]

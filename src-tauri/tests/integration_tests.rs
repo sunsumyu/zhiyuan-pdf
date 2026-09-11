@@ -124,12 +124,7 @@ fn build_two_page_doc() -> lopdf::Document {
         d.set("Count", Object::Integer(2));
         d.set(
             "Kids",
-            Object::Array(
-                page_ids
-                    .iter()
-                    .map(|id| Object::Reference(*id))
-                    .collect(),
-            ),
+            Object::Array(page_ids.iter().map(|id| Object::Reference(*id)).collect()),
         );
         d
     }));
@@ -316,17 +311,13 @@ fn delete_page_reduces_count() {
     doc.delete_page(2).expect("delete_page should succeed");
 
     let pages_after = doc.get_pages();
-    assert!(
-        !pages_after.contains_key(&2u32),
-        "page 2 should be deleted"
-    );
+    assert!(!pages_after.contains_key(&2u32), "page 2 should be deleted");
 }
 
 #[test]
 fn rotate_page_succeeds() {
     let mut doc = build_test_doc();
-    doc.rotate_page(1, 90)
-        .expect("rotate_page should succeed");
+    doc.rotate_page(1, 90).expect("rotate_page should succeed");
 }
 
 // ── Metadata ─────────────────────────────────────────────────────
@@ -335,14 +326,15 @@ fn rotate_page_succeeds() {
 fn update_metadata_round_trips() {
     let mut doc = build_test_doc();
 
-    doc.update_metadata("Test Title", "Test Author", "Test Subject", "test, keywords")
-        .expect("update_metadata should succeed");
+    doc.update_metadata(
+        "Test Title",
+        "Test Author",
+        "Test Subject",
+        "test, keywords",
+    )
+    .expect("update_metadata should succeed");
 
-    let info_id = doc
-        .trailer
-        .get(b"Info")
-        .and_then(|v| v.as_reference())
-        .ok();
+    let info_id = doc.trailer.get(b"Info").and_then(|v| v.as_reference()).ok();
     assert!(info_id.is_some(), "Info dict should exist after update");
 
     let info_dict = doc.get_dictionary(info_id.unwrap()).unwrap();
@@ -392,8 +384,7 @@ fn annotations_persist_through_save_and_reload() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test_save.pdf");
     let mut buf = Vec::new();
-    doc.save_to(&mut buf)
-        .expect("save_to should succeed");
+    doc.save_to(&mut buf).expect("save_to should succeed");
     std::fs::write(&path, &buf).unwrap();
 
     let reloaded = lopdf::Document::load(&path).expect("reloaded PDF should be valid");
@@ -419,10 +410,7 @@ fn metadata_persists_through_save_and_reload() {
     std::fs::write(&path, &buf).unwrap();
 
     let reloaded = lopdf::Document::load(&path).unwrap();
-    let info_id = reloaded
-        .trailer
-        .get(b"Info")
-        .and_then(|v| v.as_reference());
+    let info_id = reloaded.trailer.get(b"Info").and_then(|v| v.as_reference());
     assert!(info_id.is_ok(), "Info dict should exist after reload");
 
     let info_dict = reloaded.get_dictionary(info_id.unwrap()).unwrap();

@@ -5,11 +5,11 @@ use pdf_viewer_core::text::list_semantics::{
     derive_list_text_semantics, format_numbering_marker, parse_numbering_value, ListMarkerKind,
 };
 
-use pdf_viewer_core::edit::bridge::build_paragraph_patch_with_runs;
 use crate::editor::edit_target::edit_target_base_paragraph_id;
 use crate::editor::engine_state::LiveEditorParagraphState;
 use crate::models::PersistableRegionPatch;
 use crate::ui_state_store::{read_patch_state, GlobalPatchState};
+use pdf_viewer_core::edit::bridge::build_paragraph_patch_with_runs;
 
 #[derive(Debug, Clone, Default)]
 struct EffectiveListState {

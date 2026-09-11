@@ -7,8 +7,8 @@ use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 
 use crate::viewer::viewer_controller;
-use pdf_viewer_core::render::zoom::animation::WheelZoomRequest;
 use crate::zoom::zoom_controller;
+use pdf_viewer_core::render::zoom::animation::WheelZoomRequest;
 
 #[wasm_bindgen(js_name = "resolveWheelZoom")]
 pub fn resolve_wheel_zoom(request_js: JsValue) -> JsValue {
@@ -77,7 +77,8 @@ pub fn take_cancel_pending_render() -> bool {
 
 #[wasm_bindgen(js_name = "syncHostLayout")]
 pub fn sync_host_layout_wasm(request_js: JsValue) -> JsValue {
-    let request: crate::host::layout::SyncHostLayoutRequest = from_value(request_js).unwrap_or_default();
+    let request: crate::host::layout::SyncHostLayoutRequest =
+        from_value(request_js).unwrap_or_default();
     let result = crate::host::layout::sync_host_layout(request);
     to_value(&result).unwrap_or(JsValue::NULL)
 }
@@ -144,8 +145,7 @@ pub fn is_zoom_raf_loop_running() -> bool {
 /// Handle a complete wheel event. TS passes raw DOM values.
 #[wasm_bindgen(js_name = "onWheelEvent")]
 pub fn on_wheel_event(input_js: JsValue) -> JsValue {
-    let input: crate::zoom::raf_loop::WheelEventInput =
-        from_value(input_js).unwrap_or_default();
+    let input: crate::zoom::raf_loop::WheelEventInput = from_value(input_js).unwrap_or_default();
     let output = crate::zoom::raf_loop::on_wheel_event(input);
     // The loop self-stops after settle; every real wheel gesture must
     // guarantee it is ticking again, otherwise zoom state changes are
@@ -161,4 +161,3 @@ pub fn commit_rendered_frame_to_queue(frame_js: JsValue) {
         crate::zoom::raf_loop::commit_rendered_frame(frame);
     }
 }
-

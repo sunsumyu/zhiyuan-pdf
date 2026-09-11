@@ -464,8 +464,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::compute_anchor_viewport_layout_result;
+    use super::*;
     use crate::render::plan_builder::compute_viewport_layout_result;
     use crate::render::zoom::state::HostZoomState;
 
@@ -505,9 +505,21 @@ mod tests {
             }
         }
 
-        assert!(settle_fired, "loop should stop after settle + drawing delay; ran {} ticks", ticks);
-        assert!((state.visual_zoom - 1.5).abs() < 0.001, "visual_zoom must reach target: {}", state.visual_zoom);
-        assert!(ticks >= 3, "drawing delay requires multiple settled ticks: {}", ticks);
+        assert!(
+            settle_fired,
+            "loop should stop after settle + drawing delay; ran {} ticks",
+            ticks
+        );
+        assert!(
+            (state.visual_zoom - 1.5).abs() < 0.001,
+            "visual_zoom must reach target: {}",
+            state.visual_zoom
+        );
+        assert!(
+            ticks >= 3,
+            "drawing delay requires multiple settled ticks: {}",
+            ticks
+        );
     }
 
     #[test]
@@ -524,8 +536,14 @@ mod tests {
                 break;
             }
         }
-        assert!((state.visual_zoom - 1.5).abs() < 0.001, "first gesture must complete");
-        assert!((state.last_rendered_zoom - 1.5).abs() < 0.001, "last_rendered must track settled zoom");
+        assert!(
+            (state.visual_zoom - 1.5).abs() < 0.001,
+            "first gesture must complete"
+        );
+        assert!(
+            (state.last_rendered_zoom - 1.5).abs() < 0.001,
+            "last_rendered must track settled zoom"
+        );
 
         state.target_zoom = 2.25;
         state.last_animation_timestamp_ms = 0.0;
@@ -539,7 +557,10 @@ mod tests {
             }
         }
         assert!(settled_second, "second gesture must also settle");
-        assert!((state.visual_zoom - 2.25).abs() < 0.001, "second gesture must reach new target");
+        assert!(
+            (state.visual_zoom - 2.25).abs() < 0.001,
+            "second gesture must reach new target"
+        );
     }
 
     #[test]
@@ -566,13 +587,18 @@ mod tests {
             max_zoom: 30.0,
         };
 
-        let (result, _anchor) = resolve_wheel_zoom_request(
-            &request,
-            state.visual_layout.as_ref(),
-        );
+        let (result, _anchor) = resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
 
-        assert!(result.target_zoom > 1.0, "scroll-up should zoom in: {}", result.target_zoom);
-        assert!(result.target_zoom < 2.0, "single scroll should not overshoot: {}", result.target_zoom);
+        assert!(
+            result.target_zoom > 1.0,
+            "scroll-up should zoom in: {}",
+            result.target_zoom
+        );
+        assert!(
+            result.target_zoom < 2.0,
+            "single scroll should not overshoot: {}",
+            result.target_zoom
+        );
     }
 
     #[test]
@@ -599,18 +625,24 @@ mod tests {
                 min_zoom: 0.1,
                 max_zoom: 30.0,
             };
-            let (result, anchor) = resolve_wheel_zoom_request(
-                &request,
-                state.visual_layout.as_ref(),
-            );
+            let (result, anchor) =
+                resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
             state.target_zoom = result.target_zoom;
             state.last_animation_timestamp_ms = 0.0;
             state.pending_anchor = Some(anchor);
             let ts = 1000.0 + (i as f64) * 16.67;
             let _step = advance_zoom_animation_state(&mut state, Some(ts));
         }
-        assert!(state.target_zoom > 1.3, "5 zoom-in events should produce target >> 1.0: {}", state.target_zoom);
-        assert!(state.visual_zoom > 1.0, "visual_zoom should have advanced past 1.0: {}", state.visual_zoom);
+        assert!(
+            state.target_zoom > 1.3,
+            "5 zoom-in events should produce target >> 1.0: {}",
+            state.target_zoom
+        );
+        assert!(
+            state.visual_zoom > 1.0,
+            "visual_zoom should have advanced past 1.0: {}",
+            state.visual_zoom
+        );
     }
 
     #[test]
@@ -626,9 +658,20 @@ mod tests {
                 settled_at = Some(i);
             }
         }
-        assert!(settled_at.is_some(), "animation should settle within 300 ticks");
-        assert!(settled_at.unwrap() < 200, "animation should settle quickly: {}", settled_at.unwrap());
-        assert!((state.visual_zoom - 1.5).abs() < 0.001, "visual_zoom should equal target: {}", state.visual_zoom);
+        assert!(
+            settled_at.is_some(),
+            "animation should settle within 300 ticks"
+        );
+        assert!(
+            settled_at.unwrap() < 200,
+            "animation should settle quickly: {}",
+            settled_at.unwrap()
+        );
+        assert!(
+            (state.visual_zoom - 1.5).abs() < 0.001,
+            "visual_zoom should equal target: {}",
+            state.visual_zoom
+        );
     }
 
     #[test]
@@ -654,12 +697,17 @@ mod tests {
             min_zoom: 0.1,
             max_zoom: 30.0,
         };
-        let (result, _anchor) = resolve_wheel_zoom_request(
-            &request,
-            state.visual_layout.as_ref(),
+        let (result, _anchor) = resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
+        assert!(
+            result.target_zoom < 2.0,
+            "zoom-out should decrease target: {}",
+            result.target_zoom
         );
-        assert!(result.target_zoom < 2.0, "zoom-out should decrease target: {}", result.target_zoom);
-        assert!(result.target_zoom > 0.1, "zoom-out should not go below min: {}", result.target_zoom);
+        assert!(
+            result.target_zoom > 0.1,
+            "zoom-out should not go below min: {}",
+            result.target_zoom
+        );
     }
 
     #[test]
@@ -685,10 +733,7 @@ mod tests {
             min_zoom: 0.1,
             max_zoom: 30.0,
         };
-        let (result, _anchor) = resolve_wheel_zoom_request(
-            &request,
-            state.visual_layout.as_ref(),
-        );
+        let (result, _anchor) = resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
         state.target_zoom = result.target_zoom;
         state.last_animation_timestamp_ms = 0.0;
         let session_current_zoom = state.target_zoom;
@@ -702,9 +747,17 @@ mod tests {
                 break;
             }
         }
-        assert!((session_current_zoom - state.visual_zoom).abs() < 0.001,
-            "session zoom ({}) must equal settled visual zoom ({})", session_current_zoom, state.visual_zoom);
-        assert!(session_current_zoom > 1.05, "session zoom must move past pre-gesture value: {}", session_current_zoom);
+        assert!(
+            (session_current_zoom - state.visual_zoom).abs() < 0.001,
+            "session zoom ({}) must equal settled visual zoom ({})",
+            session_current_zoom,
+            state.visual_zoom
+        );
+        assert!(
+            session_current_zoom > 1.05,
+            "session zoom must move past pre-gesture value: {}",
+            session_current_zoom
+        );
     }
 
     #[test]
@@ -714,8 +767,16 @@ mod tests {
         let result = compute_anchor_viewport_layout_result(
             1000.0, 1200.0, 800.0, 900.0, 200.0, 300.0, 595.0, 842.0, 420.0, 500.0,
         );
-        assert!((result.content_left - 0.0).abs() < 0.001, "content_left must not go negative: {}", result.content_left);
-        assert!((result.content_top - 0.0).abs() < 0.001, "content_top must not go negative: {}", result.content_top);
+        assert!(
+            (result.content_left - 0.0).abs() < 0.001,
+            "content_left must not go negative: {}",
+            result.content_left
+        );
+        assert!(
+            (result.content_top - 0.0).abs() < 0.001,
+            "content_top must not go negative: {}",
+            result.content_top
+        );
         assert!((result.host_width - 1000.0).abs() < 0.001);
         assert!((result.host_height - 1200.0).abs() < 0.001);
     }
@@ -776,12 +837,14 @@ mod tests {
             assert!(
                 (anchor.content_left - viewport.content_left).abs() < 0.001,
                 "content_left JUMP at display={dw}x{dh} viewport={vw}x{vh}: anchor={} viewport={}",
-                anchor.content_left, viewport.content_left
+                anchor.content_left,
+                viewport.content_left
             );
             assert!(
                 (anchor.content_top - viewport.content_top).abs() < 0.001,
                 "content_top JUMP at display={dw}x{dh} viewport={vw}x{vh}: anchor={} viewport={}",
-                anchor.content_top, viewport.content_top
+                anchor.content_top,
+                viewport.content_top
             );
         }
     }
@@ -799,15 +862,17 @@ mod tests {
             let display_w = 750.0 + (i as f32) * 1.0; // 750 to 850, crossing 800
             let display_h = 562.5 + (i as f32) * 0.75; // maintain aspect ratio
             let result = compute_anchor_viewport_layout_result(
-                display_w, display_h, viewport_w, viewport_h,
-                0.0, 0.0, 595.0, 842.0, 400.0, 300.0,
+                display_w, display_h, viewport_w, viewport_h, 0.0, 0.0, 595.0, 842.0, 400.0, 300.0,
             );
             if let Some(prev) = prev_left {
                 let delta = (result.content_left - prev).abs();
                 assert!(
                     delta < 0.6, // max change per 1px step
                     "JUMP in content_left at display_w={}: prev={} curr={} delta={}",
-                    display_w, prev, result.content_left, delta
+                    display_w,
+                    prev,
+                    result.content_left,
+                    delta
                 );
             }
             prev_left = Some(result.content_left);

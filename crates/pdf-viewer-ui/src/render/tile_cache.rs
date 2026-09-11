@@ -9,5 +9,5 @@
 pub use pdf_viewer_core::render::tile_cache::*;
 
 // New tile-based rendering system
-pub use pdf_viewer_core::render::tile_v2::*;
 pub use pdf_viewer_core::render::tile_manager::*;
+pub use pdf_viewer_core::render::tile_v2::*;

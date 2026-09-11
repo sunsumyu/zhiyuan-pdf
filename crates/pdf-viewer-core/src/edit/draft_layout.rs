@@ -3,12 +3,12 @@ use crate::models::{BoundingBox, LayoutParagraph, LayoutRun, ParagraphEditContex
 use crate::text::glyph_layout::is_decorative_text;
 use crate::typography::font_resolver::looks_like_symbolic_font;
 
+use crate::common::debug::truncate_debug_text;
 use crate::edit::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::edit::document_plan::EditorDocumentPlan;
 use crate::text::style_mapper::should_preserve_editor_underline;
-use crate::common::debug::truncate_debug_text;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -306,10 +306,7 @@ fn resolve_draft_template_run(document_plan: &EditorDocumentPlan) -> LayoutRun {
     )
 }
 
-fn resolve_template(
-    document_plan: &EditorDocumentPlan,
-    preserve_underline: bool,
-) -> LayoutRun {
+fn resolve_template(document_plan: &EditorDocumentPlan, preserve_underline: bool) -> LayoutRun {
     let mut run = if !document_plan.draft_template_run.id.is_empty()
         || !document_plan.draft_template_run.style.font_name.is_empty()
         || document_plan.draft_template_run.style.font_size > 0.0
@@ -496,11 +493,17 @@ struct TextDiff {
 
 impl TextDiff {
     /// Start of the inserted/edited segment in draft char space.
-    fn inserted_start(&self) -> usize { self.prefix_len }
+    fn inserted_start(&self) -> usize {
+        self.prefix_len
+    }
     /// End of the inserted/edited segment in draft char space.
-    fn inserted_end(&self) -> usize { self.draft_len.saturating_sub(self.suffix_len) }
+    fn inserted_end(&self) -> usize {
+        self.draft_len.saturating_sub(self.suffix_len)
+    }
     /// True if there is an edited middle segment.
-    fn has_inserted(&self) -> bool { self.inserted_start() < self.inserted_end() }
+    fn has_inserted(&self) -> bool {
+        self.inserted_start() < self.inserted_end()
+    }
 }
 
 /// Compute the common prefix and suffix lengths between source and draft.
@@ -529,7 +532,6 @@ fn compute_text_diff(source_text: &str, draft_text: &str) -> TextDiff {
         draft_len: draft_chars.len(),
     }
 }
-
 
 fn build_styles(
     document_plan: &EditorDocumentPlan,
@@ -605,7 +607,11 @@ fn build_styles(
             anchor_runs_index,
             preserve_underline,
         );
-        template.text = draft_text.chars().skip(inserted_start).take(inserted_end - inserted_start).collect();
+        template.text = draft_text
+            .chars()
+            .skip(inserted_start)
+            .take(inserted_end - inserted_start)
+            .collect();
         runs.push(normalize_style_run(&template, preserve_underline));
     }
 
@@ -628,8 +634,7 @@ fn build_styles(
     // 即"删除后字体显示有变化"分叉症状。该策略和 `edited_text_layout.rs` 整个模块已废弃。
 
     if runs.is_empty() {
-        let mut fallback =
-            resolve_template(document_plan, preserve_underline);
+        let mut fallback = resolve_template(document_plan, preserve_underline);
         fallback.text = draft_text.to_string();
         runs.push(normalize_style_run(&fallback, preserve_underline));
     }
@@ -706,11 +711,9 @@ fn build_draft_paragraph_with_policy(
     preserve_underline: bool,
 ) -> LayoutParagraph {
     let mut paragraph = document_plan.body_session.paragraph.clone();
-    let mut runs =
-        build_styles(document_plan, draft_text, preserve_underline);
+    let mut runs = build_styles(document_plan, draft_text, preserve_underline);
     if runs.is_empty() {
-        let mut template_run =
-            resolve_template(document_plan, preserve_underline);
+        let mut template_run = resolve_template(document_plan, preserve_underline);
         template_run.id = format!("editor-draft-{}", document_plan.body_session.paragraph.id);
         template_run.text = draft_text.to_string();
         runs.push(template_run);
@@ -915,28 +918,52 @@ where
     lines
 }
 
-fn rebuild_layout_pipeline<F>(paragraph: LayoutParagraph, document_plan: &EditorDocumentPlan, draft_text: &str, measure_width: &F) -> EditorDraftRenderPlan
-where F: Fn(&str, &LayoutRun) -> f32,
+fn rebuild_layout_pipeline<F>(
+    paragraph: LayoutParagraph,
+    document_plan: &EditorDocumentPlan,
+    draft_text: &str,
+    measure_width: &F,
+) -> EditorDraftRenderPlan
+where
+    F: Fn(&str, &LayoutRun) -> f32,
 {
     let mut layout = layout_paragraph(&paragraph, paragraph.wrap_width, measure_width);
     align_layout_baseline(&mut layout, source_baseline_y(document_plan));
     let mut caret_lines = build_editor_draft_caret_plan_from_layout(&layout, measure_width);
     remap_caret_indices_to_draft_space(&mut caret_lines, document_plan, draft_text);
-    EditorDraftRenderPlan { layout, caret_lines }
+    EditorDraftRenderPlan {
+        layout,
+        caret_lines,
+    }
 }
 
-fn trace_render_plan(action: &str, paragraph_id: &str, draft_text: &str, body_text: &str, plan: &EditorDraftRenderPlan) {
-    dbg_event("render-plan", action, vec![
-        dbg_field("paragraphId", paragraph_id),
-        dbg_field("draftText", draft_text),
-        dbg_field("bodyText", body_text),
-        dbg_field("lineSummary", summarize_render_plan_lines(plan)),
-        dbg_field("visualLineCount", plan.layout.lines.len()),
-        dbg_field("caretLineCount", plan.caret_lines.len()),
-        dbg_field("caretStopCount", plan.caret_lines.iter().map(|l| l.stops.len()).sum::<usize>()),
-    ]);
+fn trace_render_plan(
+    action: &str,
+    paragraph_id: &str,
+    draft_text: &str,
+    body_text: &str,
+    plan: &EditorDraftRenderPlan,
+) {
+    dbg_event(
+        "render-plan",
+        action,
+        vec![
+            dbg_field("paragraphId", paragraph_id),
+            dbg_field("draftText", draft_text),
+            dbg_field("bodyText", body_text),
+            dbg_field("lineSummary", summarize_render_plan_lines(plan)),
+            dbg_field("visualLineCount", plan.layout.lines.len()),
+            dbg_field("caretLineCount", plan.caret_lines.len()),
+            dbg_field(
+                "caretStopCount",
+                plan.caret_lines
+                    .iter()
+                    .map(|l| l.stops.len())
+                    .sum::<usize>(),
+            ),
+        ],
+    );
 }
-
 
 pub fn build_draft_render_plan<F>(
     document_plan: &EditorDocumentPlan,
@@ -1049,7 +1076,7 @@ where
 
     let paragraph =
         build_draft_paragraph_with_policy(document_plan, draft_text, &measure_width, false);
-        build_draft_paragraph_with_policy(document_plan, draft_text, &measure_width, false);
+    build_draft_paragraph_with_policy(document_plan, draft_text, &measure_width, false);
     let plan = rebuild_layout_pipeline(paragraph, document_plan, draft_text, &measure_width);
     trace_render_plan(
         "persisted-overlay-uniform-layout",

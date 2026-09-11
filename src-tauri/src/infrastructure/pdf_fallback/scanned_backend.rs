@@ -534,7 +534,9 @@ mod tests {
     fn bytes_may_contain_text_operators_requires_leading_separator() {
         // 令牌都带前缀分隔符:无空白前缀的算子串、过短输入、非文本内容均不匹配
         assert!(!ScannedReadBackend::bytes_may_contain_text_operators(b"BT"));
-        assert!(!ScannedReadBackend::bytes_may_contain_text_operators(b"BTTjTJTf"));
+        assert!(!ScannedReadBackend::bytes_may_contain_text_operators(
+            b"BTTjTJTf"
+        ));
         assert!(!ScannedReadBackend::bytes_may_contain_text_operators(b""));
         assert!(!ScannedReadBackend::bytes_may_contain_text_operators(
             b"q 100 0 0 100 0 0 cm /Im0 Do Q"

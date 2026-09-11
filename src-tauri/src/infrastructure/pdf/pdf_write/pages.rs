@@ -26,10 +26,7 @@ pub(super) fn rotate_page_impl(
     Ok(())
 }
 
-pub(super) fn insert_blank_page_impl(
-    _doc: &mut Document,
-    _at_index: u32,
-) -> Result<(), String> {
+pub(super) fn insert_blank_page_impl(_doc: &mut Document, _at_index: u32) -> Result<(), String> {
     Err("insert_blank_page not yet implemented".to_string())
 }
 

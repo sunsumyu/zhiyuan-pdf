@@ -16,9 +16,9 @@ pub enum ShouldRender {
 }
 
 /// Blur threshold constants.
-const BLUR_HIGH_THRESHOLD: f32 = 0.10;  // > 10% blur → render immediately
-const BLUR_LOW_THRESHOLD: f32 = 0.03;   // > 3% blur → render next frame
-// Settle drawing delay lives UI-side: SETTLE_DRAWING_DELAY_MS in raf_loop.rs.
+const BLUR_HIGH_THRESHOLD: f32 = 0.10; // > 10% blur → render immediately
+const BLUR_LOW_THRESHOLD: f32 = 0.03; // > 3% blur → render next frame
+                                      // Settle drawing delay lives UI-side: SETTLE_DRAWING_DELAY_MS in raf_loop.rs.
 
 // ─── Mid-animation re-render knock (ADR-0002) ───────────────────────────────
 //
@@ -84,17 +84,26 @@ pub fn should_render(
     let blur = (css_scale - 1.0).abs();
 
     if animation_settled {
-        return ShouldRender::Yes { render_zoom: target_zoom };
+        return ShouldRender::Yes {
+            render_zoom: target_zoom,
+        };
     }
 
     let predicted = predict_render_target(
-        visual_zoom, target_zoom, animation_velocity, estimated_render_ms,
+        visual_zoom,
+        target_zoom,
+        animation_velocity,
+        estimated_render_ms,
     );
 
     if blur > BLUR_HIGH_THRESHOLD {
-        ShouldRender::Yes { render_zoom: predicted }
+        ShouldRender::Yes {
+            render_zoom: predicted,
+        }
     } else if blur > BLUR_LOW_THRESHOLD {
-        ShouldRender::Soon { render_zoom: predicted }
+        ShouldRender::Soon {
+            render_zoom: predicted,
+        }
     } else {
         ShouldRender::Skip
     }

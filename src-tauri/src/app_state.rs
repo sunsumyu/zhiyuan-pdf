@@ -80,7 +80,6 @@ impl HistoryStore {
     }
 }
 
-
 /// Root application state — Tauri's `State<'_, AppState>` injection point.
 pub struct AppState {
     pub docs: DocumentStore,

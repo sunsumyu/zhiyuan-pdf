@@ -343,7 +343,9 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                                 let mapped_val = base_val + (code - start);
                                 let val = char::from_u32(mapped_val)
                                     .map(|c| c.to_string())
-                                    .unwrap_or_else(|| hex_to_string(&format!("{:04X}", mapped_val)));
+                                    .unwrap_or_else(|| {
+                                        hex_to_string(&format!("{:04X}", mapped_val))
+                                    });
                                 cmap.rev_mappings.insert(val.clone(), code);
                                 cmap.mappings.insert(code, val);
                             }

@@ -9,9 +9,9 @@
 
 use std::cell::RefCell;
 
-use crate::zoom::zoom_store::ZOOM_STATE;
-use super::raf_dom_cache::{with_dom_cache, init_dom_cache};
+use super::raf_dom_cache::{init_dom_cache, with_dom_cache};
 use super::raf_settle::{cancel_settle_cleanup, schedule_settle_cleanup};
+use crate::zoom::zoom_store::ZOOM_STATE;
 
 /// Committed frame from the render pipeline.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -67,8 +67,8 @@ pub fn apply_committed_frame(frame: CommittedFrame, _current_visual_zoom: f32) {
         let st = s.borrow();
         (st.visual_zoom - st.target_zoom).abs()
     });
-    let settled = gap < 0.0008;  // Matches advance_zoom_animation_state's settled threshold
-    let in_gesture = gap > 0.001;  // Matches GESTURE_THRESHOLD in raf_loop.rs
+    let settled = gap < 0.0008; // Matches advance_zoom_animation_state's settled threshold
+    let in_gesture = gap > 0.001; // Matches GESTURE_THRESHOLD in raf_loop.rs
 
     ZOOM_STATE.with(|state| {
         let mut s = state.borrow_mut();
@@ -78,7 +78,10 @@ pub fn apply_committed_frame(frame: CommittedFrame, _current_visual_zoom: f32) {
             display_zoom
         };
         let (ap, cur) = match s.pending_anchor.as_ref() {
-            Some(a) => ((a.anchor_page_x, a.anchor_page_y), (a.viewport_x, a.viewport_y)),
+            Some(a) => (
+                (a.anchor_page_x, a.anchor_page_y),
+                (a.viewport_x, a.viewport_y),
+            ),
             None => ((0.0, 0.0), (0.0, 0.0)),
         };
         // Only update visual_layout when settled — during gesture, on_wheel_event
@@ -101,7 +104,9 @@ pub fn apply_committed_frame(frame: CommittedFrame, _current_visual_zoom: f32) {
         };
 
         // Always set scroll position
-        let _ = dom.scroll_container.set_scroll_left(frame.scroll_left as i32);
+        let _ = dom
+            .scroll_container
+            .set_scroll_left(frame.scroll_left as i32);
         let _ = dom.scroll_container.set_scroll_top(frame.scroll_top as i32);
 
         // During an active wheel gesture, on_wheel_event already positioned

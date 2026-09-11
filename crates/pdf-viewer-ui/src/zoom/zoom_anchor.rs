@@ -4,11 +4,11 @@
 //! zoom can be centered on the user's focus point.
 
 use crate::present::plan_builder::AnchorViewportLayoutResult;
+use crate::zoom::zoom_store::ZOOM_STATE;
 use pdf_viewer_core::render::zoom::animation::{
     compute_anchor_scroll_result, compute_anchor_viewport_layout_result, AnchorScrollRequest,
     AnchorScrollResult,
 };
-use crate::zoom::zoom_store::ZOOM_STATE;
 
 pub fn take_pending_anchor_scroll(
     display_width: f32,

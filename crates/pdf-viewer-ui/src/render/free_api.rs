@@ -20,7 +20,6 @@ use crate::present::present_store::{
     touch_frame_cache_entry as inner_touch_frame_cache_entry,
 };
 use crate::render::commit::commit_render_result as inner_commit_render_result;
-use pdf_viewer_core::render::progressive::resolve_progressive_render_policy_request;
 use crate::render::host_runtime::{
     advance_render_loop_frame as inner_advance_render_loop_frame,
     queue_render_loop_frame as inner_queue_render_loop_frame,
@@ -30,9 +29,6 @@ use crate::render::layer::{
     resolve_layer_present_decision as inner_resolve_layer_present_decision,
     resolve_render_execution_plan as inner_resolve_render_execution_plan,
 };
-use pdf_viewer_core::render::zoom_host::resolve_render_follow_up_decision;
-use crate::viewer::viewer_controller::set_zoom;
-use crate::zoom::zoom_controller::read_zoom_state;
 use crate::render::progressive_workflow::{
     cancel_progressive_render as inner_cancel_progressive_render, render_page as inner_render_page,
     render_page_offscreen as inner_render_page_offscreen,
@@ -41,13 +37,16 @@ use crate::render::progressive_workflow::{
     step_progressive_render_offscreen as inner_step_progressive_render_offscreen,
 };
 use crate::render::workflow::RenderFrameEnvelope;
+use crate::viewer::viewer_controller::set_zoom;
+use crate::zoom::zoom_controller::read_zoom_state;
 use crate::zoom::zoom_controller::step_zoom_frame_plan as inner_step_zoom_frame_plan;
+use pdf_viewer_core::render::progressive::resolve_progressive_render_policy_request;
+use pdf_viewer_core::render::zoom_host::resolve_render_follow_up_decision;
 use pdf_viewer_core::render::zoom_host::{
-    resolve_fit_to_width as resolve_fit_to_width_inner,
-    resolve_layout_fallback as resolve_layout_fallback_inner,
     is_immediate_mutation_frame as is_immediate_mutation_frame_inner,
-    LayoutFallbackRequest,
-    MIN_ZOOM, MAX_ZOOM,
+    resolve_fit_to_width as resolve_fit_to_width_inner,
+    resolve_layout_fallback as resolve_layout_fallback_inner, LayoutFallbackRequest, MAX_ZOOM,
+    MIN_ZOOM,
 };
 
 // ─── Frame plan ─────────────────────────────────────────────────────────────

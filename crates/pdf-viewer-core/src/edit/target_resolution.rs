@@ -127,7 +127,12 @@ mod tests {
 
     // ─── resolve_region_text_target ──────────────────────────────────────
 
-    fn test_target(paragraph_id: &str, region_id: &str, page_index: u16, text: &str) -> ParagraphInteractionTarget {
+    fn test_target(
+        paragraph_id: &str,
+        region_id: &str,
+        page_index: u16,
+        text: &str,
+    ) -> ParagraphInteractionTarget {
         ParagraphInteractionTarget {
             paragraph_id: paragraph_id.to_string(),
             region_id: region_id.to_string(),
@@ -157,9 +162,7 @@ mod tests {
 
     #[test]
     fn resolve_region_text_target_whitespace_insensitive() {
-        let targets = vec![
-            test_target("p-1", "r-1", 0, "hello world"),
-        ];
+        let targets = vec![test_target("p-1", "r-1", 0, "hello world")];
         // Should match even with different whitespace
         let result = resolve_region_text_target(&targets, 0, "r-1", "helloworld");
         assert!(result.is_some());

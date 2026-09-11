@@ -1,12 +1,14 @@
 //! Animation frame stepping and committed frame queue management.
 
+use super::zoom_authority::read_zoom_state;
 use crate::editor::session::render_scene_key;
 use crate::present::plan_builder::{build_frame_plan_result, FramePlanRequest};
 use crate::present::present_store;
-use pdf_viewer_core::render::zoom::animation::{advance_zoom_animation_state, build_zoom_preview_frame, ZoomPreviewFrame};
-use crate::zoom::zoom_store::{PendingCommittedFrame, ZOOM_STATE};
 use crate::viewer::viewer_store;
-use super::zoom_authority::read_zoom_state;
+use crate::zoom::zoom_store::{PendingCommittedFrame, ZOOM_STATE};
+use pdf_viewer_core::render::zoom::animation::{
+    advance_zoom_animation_state, build_zoom_preview_frame, ZoomPreviewFrame,
+};
 
 pub fn step_zoom_animation() -> crate::zoom::zoom_store::ZoomAnimationStep {
     ZOOM_STATE.with(|state| {
@@ -45,5 +47,11 @@ pub fn take_ready_committed_frame() -> Option<PendingCommittedFrame> {
     if (zoom_state.target_zoom - zoom_state.visual_zoom).abs() >= 0.001 {
         return None;
     }
-    ZOOM_STATE.with(|state| state.borrow_mut().preview_host.pending_committed_frame.take())
+    ZOOM_STATE.with(|state| {
+        state
+            .borrow_mut()
+            .preview_host
+            .pending_committed_frame
+            .take()
+    })
 }

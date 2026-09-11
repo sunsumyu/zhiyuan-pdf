@@ -81,7 +81,7 @@ impl RenderQuality {
     /// Get budget in milliseconds per frame
     pub fn budget_ms(&self) -> f64 {
         match self {
-            Self::Low => 2.0,   // Very fast
+            Self::Low => 2.0,    // Very fast
             Self::Medium => 4.0, // Balanced
             Self::High => 8.0,   // Thorough
         }

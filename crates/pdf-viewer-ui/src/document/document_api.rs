@@ -145,13 +145,8 @@ impl DocumentSession {
         original_text: String,
         new_text: String,
     ) -> JsValue {
-        let patch = build_region_text_patch(
-            page_index,
-            &region_id,
-            &kind,
-            &original_text,
-            new_text,
-        );
+        let patch =
+            build_region_text_patch(page_index, &region_id, &kind, &original_text, new_text);
         to_value(&patch).unwrap_or(JsValue::NULL)
     }
 

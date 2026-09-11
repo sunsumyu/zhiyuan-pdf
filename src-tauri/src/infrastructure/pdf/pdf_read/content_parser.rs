@@ -1,8 +1,12 @@
-use crate::infrastructure::pdf::models::{NativePathModel, NativeImageModel, PathSegment, RenderObject, StyledRun};
-use crate::infrastructure::pdf::font::{resolve_glyph_geom, ResourceCache, ParsedFont};
 use crate::infrastructure::pdf::font::path::simplify_path_segments;
+use crate::infrastructure::pdf::font::{resolve_glyph_geom, ParsedFont, ResourceCache};
+use crate::infrastructure::pdf::models::{
+    NativeImageModel, NativePathModel, PathSegment, RenderObject, StyledRun,
+};
 use crate::infrastructure::pdf::pdf_read::graphics_state::GraphicsState;
-use crate::infrastructure::pdf::pdf_read::resource_reader::{read_resources, FlatResources, find_xobject_by_name};
+use crate::infrastructure::pdf::pdf_read::resource_reader::{
+    find_xobject_by_name, read_resources, FlatResources,
+};
 use crate::infrastructure::pdf::pdf_read::utils::operands_to_f32;
 use lopdf::{content::Content, Document, Object};
 use std::sync::Arc;
@@ -58,21 +62,24 @@ pub fn parse_content_stream(
             "g" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if let Some(&gray) = p.first() {
-                        state.fill_color = Some(crate::infrastructure::pdf::color::gray_to_hex(gray));
+                        state.fill_color =
+                            Some(crate::infrastructure::pdf::color::gray_to_hex(gray));
                     }
                 }
             }
             "G" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if let Some(&gray) = p.first() {
-                        state.stroke_color = Some(crate::infrastructure::pdf::color::gray_to_hex(gray));
+                        state.stroke_color =
+                            Some(crate::infrastructure::pdf::color::gray_to_hex(gray));
                     }
                 }
             }
             "k" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 4 {
-                        let (r, g, b) = crate::infrastructure::pdf::color::cmyk_to_rgb(p[0], p[1], p[2], p[3]);
+                        let (r, g, b) =
+                            crate::infrastructure::pdf::color::cmyk_to_rgb(p[0], p[1], p[2], p[3]);
                         state.fill_color = Some(format!("#{:02x}{:02x}{:02x}", r, g, b));
                     }
                 }
@@ -80,7 +87,8 @@ pub fn parse_content_stream(
             "K" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() >= 4 {
-                        let (r, g, b) = crate::infrastructure::pdf::color::cmyk_to_rgb(p[0], p[1], p[2], p[3]);
+                        let (r, g, b) =
+                            crate::infrastructure::pdf::color::cmyk_to_rgb(p[0], p[1], p[2], p[3]);
                         state.stroke_color = Some(format!("#{:02x}{:02x}{:02x}", r, g, b));
                     }
                 }
@@ -88,7 +96,8 @@ pub fn parse_content_stream(
             "rg" | "sc" | "scn" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() == 1 {
-                        state.fill_color = Some(crate::infrastructure::pdf::color::gray_to_hex(p[0]));
+                        state.fill_color =
+                            Some(crate::infrastructure::pdf::color::gray_to_hex(p[0]));
                     } else if p.len() >= 3 {
                         let (r, g, b) = if p.len() >= 4 {
                             crate::infrastructure::pdf::color::cmyk_to_rgb(p[0], p[1], p[2], p[3])
@@ -106,7 +115,8 @@ pub fn parse_content_stream(
             "RG" | "SC" | "SCN" => {
                 if let Ok(p) = operands_to_f32(&op.operands) {
                     if p.len() == 1 {
-                        state.stroke_color = Some(crate::infrastructure::pdf::color::gray_to_hex(p[0]));
+                        state.stroke_color =
+                            Some(crate::infrastructure::pdf::color::gray_to_hex(p[0]));
                     } else if p.len() >= 3 {
                         let (r, g, b) = if p.len() >= 4 {
                             crate::infrastructure::pdf::color::cmyk_to_rgb(p[0], p[1], p[2], p[3])
@@ -376,8 +386,10 @@ pub fn parse_content_stream(
                         op_str.to_lowercase().contains('s') || op_str.to_lowercase().contains('b');
 
                     // Apply alpha into the color hex (CSS supports 8-digit #rrggbbaa).
-                    let final_fill_color = apply_alpha_to_color(&state.fill_color, state.fill_alpha);
-                    let final_stroke_color = apply_alpha_to_color(&state.stroke_color, state.stroke_alpha);
+                    let final_fill_color =
+                        apply_alpha_to_color(&state.fill_color, state.fill_alpha);
+                    let final_stroke_color =
+                        apply_alpha_to_color(&state.stroke_color, state.stroke_alpha);
 
                     let bbox @ (min_x, min_y, max_x, max_y) =
                         compute_segments_bbox(&current_segments).unwrap_or((0.0, 0.0, 0.0, 0.0));
@@ -413,169 +425,175 @@ pub fn parse_content_stream(
                     if let Some(id) = find_xobject_by_name(doc, flat_resources, name) {
                         crate::pdf_log!(3, "[PDF-DIAG][Do] found XObject id={:?}", id);
                         if let Ok(stream) = doc.get_object(id).and_then(|o| o.as_stream()) {
-                                let subtype = stream
+                            let subtype = stream
+                                .dict
+                                .get(b"Subtype")
+                                .ok()
+                                .and_then(|o| o.as_name().ok());
+                            crate::pdf_log!(
+                                3,
+                                "[PDF-DIAG][Do] subtype={:?} keys={:?}",
+                                subtype.map(|s| String::from_utf8_lossy(s).into_owned()),
+                                stream
                                     .dict
-                                    .get(b"Subtype")
-                                    .ok()
-                                    .and_then(|o| o.as_name().ok());
-                                crate::pdf_log!(
-                                    3,
-                                    "[PDF-DIAG][Do] subtype={:?} keys={:?}",
-                                    subtype.map(|s| String::from_utf8_lossy(s).into_owned()),
-                                    stream
-                                        .dict
-                                        .iter()
-                                        .map(|(k, _)| String::from_utf8_lossy(k).to_string())
-                                        .collect::<Vec<_>>()
-                                );
-                                if subtype == Some(b"Form") {
-                                    if let Ok(data) = stream.decompressed_content() {
-                                        crate::pdf_log!(
-                                            3,
-                                            "[PDF-DIAG][Do] Form content bytes={} name={:?}",
-                                            data.len(),
-                                            String::from_utf8_lossy(name)
-                                        );
-                                        if let Ok(sub) = Content::decode(&data) {
-                                            let sub_res = read_resources(doc, id);
-                                            let mut sub_state = state.clone();
-                                            if let Ok(m_obj) = stream.dict.get(b"Matrix") {
-                                                if let Ok(m_arr) = m_obj.as_array() {
-                                                    if let Ok(m) = operands_to_f32(m_arr) {
-                                                        if m.len() == 6 {
-                                                            sub_state.text.op_cm([
-                                                                m[0], m[1], m[2], m[3], m[4],
-                                                                m[5],
-                                                            ]);
-                                                        }
+                                    .iter()
+                                    .map(|(k, _)| String::from_utf8_lossy(k).to_string())
+                                    .collect::<Vec<_>>()
+                            );
+                            if subtype == Some(b"Form") {
+                                if let Ok(data) = stream.decompressed_content() {
+                                    crate::pdf_log!(
+                                        3,
+                                        "[PDF-DIAG][Do] Form content bytes={} name={:?}",
+                                        data.len(),
+                                        String::from_utf8_lossy(name)
+                                    );
+                                    if let Ok(sub) = Content::decode(&data) {
+                                        let sub_res = read_resources(doc, id);
+                                        let mut sub_state = state.clone();
+                                        if let Ok(m_obj) = stream.dict.get(b"Matrix") {
+                                            if let Ok(m_arr) = m_obj.as_array() {
+                                                if let Ok(m) = operands_to_f32(m_arr) {
+                                                    if m.len() == 6 {
+                                                        sub_state.text.op_cm([
+                                                            m[0], m[1], m[2], m[3], m[4], m[5],
+                                                        ]);
                                                     }
                                                 }
                                             }
-                                            parse_content_stream(
-                                                doc,
-                                                &sub,
-                                                &sub_res,
-                                                res_cache,
-                                                sub_state,
-                                                objects,
-                                                text_runs,
-                                                obj_counter,
-                                            )?;
                                         }
+                                        parse_content_stream(
+                                            doc,
+                                            &sub,
+                                            &sub_res,
+                                            res_cache,
+                                            sub_state,
+                                            objects,
+                                            text_runs,
+                                            obj_counter,
+                                        )?;
                                     }
-                                } else if subtype == Some(b"Image") {
-                                    *obj_counter += 1;
-                                    let img_w = stream
-                                        .dict
-                                        .get(b"Width")
-                                        .and_then(|o| o.as_i64())
-                                        .unwrap_or(0);
-                                    let img_h = stream
-                                        .dict
-                                        .get(b"Height")
-                                        .and_then(|o| o.as_i64())
-                                        .unwrap_or(0);
-                                    crate::pdf_log!(3, "[PDF-DIAG][Do-Image] name={:?} width={} height={} filters={:?}", String::from_utf8_lossy(name), img_w, img_h, stream.dict.get(b"Filter").ok());
-                                    if img_w > 0 && img_h > 0 {
-                                        let filter_name =
-                                            stream.dict.get(b"Filter").ok().and_then(|o| {
-                                                o.as_name().ok().map(|n| n.to_vec()).or_else(|| {
-                                                    o.as_array()
-                                                        .ok()?
-                                                        .first()?
-                                                        .as_name()
-                                                        .ok()
-                                                        .map(|n| n.to_vec())
-                                                })
-                                            });
-                                        let is_jpeg = filter_name.as_deref() == Some(b"DCTDecode");
-                                        let img_data: Option<Arc<[u8]>> = if is_jpeg {
-                                            crate::pdf_log!(
-                                                3,
-                                                "[PDF-DIAG][Do-Image] JPEG content_len={}",
-                                                stream.content.len()
-                                            );
-                                            Some(Arc::from(stream.content.as_slice()))
-                                        } else {
-                                            crate::pdf_log!(3, "[PDF-DIAG][Do-Image] Non-JPEG, attempting JPEG encode filter={:?}", filter_name.as_deref().map(|s| String::from_utf8_lossy(s).into_owned()));
-                                            // Non-JPEG: decompress raw samples and encode as JPEG
-                                            crate::infrastructure::pdf::pdf_read::image_builder::build_image_as_jpeg(
+                                }
+                            } else if subtype == Some(b"Image") {
+                                *obj_counter += 1;
+                                let img_w = stream
+                                    .dict
+                                    .get(b"Width")
+                                    .and_then(|o| o.as_i64())
+                                    .unwrap_or(0);
+                                let img_h = stream
+                                    .dict
+                                    .get(b"Height")
+                                    .and_then(|o| o.as_i64())
+                                    .unwrap_or(0);
+                                crate::pdf_log!(3, "[PDF-DIAG][Do-Image] name={:?} width={} height={} filters={:?}", String::from_utf8_lossy(name), img_w, img_h, stream.dict.get(b"Filter").ok());
+                                if img_w > 0 && img_h > 0 {
+                                    let filter_name =
+                                        stream.dict.get(b"Filter").ok().and_then(|o| {
+                                            o.as_name().ok().map(|n| n.to_vec()).or_else(|| {
+                                                o.as_array()
+                                                    .ok()?
+                                                    .first()?
+                                                    .as_name()
+                                                    .ok()
+                                                    .map(|n| n.to_vec())
+                                            })
+                                        });
+                                    let is_jpeg = filter_name.as_deref() == Some(b"DCTDecode");
+                                    let img_data: Option<Arc<[u8]>> = if is_jpeg {
+                                        crate::pdf_log!(
+                                            3,
+                                            "[PDF-DIAG][Do-Image] JPEG content_len={}",
+                                            stream.content.len()
+                                        );
+                                        Some(Arc::from(stream.content.as_slice()))
+                                    } else {
+                                        crate::pdf_log!(3, "[PDF-DIAG][Do-Image] Non-JPEG, attempting JPEG encode filter={:?}", filter_name.as_deref().map(|s| String::from_utf8_lossy(s).into_owned()));
+                                        // Non-JPEG: decompress raw samples and encode as JPEG
+                                        crate::infrastructure::pdf::pdf_read::image_builder::build_image_as_jpeg(
                                                 doc,
                                                 stream,
                                                 img_w as u32,
                                                 img_h as u32,
                                             )
-                                        };
-                                        if let Some(data) = img_data {
-                                            if !data.is_empty() {
-                                                let asset_id = ::uuid::Uuid::new_v4().to_string();
-                                                {
-                                                    let mut cache = crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE.lock().unwrap();
-                                                    cache.insert(asset_id.clone(), data);
-                                                }
-                                                let ctm = state.text.ctm();
-                                                crate::pdf_log!(
+                                    };
+                                    if let Some(data) = img_data {
+                                        if !data.is_empty() {
+                                            let asset_id = ::uuid::Uuid::new_v4().to_string();
+                                            {
+                                                let mut cache = crate::infrastructure::pdf::cache::PDF_IMAGE_CACHE.lock().unwrap();
+                                                cache.insert(asset_id.clone(), data);
+                                            }
+                                            let ctm = state.text.ctm();
+                                            crate::pdf_log!(
                                                     3,
                                                     "[PDF-IMG] Do image id={} {}x{} ctm=[{:.1},{:.1},{:.1},{:.1},{:.1},{:.1}] jpeg={}",
                                                     asset_id, img_w, img_h, ctm[0], ctm[1], ctm[2], ctm[3], ctm[4], ctm[5], is_jpeg
                                                 );
-                                                let corners = [
-                                                    state.text.transform_point(0.0, 0.0),
-                                                    state.text.transform_point(1.0, 0.0),
-                                                    state.text.transform_point(0.0, 1.0),
-                                                    state.text.transform_point(1.0, 1.0),
-                                                ];
-                                                let min_x = corners
-                                                    .iter()
-                                                    .map(|p| p[0])
-                                                    .fold(f32::INFINITY, f32::min);
-                                                let max_x = corners
-                                                    .iter()
-                                                    .map(|p| p[0])
-                                                    .fold(f32::NEG_INFINITY, f32::max);
-                                                let min_y = corners
-                                                    .iter()
-                                                    .map(|p| p[1])
-                                                    .fold(f32::INFINITY, f32::min);
-                                                let max_y = corners
-                                                    .iter()
-                                                    .map(|p| p[1])
-                                                    .fold(f32::NEG_INFINITY, f32::max);
-                                                objects.push(RenderObject::Image(NativeImageModel {
-                                                    data_url: format!("http://pdfasset.localhost/{}", asset_id),
-                                                    id: asset_id,
-                                                    x: min_x,
-                                                    y: min_y,
-                                                    width: (max_x - min_x).abs(),
-                                                    height: (max_y - min_y).abs(),
-                                                    a: ctm[0],
-                                                    b: ctm[1],
-                                                    c: ctm[2],
-                                                    d: ctm[3],
-                                                    e: ctm[4],
-                                                    f: ctm[5],
-                                                    z_index: *obj_counter,
-                                                    extraction_method: if is_jpeg {
-                                                        "JPEG".into()
-                                                    } else {
-                                                        "PNG".into()
-                                                    },
-                                                }));
-                                            } else {
-                                                crate::pdf_log!(3, "[PDF-DIAG][Do-Image] image data empty name={:?}", String::from_utf8_lossy(name));
-                                            }
+                                            let corners = [
+                                                state.text.transform_point(0.0, 0.0),
+                                                state.text.transform_point(1.0, 0.0),
+                                                state.text.transform_point(0.0, 1.0),
+                                                state.text.transform_point(1.0, 1.0),
+                                            ];
+                                            let min_x = corners
+                                                .iter()
+                                                .map(|p| p[0])
+                                                .fold(f32::INFINITY, f32::min);
+                                            let max_x = corners
+                                                .iter()
+                                                .map(|p| p[0])
+                                                .fold(f32::NEG_INFINITY, f32::max);
+                                            let min_y = corners
+                                                .iter()
+                                                .map(|p| p[1])
+                                                .fold(f32::INFINITY, f32::min);
+                                            let max_y = corners
+                                                .iter()
+                                                .map(|p| p[1])
+                                                .fold(f32::NEG_INFINITY, f32::max);
+                                            objects.push(RenderObject::Image(NativeImageModel {
+                                                data_url: format!(
+                                                    "http://pdfasset.localhost/{}",
+                                                    asset_id
+                                                ),
+                                                id: asset_id,
+                                                x: min_x,
+                                                y: min_y,
+                                                width: (max_x - min_x).abs(),
+                                                height: (max_y - min_y).abs(),
+                                                a: ctm[0],
+                                                b: ctm[1],
+                                                c: ctm[2],
+                                                d: ctm[3],
+                                                e: ctm[4],
+                                                f: ctm[5],
+                                                z_index: *obj_counter,
+                                                extraction_method: if is_jpeg {
+                                                    "JPEG".into()
+                                                } else {
+                                                    "PNG".into()
+                                                },
+                                            }));
                                         } else {
-                                            crate::pdf_log!(3, "[PDF-DIAG][Do-Image] failed to extract image data name={:?}", String::from_utf8_lossy(name));
+                                            crate::pdf_log!(
+                                                3,
+                                                "[PDF-DIAG][Do-Image] image data empty name={:?}",
+                                                String::from_utf8_lossy(name)
+                                            );
                                         }
                                     } else {
-                                        crate::pdf_log!(3, "[PDF-DIAG][Do-Image] invalid dimensions name={:?} w={} h={}", String::from_utf8_lossy(name), img_w, img_h);
+                                        crate::pdf_log!(3, "[PDF-DIAG][Do-Image] failed to extract image data name={:?}", String::from_utf8_lossy(name));
                                     }
                                 } else {
-                                    crate::pdf_log!(
-                                        3,
-                                        "[PDF-DIAG][Do] Unsupported subtype={:?}",
-                                        subtype.map(|s| String::from_utf8_lossy(s).into_owned())
-                                    );
+                                    crate::pdf_log!(3, "[PDF-DIAG][Do-Image] invalid dimensions name={:?} w={} h={}", String::from_utf8_lossy(name), img_w, img_h);
+                                }
+                            } else {
+                                crate::pdf_log!(
+                                    3,
+                                    "[PDF-DIAG][Do] Unsupported subtype={:?}",
+                                    subtype.map(|s| String::from_utf8_lossy(s).into_owned())
+                                );
                             }
                         } else {
                             crate::pdf_log!(
@@ -618,13 +636,25 @@ fn compute_segments_bbox(segments: &[PathSegment]) -> Option<(f32, f32, f32, f32
     let mut max_y = f32::NEG_INFINITY;
     for seg in segments {
         for pt in &seg.points {
-            if pt[0] < min_x { min_x = pt[0]; }
-            if pt[0] > max_x { max_x = pt[0]; }
-            if pt[1] < min_y { min_y = pt[1]; }
-            if pt[1] > max_y { max_y = pt[1]; }
+            if pt[0] < min_x {
+                min_x = pt[0];
+            }
+            if pt[0] > max_x {
+                max_x = pt[0];
+            }
+            if pt[1] < min_y {
+                min_y = pt[1];
+            }
+            if pt[1] > max_y {
+                max_y = pt[1];
+            }
         }
     }
-    if min_x.is_infinite() { None } else { Some((min_x, min_y, max_x, max_y)) }
+    if min_x.is_infinite() {
+        None
+    } else {
+        Some((min_x, min_y, max_x, max_y))
+    }
 }
 
 /// Resolve a TJ array (mixed strings and kerning adjustments) into unified text geometry.
@@ -660,6 +690,3 @@ fn resolve_tj_array_text(
     }
     (combined, all_origins, all_widths, all_codes, offset)
 }
-
-
-

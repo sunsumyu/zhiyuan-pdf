@@ -12,8 +12,7 @@ use std::sync::{Arc, Mutex};
 
 lazy_static! {
     static ref WORKING_COPIES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
-    static ref COPY_LOCKS: Mutex<HashMap<String, Arc<Mutex<()>>>> =
-        Mutex::new(HashMap::new());
+    static ref COPY_LOCKS: Mutex<HashMap<String, Arc<Mutex<()>>>> = Mutex::new(HashMap::new());
 }
 
 /// Resolve the working copy path for a given original path.

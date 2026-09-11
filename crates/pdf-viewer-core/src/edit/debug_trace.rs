@@ -46,7 +46,10 @@ pub fn record_editor_debug_event(node: &str, action: &str, details: Vec<EditorDe
         crate::common::trace::TraceLevel::Debug,
         node.to_string(),
         action.to_string(),
-        details.iter().map(|f| crate::common::trace::field(f.key.clone(), f.value.clone())).collect(),
+        details
+            .iter()
+            .map(|f| crate::common::trace::field(f.key.clone(), f.value.clone()))
+            .collect(),
     );
 
     // Local ring buffer (retained for backward compatibility — consumed by dump_editor_debug_trace).

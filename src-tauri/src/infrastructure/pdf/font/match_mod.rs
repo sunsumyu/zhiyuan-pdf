@@ -1,6 +1,7 @@
 use super::parse::ParsedFont;
 use super::SystemFont;
 use crate::infrastructure::pdf::models::NativeTextModel;
+use fontdb::{Database, Family, Query, Source, Stretch, Style, Weight};
 use pdf_viewer_core::models::FontHints;
 use pdf_viewer_core::typography::engine::TypographyEngine;
 use pdf_viewer_core::typography::matcher::{
@@ -12,7 +13,6 @@ use pdf_viewer_core::typography::models::{
 };
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use fontdb::{Database, Family, Query, Source, Stretch, Style, Weight};
 
 // ── PdfSystemFontMatcher (from matching.rs) ──
 
@@ -161,7 +161,8 @@ impl PdfSystemFontMatcher {
                 crate::pdf_log!(
                     2,
                     "[PDF-FONT-MATCH-TOP] request='{}' top_candidates=[{}]",
-                    pdf_font_name, ranked
+                    pdf_font_name,
+                    ranked
                 );
             }
         }
@@ -519,9 +520,18 @@ mod finder_tests {
 
     #[test]
     fn name_variants_expand_separators() {
-        assert_eq!(name_variants("ABCDEF+MS_YaHei"), vec!["MS_YaHei", "MS YaHei"]);
-        assert_eq!(name_variants("ABCDEF+MS-YaHei"), vec!["MS-YaHei", "MS YaHei"]);
-        assert_eq!(name_variants("ABCDEF+MS YaHei"), vec!["MS YaHei", "MSYaHei"]);
+        assert_eq!(
+            name_variants("ABCDEF+MS_YaHei"),
+            vec!["MS_YaHei", "MS YaHei"]
+        );
+        assert_eq!(
+            name_variants("ABCDEF+MS-YaHei"),
+            vec!["MS-YaHei", "MS YaHei"]
+        );
+        assert_eq!(
+            name_variants("ABCDEF+MS YaHei"),
+            vec!["MS YaHei", "MSYaHei"]
+        );
     }
 
     #[test]

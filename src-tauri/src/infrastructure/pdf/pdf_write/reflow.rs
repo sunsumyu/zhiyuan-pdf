@@ -130,7 +130,10 @@ pub(crate) fn compute_micro_fit(
 }
 
 /// Create a muted (no-op) copy of a show-operator by emptying its text operand.
-pub(crate) fn mute_show_op(op: &lopdf::content::Operation, op_str: &str) -> lopdf::content::Operation {
+pub(crate) fn mute_show_op(
+    op: &lopdf::content::Operation,
+    op_str: &str,
+) -> lopdf::content::Operation {
     let mut muted = op.clone();
     match op_str {
         "Tj" | "'" => muted.operands[0] = Object::String(vec![], StringFormat::Literal),
@@ -150,11 +153,16 @@ pub(crate) fn apply_text_state_op(
     state_stack: &mut Vec<PdfTextState>,
 ) -> bool {
     match op_str {
-        "BT" => { state.text.op_bt(); true }
+        "BT" => {
+            state.text.op_bt();
+            true
+        }
         "ET" => true,
         "Tc" | "Tw" | "Tz" | "Tr" | "TL" => {
             if let Some(f) = op.operands.get(0).and_then(|o| {
-                o.as_float().ok().or_else(|| o.as_i64().ok().map(|i| i as f32))
+                o.as_float()
+                    .ok()
+                    .or_else(|| o.as_i64().ok().map(|i| i as f32))
             }) {
                 match op_str {
                     "Tc" => state.text.char_spacing = f,
@@ -191,8 +199,14 @@ pub(crate) fn apply_text_state_op(
             }
             true
         }
-        "T*" => { state.text.op_t_star(); true }
-        "q" => { state_stack.push(state.clone()); true }
+        "T*" => {
+            state.text.op_t_star();
+            true
+        }
+        "q" => {
+            state_stack.push(state.clone());
+            true
+        }
         "Q" => {
             if let Some(s) = state_stack.pop() {
                 *state = s;
@@ -213,7 +227,9 @@ pub(crate) fn apply_text_state_op(
 
 // ── Visual line helpers ─────────────────────────────────────────
 
-pub(crate) fn resolve_line_color(line: &pdf_viewer_core::geometry::layout_engine::VisualLine) -> String {
+pub(crate) fn resolve_line_color(
+    line: &pdf_viewer_core::geometry::layout_engine::VisualLine,
+) -> String {
     line.runs
         .iter()
         .find(|r| !r.text.is_empty())
@@ -222,7 +238,9 @@ pub(crate) fn resolve_line_color(line: &pdf_viewer_core::geometry::layout_engine
         .unwrap_or_else(|| "#000000".to_string())
 }
 
-pub(crate) fn resolve_line_underline(line: &pdf_viewer_core::geometry::layout_engine::VisualLine) -> bool {
+pub(crate) fn resolve_line_underline(
+    line: &pdf_viewer_core::geometry::layout_engine::VisualLine,
+) -> bool {
     line.runs.iter().any(|r| r.style.is_underline)
 }
 
@@ -433,7 +451,9 @@ pub(crate) fn patch_atomic_reflow_recursive(
                 if injected.insert(target_idx) {
                     for patch in &cluster.patches {
                         let font_info = resolve_text_write_font(
-                            doc, page_id, &state.font_alias,
+                            doc,
+                            page_id,
+                            &state.font_alias,
                             current_font.as_ref().map(|f: &Arc<ParsedFont>| f.as_ref()),
                             &patch.new_text,
                         )?;
@@ -441,19 +461,34 @@ pub(crate) fn patch_atomic_reflow_recursive(
                         let target_wrap = patch.wrap_width.unwrap_or(0.0);
 
                         let initial_layout = break_text_into_lines(
-                            &patch.new_text, patch.new_runs.as_ref(), &active_font,
-                            state.text.font_size, target_wrap, patch.alignment,
-                            patch.line_height, patch.char_spacing, patch.horizontal_scaling,
+                            &patch.new_text,
+                            patch.new_runs.as_ref(),
+                            &active_font,
+                            state.text.font_size,
+                            target_wrap,
+                            patch.alignment,
+                            patch.line_height,
+                            patch.char_spacing,
+                            patch.horizontal_scaling,
                         );
                         let (effective_h_scaling, effective_char_spacing) = compute_micro_fit(
-                            &initial_layout, target_wrap, &patch.new_text,
-                            patch.horizontal_scaling, patch.char_spacing,
+                            &initial_layout,
+                            target_wrap,
+                            &patch.new_text,
+                            patch.horizontal_scaling,
+                            patch.char_spacing,
                         );
 
                         let layout = break_text_into_lines(
-                            &patch.new_text, patch.new_runs.as_ref(), &active_font,
-                            state.text.font_size, target_wrap, patch.alignment,
-                            patch.line_height, effective_char_spacing, effective_h_scaling,
+                            &patch.new_text,
+                            patch.new_runs.as_ref(),
+                            &active_font,
+                            state.text.font_size,
+                            target_wrap,
+                            patch.alignment,
+                            patch.line_height,
+                            effective_char_spacing,
+                            effective_h_scaling,
                         );
 
                         let trm = state.text.text_render_matrix();
@@ -461,8 +496,13 @@ pub(crate) fn patch_atomic_reflow_recursive(
                             (trm[0].powi(2) + trm[1].powi(2)).sqrt(),
                             (trm[2].powi(2) + trm[3].powi(2)).sqrt(),
                         );
-                        let (ax, ay) = (trm[4], PdfCoordinateSpace::normalize_y(trm[5], page_height));
-                        let first_base = layout.lines.first().map(|l| l.baseline_y).unwrap_or(state.text.font_size);
+                        let (ax, ay) =
+                            (trm[4], PdfCoordinateSpace::normalize_y(trm[5], page_height));
+                        let first_base = layout
+                            .lines
+                            .first()
+                            .map(|l| l.baseline_y)
+                            .unwrap_or(state.text.font_size);
 
                         for (idx, line) in layout.lines.iter().enumerate() {
                             let ly = ay + patch.displacement_y.unwrap_or(0.0)
@@ -472,14 +512,17 @@ pub(crate) fn patch_atomic_reflow_recursive(
                                 font_alias: font_info.font_alias.clone(),
                                 font_size: state.text.font_size * psy,
                                 encoded_bytes: font_info.encode_text(&line.text)?,
-                                tx: lx, ty: ly,
+                                tx: lx,
+                                ty: ly,
                                 width: line.width * psx,
                                 color: resolve_line_color(line),
                                 is_underline: resolve_line_underline(line),
                                 horizontal_scaling: effective_h_scaling
-                                    * state.text.horizontal_scaling / 100.0,
+                                    * state.text.horizontal_scaling
+                                    / 100.0,
                                 render_mode: state.text.render_mode,
-                                patch_idx: target_idx, line_seq: idx,
+                                patch_idx: target_idx,
+                                line_seq: idx,
                             });
                         }
                         modified = true;
@@ -499,7 +542,8 @@ pub(crate) fn patch_atomic_reflow_recursive(
                 "Tf" => {
                     if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
                         state.font_alias = name.to_vec();
-                        if let Some(id) = resources.get(b"Font" as &[u8]).and_then(|m| m.get(name)) {
+                        if let Some(id) = resources.get(b"Font" as &[u8]).and_then(|m| m.get(name))
+                        {
                             if let Some(f) = res_cache.fonts.get(id) {
                                 current_font = Some(f.clone());
                             } else if let Ok(p) = parse_font_from_dict(doc, *id, name) {
@@ -509,7 +553,9 @@ pub(crate) fn patch_atomic_reflow_recursive(
                             }
                         }
                         if let Some(s) = op.operands.get(1).and_then(|o| {
-                            o.as_float().ok().or_else(|| o.as_i64().ok().map(|i| i as f32))
+                            o.as_float()
+                                .ok()
+                                .or_else(|| o.as_i64().ok().map(|i| i as f32))
                         }) {
                             state.text.font_size = s;
                         }
@@ -518,9 +564,19 @@ pub(crate) fn patch_atomic_reflow_recursive(
                 "Tj" | "TJ" | "'" | "\"" => *obj_counter += 1,
                 "Do" => {
                     if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
-                        if let Some(xid) = resources.get(b"XObject" as &[u8]).and_then(|m| m.get(name)) {
-                            if let Ok(mut xstream) = doc.get_object(*xid).and_then(|o| o.as_stream().cloned()) {
-                                if xstream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) == Some(b"Form") {
+                        if let Some(xid) =
+                            resources.get(b"XObject" as &[u8]).and_then(|m| m.get(name))
+                        {
+                            if let Ok(mut xstream) =
+                                doc.get_object(*xid).and_then(|o| o.as_stream().cloned())
+                            {
+                                if xstream
+                                    .dict
+                                    .get(b"Subtype")
+                                    .ok()
+                                    .and_then(|o| o.as_name().ok())
+                                    == Some(b"Form")
+                                {
                                     if let Ok(data) = xstream.decompressed_content() {
                                         if let Ok(mut sub) = Content::decode(&data) {
                                             let sub_res = read_resources(doc, *xid);
@@ -529,17 +585,28 @@ pub(crate) fn patch_atomic_reflow_recursive(
                                                 if let Ok(m_arr) = m_obj.as_array() {
                                                     if let Ok(m) = operands_to_f32(m_arr) {
                                                         if m.len() >= 6 {
-                                                            sub_state.text.op_cm([m[0], m[1], m[2], m[3], m[4], m[5]]);
+                                                            sub_state.text.op_cm([
+                                                                m[0], m[1], m[2], m[3], m[4], m[5],
+                                                            ]);
                                                         }
                                                     }
                                                 }
                                             }
                                             if patch_atomic_reflow_recursive(
-                                                doc, page_id, &mut sub, &sub_res, res_cache,
-                                                cluster_map, page_height, obj_counter,
-                                                &mut sub_state, deferred_lines,
+                                                doc,
+                                                page_id,
+                                                &mut sub,
+                                                &sub_res,
+                                                res_cache,
+                                                cluster_map,
+                                                page_height,
+                                                obj_counter,
+                                                &mut sub_state,
+                                                deferred_lines,
                                             )? {
-                                                xstream.set_content(sub.encode().map_err(|e| e.to_string())?);
+                                                xstream.set_content(
+                                                    sub.encode().map_err(|e| e.to_string())?,
+                                                );
                                                 doc.set_object(*xid, xstream);
                                                 modified = true;
                                             }
@@ -682,11 +749,7 @@ mod reflow_tests {
 
     #[test]
     fn tl_op_sets_text_leading() {
-        let state = run_ops(&[
-            ("BT", &[]),
-            ("TL", &[Object::Real(18.0)]),
-            ("T*", &[]),
-        ]);
+        let state = run_ops(&[("BT", &[]), ("TL", &[Object::Real(18.0)]), ("T*", &[])]);
         assert_eq!(state.text.tl, 18.0);
         assert_eq!(state.text.core.tm()[5], -18.0);
     }
@@ -718,8 +781,16 @@ mod reflow_tests {
             char_spacing: 0.0,
             horizontal_scaling: 100.0,
         };
-        let c1 = ReflowCluster { min_idx: 1, max_idx: 3, patches: vec![&p1] };
-        let c2 = ReflowCluster { min_idx: 3, max_idx: 5, patches: vec![&p2] };
+        let c1 = ReflowCluster {
+            min_idx: 1,
+            max_idx: 3,
+            patches: vec![&p1],
+        };
+        let c2 = ReflowCluster {
+            min_idx: 3,
+            max_idx: 5,
+            patches: vec![&p2],
+        };
         let mut cluster_map = HashMap::new();
         cluster_map.insert(1, c1);
         cluster_map.insert(3, c2);
@@ -734,7 +805,14 @@ mod reflow_tests {
     fn compute_micro_fit_applies_tz_ratio_for_close_fit() {
         use pdf_viewer_core::geometry::layout_engine::{ParagraphLayout, VisualLine};
         let layout = ParagraphLayout {
-            lines: vec![VisualLine { width: 90.0, runs: vec![], height: 0.0, baseline_y: 0.0, offset_x: 0.0, text: String::new() }],
+            lines: vec![VisualLine {
+                width: 90.0,
+                runs: vec![],
+                height: 0.0,
+                baseline_y: 0.0,
+                offset_x: 0.0,
+                text: String::new(),
+            }],
             height: 0.0,
         };
         let (h, c) = compute_micro_fit(&layout, 100.0, "hello", 100.0, 0.0);
@@ -746,7 +824,14 @@ mod reflow_tests {
     fn compute_micro_fit_applies_char_spacing_for_wide_gap() {
         use pdf_viewer_core::geometry::layout_engine::{ParagraphLayout, VisualLine};
         let layout = ParagraphLayout {
-            lines: vec![VisualLine { width: 70.0, runs: vec![], height: 0.0, baseline_y: 0.0, offset_x: 0.0, text: String::new() }],
+            lines: vec![VisualLine {
+                width: 70.0,
+                runs: vec![],
+                height: 0.0,
+                baseline_y: 0.0,
+                offset_x: 0.0,
+                text: String::new(),
+            }],
             height: 0.0,
         };
         let (h, c) = compute_micro_fit(&layout, 100.0, "ab", 100.0, 0.0);
@@ -758,7 +843,14 @@ mod reflow_tests {
     fn compute_micro_fit_no_adjustment_when_no_wrap() {
         use pdf_viewer_core::geometry::layout_engine::{ParagraphLayout, VisualLine};
         let layout = ParagraphLayout {
-            lines: vec![VisualLine { width: 90.0, runs: vec![], height: 0.0, baseline_y: 0.0, offset_x: 0.0, text: String::new() }],
+            lines: vec![VisualLine {
+                width: 90.0,
+                runs: vec![],
+                height: 0.0,
+                baseline_y: 0.0,
+                offset_x: 0.0,
+                text: String::new(),
+            }],
             height: 0.0,
         };
         let (h, c) = compute_micro_fit(&layout, 0.0, "hello", 100.0, 0.0);
@@ -768,7 +860,13 @@ mod reflow_tests {
 
     #[test]
     fn mute_show_op_empties_tj_operand() {
-        let op = Operation::new("Tj", vec![Object::String(b"hello".to_vec(), lopdf::StringFormat::Literal)]);
+        let op = Operation::new(
+            "Tj",
+            vec![Object::String(
+                b"hello".to_vec(),
+                lopdf::StringFormat::Literal,
+            )],
+        );
         let muted = mute_show_op(&op, "Tj");
         assert_eq!(muted.operator, "Tj");
         match &muted.operands[0] {

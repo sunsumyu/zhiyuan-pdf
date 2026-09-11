@@ -4,9 +4,9 @@
 use pdf_viewer_core::models::LayoutRun;
 // 重新导出 core 提供的纯计算 API，保持 ui 内的旧调用路径不变。
 pub use pdf_viewer_core::text::caret_geometry::{
-    caret_index_at_page_point, resolve_index, caret_visual_for_session,
-    caret_visual_for_session_plan, resolve_caret_index_from_lines, resolve_navigation_from_lines,
-    CaretLine, CaretStop, EditorCaretVisualPosition,
+    caret_index_at_page_point, caret_visual_for_session, caret_visual_for_session_plan,
+    resolve_caret_index_from_lines, resolve_index, resolve_navigation_from_lines, CaretLine,
+    CaretStop, EditorCaretVisualPosition,
 };
 
 use wasm_bindgen::JsCast;

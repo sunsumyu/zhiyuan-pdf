@@ -1,4 +1,5 @@
-﻿use crate::editor::debug_trace::{
+use crate::common::bbox::bbox_intersects;
+use crate::editor::debug_trace::{
     editor_debug_field as dbg_field, record_editor_debug_event as dbg_event,
 };
 use crate::editor::mode::read_active_editor_state;
@@ -15,12 +16,14 @@ use crate::render::effective_page_plan::{
 };
 use crate::render::prepared_scene::PreparedPageScene;
 use crate::render::progressive::ProgressiveVectorRenderTask;
-use crate::common::bbox::bbox_intersects;
 use crate::viewport_culling::{
     glyph_run_intersects_viewport, path_object_bbox, resolve_page_viewport_bbox,
 };
 use js_sys;
-use pdf_viewer_core::models::{BoundingBox, PageState, VectorImageObject, VectorPathObject, VectorRenderObject, VectorTextObject};
+use pdf_viewer_core::models::{
+    BoundingBox, PageState, VectorImageObject, VectorPathObject, VectorRenderObject,
+    VectorTextObject,
+};
 use pdf_viewer_core::render::renderer::{DrawCommand, PdfRenderer};
 use pdf_viewer_core::typography::font_resolver::resolve_font_face;
 use std::cell::Cell;
@@ -391,14 +394,17 @@ impl CanvasRenderer {
             Some(path.id.as_str()),
             bbox,
             vec![
-                dbg_field("strokeColor", path.stroke_color.as_deref().unwrap_or("none")),
+                dbg_field(
+                    "strokeColor",
+                    path.stroke_color.as_deref().unwrap_or("none"),
+                ),
                 dbg_field("fillColor", path.fill_color.as_deref().unwrap_or("none")),
                 dbg_field("strokeWidth", path.stroke_width),
             ],
         );
         if let Some((path_width, path_height)) = path_bbox_summary(path) {
-            let is_suspicious_horizontal_path = path_width >= 120.0
-                && path_height <= (path.stroke_width.max(0.0) * 6.0).max(30.0);
+            let is_suspicious_horizontal_path =
+                path_width >= 120.0 && path_height <= (path.stroke_width.max(0.0) * 6.0).max(30.0);
             if is_suspicious_horizontal_path
                 && bbox
                     .as_ref()
@@ -410,7 +416,10 @@ impl CanvasRenderer {
                     "vector-path",
                     vec![
                         dbg_field("objectId", path.id.as_str()),
-                        dbg_field("strokeColor", path.stroke_color.as_deref().unwrap_or("none")),
+                        dbg_field(
+                            "strokeColor",
+                            path.stroke_color.as_deref().unwrap_or("none"),
+                        ),
                         dbg_field("fillColor", path.fill_color.as_deref().unwrap_or("none")),
                         dbg_field("strokeWidth", path.stroke_width),
                         dbg_field("pathWidth", path_width),
@@ -471,7 +480,10 @@ impl CanvasRenderer {
             object_index,
             Some(image.id.as_str()),
             bbox,
-            vec![dbg_field("width", image.width), dbg_field("height", image.height)],
+            vec![
+                dbg_field("width", image.width),
+                dbg_field("height", image.height),
+            ],
         );
         let img_val = image_provider.get(&JsValue::from_str(&image.id));
         if let Some(img_js) = img_val.clone().dyn_into::<HtmlImageElement>().ok() {
@@ -924,7 +936,11 @@ impl CanvasRenderer {
         if is_suspicious_horizontal_rect {
             dbg_event(
                 "canvas.draw",
-                if is_fill { "draw-command-fill-rect" } else { "draw-command-stroke-rect" },
+                if is_fill {
+                    "draw-command-fill-rect"
+                } else {
+                    "draw-command-stroke-rect"
+                },
                 vec![
                     dbg_field("x1", x),
                     dbg_field("y1", y),
@@ -936,22 +952,16 @@ impl CanvasRenderer {
         }
         if is_fill {
             self.ctx.set_fill_style_str(color);
-            self.ctx.fill_rect(x as f64, y as f64, width as f64, height as f64);
+            self.ctx
+                .fill_rect(x as f64, y as f64, width as f64, height as f64);
         } else {
             self.ctx.set_stroke_style_str(color);
-            self.ctx.stroke_rect(x as f64, y as f64, width as f64, height as f64);
+            self.ctx
+                .stroke_rect(x as f64, y as f64, width as f64, height as f64);
         }
     }
 
-    fn draw_line_command(
-        &mut self,
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-        color: &str,
-        width: f32,
-    ) {
+    fn draw_line_command(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: &str, width: f32) {
         let line_width = (x2 - x1).abs();
         let line_height = (y2 - y1).abs();
         let is_suspicious_horizontal_line = line_width >= 120.0 && line_height <= 6.0;
@@ -1009,7 +1019,6 @@ impl PdfRenderer for CanvasRenderer {
             }
         }
     }
-
 
     fn clear(&mut self) {
         if self.is_hijacked {

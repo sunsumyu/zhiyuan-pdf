@@ -278,9 +278,18 @@ mod tests {
             baseline_y: 20.0,
             height: 14.0,
             stops: vec![
-                CaretStop { index: 0, left: 10.0 },
-                CaretStop { index: 5, left: 50.0 },
-                CaretStop { index: 10, left: 100.0 },
+                CaretStop {
+                    index: 0,
+                    left: 10.0,
+                },
+                CaretStop {
+                    index: 5,
+                    left: 50.0,
+                },
+                CaretStop {
+                    index: 10,
+                    left: 100.0,
+                },
             ],
         }];
         // Click near stop at index 5 (left=50)
@@ -294,8 +303,14 @@ mod tests {
             baseline_y: 20.0,
             height: 14.0,
             stops: vec![
-                CaretStop { index: 0, left: 10.0 },
-                CaretStop { index: 5, left: 50.0 },
+                CaretStop {
+                    index: 0,
+                    left: 10.0,
+                },
+                CaretStop {
+                    index: 5,
+                    left: 50.0,
+                },
             ],
         }];
         // Click between stops - should pick closest
@@ -329,9 +344,18 @@ mod tests {
             baseline_y: 20.0,
             height: 14.0,
             stops: vec![
-                CaretStop { index: 0, left: 10.0 },
-                CaretStop { index: 0, left: 10.0 },
-                CaretStop { index: 5, left: 50.0 },
+                CaretStop {
+                    index: 0,
+                    left: 10.0,
+                },
+                CaretStop {
+                    index: 0,
+                    left: 10.0,
+                },
+                CaretStop {
+                    index: 5,
+                    left: 50.0,
+                },
             ],
         };
         dedupe_caret_stops(&mut line);
@@ -344,9 +368,18 @@ mod tests {
             baseline_y: 20.0,
             height: 14.0,
             stops: vec![
-                CaretStop { index: 0, left: 10.0 },
-                CaretStop { index: 5, left: 50.0 },
-                CaretStop { index: 10, left: 100.0 },
+                CaretStop {
+                    index: 0,
+                    left: 10.0,
+                },
+                CaretStop {
+                    index: 5,
+                    left: 50.0,
+                },
+                CaretStop {
+                    index: 10,
+                    left: 100.0,
+                },
             ],
         };
         dedupe_caret_stops(&mut line);

@@ -23,10 +23,10 @@ use pdf_viewer_core::render::zoom::animation::{
 
 use crate::zoom::zoom_store::ZOOM_STATE;
 
-use super::raf_dom_cache::{init_dom_cache, with_dom_cache, clear_dom_cache};
-use super::raf_settle::cancel_settle_cleanup;
-use super::raf_committed::{pop_committed_frame, apply_committed_frame};
+use super::raf_committed::{apply_committed_frame, pop_committed_frame};
 use super::raf_dispatch::dispatch_settle_envelope;
+use super::raf_dom_cache::{clear_dom_cache, init_dom_cache, with_dom_cache};
+use super::raf_settle::cancel_settle_cleanup;
 
 // ─── RAF closure storage ──────────────────────────────────────────
 
@@ -63,14 +63,19 @@ pub fn start_zoom_raf_loop() {
 
     // Hide raster sibling, show vector container (ADR-0002 I3)
     let raster_visible = with_dom_cache(|dom| {
-        dom.and_then(|d| d.raster.as_ref()).map(|raster| {
-            let display = raster.style().get_property_value("display").unwrap_or_default();
-            let visible = display != "none";
-            if visible {
-                let _ = raster.style().set_property("display", "none");
-            }
-            visible
-        }).unwrap_or(false)
+        dom.and_then(|d| d.raster.as_ref())
+            .map(|raster| {
+                let display = raster
+                    .style()
+                    .get_property_value("display")
+                    .unwrap_or_default();
+                let visible = display != "none";
+                if visible {
+                    let _ = raster.style().set_property("display", "none");
+                }
+                visible
+            })
+            .unwrap_or(false)
     });
     if raster_visible {
         with_dom_cache(|dom| {
@@ -142,7 +147,11 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
     // Content box sized by the last committed render zoom, matching actual DOM layout.
     let (content_width, content_height) = ZOOM_STATE.with(|state| {
         let s = state.borrow();
-        let rendered = if s.last_rendered_zoom > 0.0 { s.last_rendered_zoom } else { 1.0 };
+        let rendered = if s.last_rendered_zoom > 0.0 {
+            s.last_rendered_zoom
+        } else {
+            1.0
+        };
         (input.page_width * rendered, input.page_height * rendered)
     });
 
@@ -165,15 +174,17 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
             scroll_top: input.scroll_top,
             content_width,
             content_height,
-            target_zoom: if s.target_zoom > 0.0 { s.target_zoom } else { 1.0 },
+            target_zoom: if s.target_zoom > 0.0 {
+                s.target_zoom
+            } else {
+                1.0
+            },
             min_zoom,
             max_zoom,
         };
 
-        let (result, pending_anchor) = resolve_wheel_zoom_request(
-            &request,
-            s.visual_layout.as_ref(),
-        );
+        let (result, pending_anchor) =
+            resolve_wheel_zoom_request(&request, s.visual_layout.as_ref());
 
         s.target_zoom = result.target_zoom;
         s.last_animation_timestamp_ms = 0.0;
@@ -292,14 +303,19 @@ fn tick(timestamp_ms: f64) {
     if !settled && !in_gesture {
         let (blur, anchor_active) = ZOOM_STATE.with(|state| {
             let s = state.borrow();
-            let base = if s.last_rendered_zoom > 0.0 { s.last_rendered_zoom } else { 1.0 };
-            ((s.visual_zoom / base - 1.0).abs(), s.pending_anchor.is_some())
+            let base = if s.last_rendered_zoom > 0.0 {
+                s.last_rendered_zoom
+            } else {
+                1.0
+            };
+            (
+                (s.visual_zoom / base - 1.0).abs(),
+                s.pending_anchor.is_some(),
+            )
         });
         if anchor_active {
-            let render_in_flight =
-                crate::render::render_store::RENDER_STATE.with(|state| {
-                    state.borrow().in_flight_frame_token != 0
-                });
+            let render_in_flight = crate::render::render_store::RENDER_STATE
+                .with(|state| state.borrow().in_flight_frame_token != 0);
             let elapsed_ms = LAST_PREVIEW_KNOCK.with(|t| timestamp_ms - *t.borrow());
             use pdf_viewer_core::render::zoom::decision::{
                 should_reknock_preview_render, PreviewReknockRequest,

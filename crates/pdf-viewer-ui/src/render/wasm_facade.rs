@@ -136,7 +136,16 @@ pub fn facade_update_viewport(
     frame_token: u32,
 ) -> JsValue {
     with_tile_manager(|mgr| {
-        mgr.update_viewport(page, zoom, dpr, viewport_x, viewport_y, viewport_width, viewport_height, frame_token);
+        mgr.update_viewport(
+            page,
+            zoom,
+            dpr,
+            viewport_x,
+            viewport_y,
+            viewport_width,
+            viewport_height,
+            frame_token,
+        );
         to_value(&mgr.stats()).unwrap_or(JsValue::NULL)
     })
 }
@@ -251,9 +260,7 @@ pub fn facade_get_quality() -> u32 {
         static QUALITY_SM: RefCell<QualityStateMachine> = RefCell::new(QualityStateMachine::new());
     }
 
-    QUALITY_SM.with(|sm| {
-        sm.borrow().current() as u32
-    })
+    QUALITY_SM.with(|sm| sm.borrow().current() as u32)
 }
 
 /// Get quality DPI multiplier

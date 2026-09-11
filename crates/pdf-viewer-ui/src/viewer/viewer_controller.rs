@@ -10,10 +10,13 @@ use crate::render::render_store::reset_render_state;
 use crate::review::review_store::clear_comment_review_session;
 use crate::ui_state_store::clear_persistable_patches;
 use crate::viewer::viewer_store::{
-    bump_document_revision, reset_viewer_session, set_current_page,
-    set_page_dimensions, set_viewer_document, HostViewerSession,
+    bump_document_revision, reset_viewer_session, set_current_page, set_page_dimensions,
+    set_viewer_document, HostViewerSession,
 };
-use crate::zoom::zoom_controller::{clear_preview_host_with_anchor, settle_zoom_preview_at_target, reset_zoom_runtime, set_target_zoom_authoritative};
+use crate::zoom::zoom_controller::{
+    clear_preview_host_with_anchor, reset_zoom_runtime, set_target_zoom_authoritative,
+    settle_zoom_preview_at_target,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

@@ -144,7 +144,10 @@ mod tests {
     use super::*;
 
     fn assert_close(actual: f32, expected: f32) {
-        assert!((actual - expected).abs() < 1e-6, "actual={actual} expected={expected}");
+        assert!(
+            (actual - expected).abs() < 1e-6,
+            "actual={actual} expected={expected}"
+        );
     }
 
     #[test]
@@ -153,7 +156,10 @@ mod tests {
         assert!(matches!(d.kind, PdfDocumentKind::Scanned));
         assert_close(d.confidence, 1.0);
         assert!(d.allow_scan_preview_first_paint);
-        assert!(matches!(d.reason, ClassificationReason::FullPageImageNoText));
+        assert!(matches!(
+            d.reason,
+            ClassificationReason::FullPageImageNoText
+        ));
     }
 
     #[test]
@@ -162,7 +168,10 @@ mod tests {
         assert!(matches!(d.kind, PdfDocumentKind::Scanned));
         assert_close(d.confidence, 0.75);
         assert!(d.allow_scan_preview_first_paint);
-        assert!(matches!(d.reason, ClassificationReason::FullPageImageWithOcrLayer));
+        assert!(matches!(
+            d.reason,
+            ClassificationReason::FullPageImageWithOcrLayer
+        ));
     }
 
     #[test]
@@ -172,7 +181,10 @@ mod tests {
         assert!(matches!(d.kind, PdfDocumentKind::Vector));
         assert_close(d.confidence, 0.95);
         assert!(!d.allow_scan_preview_first_paint);
-        assert!(matches!(d.reason, ClassificationReason::TextOperatorsDominant));
+        assert!(matches!(
+            d.reason,
+            ClassificationReason::TextOperatorsDominant
+        ));
     }
 
     #[test]
@@ -181,7 +193,10 @@ mod tests {
         assert!(matches!(d.kind, PdfDocumentKind::Vector));
         assert_close(d.confidence, 0.90);
         assert!(!d.allow_scan_preview_first_paint);
-        assert!(matches!(d.reason, ClassificationReason::FontResourcesDominant));
+        assert!(matches!(
+            d.reason,
+            ClassificationReason::FontResourcesDominant
+        ));
     }
 
     #[test]
@@ -190,7 +205,10 @@ mod tests {
         assert!(matches!(d.kind, PdfDocumentKind::Unknown));
         assert_close(d.confidence, 0.0);
         assert!(!d.allow_scan_preview_first_paint);
-        assert!(matches!(d.reason, ClassificationReason::LowConfidenceFallback));
+        assert!(matches!(
+            d.reason,
+            ClassificationReason::LowConfidenceFallback
+        ));
     }
 
     #[test]
@@ -229,7 +247,12 @@ mod tests {
     fn likely_ocr_requires_all_four_conditions() {
         assert!(likely_ocr_scanned_document(180 * 1024, true, true, true));
         // 页均字节差 1
-        assert!(!likely_ocr_scanned_document(180 * 1024 - 1, true, true, true));
+        assert!(!likely_ocr_scanned_document(
+            180 * 1024 - 1,
+            true,
+            true,
+            true
+        ));
         assert!(!likely_ocr_scanned_document(180 * 1024, false, true, true));
         assert!(!likely_ocr_scanned_document(180 * 1024, true, false, true));
         assert!(!likely_ocr_scanned_document(180 * 1024, true, true, false));

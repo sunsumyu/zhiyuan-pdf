@@ -9,8 +9,11 @@ pub mod path;
 pub mod ttc;
 
 // Re-export key types for backward compatibility
-pub use parse::{CMap, ParsedFont, ParsedImage, ResourceCache, parse_font_from_dict, read_cmap, resolve_glyph_geom};
 pub use layout::break_text_into_lines;
+pub use parse::{
+    parse_font_from_dict, read_cmap, resolve_glyph_geom, CMap, ParsedFont, ParsedImage,
+    ResourceCache,
+};
 pub use path::simplify_path_segments;
 
 pub use pdf_viewer_core::models::FontHints;

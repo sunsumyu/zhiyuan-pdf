@@ -9,23 +9,21 @@
 //! This module re-exports everything from sub-modules so existing import
 //! paths (`crate::zoom::zoom_controller::*`) continue to work.
 
-pub use super::zoom_authority::*;
 pub use super::zoom_anchor::*;
-pub use super::zoom_preview::*;
+pub use super::zoom_authority::*;
 pub use super::zoom_frame::*;
+pub use super::zoom_preview::*;
 
 use crate::present::plan_builder::{FramePlanRequest, FramePlanResult};
 use crate::viewer::viewer_controller::set_zoom;
-use pdf_viewer_core::render::zoom::animation::{
-    WheelZoomRequest, WheelZoomResult,
-};
+use pdf_viewer_core::render::zoom::animation::{WheelZoomRequest, WheelZoomResult};
 
-use serde::{Deserialize, Serialize};
 use crate::present::present_store::build_frame_plan_result as present_build_frame_plan_result;
 use pdf_viewer_core::render::zoom_host::{
     resolve_preview_tick_decision, resolve_wheel_render_decision, PreviewTickDecision,
     PreviewTickDecisionRequest, WheelRenderDecision, WheelRenderDecisionRequest,
 };
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

@@ -17,7 +17,10 @@ pub(crate) struct UnderlineSpec {
 
 /// Emit the PDF text operators for one reflow line: color, text matrix, font, show.
 /// Returns the operations plus an optional underline spec when the line needs one.
-pub(crate) fn emit_text_line_ops(run: &PersistedTextLinePlan, user_unit: f32) -> (Vec<lopdf::content::Operation>, Option<UnderlineSpec>) {
+pub(crate) fn emit_text_line_ops(
+    run: &PersistedTextLinePlan,
+    user_unit: f32,
+) -> (Vec<lopdf::content::Operation>, Option<UnderlineSpec>) {
     let mut ops = Vec::new();
     let h_scale = run.horizontal_scaling / 100.0;
     let adj_tx = run.tx / user_unit;
@@ -108,7 +111,10 @@ pub(crate) fn emit_underline_ops(spec: &UnderlineSpec) -> Vec<lopdf::content::Op
             vec![Object::Real(r), Object::Real(g), Object::Real(b)],
         ));
     }
-    ops.push(lopdf::content::Operation::new("w", vec![Object::Real(spec.stroke_width)]));
+    ops.push(lopdf::content::Operation::new(
+        "w",
+        vec![Object::Real(spec.stroke_width)],
+    ));
     ops.push(lopdf::content::Operation::new(
         "m",
         vec![Object::Real(spec.x), Object::Real(spec.y)],
@@ -142,9 +148,18 @@ pub(crate) fn emit_deferred_text_block(
             Object::Real(page_height),
         ],
     ));
-    ops.push(lopdf::content::Operation::new("Tc", vec![Object::Real(0.0)]));
-    ops.push(lopdf::content::Operation::new("Tw", vec![Object::Real(0.0)]));
-    ops.push(lopdf::content::Operation::new("Tz", vec![Object::Real(100.0)]));
+    ops.push(lopdf::content::Operation::new(
+        "Tc",
+        vec![Object::Real(0.0)],
+    ));
+    ops.push(lopdf::content::Operation::new(
+        "Tw",
+        vec![Object::Real(0.0)],
+    ));
+    ops.push(lopdf::content::Operation::new(
+        "Tz",
+        vec![Object::Real(100.0)],
+    ));
     ops.push(lopdf::content::Operation::new("BT", vec![]));
 
     let mut rendered = std::collections::HashSet::new();

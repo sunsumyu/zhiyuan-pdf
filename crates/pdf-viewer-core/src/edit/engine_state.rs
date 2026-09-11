@@ -136,7 +136,9 @@ impl LiveEditorParagraphState {
 
     pub fn set_caret_index(&mut self, caret_index: usize) -> bool {
         let normalized = caret_index.min(self.text_char_count());
-        let changed = self.caret_index != normalized || self.selection_start.is_some() || self.selection_end.is_some();
+        let changed = self.caret_index != normalized
+            || self.selection_start.is_some()
+            || self.selection_end.is_some();
         if changed {
             self.caret_index = normalized;
             self.selection_start = None;

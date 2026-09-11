@@ -94,10 +94,7 @@ pub(crate) fn ensure_font_in_page(
     Ok(alias)
 }
 
-fn type0_font_object(
-    doc: &mut Document,
-    font: &SystemFont,
-) -> Result<lopdf::ObjectId, String> {
+fn type0_font_object(doc: &mut Document, font: &SystemFont) -> Result<lopdf::ObjectId, String> {
     let font_file_id = {
         let mut dict = Dictionary::new();
         dict.set("Length1", font.font_bytes.len() as i64);
@@ -111,22 +108,10 @@ fn type0_font_object(
     let mut descriptor = Dictionary::new();
     descriptor.set("Type", Object::Name(b"FontDescriptor".to_vec()));
     descriptor.set("FontName", Object::Name(ps_name.as_bytes().to_vec()));
-    descriptor.set(
-        "Flags",
-        if font.italic_angle.abs() > 0.1 {
-            68
-        } else {
-            4
-        },
-    );
+    descriptor.set("Flags", if font.italic_angle.abs() > 0.1 { 68 } else { 4 });
     descriptor.set(
         "FontBBox",
-        Object::Array(
-            font.bbox
-                .iter()
-                .map(|value| Object::Real(*value))
-                .collect(),
-        ),
+        Object::Array(font.bbox.iter().map(|value| Object::Real(*value)).collect()),
     );
     descriptor.set("ItalicAngle", Object::Real(font.italic_angle));
     descriptor.set("Ascent", Object::Real(font.ascent));
@@ -307,7 +292,12 @@ mod embed_tests {
 
     #[test]
     fn width_array_groups_consecutive_gids_and_splits_gaps() {
-        let font = system_font(vec![('a', 10, 500.0), ('b', 11, 510.0), ('c', 12, 520.0), ('x', 20, 600.0)]);
+        let font = system_font(vec![
+            ('a', 10, 500.0),
+            ('b', 11, 510.0),
+            ('c', 12, 520.0),
+            ('x', 20, 600.0),
+        ]);
         let arr = width_array(&font);
         assert_eq!(arr.len(), 4);
         assert_eq!(arr[0], Object::Integer(10));

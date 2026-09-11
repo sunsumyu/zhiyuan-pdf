@@ -313,9 +313,12 @@ impl PdfDocumentService {
         let mut redo_cache = state.history.pdf_redo_transactions.lock().unwrap();
         let mut doc_cache = state.docs.pdf_documents.lock().unwrap();
 
-        let Some(prev_doc) =
-            transfer_snapshot(&mut tx_cache, &mut redo_cache, path, doc_cache.get(path).cloned())
-        else {
+        let Some(prev_doc) = transfer_snapshot(
+            &mut tx_cache,
+            &mut redo_cache,
+            path,
+            doc_cache.get(path).cloned(),
+        ) else {
             return Err("No transaction history to rollback".to_string());
         };
         let mut doc_to_save = (*prev_doc).clone();
@@ -341,9 +344,12 @@ impl PdfDocumentService {
         let mut redo_cache = state.history.pdf_redo_transactions.lock().unwrap();
         let mut doc_cache = state.docs.pdf_documents.lock().unwrap();
 
-        let Some(next_doc) =
-            transfer_snapshot(&mut redo_cache, &mut tx_cache, path, doc_cache.get(path).cloned())
-        else {
+        let Some(next_doc) = transfer_snapshot(
+            &mut redo_cache,
+            &mut tx_cache,
+            path,
+            doc_cache.get(path).cloned(),
+        ) else {
             return Err("No redo transaction history".to_string());
         };
         let mut doc_to_save = (*next_doc).clone();
@@ -398,10 +404,7 @@ mod history_tests {
 
     fn history_with(path: &str, count: usize) -> HashMap<String, Vec<std::sync::Arc<Document>>> {
         let mut map = HashMap::new();
-        map.insert(
-            path.to_string(),
-            (0..count).map(|_| blank_doc()).collect(),
-        );
+        map.insert(path.to_string(), (0..count).map(|_| blank_doc()).collect());
         map
     }
 

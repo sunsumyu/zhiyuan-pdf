@@ -65,7 +65,11 @@ pub(super) fn init_dom_cache() {
         if let (Some(container), Some(scroll_container)) = (container, scroll_container) {
             // Set transform-origin once — it never changes
             let _ = container.style().set_property("transform-origin", "0 0");
-            *cache.borrow_mut() = Some(DomCache { container, scroll_container, raster });
+            *cache.borrow_mut() = Some(DomCache {
+                container,
+                scroll_container,
+                raster,
+            });
         }
     });
 }

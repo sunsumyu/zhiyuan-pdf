@@ -38,9 +38,21 @@ pub struct LayoutFallback {
 /// tracks display_zoom directly and no transform compensation exists, so
 /// every dimension derives from display_zoom and `css_scale` is 1.0.
 pub fn resolve_layout_fallback(request: LayoutFallbackRequest) -> LayoutFallback {
-    let page_width = if request.page_width > 0.0 { request.page_width } else { 1.0 };
-    let page_height = if request.page_height > 0.0 { request.page_height } else { 1.0 };
-    let display_zoom = if request.display_zoom > 0.0 { request.display_zoom } else { 1.0 };
+    let page_width = if request.page_width > 0.0 {
+        request.page_width
+    } else {
+        1.0
+    };
+    let page_height = if request.page_height > 0.0 {
+        request.page_height
+    } else {
+        1.0
+    };
+    let display_zoom = if request.display_zoom > 0.0 {
+        request.display_zoom
+    } else {
+        1.0
+    };
     let dom_width = page_width * display_zoom;
     let dom_height = page_height * display_zoom;
     let display_width = dom_width;
@@ -82,11 +94,12 @@ pub struct FitToWidthResult {
 }
 
 /// Compute the fit-to-width zoom level for a document.
-pub fn resolve_fit_to_width(
-    viewport_width: f32,
-    page_width: f32,
-) -> FitToWidthResult {
-    let vp = if viewport_width > 0.0 { viewport_width } else { 1.0 };
+pub fn resolve_fit_to_width(viewport_width: f32, page_width: f32) -> FitToWidthResult {
+    let vp = if viewport_width > 0.0 {
+        viewport_width
+    } else {
+        1.0
+    };
     let pw = if page_width > 0.0 { page_width } else { 1.0 };
     if pw <= vp {
         return FitToWidthResult {

@@ -22,15 +22,9 @@ pub enum DomOp {
         dom_height: f32,
     },
     /// Set scroll position on the scroll container.
-    SetScroll {
-        scroll_left: f32,
-        scroll_top: f32,
-    },
+    SetScroll { scroll_left: f32, scroll_top: f32 },
     /// Set wrapper (parent) dimensions.
-    SetWrapperSize {
-        width: f32,
-        height: f32,
-    },
+    SetWrapperSize { width: f32, height: f32 },
 }
 
 /// Async operation that TS must schedule.
@@ -77,9 +71,9 @@ pub fn tick_zoom_state_core(
     state: &mut crate::render::zoom_state::HostZoomState,
     input: &ZoomTickInput,
 ) -> ZoomTickOutput {
-    use crate::render::zoom_interaction::advance_zoom_animation_state;
     use super::zoom_render::should_render;
     use super::zoom_render::ShouldRender;
+    use crate::render::zoom_interaction::advance_zoom_animation_state;
 
     let dom_ops: Vec<DomOp> = Vec::new();
     let mut async_ops: Vec<AsyncOp> = Vec::new();
@@ -105,7 +99,9 @@ pub fn tick_zoom_state_core(
         state.drawing_delay.active = true;
         state.drawing_delay.started_at_ms = input.timestamp_ms;
         state.drawing_delay.delay_ms = DRAWING_DELAY_MS;
-        async_ops.push(AsyncOp::StartDrawingDelay { delay_ms: DRAWING_DELAY_MS });
+        async_ops.push(AsyncOp::StartDrawingDelay {
+            delay_ms: DRAWING_DELAY_MS,
+        });
     }
 
     let render_decision = if state.drawing_delay.active {
@@ -170,22 +166,36 @@ mod tests {
     }
 
     fn tick(state: &mut HostZoomState, ts: f64) -> ZoomTickOutput {
-        tick_zoom_state_core(state, &ZoomTickInput {
-            timestamp_ms: ts,
-            scroll_left: 0.0,
-            scroll_top: 0.0,
-            viewport_width: 800.0,
-            viewport_height: 600.0,
-        })
+        tick_zoom_state_core(
+            state,
+            &ZoomTickInput {
+                timestamp_ms: ts,
+                scroll_left: 0.0,
+                scroll_top: 0.0,
+                viewport_width: 800.0,
+                viewport_height: 600.0,
+            },
+        )
     }
 
     #[test]
     fn tick_first_frame_advances_animation() {
         let mut state = make_state(1.5);
         let out = tick(&mut state, 100.0);
-        assert!(out.visual_zoom > 1.0, "visual_zoom should advance: {}", out.visual_zoom);
-        assert!(out.visual_zoom <= 1.5, "visual_zoom should not overshoot: {}", out.visual_zoom);
-        assert!(out.async_ops.iter().any(|op| matches!(op, AsyncOp::ScheduleNextFrame)));
+        assert!(
+            out.visual_zoom > 1.0,
+            "visual_zoom should advance: {}",
+            out.visual_zoom
+        );
+        assert!(
+            out.visual_zoom <= 1.5,
+            "visual_zoom should not overshoot: {}",
+            out.visual_zoom
+        );
+        assert!(out
+            .async_ops
+            .iter()
+            .any(|op| matches!(op, AsyncOp::ScheduleNextFrame)));
     }
 
     #[test]
@@ -193,8 +203,14 @@ mod tests {
         let mut state = make_state(1.0);
         state.visual_zoom = 1.0;
         let out = tick(&mut state, 100.0);
-        assert!(out.async_ops.iter().any(|op| matches!(op, AsyncOp::StartDrawingDelay { .. })));
-        assert!(!out.async_ops.iter().any(|op| matches!(op, AsyncOp::StopRafLoop)));
+        assert!(out
+            .async_ops
+            .iter()
+            .any(|op| matches!(op, AsyncOp::StartDrawingDelay { .. })));
+        assert!(!out
+            .async_ops
+            .iter()
+            .any(|op| matches!(op, AsyncOp::StopRafLoop)));
     }
 
     #[test]
@@ -204,9 +220,18 @@ mod tests {
         let _out1 = tick(&mut state, 100.0);
         assert!(state.drawing_delay.active);
         let out2 = tick(&mut state, 200.0);
-        assert!(!state.drawing_delay.active, "drawing_delay should be cleared");
-        assert!(out2.async_ops.iter().any(|op| matches!(op, AsyncOp::RequestRender { .. })));
-        assert!(out2.async_ops.iter().any(|op| matches!(op, AsyncOp::StopRafLoop)));
+        assert!(
+            !state.drawing_delay.active,
+            "drawing_delay should be cleared"
+        );
+        assert!(out2
+            .async_ops
+            .iter()
+            .any(|op| matches!(op, AsyncOp::RequestRender { .. })));
+        assert!(out2
+            .async_ops
+            .iter()
+            .any(|op| matches!(op, AsyncOp::StopRafLoop)));
     }
 
     #[test]
@@ -217,8 +242,14 @@ mod tests {
         // Tick 20ms later — drawing delay (30ms) not yet expired
         let out2 = tick(&mut state, 120.0);
         assert!(state.drawing_delay.active);
-        assert!(!out2.async_ops.iter().any(|op| matches!(op, AsyncOp::RequestRender { .. })));
-        assert!(out2.async_ops.iter().any(|op| matches!(op, AsyncOp::ScheduleNextFrame)));
+        assert!(!out2
+            .async_ops
+            .iter()
+            .any(|op| matches!(op, AsyncOp::RequestRender { .. })));
+        assert!(out2
+            .async_ops
+            .iter()
+            .any(|op| matches!(op, AsyncOp::ScheduleNextFrame)));
     }
 
     #[test]
@@ -227,9 +258,16 @@ mod tests {
         for i in 0..5 {
             let ts = 100.0 + (i as f64) * 16.0;
             let out = tick(&mut state, ts);
-            assert!(state.visual_zoom > 1.0 + (i as f32) * 0.01,
-                "tick {}: visual_zoom should advance: {}", i, state.visual_zoom);
-            assert!(out.async_ops.iter().any(|op| matches!(op, AsyncOp::ScheduleNextFrame)));
+            assert!(
+                state.visual_zoom > 1.0 + (i as f32) * 0.01,
+                "tick {}: visual_zoom should advance: {}",
+                i,
+                state.visual_zoom
+            );
+            assert!(out
+                .async_ops
+                .iter()
+                .any(|op| matches!(op, AsyncOp::ScheduleNextFrame)));
         }
     }
 }

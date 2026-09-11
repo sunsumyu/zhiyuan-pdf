@@ -60,7 +60,10 @@ pub(crate) fn apply_png_predictor(raw: &[u8], bytes_per_row: usize, bpp: usize) 
 
 /// Read DecodeParms dictionary and extract Predictor / Columns / Colors / BitsPerComponent.
 /// Accepts `doc` to resolve indirect references in the DecodeParms entry.
-pub(crate) fn read_decode_params(doc: &lopdf::Document, stream: &lopdf::Stream) -> (i64, i64, i64, i64) {
+pub(crate) fn read_decode_params(
+    doc: &lopdf::Document,
+    stream: &lopdf::Stream,
+) -> (i64, i64, i64, i64) {
     let mut predictor = 1i64;
     let mut columns = 1i64;
     let mut colors = 1i64;
@@ -326,4 +329,3 @@ pub(crate) fn build_image_as_jpeg(
     }
     Some(Arc::from(jpeg_buf.as_slice()))
 }
-

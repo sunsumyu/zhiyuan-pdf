@@ -2,8 +2,8 @@
 pub mod log_service;
 
 pub mod cache;
-pub mod document_service;
 pub mod document_resolver;
+pub mod document_service;
 
 pub mod annotation_store;
 pub mod commands;
@@ -25,7 +25,6 @@ pub mod text_matrix;
 pub mod text_state;
 pub mod vector_engine;
 
+pub mod color;
 #[cfg(test)]
 pub mod tests_reflow;
-pub mod color;
-

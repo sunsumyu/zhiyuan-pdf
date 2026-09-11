@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::present::plan_builder::compute_viewport_layout_result;
 use crate::common::sanitize::{sanitize_non_negative, sanitize_positive};
+use crate::present::plan_builder::compute_viewport_layout_result;
 use crate::zoom::zoom_controller::set_visual_layout;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -58,10 +58,7 @@ pub fn sync_host_layout(request: SyncHostLayoutRequest) -> SyncHostLayoutResult 
     let layout = request
         .layout_override
         .map(|layout| HostLayoutOverride {
-            host_width: sanitize_positive(
-                layout.host_width,
-                dom_width.max(request.viewport_width),
-            ),
+            host_width: sanitize_positive(layout.host_width, dom_width.max(request.viewport_width)),
             host_height: sanitize_positive(
                 layout.host_height,
                 dom_height.max(request.viewport_height),
@@ -135,18 +132,41 @@ mod tests {
         // Committed: dom and display both track display_zoom => css_scale == 1.
         let result = sync_host_layout(request(1.25, Some(1.25)));
         assert_close(result.css_scale, 1.0, "css_scale");
-        assert_close(result.dom_width, result.display_width, "dom_width == display_width");
-        assert_close(result.dom_height, result.display_height, "dom_height == display_height");
-        assert_close(result.dom_width, PAGE_W * 1.25, "dom_width == page_w * display_zoom");
-        assert!(result.host_width >= result.display_width, "host covers display");
+        assert_close(
+            result.dom_width,
+            result.display_width,
+            "dom_width == display_width",
+        );
+        assert_close(
+            result.dom_height,
+            result.display_height,
+            "dom_height == display_height",
+        );
+        assert_close(
+            result.dom_width,
+            PAGE_W * 1.25,
+            "dom_width == page_w * display_zoom",
+        );
+        assert!(
+            result.host_width >= result.display_width,
+            "host covers display"
+        );
     }
 
     #[test]
     fn preview_state_tracks_display_zoom_not_render_zoom() {
         // CSS transform removed: DOM dimensions always follow display_zoom.
         let result = sync_host_layout(request(1.25, Some(1.0)));
-        assert_close(result.dom_width, PAGE_W * 1.25, "dom_width == page_w * display_zoom");
-        assert_close(result.display_width, PAGE_W * 1.25, "display_width == page_w * display_zoom");
+        assert_close(
+            result.dom_width,
+            PAGE_W * 1.25,
+            "dom_width == page_w * display_zoom",
+        );
+        assert_close(
+            result.display_width,
+            PAGE_W * 1.25,
+            "display_width == page_w * display_zoom",
+        );
         assert_close(result.css_scale, 1.0, "css_scale identity (no transform)");
         assert_close(result.dom_width, result.display_width, "dom == display");
     }
@@ -157,7 +177,11 @@ mod tests {
         // dom and display both use display_zoom.
         let result = sync_host_layout(request(1.25, Some(1.0)));
         let visual_width = result.dom_width * result.css_scale;
-        assert_close(visual_width, PAGE_W * 1.25, "visual width == display target");
+        assert_close(
+            visual_width,
+            PAGE_W * 1.25,
+            "visual width == display target",
+        );
     }
 
     #[test]
@@ -166,7 +190,11 @@ mod tests {
         let result = sync_host_layout(request(1.5, None));
         assert_close(result.render_zoom, 1.5, "render_zoom fallback");
         assert_close(result.css_scale, 1.0, "css_scale identity");
-        assert_close(result.dom_width * result.css_scale, result.display_width, "cancellation");
+        assert_close(
+            result.dom_width * result.css_scale,
+            result.display_width,
+            "cancellation",
+        );
     }
 
     #[test]
@@ -177,6 +205,10 @@ mod tests {
         assert_close(result.display_zoom, 1.0, "display_zoom fallback");
         assert_close(result.render_zoom, 1.0, "render_zoom fallback");
         assert_close(result.css_scale, 1.0, "css_scale identity");
-        assert_close(result.dom_width * result.css_scale, result.display_width, "cancellation");
+        assert_close(
+            result.dom_width * result.css_scale,
+            result.display_width,
+            "cancellation",
+        );
     }
 }

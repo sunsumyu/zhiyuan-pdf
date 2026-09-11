@@ -13,15 +13,15 @@ mod reflow;
 
 pub(crate) use emitters::*;
 pub(crate) use reflow::{
-    PersistedTextLinePlan, PdfTextState, ReflowCluster,
-    patch_content_recursive, patch_atomic_reflow_recursive,
+    patch_atomic_reflow_recursive, patch_content_recursive, PdfTextState, PersistedTextLinePlan,
+    ReflowCluster,
 };
 
-use crate::infrastructure::pdf::models::*;
-use lopdf::{content::Content, Dictionary, Document, Object, Stream};
-use crate::infrastructure::pdf::pdf_read::read_resources;
 use crate::infrastructure::pdf::font::ResourceCache;
+use crate::infrastructure::pdf::models::*;
+use crate::infrastructure::pdf::pdf_read::read_resources;
 use crate::infrastructure::pdf::pdf_utils;
+use lopdf::{content::Content, Dictionary, Document, Object, Stream};
 use std::collections::HashMap;
 
 pub trait PdfDocExt {
@@ -230,9 +230,11 @@ impl PdfDocExt for Document {
         }
 
         if !deferred_lines.is_empty() {
-            content
-                .operations
-                .extend(emit_deferred_text_block(&deferred_lines, page_height, user_unit));
+            content.operations.extend(emit_deferred_text_block(
+                &deferred_lines,
+                page_height,
+                user_unit,
+            ));
         }
 
         if changed || !deferred_lines.is_empty() {
