@@ -49,3 +49,15 @@ pdf-viewer-ui/zoom/raf_loop.rs                ← 薄适配器：执行 SurfaceO
 - **Follower 跟随/盒子归一**：raster `width:100%` 参照 wrapper，而 wrapper 尺寸随 container 布局盒跳动；跟随节奏永远追不上布局跳动，脱节是结构性的。
 - **对 raster 独立推导锚定 transform**：需读 wrapper 偏移与陈旧盒子，复杂且脆；切面方案一行 op 解决。
 - **白屏边缘场景的取舍**：首次导航后、settle 前立即滚轮时 container 可能暂无位图（闪一帧空白，settle 渲染即补上）；概率远低于双矩形出现率，且可后续用"位图存在性检查"优化。
+
+## 修订（2026-09，随 ADR-0006 生效）
+
+ADR-0006 移除 CSS transform zoom 后，本决定中的 **presenter 实现层被退役**：`presentation.rs`（SurfaceOp 词汇 + SetTransform）与 `raf_transform.rs` 随 transform 补偿机制一并删除——transform 不复存在，`SetTransform` 与表面切换所服务的补偿场景不再存在。
+
+**仍然有效并延续的核心意图**：
+
+1. **单一写手原则不变**：动画阶段的几何写入收敛于 Rust RAF 循环（`apply_committed_frame` SetBox + 动画状态机），TS 侧不得新增直接写容器/canvas 盒子的路径——评审红线保留，执行点从 SurfaceOp 词汇变为 RAF 循环所有权。
+2. **三条不变量（I1 视觉尺寸连续、I2 锚点连续、I3 提交不产生视觉跳变）不变**，测试固化继续有效。
+3. **"幽灵矩形"的结构性防御不变**：动画期间 raster 层的显示/隐藏仍互斥于手势期，由 preview-first 呈现路径（`commitRasterSurface`）负责。
+
+与本文冲突之处（SurfaceOp 作为唯一几何写操作词汇、presenter 状态机作为决策组件）以 ADR-0006 为准。
