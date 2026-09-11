@@ -2,7 +2,10 @@
 name = "pdf-viewer-core"
 version = "0.1.0"
 edition = "2021"
+authors = ["PDF Viewer Team"]
 description = "Pure Rust core for PDF layout analysis and reflow logic."
+license = "MIT"
+repository = "https://github.com/sunsumyu/zhiyuan-pdf"
 
 [dependencies]
 serde = { workspace = true }
