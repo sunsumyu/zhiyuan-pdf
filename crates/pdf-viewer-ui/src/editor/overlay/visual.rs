@@ -145,7 +145,11 @@ pub fn render_active_editor_canvas(
     );
     let css_width = shell_width_px * projection_zoom;
     let css_height = (shell_height_px + (EDITOR_Y_BUFFER * 2.0)) * projection_zoom;
-    let mut renderer = CanvasRenderer::new_overlay(canvas);
+    let Some(mut renderer) = CanvasRenderer::new_overlay(canvas) else {
+        // Context acquisition failed (detached canvas / window gone) — skip
+        // this paint frame rather than panicking the render path.
+        return false;
+    };
     // The active editor shell is only an input/caret/text overlay. Page content
     // occlusion belongs to the Rust page render plan, otherwise this transparent
     // host canvas can accidentally cover nearby decorative PDF paths and leave a

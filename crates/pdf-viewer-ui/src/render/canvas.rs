@@ -143,27 +143,26 @@ fn debug_log_canvas_method(
 impl CanvasRenderer {
     // Unused new() purged
 
-    pub fn new_overlay(canvas: HtmlCanvasElement) -> Self {
+    pub fn new_overlay(canvas: HtmlCanvasElement) -> Option<Self> {
         let attrs = web_sys::ContextAttributes2d::new();
         attrs.set_alpha(true);
 
         let ctx = canvas
             .get_context_with_context_options("2d", &attrs.into())
-            .unwrap()
-            .unwrap()
-            .dyn_into::<CanvasRenderingContext2d>()
-            .unwrap();
+            .ok()??;
 
-        let dpr = web_sys::window().unwrap().device_pixel_ratio() as f32;
+        let ctx = ctx.dyn_into::<CanvasRenderingContext2d>().ok()?;
 
-        Self {
+        let dpr = web_sys::window()?.device_pixel_ratio() as f32;
+
+        Some(Self {
             ctx,
             canvas,
             dpr,
             canvas_height: Cell::new(0.0),
             is_hijacked: false,
             transparent_surface: true,
-        }
+        })
     }
 
     pub fn new_hijacked(target_id: &str) -> Option<Self> {
@@ -220,12 +219,8 @@ impl CanvasRenderer {
         let _ = self.canvas.set_width((width * self.dpr) as u32);
         let _ = self.canvas.set_height((height * self.dpr) as u32);
         let style = self.canvas.style();
-        style
-            .set_property("width", &format!("{}px", width))
-            .unwrap();
-        style
-            .set_property("height", &format!("{}px", height))
-            .unwrap();
+        let _ = style.set_property("width", &format!("{}px", width));
+        let _ = style.set_property("height", &format!("{}px", height));
 
         // 编辑器 canvas 使用本地坐标系：左上角为原点，Y 轴向下。
         // [Architectural Correction] 内部绘图单位应为 PDF Points，因此需要同时乘以 zoom 和 dpr
