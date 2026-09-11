@@ -1,0 +1,8 @@
+# Pin the toolchain for everyone entering this directory (rustup reads this
+# automatically). Code uses no nightly features (audited 2026-09); stable is
+# the reproducible baseline. Bump deliberately, with CI green as the gate.
+[toolchain]
+channel = "1.97.1"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

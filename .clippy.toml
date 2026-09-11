@@ -1,0 +1,17 @@
+# Clippy thresholds (rust-project-standards Part 4).
+# CI gate: cargo clippy --workspace --all-targets --all-features -- -D warnings
+#
+# Threshold decisions (2026-09, ticket quality-gates#01):
+# - cognitive-complexity-threshold = 15 fires zero additional hits on the
+#   current tree (default is 25) — tightened for free.
+# - too-many-arguments-threshold stays at the default 7. Tightening to 5
+#   fired ~24 new hits across the plan/render/zoom signature cluster —
+#   those are real Data Clump refactors (parameter structs) and belong to
+#   ticket quality-gates#02 / zoom-architecture-closeout#03, not to config.
+#   Revisit 5 after that batch lands.
+# - too-many-lines stays at the default 100 until the >1000-line file
+#   splits land (.scratch/zoom-architecture-closeout/issues/05, 06);
+#   the aspirational 30 would bury real signals under render/edit noise.
+
+cognitive-complexity-threshold = 15
+allow-unwrap-in-tests = true

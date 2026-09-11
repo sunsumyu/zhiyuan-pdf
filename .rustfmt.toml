@@ -1,0 +1,16 @@
+# Project-wide rustfmt settings (rust-project-standards Part 3).
+# Run `cargo fmt --all` before committing; CI enforces `-- --check`.
+edition = "2021"
+
+# Line width
+max_width = 100
+
+# Indentation
+tab_spaces = 4
+
+# Import / module ordering
+reorder_imports = true
+reorder_modules = true
+
+# Line endings (Auto = OS-native)
+newline_style = "Auto"
