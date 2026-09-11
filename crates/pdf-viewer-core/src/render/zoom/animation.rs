@@ -7,6 +7,11 @@ use crate::render::zoom_state::{
     HostZoomState, VisualLayoutState, ZoomAnchorState, ZoomAnimationStep,
 };
 
+/// Gap below which |visual_zoom - target_zoom| counts as settled. The UI-side
+/// committed-frame path must use the same value so both sides agree on when
+/// the animation has landed.
+pub const ZOOM_SETTLED_THRESHOLD: f32 = 0.0008;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WheelZoomRequest {
@@ -384,7 +389,7 @@ pub fn advance_zoom_animation_state(
         1.0 / 60.0
     };
 
-    let settled = diff.abs() < 0.0008;
+    let settled = diff.abs() < ZOOM_SETTLED_THRESHOLD;
     if settled {
         state.visual_zoom = target_zoom;
     } else {

@@ -9,7 +9,10 @@
 
 use std::cell::RefCell;
 
+use pdf_viewer_core::render::zoom::animation::ZOOM_SETTLED_THRESHOLD;
+
 use super::raf_dom_cache::{init_dom_cache, with_dom_cache};
+use super::raf_loop::GESTURE_THRESHOLD;
 use super::raf_settle::{cancel_settle_cleanup, schedule_settle_cleanup};
 use crate::zoom::zoom_store::ZOOM_STATE;
 
@@ -36,8 +39,7 @@ thread_local! {
 pub fn commit_rendered_frame(frame: CommittedFrame) {
     if !super::raf_loop::is_raf_loop_running() {
         init_dom_cache();
-        let visual_zoom = ZOOM_STATE.with(|s| s.borrow().visual_zoom);
-        apply_committed_frame(frame, visual_zoom);
+        apply_committed_frame(frame);
         return;
     }
     COMMITTED_FRAME_QUEUE.with(|q| q.borrow_mut().push(frame));
@@ -51,7 +53,7 @@ pub fn pop_committed_frame() -> Option<CommittedFrame> {
 /// Apply a committed frame: set container dimensions and scroll position directly.
 ///
 /// No CSS transform — container dimensions match the rendered zoom exactly.
-pub fn apply_committed_frame(frame: CommittedFrame, _current_visual_zoom: f32) {
+pub fn apply_committed_frame(frame: CommittedFrame) {
     cancel_settle_cleanup();
 
     let display_zoom = if frame.display_zoom.is_finite() && frame.display_zoom > 0.0 {
@@ -62,13 +64,12 @@ pub fn apply_committed_frame(frame: CommittedFrame, _current_visual_zoom: f32) {
 
     // Check gesture state BEFORE mutating ZOOM_STATE — the visual_zoom/target_zoom
     // gap determines whether on_wheel_event or the RAF loop owns geometry.
-    // Uses the same GESTURE_THRESHOLD as raf_loop.rs tick().
     let gap = ZOOM_STATE.with(|s| {
         let st = s.borrow();
         (st.visual_zoom - st.target_zoom).abs()
     });
-    let settled = gap < 0.0008; // Matches advance_zoom_animation_state's settled threshold
-    let in_gesture = gap > 0.001; // Matches GESTURE_THRESHOLD in raf_loop.rs
+    let settled = gap < ZOOM_SETTLED_THRESHOLD;
+    let in_gesture = gap > GESTURE_THRESHOLD;
 
     ZOOM_STATE.with(|state| {
         let mut s = state.borrow_mut();

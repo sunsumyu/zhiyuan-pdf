@@ -271,8 +271,9 @@ fn schedule_next_frame() {
 /// Threshold for considering the zoom animation as "in gesture" (visual_zoom
 /// is still catching up to target_zoom). When |visual_zoom - target_zoom| is
 /// above this threshold, the RAF loop skips re-renders and frame application
-/// to avoid geometry fights with on_wheel_event.
-const GESTURE_THRESHOLD: f32 = 0.001;
+/// to avoid geometry fights with on_wheel_event. Single source —
+/// raf_committed.rs imports this value.
+pub(super) const GESTURE_THRESHOLD: f32 = 0.001;
 
 fn tick(timestamp_ms: f64) {
     let still_active = RAF_HANDLE.with(|h| h.borrow().is_some());
@@ -287,7 +288,7 @@ fn tick(timestamp_ms: f64) {
 
     // ── 1. Advance animation (for render timing only — visual feedback
     //       comes from the virtual zoom layout applied in on_wheel_event) ──
-    let (settled, _visual_zoom, in_gesture) = ZOOM_STATE.with(|state| {
+    let (settled, _, in_gesture) = ZOOM_STATE.with(|state| {
         let mut s = state.borrow_mut();
         let step = advance_zoom_animation_state(&mut s, Some(timestamp_ms));
         let gap = (s.visual_zoom - s.target_zoom).abs();
@@ -337,7 +338,7 @@ fn tick(timestamp_ms: f64) {
     // target_zoom geometry set by on_wheel_event. Applying it would jump.
     if !in_gesture {
         if let Some(frame) = pop_committed_frame() {
-            apply_committed_frame(frame, _visual_zoom);
+            apply_committed_frame(frame);
         }
     }
 

@@ -11,8 +11,8 @@
 /** Fixed tile size in display-space pixels (ADR-0003). */
 export const TILE_SIZE = 512;
 
-/** Minimum cssScale guard — avoids divide-by-zero on transient state. */
-const MIN_CSS_SCALE = 0.0001;
+/** Zoom floor guard — keeps degenerate (zero/negative) zoom out of coordinate math. */
+const MIN_ZOOM_GUARD = 0.0001;
 
 export type TileElementBox = {
     left: number;
@@ -25,9 +25,8 @@ export type TileElementBox = {
  * Element box (CSS px) for a tile inside the vector container.
  * @param tileX tile column in the display-space grid
  * @param tileY tile row in the display-space grid
- * @param _cssScale unused (kept for API compat; CSS transform zoom removed)
  */
-export function tileElementBox(tileX: number, tileY: number, _cssScale: number): TileElementBox {
+export function tileElementBox(tileX: number, tileY: number): TileElementBox {
     const size = TILE_SIZE;
     return {
         left: tileX * size,
@@ -62,7 +61,7 @@ export function tileDisplayRect(
     pageWidth: number,
     pageHeight: number,
 ): TileDisplayRect {
-    const zoom = Number.isFinite(visualZoom) && visualZoom > MIN_CSS_SCALE ? visualZoom : MIN_CSS_SCALE;
+    const zoom = Number.isFinite(visualZoom) && visualZoom > MIN_ZOOM_GUARD ? visualZoom : MIN_ZOOM_GUARD;
     const left = tileX * TILE_SIZE;
     const top = tileY * TILE_SIZE;
     const pageW = pageWidth * zoom;

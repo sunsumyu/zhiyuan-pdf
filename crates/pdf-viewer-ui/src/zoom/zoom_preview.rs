@@ -7,10 +7,6 @@
 
 use crate::zoom::zoom_store::ZOOM_STATE;
 
-pub fn clear_preview_present() {
-    // No-op: preview_transform removed with CSS transform zoom.
-}
-
 pub fn clear_zoom_preview_host_state() {
     ZOOM_STATE.with(|state| {
         let mut s = state.borrow_mut();

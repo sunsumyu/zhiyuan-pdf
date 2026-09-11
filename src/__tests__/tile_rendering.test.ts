@@ -29,26 +29,26 @@ describe('Tile geometry', () => {
 
     describe('tileElementBox', () => {
         it('yields exact 512px CSS boxes (no CSS transform — coordinates are display-space)', () => {
-            const box = tileElementBox(2, 3, 1.0);
+            const box = tileElementBox(2, 3);
             expect(box).toEqual({ left: 1024, top: 1536, width: 512, height: 512 });
         });
 
-        it('ignores cssScale parameter (CSS transform zoom removed)', () => {
-            // cssScale parameter is kept for API compat but no longer affects sizing.
-            const box = tileElementBox(1, 0, 2.0);
+        it('positions tiles at their grid origin', () => {
+            const box = tileElementBox(1, 0);
             expect(box.width).toBe(512);
             expect(box.left).toBe(512);
             expect(box.top).toBe(0);
         });
 
-        it('returns valid values even with degenerate cssScale', () => {
-            const boxZero = tileElementBox(0, 0, 0);
+        it('returns valid values for degenerate grid indices', () => {
+            const boxZero = tileElementBox(0, 0);
             expect(Number.isFinite(boxZero.width)).toBe(true);
             expect(boxZero.width).toBeGreaterThan(0);
 
-            const boxNeg = tileElementBox(0, 0, -3);
+            const boxNeg = tileElementBox(-1, -1);
             expect(Number.isFinite(boxNeg.width)).toBe(true);
-            expect(boxNeg.width).toBeGreaterThan(0);
+            expect(boxNeg.width).toBe(512);
+            expect(boxNeg.left).toBe(-512);
         });
     });
 

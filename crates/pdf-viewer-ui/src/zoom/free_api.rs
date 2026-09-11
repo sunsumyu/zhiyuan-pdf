@@ -60,11 +60,6 @@ pub fn apply_zoom_selection(zoom: f32) -> JsValue {
     to_value(&result).unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen(js_name = "clearPreviewPresent")]
-pub fn clear_preview_present() {
-    zoom_controller::clear_preview_present();
-}
-
 #[wasm_bindgen(js_name = "cancelDrawingDelay")]
 pub fn cancel_drawing_delay() {
     zoom_controller::cancel_drawing_delay();
