@@ -101,6 +101,23 @@ pub fn build_frame_plan_result(
                 anchor_layout.scroll_top,
             )
         } else {
+            // During wheel zoom, on_wheel_event positions the container at
+            // target_zoom. The render pipeline renders at visualZoom
+            // (interpolated), so display_width differs from what on_wheel_event
+            // used. We must call compute_anchor_viewport_layout_result with the
+            // *render-time* display dimensions to get the matching content_left.
+            //
+            // Previously this path had a stale-check: it reused visual_layout's
+            // content offsets only when |vl.display_zoom - target_zoom| < 0.01.
+            // During rapid wheel events, target_zoom advances faster than the
+            // check threshold, causing the fallback centered computation to
+            // produce slightly different offsets → visible jump.
+            //
+            // Fix: always call compute_anchor_viewport_layout_result (which now
+            // always centers) with the current display dimensions. This uses
+            // the identical formula as on_wheel_event, eliminating the
+            // discontinuity regardless of how stale visual_layout.display_zoom
+            // is.
             let layout = compute_viewport_layout_result(
                 display_width,
                 display_height,

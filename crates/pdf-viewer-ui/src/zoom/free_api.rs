@@ -93,7 +93,6 @@ pub struct ZoomSnapshot {
     pub target_zoom: f32,
     pub visual_zoom: f32,
     pub last_rendered_zoom: f32,
-    pub css_scale: f32,
     pub preview_active: bool,
     pub wheel_render_pending: bool,
 }
@@ -106,7 +105,6 @@ pub fn read_zoom_snapshot() -> JsValue {
         target_zoom: state.target_zoom,
         visual_zoom: state.visual_zoom,
         last_rendered_zoom: state.last_rendered_zoom,
-        css_scale: state.css_scale,
         preview_active: zoom_controller::is_preview_active(),
         wheel_render_pending: zoom_controller::is_wheel_render_pending(),
     };

@@ -45,33 +45,36 @@ describe('zoom Rust RAF loop architecture', () => {
 
   it('RAF loop runs in Rust via web-sys', async () => {
     // The RAF loop is implemented in Rust using requestAnimationFrame + web-sys DOM ops.
-    // DOM ops were extracted to raf_transform.rs and raf_committed.rs.
+    // Post-ADR-0006 the transform stub raf_transform.rs is deleted: container
+    // dimensions are set directly (SetBox), no CSS transform anywhere.
     const fs = await import('fs');
     const path = await import('path');
     const rafLoop = fs.readFileSync(
       path.resolve(__dirname, '../../crates/pdf-viewer-ui/src/zoom/raf_loop.rs'),
       'utf8',
     );
-    const rafTransform = fs.readFileSync(
-      path.resolve(__dirname, '../../crates/pdf-viewer-ui/src/zoom/raf_transform.rs'),
-      'utf8',
-    );
     const rafCommitted = fs.readFileSync(
       path.resolve(__dirname, '../../crates/pdf-viewer-ui/src/zoom/raf_committed.rs'),
       'utf8',
     );
-    const all = rafLoop + rafTransform + rafCommitted;
+
+    // raf_transform.rs must NOT exist — the CSS transform mechanism is removed.
+    const rafTransformPath = path.resolve(
+      __dirname,
+      '../../crates/pdf-viewer-ui/src/zoom/raf_transform.rs',
+    );
+    expect(fs.existsSync(rafTransformPath)).toBe(false);
 
     // Must use requestAnimationFrame
     const hasRaf = /request_animation_frame/.test(rafLoop);
     expect(hasRaf).toBe(true);
 
-    // Must use web-sys for CSS transform (in raf_transform or raf_committed)
-    const hasCssTransform = /set_property.*transform/.test(all);
-    expect(hasCssTransform).toBe(true);
+    // Must NOT set a CSS transform (SetBox only — ADR-0006)
+    const hasCssTransform = /set_property.*transform/.test(rafLoop + rafCommitted);
+    expect(hasCssTransform).toBe(false);
 
     // Must use web-sys for scroll (in raf_committed)
-    const hasScroll = /set_scroll_left/.test(all);
+    const hasScroll = /set_scroll_left/.test(rafCommitted);
     expect(hasScroll).toBe(true);
 
     // Wheel path must guarantee the loop is running (loop self-stops after settle)

@@ -1,20 +1,19 @@
-//! Preview host state — flags and transforms tracking preview render state.
+//! Preview host state — flags tracking preview render state.
 //!
 //! This module only manages preview-host-local state. Orchestration
 //! (cross-module state mutations) lives in `zoom_controller.rs`.
+//!
+//! CSS transform zoom has been removed — preview_transform is no longer used.
 
 use crate::zoom::zoom_store::ZOOM_STATE;
 
 pub fn clear_preview_present() {
-    ZOOM_STATE.with(|state| {
-        state.borrow_mut().preview_transform = None;
-    });
+    // No-op: preview_transform removed with CSS transform zoom.
 }
 
 pub fn clear_zoom_preview_host_state() {
     ZOOM_STATE.with(|state| {
         let mut s = state.borrow_mut();
-        s.preview_transform = None;
         s.preview_host = Default::default();
     });
 }
@@ -28,10 +27,8 @@ pub fn clear_preview_settle_state() {
             1.0
         };
         s.visual_zoom = target_zoom;
-        s.recompute_css_scale();
         s.last_animation_timestamp_ms = 0.0;
         s.pending_anchor = None;
-        s.preview_transform = None;
         s.preview_host = Default::default();
     });
 }

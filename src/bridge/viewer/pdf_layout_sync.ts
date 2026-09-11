@@ -28,7 +28,6 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
         displayZoom: number,
         renderedZoom: number,
         layoutOverride?: LayoutOverride,
-        transform?: { cssTransform: string; transformOrigin?: string } | null,
     ): void {
         const wrapper = getWrapper();
         const container = getVectorContainer();
@@ -71,7 +70,6 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
                 pageWidth: deps.getPageWidth(),
                 pageHeight: deps.getPageHeight(),
                 displayZoom: safeDisplayZoom,
-                renderedZoom: renderedZoom > 0 ? renderedZoom : safeDisplayZoom,
             }) ?? null;
         } catch { /* WASM not available */ }
         const domWidth = Number.isFinite(layout?.domWidth) ? layout.domWidth : (fallback?.domWidth ?? deps.getPageWidth());
@@ -82,7 +80,6 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
         const hostHeight = Number.isFinite(layout?.hostHeight) ? layout.hostHeight : (fallback?.hostHeight ?? displayHeight);
         const contentLeft = Number.isFinite(layout?.contentLeft) ? layout.contentLeft : (fallback?.contentLeft ?? 0);
         const contentTop = Number.isFinite(layout?.contentTop) ? layout.contentTop : (fallback?.contentTop ?? 0);
-        const cssScale = Number.isFinite(layout?.cssScale) ? layout.cssScale : (fallback?.cssScale ?? 1.0);
 
         wrapper.style.display = 'block';
         wrapper.style.position = 'relative';
@@ -100,12 +97,7 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             container.style.width = `${domWidth}px`;
             container.style.height = `${domHeight}px`;
             container.style.margin = '0';
-            container.style.transformOrigin = transform?.transformOrigin ?? '0 0';
-            // When a transform is provided, apply it atomically with dimensions
-            // to prevent the flash caused by dimension changes under an active scale.
-            if (transform) {
-                container.style.transform = transform.cssTransform;
-            }
+            container.style.transformOrigin = '0 0';
         }
 
         const rasterCanvas = document.getElementById('pdf-render-target') as HTMLCanvasElement | null;

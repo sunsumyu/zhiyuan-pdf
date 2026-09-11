@@ -64,8 +64,9 @@ export type RenderWasmApi = {
         pageHeight: number,
     ) => RustRenderCommitResult | null;
     resolveLayoutFallback: (request: Record<string, number>) => { domWidth: number; domHeight: number; displayWidth: number; displayHeight: number; hostWidth: number; hostHeight: number; contentLeft: number; contentTop: number; cssScale: number } | null;
+    // cssScale is always 1.0 post-ADR-0006 (no CSS transform); kept in the
+    // shape so fallback and syncHostLayout consumers stay uniform.
     resolveFitToWidth: (viewportWidth: number, pageWidth: number) => { fitZoom: number; shouldFit: boolean } | null;
-    resolveCanvasCssBox: (displayZoom: number, baseRenderZoom: number, displayWidth: number, displayHeight: number) => { domWidth: number; domHeight: number; baseScale: number } | null;
     isImmediateMutationFrame: (renderReason: string) => boolean;
     scheduleRenderFollowUp: (renderedDisplayZoom: number, frameRequest: Record<string, unknown>) => RustRenderFrame | null;
     isRenderFrameCurrent: (frameToken: number) => boolean;
@@ -80,7 +81,7 @@ export type RenderWasmApi = {
     startZoomRafLoop: () => void;
     stopZoomRafLoop: () => void;
     isZoomRafLoopRunning: () => boolean;
-    onWheelEvent: (input: Record<string, unknown>) => { targetZoom: number; visualZoom: number; cssScale: number } | null;
+    onWheelEvent: (input: Record<string, unknown>) => { targetZoom: number; visualZoom: number } | null;
     commitRenderedFrameToQueue: (frame: Record<string, unknown>) => void;
     initPageContext: (
         modelJson: string,
@@ -163,9 +164,6 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
         },
         resolveFitToWidth(viewportWidth, pageWidth) {
             return getWasmApi().resolveFitToWidth?.(viewportWidth, pageWidth) ?? null;
-        },
-        resolveCanvasCssBox(displayZoom, baseRenderZoom, displayWidth, displayHeight) {
-            return getWasmApi().resolveCanvasCssBox?.(displayZoom, baseRenderZoom, displayWidth, displayHeight) ?? null;
         },
         isImmediateMutationFrame(renderReason) {
             return !!getWasmApi().isImmediateMutationFrame?.(renderReason);

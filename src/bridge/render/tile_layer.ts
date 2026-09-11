@@ -10,11 +10,9 @@
 //   (eviction marking + settle scheduling) from the zoom state read per tick
 //
 // Geometry (tile_geometry.ts): the tile grid lives in display space
-// (page × visualZoom); the container is laid out at layoutZoom and scaled by
-// the single CSS transform s = visualZoom / layoutZoom. A tile element is
-// positioned at display_pos / s inside the container so the container
-// transform lands it exactly on its display-space rect (ADR-0002: tiles are
-// children of the primary surface — they never write transforms themselves).
+// (page × visualZoom). Container dimensions are set directly via SetBox
+// (no CSS transform). Tiles are positioned at display-space coordinates
+// inside the container so they align without any transform compensation.
 //
 // Mid-gesture there is deliberately NO tile rendering: ADR-0004 (revised)
 // handles animation via render-tracks-visual + reknock; tiles render at
@@ -74,12 +72,6 @@ export type TileLayer = {
 type ActiveTile = {
     canvas: HTMLCanvasElement;
 };
-
-function cssScaleOf(zs: TileZoomState): number {
-    const visual = Math.max(zs.visualZoom, 0.0001);
-    const layout = Math.max(zs.lastRenderedZoom, 0.0001);
-    return visual / layout;
-}
 
 export function createTileLayer(deps: TileLayerDeps): TileLayer {
     let host: HTMLElement | null = null;
@@ -295,15 +287,17 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
         canvas.height = bitmapHeight;
         const ctx = canvas.getContext('2d', { alpha: false });
         if (!ctx) return false;
+        // Use high-quality smoothing for better visual quality
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(bitmap, 0, 0, bitmapWidth, bitmapHeight);
 
-        // Position in layout space (display / s); the container transform
-        // scales it back to the display-space rect.
-        const s = cssScaleOf(zs);
-        canvas.style.left = `${rect.left / s}px`;
-        canvas.style.top = `${rect.top / s}px`;
-        canvas.style.width = `${rect.width / s}px`;
-        canvas.style.height = `${rect.height / s}px`;
+        // Position in display space — no CSS transform on the container,
+        // so tile coordinates are display-space coordinates directly.
+        canvas.style.left = `${rect.left}px`;
+        canvas.style.top = `${rect.top}px`;
+        canvas.style.width = `${rect.width}px`;
+        canvas.style.height = `${rect.height}px`;
         canvas.style.display = 'block';
 
         presentedPage = page;
@@ -401,6 +395,9 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
 
         // Stale presentation — a commit landed at a different zoom, the page
         // turned, or the document mutated: drop DOM tiles before scheduling.
+        // Only clear when the SCHEDULED zoom changed (tiles were rendered at
+        // scheduledZoom), not when lastRenderedZoom changed (that's just
+        //簿记 from the render pipeline and doesn't invalidate existing tiles).
         if (presentedPage !== null && presentedPage !== page) {
             tileFacade.clearPage(presentedPage);
             clearDom();
@@ -408,8 +405,9 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
             tileFacade.clearPage(page);
             clearDom();
         } else if (
+            scheduledZoom !== null &&
             presentedZoom !== null &&
-            Math.abs(zs.lastRenderedZoom - presentedZoom) > ZOOM_EPS
+            Math.abs(scheduledZoom - presentedZoom) > ZOOM_EPS
         ) {
             clearDom();
         }

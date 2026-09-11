@@ -14,15 +14,11 @@ pub use super::zoom_anchor::*;
 pub use super::zoom_preview::*;
 pub use super::zoom_frame::*;
 
-use crate::present::plan_builder::{
-    build_frame_plan_result, AnchorViewportLayoutResult, FramePlanRequest, FramePlanResult,
-};
-use crate::present::present_store;
+use crate::present::plan_builder::{FramePlanRequest, FramePlanResult};
 use crate::viewer::viewer_controller::set_zoom;
 use pdf_viewer_core::render::zoom::animation::{
     WheelZoomRequest, WheelZoomResult,
 };
-use crate::zoom::zoom_store::HostZoomState;
 
 use serde::{Deserialize, Serialize};
 use crate::present::present_store::build_frame_plan_result as present_build_frame_plan_result;
@@ -104,7 +100,6 @@ pub fn resolve_wheel_zoom(request: &WheelZoomRequest) -> WheelZoomResult {
         pdf_viewer_core::render::zoom_interaction::resolve_wheel_zoom_request(
             request,
             s.visual_layout.as_ref(),
-            s.preview_transform.as_ref(),
         )
     });
     crate::zoom::zoom_store::ZOOM_STATE.with(|state| {

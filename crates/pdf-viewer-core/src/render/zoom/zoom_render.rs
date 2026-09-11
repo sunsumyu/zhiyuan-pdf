@@ -18,7 +18,7 @@ pub enum ShouldRender {
 /// Blur threshold constants.
 const BLUR_HIGH_THRESHOLD: f32 = 0.10;  // > 10% blur → render immediately
 const BLUR_LOW_THRESHOLD: f32 = 0.03;   // > 3% blur → render next frame
-const SETTLE_DELAY_MS: f64 = 80.0;      // delay after settle before final render
+// Settle drawing delay lives UI-side: SETTLE_DRAWING_DELAY_MS in raf_loop.rs.
 
 // ─── Mid-animation re-render knock (ADR-0002) ───────────────────────────────
 //
@@ -30,12 +30,11 @@ const SETTLE_DELAY_MS: f64 = 80.0;      // delay after settle before final rende
 // renders at visualZoom (C1: render tracks visual), so its renderZoom ==
 // displayZoom and the presenter can commit it seamlessly (I1/I2 hold).
 
-/// Blur at or above this triggers a mid-animation re-render. Slightly under
-/// BLUR_HIGH_THRESHOLD so a knock fires before the old threshold would have.
-pub const PREVIEW_REKNOCK_BLUR_THRESHOLD: f32 = 0.06;
-/// Minimum spacing between mid-animation knocks — a Vello render takes
-/// O(100ms); knocking faster only queues stale frames.
-pub const PREVIEW_REKNOCK_INTERVAL_MS: f64 = 140.0;
+/// Blur at or above this triggers a mid-animation re-render. Lowered for
+/// direct-redraw mode where there's no CSS transform visual feedback.
+pub const PREVIEW_REKNOCK_BLUR_THRESHOLD: f32 = 0.02;
+/// Minimum spacing between mid-animation knocks — reduced for snappier zoom.
+pub const PREVIEW_REKNOCK_INTERVAL_MS: f64 = 60.0;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PreviewReknockRequest {
@@ -110,7 +109,7 @@ mod tests {
     #[test]
     fn reknock_below_blur_threshold_is_skipped() {
         let r = should_reknock_preview_render(PreviewReknockRequest {
-            blur: 0.05,
+            blur: 0.01,
             elapsed_ms: 1000.0,
             render_in_flight: false,
         });
@@ -141,7 +140,7 @@ mod tests {
     fn reknock_inside_throttle_window_is_suppressed() {
         let r = should_reknock_preview_render(PreviewReknockRequest {
             blur: 0.5,
-            elapsed_ms: 139.0,
+            elapsed_ms: 59.0,
             render_in_flight: false,
         });
         assert!(!r);

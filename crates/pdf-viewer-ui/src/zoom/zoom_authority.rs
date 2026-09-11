@@ -44,7 +44,6 @@ pub fn set_target_zoom_instant(target_zoom: f32) {
     ZOOM_STATE.with(|state| {
         let mut state = state.borrow_mut();
         state.visual_zoom = state.target_zoom;
-        state.recompute_css_scale();
     });
 }
 

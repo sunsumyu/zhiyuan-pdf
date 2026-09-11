@@ -19,6 +19,7 @@ pub mod source_suppression;
 pub mod tile_cache;
 pub mod tile_cache_legacy;
 pub mod tile_manager;
+pub mod tile_scheduler;
 pub mod tile_v2;
 pub mod viewer_session;
 pub mod viewport_culling;

@@ -28,21 +28,20 @@ describe('Tile geometry', () => {
     });
 
     describe('tileElementBox', () => {
-        it('yields exact 512px CSS boxes at settle (cssScale = 1)', () => {
+        it('yields exact 512px CSS boxes (no CSS transform — coordinates are display-space)', () => {
             const box = tileElementBox(2, 3, 1.0);
             expect(box).toEqual({ left: 1024, top: 1536, width: 512, height: 512 });
         });
 
-        it('divides by cssScale so the container transform lands the tile on its display rect', () => {
-            // During interpolation s = visual / layout; a display-space 512px
-            // tile must be a 512/s CSS-px element inside the scaled container.
+        it('ignores cssScale parameter (CSS transform zoom removed)', () => {
+            // cssScale parameter is kept for API compat but no longer affects sizing.
             const box = tileElementBox(1, 0, 2.0);
-            expect(box.width).toBeCloseTo(256, 5);
-            expect(box.left).toBeCloseTo(256, 5);
+            expect(box.width).toBe(512);
+            expect(box.left).toBe(512);
             expect(box.top).toBe(0);
         });
 
-        it('guards against degenerate cssScale', () => {
+        it('returns valid values even with degenerate cssScale', () => {
             const boxZero = tileElementBox(0, 0, 0);
             expect(Number.isFinite(boxZero.width)).toBe(true);
             expect(boxZero.width).toBeGreaterThan(0);

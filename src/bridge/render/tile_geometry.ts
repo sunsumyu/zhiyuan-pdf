@@ -3,15 +3,9 @@
 //
 // Coordinate spaces:
 // - Display space:  page × visualZoom  (tile grid lives here — 512px cells)
-// - Layout space:   page × layoutZoom  (container box inside the DOM)
-// - Visual space:   what the user sees; container transform scales layout
-//                   space by cssScale s = visualZoom / layoutZoom.
 //
-// A tile element positioned INSIDE the container at layout-space coordinates
-// appears at display-space coordinates after the container's scale(s):
-//     layout_pos = display_pos / s
-// so a 512px display-space tile must be a 512/s CSS-px element. At settle
-// s → 1 (render tracks visual zoom) and elements sit at exactly 512 CSS px.
+// Container dimensions are set directly via SetBox (no CSS transform).
+// Tiles are positioned at display-space coordinates inside the container.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Fixed tile size in display-space pixels (ADR-0003). */
@@ -31,11 +25,10 @@ export type TileElementBox = {
  * Element box (CSS px) for a tile inside the vector container.
  * @param tileX tile column in the display-space grid
  * @param tileY tile row in the display-space grid
- * @param cssScale visualZoom / layoutZoom (container transform scale)
+ * @param _cssScale unused (kept for API compat; CSS transform zoom removed)
  */
-export function tileElementBox(tileX: number, tileY: number, cssScale: number): TileElementBox {
-    const s = Number.isFinite(cssScale) && cssScale > MIN_CSS_SCALE ? cssScale : MIN_CSS_SCALE;
-    const size = TILE_SIZE / s;
+export function tileElementBox(tileX: number, tileY: number, _cssScale: number): TileElementBox {
+    const size = TILE_SIZE;
     return {
         left: tileX * size,
         top: tileY * size,

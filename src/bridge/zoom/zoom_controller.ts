@@ -68,7 +68,6 @@ type WheelEventInput = {
 type WheelEventOutput = {
     targetZoom: number;
     visualZoom: number;
-    cssScale: number;
 };
 
 export type ZoomController = {
@@ -112,6 +111,7 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
             // Collect raw DOM values — Rust does all computation
             const input: WheelEventInput = {
                 deltaY: event.deltaY,
+                // Cursor position within the viewport — used for anchor computation
                 viewportX: event.clientX - rect.left,
                 viewportY: event.clientY - rect.top,
                 viewportWidth: scrollContainer.clientWidth || rect.width || 0,

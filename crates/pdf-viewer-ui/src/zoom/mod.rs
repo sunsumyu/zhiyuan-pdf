@@ -4,7 +4,6 @@ pub mod raf_dispatch;
 pub mod raf_dom_cache;
 pub mod raf_loop;
 pub mod raf_settle;
-pub mod raf_transform;
 pub mod zoom_anchor;
 pub mod zoom_authority;
 pub mod zoom_controller;

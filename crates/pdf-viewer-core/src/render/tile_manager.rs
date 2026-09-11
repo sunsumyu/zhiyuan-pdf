@@ -2,95 +2,35 @@
 // Tile Manager — coordinates tile rendering across viewport and animation
 //
 // Responsibilities:
-// - Viewport tile priority rendering
-// - Async queue management for tile rendering
-// - Zoom animation incremental rendering
-// - Integration with FrameToken concurrency control
+// - Render queue management with priority ordering
+// - FrameToken concurrency control
+// - Cache coordination (delegates to TileCache)
 //
+// Delegates viewport/animation scheduling to TileScheduler.
 // See docs/adr/0003-tile-based-rendering.md
 // ─────────────────────────────────────────────────────────────────────────────
 
+use super::tile_scheduler::{TilePriority, TileRenderRequest, TileScheduler};
 use super::tile_v2::{Tile, TileCache, TileKey, TileRect, TileState, TILE_SIZE};
 use serde::{Deserialize, Serialize};
-
-/// Rendering priority for tiles
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum TilePriority {
-    /// Viewport tiles (highest priority)
-    Viewport = 0,
-    /// Near-viewport tiles (medium priority)
-    NearViewport = 1,
-    /// Far-viewport tiles (lowest priority)
-    FarViewport = 2,
-}
-
-/// A tile rendering request
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TileRenderRequest {
-    pub tile_key: TileKey,
-    pub priority: TilePriority,
-    pub frame_token: u32,
-}
 
 /// Tile manager state
 #[derive(Debug)]
 pub struct TileManager {
     /// Tile cache for storing rendered tiles
     pub cache: TileCache,
+    /// Viewport and animation scheduler
+    scheduler: TileScheduler,
     /// Queue of pending render requests
     render_queue: Vec<TileRenderRequest>,
-    /// Current frame token for concurrency control
-    current_frame_token: u32,
-    /// Viewport state for priority calculation
-    viewport: ViewportState,
-    /// Animation state for incremental rendering
-    animation: AnimationState,
-}
-
-/// Viewport state for tile priority calculation
-#[derive(Debug, Clone)]
-pub struct ViewportState {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-    pub page: u16,
-    pub zoom: f32,
-    pub dpr: f32,
-}
-
-/// Animation state for incremental rendering
-#[derive(Debug, Clone)]
-pub struct AnimationState {
-    pub is_animating: bool,
-    pub current_visual_zoom: f32,
-    pub target_zoom: f32,
-    pub render_interval: u32,
-    pub frame_count: u32,
 }
 
 impl TileManager {
     pub fn new() -> Self {
         Self {
             cache: TileCache::new(),
+            scheduler: TileScheduler::new(),
             render_queue: Vec::new(),
-            current_frame_token: 0,
-            viewport: ViewportState {
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 0.0,
-                page: 0,
-                zoom: 1.0,
-                dpr: 1.0,
-            },
-            animation: AnimationState {
-                is_animating: false,
-                current_visual_zoom: 1.0,
-                target_zoom: 1.0,
-                render_interval: 3,
-                frame_count: 0,
-            },
         }
     }
 
@@ -106,52 +46,39 @@ impl TileManager {
         viewport_height: f32,
         frame_token: u32,
     ) {
-        self.viewport = ViewportState {
-            x: viewport_x,
-            y: viewport_y,
-            width: viewport_width,
-            height: viewport_height,
+        self.scheduler.update_viewport(
             page,
             zoom,
             dpr,
-        };
-
-        self.current_frame_token = frame_token;
+            viewport_x,
+            viewport_y,
+            viewport_width,
+            viewport_height,
+            frame_token,
+        );
         self.schedule_viewport_tiles();
     }
 
     /// Start zoom animation
     pub fn start_animation(&mut self, target_zoom: f32) {
-        self.animation.is_animating = true;
-        self.animation.target_zoom = target_zoom;
-        self.animation.current_visual_zoom = self.viewport.zoom;
-        self.animation.frame_count = 0;
-
+        self.scheduler.start_animation(target_zoom);
         // Mark all tiles as eligible for eviction during animation
         self.cache.mark_all_eligible_for_eviction();
     }
 
     /// Update animation state (called each frame)
     pub fn update_animation(&mut self, visual_zoom: f32, frame_token: u32) {
-        if !self.animation.is_animating {
-            return;
-        }
-
-        self.animation.current_visual_zoom = visual_zoom;
-        self.animation.frame_count += 1;
-        self.current_frame_token = frame_token;
+        self.scheduler.update_animation(visual_zoom, frame_token);
 
         // Incremental rendering during animation
-        if self.animation.frame_count % self.animation.render_interval == 0 {
+        if self.scheduler.should_render_incremental() {
             self.schedule_incremental_tiles();
         }
     }
 
     /// End zoom animation
     pub fn end_animation(&mut self, frame_token: u32) {
-        self.animation.is_animating = false;
-        self.current_frame_token = frame_token;
-
+        self.scheduler.end_animation(frame_token);
         // Schedule final high-resolution tiles
         self.schedule_viewport_tiles();
     }
@@ -161,9 +88,11 @@ impl TileManager {
         // Sort by priority (viewport first)
         self.render_queue.sort_by_key(|r| r.priority);
 
+        let current_frame_token = self.scheduler.current_frame_token();
+
         // Find first request with valid frame token that still needs rendering
         while let Some(request) = self.render_queue.first() {
-            let stale_token = request.frame_token != self.current_frame_token;
+            let stale_token = request.frame_token != current_frame_token;
             let already_done = self
                 .cache
                 .peek(&request.tile_key)
@@ -233,14 +162,15 @@ impl TileManager {
 
     /// Get all ready tiles for the current viewport
     pub fn get_ready_viewport_tiles(&self) -> Vec<&Tile> {
+        let vp = self.scheduler.viewport_state();
         self.cache.get_viewport_tiles(
-            self.viewport.page,
-            self.viewport.zoom,
-            self.viewport.dpr,
-            self.viewport.x,
-            self.viewport.y,
-            self.viewport.width,
-            self.viewport.height,
+            vp.page,
+            vp.zoom,
+            vp.dpr,
+            vp.x,
+            vp.y,
+            vp.width,
+            vp.height,
         )
     }
 
@@ -255,63 +185,22 @@ impl TileManager {
         TileManagerStats {
             cache: cache_stats,
             queue_size: self.render_queue.len(),
-            current_frame_token: self.current_frame_token,
-            is_animating: self.animation.is_animating,
+            current_frame_token: self.scheduler.current_frame_token(),
+            is_animating: self.scheduler.is_animating(),
         }
     }
 
     fn schedule_viewport_tiles(&mut self) {
-        let page = self.viewport.page;
-        let zoom = self.viewport.zoom;
-        let dpr = self.viewport.dpr;
-
-        // Calculate which tiles cover the viewport
-        let start_tile_x = (self.viewport.x / TILE_SIZE).floor() as i32;
-        let start_tile_y = (self.viewport.y / TILE_SIZE).floor() as i32;
-        let end_tile_x = ((self.viewport.x + self.viewport.width) / TILE_SIZE).ceil() as i32;
-        let end_tile_y = ((self.viewport.y + self.viewport.height) / TILE_SIZE).ceil() as i32;
-
-        // Schedule viewport tiles with high priority
-        for y in start_tile_y..=end_tile_y {
-            for x in start_tile_x..=end_tile_x {
-                let key = TileKey::new(page, zoom, dpr, x, y);
-                self.schedule_tile(key, TilePriority::Viewport);
-            }
-        }
-
-        // Schedule near-viewport tiles with medium priority
-        let margin = 1;
-        for y in (start_tile_y - margin)..=(end_tile_y + margin) {
-            for x in (start_tile_x - margin)..=(end_tile_x + margin) {
-                if x < start_tile_x
-                    || x > end_tile_x
-                    || y < start_tile_y
-                    || y > end_tile_y
-                {
-                    let key = TileKey::new(page, zoom, dpr, x, y);
-                    self.schedule_tile(key, TilePriority::NearViewport);
-                }
-            }
+        let requests = self.scheduler.schedule_viewport_tiles();
+        for request in requests {
+            self.schedule_tile(request.tile_key, request.priority);
         }
     }
 
     fn schedule_incremental_tiles(&mut self) {
-        let page = self.viewport.page;
-        let zoom = self.animation.current_visual_zoom;
-        let dpr = self.viewport.dpr;
-
-        // Calculate viewport tiles at current visual zoom
-        let start_tile_x = (self.viewport.x / TILE_SIZE).floor() as i32;
-        let start_tile_y = (self.viewport.y / TILE_SIZE).floor() as i32;
-        let end_tile_x = ((self.viewport.x + self.viewport.width) / TILE_SIZE).ceil() as i32;
-        let end_tile_y = ((self.viewport.y + self.viewport.height) / TILE_SIZE).ceil() as i32;
-
-        // Schedule only viewport tiles during animation
-        for y in start_tile_y..=end_tile_y {
-            for x in start_tile_x..=end_tile_x {
-                let key = TileKey::new(page, zoom, dpr, x, y);
-                self.schedule_tile(key, TilePriority::Viewport);
-            }
+        let requests = self.scheduler.schedule_incremental_tiles();
+        for request in requests {
+            self.schedule_tile(request.tile_key, request.priority);
         }
     }
 
@@ -343,7 +232,7 @@ impl TileManager {
         let request = TileRenderRequest {
             tile_key: key,
             priority,
-            frame_token: self.current_frame_token,
+            frame_token: self.scheduler.current_frame_token(),
         };
         self.render_queue.push(request);
     }

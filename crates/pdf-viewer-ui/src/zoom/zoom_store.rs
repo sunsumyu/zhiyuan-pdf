@@ -39,9 +39,7 @@ impl ZoomSessionState {
 pub fn read_zoom_session_state() -> ZoomSessionState {
     ZOOM_STATE.with(|state| {
         let s = state.borrow();
-        if s.preview_transform.is_some() {
-            ZoomSessionState::Previewing
-        } else if (s.visual_zoom - s.target_zoom).abs() > f32::EPSILON {
+        if (s.visual_zoom - s.target_zoom).abs() > f32::EPSILON {
             ZoomSessionState::Animating
         } else {
             ZoomSessionState::Idle
@@ -73,11 +71,9 @@ pub fn reset_zoom_state(initial_zoom: f32) {
             target_zoom: zoom,
             visual_zoom: zoom,
             last_rendered_zoom: zoom,
-            css_scale: 1.0,
             last_animation_timestamp_ms: 0.0,
             pending_anchor: None,
             visual_layout: None,
-            preview_transform: None,
             preview_host: PreviewHostState::default(),
             drawing_delay: DrawingDelayState::default(),
         };

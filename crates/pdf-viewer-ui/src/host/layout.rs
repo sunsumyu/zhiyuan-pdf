@@ -47,17 +47,13 @@ pub fn sync_host_layout(request: SyncHostLayoutRequest) -> SyncHostLayoutResult 
     let page_w = sanitize_positive(request.page_width, 1.0);
     let page_h = sanitize_positive(request.page_height, 1.0);
 
-    // DOM geometry follows the (lagging) render zoom; the display zoom is
-    // restored via a css transform so preview frames never double-scale.
-    let dom_width = page_w * render_zoom;
-    let dom_height = page_h * render_zoom;
-    let display_width = page_w * display_zoom;
-    let display_height = page_h * display_zoom;
-    let css_scale = if render_zoom > 0.0001 {
-        display_zoom / render_zoom
-    } else {
-        1.0
-    };
+    // CSS transform zoom has been removed — DOM dimensions track display_zoom
+    // directly. render_zoom is only used for canvas rendering resolution.
+    let dom_width = page_w * display_zoom;
+    let dom_height = page_h * display_zoom;
+    let display_width = dom_width;
+    let display_height = dom_height;
+    let css_scale = 1.0;
 
     let layout = request
         .layout_override
@@ -136,49 +132,37 @@ mod tests {
 
     #[test]
     fn committed_state_has_identity_css_scale() {
-        // Committed: rendered zoom equals display zoom => css_scale == 1, dom == display.
+        // Committed: dom and display both track display_zoom => css_scale == 1.
         let result = sync_host_layout(request(1.25, Some(1.25)));
         assert_close(result.css_scale, 1.0, "css_scale");
         assert_close(result.dom_width, result.display_width, "dom_width == display_width");
         assert_close(result.dom_height, result.display_height, "dom_height == display_height");
-        assert_close(result.dom_width, PAGE_W * 1.25, "dom_width == page_w * zoom");
+        assert_close(result.dom_width, PAGE_W * 1.25, "dom_width == page_w * display_zoom");
         assert!(result.host_width >= result.display_width, "host covers display");
     }
 
     #[test]
-    fn preview_state_cancels_css_scale_against_render_zoom() {
-        // Preview: rendered zoom lags behind display zoom.
+    fn preview_state_tracks_display_zoom_not_render_zoom() {
+        // CSS transform removed: DOM dimensions always follow display_zoom.
         let result = sync_host_layout(request(1.25, Some(1.0)));
-        assert_close(result.dom_width, PAGE_W * 1.0, "dom_width == page_w * render_zoom");
+        assert_close(result.dom_width, PAGE_W * 1.25, "dom_width == page_w * display_zoom");
         assert_close(result.display_width, PAGE_W * 1.25, "display_width == page_w * display_zoom");
-        assert_close(result.css_scale, 1.25, "css_scale == display / render");
-        // The core cancellation guarantee:
-        // visual width = dom_width * css_scale == display_width.
-        assert_close(
-            result.dom_width * result.css_scale,
-            result.display_width,
-            "dom_width * css_scale == display_width",
-        );
+        assert_close(result.css_scale, 1.0, "css_scale identity (no transform)");
+        assert_close(result.dom_width, result.display_width, "dom == display");
     }
 
     #[test]
     fn zoom_in_preview_does_not_flash_larger() {
-        // Z_display=1.25, Z_rendered=1.0: visual width must equal the target
-        // display width, not the pre-fix quadratic overshoot W * Z_display^2 /
-        // Z_rendered.
+        // CSS transform removed: no quadratic overshoot possible since
+        // dom and display both use display_zoom.
         let result = sync_host_layout(request(1.25, Some(1.0)));
         let visual_width = result.dom_width * result.css_scale;
-        let quadratic_overshoot = PAGE_W * (1.25f32 * 1.25) / 1.0;
-        assert!(
-            (visual_width - quadratic_overshoot).abs() > 10.0,
-            "must not exhibit quadratic double-scaling flash"
-        );
         assert_close(visual_width, PAGE_W * 1.25, "visual width == display target");
     }
 
     #[test]
     fn render_zoom_defaults_to_display_zoom() {
-        // render_zoom omitted => defaults to display_zoom (committed-like).
+        // render_zoom omitted => defaults to display_zoom.
         let result = sync_host_layout(request(1.5, None));
         assert_close(result.render_zoom, 1.5, "render_zoom fallback");
         assert_close(result.css_scale, 1.0, "css_scale identity");

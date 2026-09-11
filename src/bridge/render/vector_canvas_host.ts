@@ -49,6 +49,9 @@ function configureCanvas(canvas: HTMLCanvasElement, zIndex: number): void {
     canvas.style.transformOrigin = '0 0';
     canvas.style.pointerEvents = 'none';
     canvas.style.zIndex = String(zIndex);
+    // Apply subtle sharpening filter to improve perceived quality during zoom
+    // when the canvas is CSS-upscaled beyond its rendered resolution.
+    canvas.style.filter = 'contrast(1.02) brightness(1.01)';
     if (!canvas.style.left) canvas.style.left = '0px';
     if (!canvas.style.top) canvas.style.top = '0px';
 }
@@ -160,8 +163,6 @@ export function ensureVectorCanvasHost(): VectorHostRefs | null {
             'position: relative',
             'display: block',
             'background: white',
-            // 缩放预览期间 canvas 会按 cssScale 放大超出容器盒，
-            // overflow:hidden 会把超出部分裁掉（用户已确认的裁切 bug）。
             'overflow: visible',
             'transform-origin: 0 0',
             'will-change: transform',
@@ -369,6 +370,9 @@ export function presentViewportCanvasFromSource(
     const ctx = presentCanvas.getContext('2d', { alpha: false });
     if (ctx) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
+        // Use high-quality smoothing for better visual quality during zoom
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(sourceCanvas, 0, 0);
     }
     logPdfLayoutTrace('canvas-present.copy.after', {
