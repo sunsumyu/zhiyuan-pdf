@@ -570,14 +570,14 @@ fn resolve_direction(current_page: u16, target_page: u16) -> i8 {
     }
 }
 
-fn emit_decision(event: &str, decision: &PageTurnDecision) {
+fn emit_decision(_event: &str, _decision: &PageTurnDecision) {
     #[cfg(target_arch = "wasm32")]
     if let Ok(payload) = serde_wasm_bindgen::to_value(decision) {
         crate::events::emit(event, &payload);
     }
 }
 
-fn emit_visible(decision: &PageVisibleDecision) {
+fn emit_visible(_decision: &PageVisibleDecision) {
     #[cfg(target_arch = "wasm32")]
     if let Ok(payload) = serde_wasm_bindgen::to_value(decision) {
         crate::events::emit(crate::events::event_names::PAGE_TURN_VISIBLE, &payload);

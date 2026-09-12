@@ -24,7 +24,9 @@
 //! `EventBus` is a `thread_local!` singleton — safe for WASM's single-threaded
 //! execution model. On native (test/Tauri), events are silently dropped.
 
+#[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
+#[cfg(target_arch = "wasm32")]
 use std::collections::HashMap;
 
 // ── Event name constants ────────────────────────────────────────
