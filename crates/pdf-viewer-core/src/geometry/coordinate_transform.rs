@@ -200,7 +200,7 @@ impl PdfCoordinateSpace {
 /// # Invariants (不变式约束)
 /// * **输入法预校验**: 提供给 `point_from_pdf` 的参数 `pdf_x`, `pdf_y` **绝对不可是原始 Y-Up** 数据。
 /// * **锚点生死周期 (Anchor Binding)**: `anchor` 代表其寄生成素的绝对基准框。无论何时这个文本流遭遇 `Relayout`（重排），
-///    该变换实例应当立即在堆栈中释放重构。
+///  该变换实例应当立即在堆栈中释放重构。
 ///
 /// # Thread Safety
 /// 本结构未发生堆分配且均为栈原生的浮点基元。

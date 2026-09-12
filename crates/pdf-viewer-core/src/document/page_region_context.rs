@@ -705,10 +705,7 @@ pub fn build_page_region_context(page: &NativePageModel) -> PageRegionContextOut
             continue;
         }
 
-        if active_paragraph_group.is_empty() {
-            active_paragraph_group.push(obj.clone());
-        } else if should_merge_paragraph_objects(active_paragraph_group.last().unwrap(), &obj) {
-            active_paragraph_group.push(obj.clone());
+        if active_paragraph_group.is_empty() || should_merge_paragraph_objects(active_paragraph_group.last().unwrap(), &obj) {
         } else {
             flush_paragraph_group(&mut paragraph_groups, &mut active_paragraph_group);
             active_paragraph_group.push(obj.clone());

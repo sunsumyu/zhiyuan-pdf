@@ -850,7 +850,7 @@ where
                     index: start_index,
                     left: run_origin_x + first_origin,
                 });
-                for glyph_index in 0..glyph_count {
+                for (glyph_index, _) in chars.iter().enumerate().take(glyph_count) {
                     let origin = run
                         .char_origins
                         .get(glyph_index)

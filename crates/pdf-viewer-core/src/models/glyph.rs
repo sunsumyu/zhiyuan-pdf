@@ -134,11 +134,8 @@ impl GlyphPaintPlan {
             }
         }
         for ext in &mut self.external_objects {
-            match ext {
-                ExternalObject::Image { y, height, .. } => {
-                    *y = h - (*y + *height);
-                }
-                _ => {} // Path commands are complex, usually use separate transform
+            if let ExternalObject::Image { y, height, .. } = ext {
+                *y = h - (*y + *height);
             }
         }
     }

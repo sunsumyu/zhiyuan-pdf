@@ -261,14 +261,13 @@ fn finish_line(
         LayoutAlignment::Right => {
             offset_x = remaining_space;
         }
-        LayoutAlignment::Justify
-            // 只有非最后一行且有多个运行块时才进行两端对齐
-            if !is_last_line && runs.len() > 1 && remaining_space > 0.0 => {
+        LayoutAlignment::Justify if
+!is_last_line && runs.len() > 1 && remaining_space > 0.0 => {
                 let extra_gap = remaining_space / (runs.len() - 1) as f32;
                 let mut current_extra = 0.0;
-                for i in 1..runs.len() {
+                for run in runs.iter_mut().skip(1) {
                     current_extra += extra_gap;
-                    runs[i].origin_x += current_extra;
+                    run.origin_x += current_extra;
                 }
             }
         _ => {}
