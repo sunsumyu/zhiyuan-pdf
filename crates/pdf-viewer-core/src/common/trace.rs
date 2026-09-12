@@ -72,8 +72,8 @@ impl TraceSubscriber for NoOpSubscriber {
 use std::cell::RefCell;
 
 thread_local! {
-    static SUBSCRIBER: RefCell<Option<Box<dyn TraceSubscriber>>> = RefCell::new(None);
-    static MAX_LEVEL: RefCell<TraceLevel> = RefCell::new(TraceLevel::Trace);
+    static SUBSCRIBER: RefCell<Option<Box<dyn TraceSubscriber>>> = const { RefCell::new(None) };
+    static MAX_LEVEL: RefCell<TraceLevel> = const { RefCell::new(TraceLevel::Trace) };
 }
 
 /// Install a subscriber (replaces any previous one).

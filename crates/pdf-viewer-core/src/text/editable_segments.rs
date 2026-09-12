@@ -243,7 +243,7 @@ fn build_contiguous_segments_in_range(
         let first_run = &text_model.runs[cursor];
         let style_signature = resolve_run_style_signature(first_run, text_model);
         let mut seg_end = cursor;
-        while seg_end + 1 <= end {
+        while seg_end < end {
             let next = &text_model.runs[seg_end + 1];
             if resolve_run_style_signature(next, text_model) != style_signature {
                 break;

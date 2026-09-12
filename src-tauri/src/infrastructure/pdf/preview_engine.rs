@@ -48,7 +48,7 @@ fn collect_page_xobjects(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
             if let Ok(content) = lopdf::content::Content::decode(&content_data) {
                 for op in content.operations.iter() {
                     if op.operator.as_str() == "Do" {
-                        if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
+                        if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
                             // Find the name in any page's resource dictionary
                             for (_, other_page_id) in doc.get_pages() {
                                 if let Ok(other_dict) = doc.get_dictionary(other_page_id) {

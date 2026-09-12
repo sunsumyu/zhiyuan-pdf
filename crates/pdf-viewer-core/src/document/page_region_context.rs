@@ -275,10 +275,10 @@ fn build_paragraph_line_from_text_object(
         is_bold: obj.is_bold,
         is_italic: obj.is_italic,
         is_underline: obj.is_underline,
-        char_spacing: obj.runs.get(0).map(|r| r.char_spacing).unwrap_or(0.0),
+        char_spacing: obj.runs.first().map(|r| r.char_spacing).unwrap_or(0.0),
         scale_x: obj
             .runs
-            .get(0)
+            .first()
             .map(|r| r.horizontal_scaling)
             .unwrap_or(100.0),
         font_hints: obj.font_hints.clone(),

@@ -40,22 +40,22 @@ pub fn parse_content_stream(
                 }
             }
             "w" => {
-                if let Some(w) = op.operands.get(0).and_then(|o| o.as_float().ok()) {
+                if let Some(w) = op.operands.first().and_then(|o| o.as_float().ok()) {
                     state.line_width = w;
                 }
             }
             "j" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| o.as_i64().ok()) {
+                if let Some(v) = op.operands.first().and_then(|o| o.as_i64().ok()) {
                     state.line_join = v as u8;
                 }
             }
             "J" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| o.as_i64().ok()) {
+                if let Some(v) = op.operands.first().and_then(|o| o.as_i64().ok()) {
                     state.line_cap = v as u8;
                 }
             }
             "M" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| o.as_float().ok()) {
+                if let Some(v) = op.operands.first().and_then(|o| o.as_float().ok()) {
                     state.miter_limit = v;
                 }
             }
@@ -133,7 +133,7 @@ pub fn parse_content_stream(
             }
             // Alpha (transparency) operators - critical for correct PDF rendering
             "ca" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| {
+                if let Some(v) = op.operands.first().and_then(|o| {
                     o.as_float()
                         .ok()
                         .or_else(|| o.as_i64().ok().map(|i| i as f32))
@@ -142,7 +142,7 @@ pub fn parse_content_stream(
                 }
             }
             "CA" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| {
+                if let Some(v) = op.operands.first().and_then(|o| {
                     o.as_float()
                         .ok()
                         .or_else(|| o.as_i64().ok().map(|i| i as f32))
@@ -152,7 +152,7 @@ pub fn parse_content_stream(
             }
             // Named graphics state - look up ExtGState dictionary for ca/CA values
             "gs" => {
-                if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
+                if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
                     if let Some(extgstate_id) = flat_resources
                         .get(b"ExtGState" as &[u8])
                         .and_then(|m| m.get(name))
@@ -240,7 +240,7 @@ pub fn parse_content_stream(
                 state.text.op_bt();
             }
             "Tf" => {
-                if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
+                if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
                     let size = op
                         .operands
                         .get(1)
@@ -270,7 +270,7 @@ pub fn parse_content_stream(
                 }
             }
             "TL" | "Tc" | "Tw" | "Tz" | "Ts" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| {
+                if let Some(v) = op.operands.first().and_then(|o| {
                     o.as_float()
                         .ok()
                         .or_else(|| o.as_i64().ok().map(|i| i as f32))
@@ -285,7 +285,7 @@ pub fn parse_content_stream(
                 }
             }
             "Tr" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| o.as_i64().ok()) {
+                if let Some(v) = op.operands.first().and_then(|o| o.as_i64().ok()) {
                     state.text.render_mode = v as i32;
                 }
             }
@@ -416,7 +416,7 @@ pub fn parse_content_stream(
                 }
             }
             "Do" => {
-                if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
+                if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
                     crate::pdf_log!(
                         3,
                         "[PDF-DIAG][Do] operator name={:?}",

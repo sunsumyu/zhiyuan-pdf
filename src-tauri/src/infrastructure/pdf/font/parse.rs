@@ -451,7 +451,7 @@ pub fn parse_font_from_dict(
         .get(b"DescendantFonts")
         .ok()
         .and_then(|o| o.as_array().ok())
-        .and_then(|descendants| descendants.get(0))
+        .and_then(|descendants| descendants.first())
         .and_then(|o| {
             o.as_dict().ok().cloned().or_else(|| {
                 o.as_reference()

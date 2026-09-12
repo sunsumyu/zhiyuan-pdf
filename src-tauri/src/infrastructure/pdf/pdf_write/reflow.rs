@@ -159,7 +159,7 @@ pub(crate) fn apply_text_state_op(
         }
         "ET" => true,
         "Tc" | "Tw" | "Tz" | "Tr" | "TL" => {
-            if let Some(f) = op.operands.get(0).and_then(|o| {
+            if let Some(f) = op.operands.first().and_then(|o| {
                 o.as_float()
                     .ok()
                     .or_else(|| o.as_i64().ok().map(|i| i as f32))
@@ -268,7 +268,7 @@ pub(crate) fn patch_content_recursive(
     for op in &mut content.operations {
         match op.operator.as_str() {
             "Tf" => {
-                if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
+                if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
                     font_size = op
                         .operands
                         .get(1)
@@ -290,7 +290,7 @@ pub(crate) fn patch_content_recursive(
                 }
             }
             "Tc" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| {
+                if let Some(v) = op.operands.first().and_then(|o| {
                     o.as_float()
                         .ok()
                         .or_else(|| o.as_i64().ok().map(|i| i as f32))
@@ -299,7 +299,7 @@ pub(crate) fn patch_content_recursive(
                 }
             }
             "Tw" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| {
+                if let Some(v) = op.operands.first().and_then(|o| {
                     o.as_float()
                         .ok()
                         .or_else(|| o.as_i64().ok().map(|i| i as f32))
@@ -308,7 +308,7 @@ pub(crate) fn patch_content_recursive(
                 }
             }
             "Tz" => {
-                if let Some(v) = op.operands.get(0).and_then(|o| {
+                if let Some(v) = op.operands.first().and_then(|o| {
                     o.as_float()
                         .ok()
                         .or_else(|| o.as_i64().ok().map(|i| i as f32))
@@ -374,7 +374,7 @@ pub(crate) fn patch_content_recursive(
                 }
             }
             "Do" => {
-                if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
+                if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
                     if let Some(id) = resources.get(b"XObject" as &[u8]).and_then(|m| m.get(name)) {
                         let id = *id;
                         if let Ok(mut stream) =
@@ -540,7 +540,7 @@ pub(crate) fn patch_atomic_reflow_recursive(
         if !apply_text_state_op(op, op_str, state, &mut state_stack) {
             match op_str {
                 "Tf" => {
-                    if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
+                    if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
                         state.font_alias = name.to_vec();
                         if let Some(id) = resources.get(b"Font" as &[u8]).and_then(|m| m.get(name))
                         {
@@ -563,7 +563,7 @@ pub(crate) fn patch_atomic_reflow_recursive(
                 }
                 "Tj" | "TJ" | "'" | "\"" => *obj_counter += 1,
                 "Do" => {
-                    if let Some(name) = op.operands.get(0).and_then(|o| o.as_name().ok()) {
+                    if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
                         if let Some(xid) =
                             resources.get(b"XObject" as &[u8]).and_then(|m| m.get(name))
                         {
