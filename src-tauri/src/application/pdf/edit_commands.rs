@@ -138,7 +138,7 @@ async fn execute_commands(
         let docs = app_state.docs.pdf_documents.lock().unwrap();
         let mut txs = app_state.history.pdf_transactions.lock().unwrap();
         if let Some(current_doc) = docs.get(&save_path) {
-            let history = txs.entry(save_path.clone()).or_insert_with(Vec::new);
+            let history = txs.entry(save_path.clone()).or_default();
             history.push(current_doc.clone());
             if history.len() > crate::app_state::HISTORY_LIMIT {
                 history.remove(0);

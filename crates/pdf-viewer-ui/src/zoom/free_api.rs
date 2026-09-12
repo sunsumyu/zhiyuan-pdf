@@ -28,6 +28,7 @@ pub fn read_zoom_state() -> JsValue {
 }
 
 #[wasm_bindgen(js_name = "getZoomState")]
+#[allow(deprecated)]
 #[deprecated(since = "0.2.0", note = "Use read_zoom_state instead")]
 pub fn get_zoom_state() -> JsValue {
     read_zoom_state()

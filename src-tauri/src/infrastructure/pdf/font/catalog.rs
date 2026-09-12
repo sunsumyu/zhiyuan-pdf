@@ -65,7 +65,7 @@ pub fn load_system_font_candidates() -> Vec<SystemFontCandidate> {
         return Vec::new();
     }
 
-    let mut logfont = LOGFONTW {
+    let logfont = LOGFONTW {
         lfCharSet: DEFAULT_CHARSET,
         ..unsafe { std::mem::zeroed() }
     };
@@ -73,7 +73,7 @@ pub fn load_system_font_candidates() -> Vec<SystemFontCandidate> {
     unsafe {
         EnumFontFamiliesExW(
             hdc,
-            &mut logfont,
+            &logfont,
             Some(enum_font_proc),
             &mut fonts as *mut _ as isize,
             0,

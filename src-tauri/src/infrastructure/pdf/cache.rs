@@ -46,7 +46,7 @@ pub(crate) fn invalidate_pdf_page_cache(state: &crate::AppState, path: &str) {
     // Clean up memory-address-based resolve_paths cache entries for this document
     if let Some(doc) = {
         let docs = state.docs.pdf_documents.lock().unwrap();
-        docs.get(path).map(|d| d.clone())
+        docs.get(path).cloned()
     } {
         let doc_id = doc.as_ref() as *const lopdf::Document as usize;
         let mut cache = PDF_RESOLVE_PATHS_CACHE.lock().unwrap();

@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 /// Rendering quality levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum RenderQuality {
     /// Fast rendering during animation (rough quality)
     /// - Lower DPI (0.5x-0.75x)
@@ -26,6 +27,7 @@ pub enum RenderQuality {
     /// - Standard DPI (1.0x)
     /// - Normal text rendering
     /// - Standard detail
+    #[default]
     Medium = 1,
 
     /// Sharp rendering on settle (final quality)
@@ -35,11 +37,6 @@ pub enum RenderQuality {
     High = 2,
 }
 
-impl Default for RenderQuality {
-    fn default() -> Self {
-        Self::Medium
-    }
-}
 
 impl RenderQuality {
     /// Get DPI multiplier for this quality level
@@ -138,12 +135,11 @@ impl QualityStateMachine {
 
         if is_animating {
             // During animation, progress from low to medium
-            if self.frame_count >= self.transition_threshold {
-                if self.current == RenderQuality::Low {
+            if self.frame_count >= self.transition_threshold
+                && self.current == RenderQuality::Low {
                     self.current = RenderQuality::Medium;
                     self.frame_count = 0;
                 }
-            }
         }
 
         self.current

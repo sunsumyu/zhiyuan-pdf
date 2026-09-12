@@ -28,6 +28,12 @@ pub struct HistoryStore {
     redo_stack: Vec<PatchCommand>,
 }
 
+impl Default for HistoryStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HistoryStore {
     pub fn new() -> Self {
         Self {

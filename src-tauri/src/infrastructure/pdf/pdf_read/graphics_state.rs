@@ -25,6 +25,12 @@ pub struct GraphicsState {
     pub text_rise: f32,
 }
 
+impl Default for GraphicsState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GraphicsState {
     pub fn new() -> Self {
         Self {

@@ -464,10 +464,7 @@ fn slice_runs_by_char_range(runs: &[LayoutRun], start: usize, end: usize) -> Vec
                 sliced.char_origins.clear();
             }
             if run.char_widths.len() >= slice_end {
-                sliced.char_widths = run.char_widths[slice_start..slice_end]
-                    .iter()
-                    .copied()
-                    .collect();
+                sliced.char_widths = run.char_widths[slice_start..slice_end].to_vec();
             } else {
                 sliced.char_widths.clear();
             }
@@ -757,7 +754,7 @@ fn build_draft_paragraph_with_policy(
         "built",
         vec![
             dbg_field("paragraphId", &paragraph.id),
-            dbg_field("draftText", &truncate_debug_text(draft_text, 50)),
+            dbg_field("draftText", truncate_debug_text(draft_text, 50)),
             dbg_field("runCount", paragraph.runs.len()),
             dbg_field("srcWrapWidth", format!("{:.2}", src_wrap)),
             dbg_field("shellWidth", format!("{:.2}", shell_w)),
@@ -1082,7 +1079,7 @@ where
         "persisted-overlay-uniform-layout",
         &document_plan.body_session.paragraph.id,
         draft_text,
-        &document_plan.source_body_text(),
+        document_plan.source_body_text(),
         &plan,
     );
 

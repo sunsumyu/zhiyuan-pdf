@@ -396,7 +396,7 @@ mod tests {
         let mut mapper = create_test_mapper(&[("ABC", true), ("DEF", false)]);
         mapper.update_with_text("BCDEF");
         assert_eq!(mapper.spans[0].text, "BC");
-        assert_eq!(mapper.spans[0].style.is_bold, true);
+        assert!(mapper.spans[0].style.is_bold);
         assert_eq!(mapper.spans[1].text, "DEF");
     }
 
@@ -405,7 +405,7 @@ mod tests {
         let mut mapper = create_test_mapper(&[("专业：", true), ("计算机", false)]);
         mapper.update_with_text("专：计算机");
         assert_eq!(mapper.spans[0].text, "专：");
-        assert_eq!(mapper.spans[0].style.is_bold, true);
+        assert!(mapper.spans[0].style.is_bold);
         assert_eq!(mapper.spans[1].text, "计算机");
     }
 
@@ -415,7 +415,7 @@ mod tests {
         mapper.update_with_text("");
         assert_eq!(mapper.spans.len(), 1);
         assert_eq!(mapper.spans[0].text, "");
-        assert_eq!(mapper.spans[0].style.is_bold, true);
+        assert!(mapper.spans[0].style.is_bold);
     }
 
     #[test]

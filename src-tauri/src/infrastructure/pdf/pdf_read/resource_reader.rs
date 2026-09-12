@@ -14,7 +14,7 @@ pub fn read_resources(doc: &Document, page_id: lopdf::ObjectId) -> FlatResources
                 .or_else(|_| res_obj.as_reference().and_then(|r| doc.get_dictionary(r)))
             {
                 for (cat_key, cat_val) in res_dict.iter() {
-                    let cat_map = flat.entry(cat_key.clone()).or_insert_with(HashMap::new);
+                    let cat_map = flat.entry(cat_key.clone()).or_default();
                     if let Ok(sub_dict) = cat_val
                         .as_dict()
                         .or_else(|_| cat_val.as_reference().and_then(|r| doc.get_dictionary(r)))

@@ -25,6 +25,12 @@ pub struct TileManager {
     render_queue: Vec<TileRenderRequest>,
 }
 
+impl Default for TileManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TileManager {
     pub fn new() -> Self {
         Self {

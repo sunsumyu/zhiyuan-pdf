@@ -587,8 +587,8 @@ pub fn build_effective_vector_render_plan(
         }
         if let VectorRenderObject::Path(path) = object {
             if let Some(path_bbox) = path_object_bbox(path) {
-                if bbox_intersects(&path_bbox, &overlay.path_suppression_bbox) {
-                    if overlay.first_path_summary.is_none() {
+                if bbox_intersects(&path_bbox, &overlay.path_suppression_bbox)
+                    && overlay.first_path_summary.is_none() {
                         overlay.first_path_summary = Some(format!(
                             "id={} bbox={:.1},{:.1},{:.1},{:.1} stroke={} color={}",
                             path.id,
@@ -600,7 +600,6 @@ pub fn build_effective_vector_render_plan(
                             path.stroke_color.as_deref().unwrap_or("none")
                         ));
                     }
-                }
             }
         }
         false
@@ -633,12 +632,11 @@ pub fn build_effective_vector_render_plan(
                         continue;
                     }
                 }
-                if suppress_row_paths {
-                    if check_path_suppression(object, object_index, overlay) {
+                if suppress_row_paths
+                    && check_path_suppression(object, object_index, overlay) {
                         suppress_entire_object = true;
                         continue;
                     }
-                }
             }
             let should_skip_entire_object = match object {
                 VectorRenderObject::Text(text) => {

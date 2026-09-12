@@ -239,7 +239,7 @@ pub fn build_glyph_paint_plan(layout: &LayoutInferenceResult) -> GlyphPaintPlan 
                         style: paragraph.style.clone(),
                         editor_session: build_editor_session(paragraph),
                         control_style: build_control_style(paragraph),
-                        semantic_role: region.semantic_role.clone(),
+                        semantic_role: region.semantic_role,
                         runs: paragraph
                             .runs
                             .iter()

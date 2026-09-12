@@ -400,7 +400,8 @@ impl EditorSession {
     }
 
     #[wasm_bindgen(js_name = "getSnapshot")]
-    #[deprecated(since = "0.2.0", note = "Use readSnapshot instead")]
+    #[allow(deprecated)]
+#[deprecated(since = "0.2.0", note = "Use readSnapshot instead")]
     pub fn get_snapshot(&self, display_zoom: f32) -> JsValue {
         self.read_snapshot(display_zoom)
     }
@@ -845,7 +846,8 @@ impl EditorSession {
     }
 
     #[wasm_bindgen(js_name = "getTextBlocks")]
-    #[deprecated(since = "0.2.0", note = "Use readTextBlocks instead")]
+    #[allow(deprecated)]
+#[deprecated(since = "0.2.0", note = "Use readTextBlocks instead")]
     pub fn get_text_blocks(&self, page_index: u16) -> JsValue {
         self.read_text_blocks(page_index)
     }
@@ -861,7 +863,8 @@ impl EditorSession {
     }
 
     #[wasm_bindgen(js_name = "getFormatState")]
-    #[deprecated(since = "0.2.0", note = "Use readFormatState instead")]
+    #[allow(deprecated)]
+#[deprecated(since = "0.2.0", note = "Use readFormatState instead")]
     pub fn get_format_state(&self) -> JsValue {
         self.read_format_state()
     }

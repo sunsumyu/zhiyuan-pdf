@@ -114,16 +114,15 @@ impl LayoutGraphAnalyzer {
         }
 
         // 2. 标题模式 (Header Pattern)
-        if first.style.font_size > 15.0 || first.style.is_bold {
-            if trimmed.chars().count() < 20 {
+        if (first.style.font_size > 15.0 || first.style.is_bold)
+            && trimmed.chars().count() < 20 {
                 return (LayoutRole::SectionHeader, LayoutMode::Fixed);
             }
-        }
 
         // 3. 列表项模式 (List Pattern)
         if trimmed.starts_with('•')
             || trimmed.starts_with('·')
-            || (trimmed.chars().next().map_or(false, |c| c.is_digit(10)) && trimmed.contains('.'))
+            || (trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) && trimmed.contains('.'))
         {
             return (LayoutRole::ListItem, LayoutMode::Flow);
         }
@@ -174,7 +173,7 @@ impl LayoutGraphAnalyzer {
 
         let paragraph = LayoutParagraph {
             id: format!("v4-p-{}", id),
-            bbox: bbox.clone(),
+            bbox,
             style: ParagraphStyle {
                 align: LayoutAlignment::Left,
                 line_height: 1.2,
@@ -193,7 +192,7 @@ impl LayoutGraphAnalyzer {
             id,
             kind,
             layout_mode,
-            bbox: bbox.clone(),
+            bbox,
             paragraphs: vec![paragraph],
             semantic_role: SemanticRole::None,
             object_ids: vec![],

@@ -261,9 +261,9 @@ fn finish_line(
         LayoutAlignment::Right => {
             offset_x = remaining_space;
         }
-        LayoutAlignment::Justify => {
+        LayoutAlignment::Justify
             // 只有非最后一行且有多个运行块时才进行两端对齐
-            if !is_last_line && runs.len() > 1 && remaining_space > 0.0 {
+            if !is_last_line && runs.len() > 1 && remaining_space > 0.0 => {
                 let extra_gap = remaining_space / (runs.len() - 1) as f32;
                 let mut current_extra = 0.0;
                 for i in 1..runs.len() {
@@ -271,7 +271,6 @@ fn finish_line(
                     runs[i].origin_x += current_extra;
                 }
             }
-        }
         _ => {}
     }
 
@@ -305,92 +304,6 @@ pub fn layout_anchored_pair(
     new_body.origin_y = anchor_run.origin_y;
 
     (new_anchor, new_body)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::models::{LayoutAlignment, LayoutRun, ParagraphStyle, RunStyle};
-
-    fn mock_run(text: &str, _width: f32) -> LayoutRun {
-        LayoutRun {
-            id: "test".into(),
-            text: text.into(),
-            style: RunStyle {
-                font_name: "Arial".into(),
-                font_size: 10.0,
-                color: "#000".into(),
-                is_underline: false,
-                ..Default::default()
-            },
-            bbox: BoundingBox::default(),
-            origin_x: 0.0,
-            origin_y: 0.0,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn test_cjk_no_start_rule() {
-        let mut runs = Vec::new();
-        // Width 10.0 per run. Total width 40.0.
-        runs.push(mock_run("Hello", 25.0));
-        runs.push(mock_run("世界", 10.0));
-        runs.push(mock_run("。", 5.0)); // Total 40.0.
-
-        let paragraph = LayoutParagraph {
-            runs,
-            wrap_width: 38.0, // Should break before "世界" or "。"?
-            ..Default::default()
-        };
-
-        // If we break before "。", it would be at the start of the next line.
-        // Rule should force it to stay with "世界" or force "世界" to next line.
-        let layout = layout_paragraph(&paragraph, 38.0, |_, _| 10.0); // Simple fixed width mock
-
-        // Check if "。" is at the start of a line
-        for line in layout.lines {
-            if let Some(first) = line.runs.first() {
-                assert!(
-                    !is_no_start(first.text.chars().next().unwrap()),
-                    "Punctuation at start of line: {}",
-                    first.text
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_justified_alignment() {
-        let mut runs = Vec::new();
-        // 5 runs, 10.0 width each.
-        // Line 1: 3 runs (30.0). Wrap 40.0. Gap 10.0. 2 gaps -> 5.0 each.
-        // Line 2: 2 runs.
-        runs.push(mock_run("A", 10.0));
-        runs.push(mock_run("B", 10.0));
-        runs.push(mock_run("C", 10.0));
-        runs.push(mock_run("D", 10.0));
-        runs.push(mock_run("E", 10.0));
-
-        let paragraph = LayoutParagraph {
-            runs,
-            style: ParagraphStyle {
-                align: LayoutAlignment::Justify,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        // Wrap width 35.0.
-        // Line 1: A, B, C (30.0). Remaining 5.0. 2 gaps -> 2.5 each.
-        let layout = layout_paragraph(&paragraph, 35.0, |_, _| 10.0);
-
-        let line = &layout.lines[0];
-        assert_eq!(line.runs.len(), 3);
-        assert_eq!(line.runs[0].origin_x, 0.0);
-        assert_eq!(line.runs[1].origin_x, 12.5); // 10.0 original + 2.5 gap
-        assert_eq!(line.runs[2].origin_x, 25.0); // 20.0 original + 5.0 gap
-    }
 }
 
 impl ParagraphLayout {
@@ -484,5 +397,91 @@ pub fn resolve_editor_projection(
         font_size: font_size * zoom,
         render_family: "sans-serif".into(),
         color: "#000000".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{LayoutAlignment, LayoutRun, ParagraphStyle, RunStyle};
+
+    fn mock_run(text: &str, _width: f32) -> LayoutRun {
+        LayoutRun {
+            id: "test".into(),
+            text: text.into(),
+            style: RunStyle {
+                font_name: "Arial".into(),
+                font_size: 10.0,
+                color: "#000".into(),
+                is_underline: false,
+                ..Default::default()
+            },
+            bbox: BoundingBox::default(),
+            origin_x: 0.0,
+            origin_y: 0.0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_cjk_no_start_rule() {
+        let mut runs = Vec::new();
+        // Width 10.0 per run. Total width 40.0.
+        runs.push(mock_run("Hello", 25.0));
+        runs.push(mock_run("世界", 10.0));
+        runs.push(mock_run("。", 5.0)); // Total 40.0.
+
+        let paragraph = LayoutParagraph {
+            runs,
+            wrap_width: 38.0, // Should break before "世界" or "。"?
+            ..Default::default()
+        };
+
+        // If we break before "。", it would be at the start of the next line.
+        // Rule should force it to stay with "世界" or force "世界" to next line.
+        let layout = layout_paragraph(&paragraph, 38.0, |_, _| 10.0); // Simple fixed width mock
+
+        // Check if "。" is at the start of a line
+        for line in layout.lines {
+            if let Some(first) = line.runs.first() {
+                assert!(
+                    !is_no_start(first.text.chars().next().unwrap()),
+                    "Punctuation at start of line: {}",
+                    first.text
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_justified_alignment() {
+        let mut runs = Vec::new();
+        // 5 runs, 10.0 width each.
+        // Line 1: 3 runs (30.0). Wrap 40.0. Gap 10.0. 2 gaps -> 5.0 each.
+        // Line 2: 2 runs.
+        runs.push(mock_run("A", 10.0));
+        runs.push(mock_run("B", 10.0));
+        runs.push(mock_run("C", 10.0));
+        runs.push(mock_run("D", 10.0));
+        runs.push(mock_run("E", 10.0));
+
+        let paragraph = LayoutParagraph {
+            runs,
+            style: ParagraphStyle {
+                align: LayoutAlignment::Justify,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        // Wrap width 35.0.
+        // Line 1: A, B, C (30.0). Remaining 5.0. 2 gaps -> 2.5 each.
+        let layout = layout_paragraph(&paragraph, 35.0, |_, _| 10.0);
+
+        let line = &layout.lines[0];
+        assert_eq!(line.runs.len(), 3);
+        assert_eq!(line.runs[0].origin_x, 0.0);
+        assert_eq!(line.runs[1].origin_x, 12.5); // 10.0 original + 2.5 gap
+        assert_eq!(line.runs[2].origin_x, 25.0); // 20.0 original + 5.0 gap
     }
 }

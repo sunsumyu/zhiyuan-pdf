@@ -168,7 +168,7 @@ fn can_pdf_font_encode_text(font: &ParsedFont, text: &str) -> bool {
 fn target_weight_for(current_font: Option<&ParsedFont>) -> Weight {
     if let Some(font) = current_font {
         if font.name.to_lowercase().contains("bold")
-            || font.hints.as_ref().map_or(false, |h| h.weight >= 600)
+            || font.hints.as_ref().is_some_and(|h| h.weight >= 600)
         {
             Weight::BOLD
         } else {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 /// Each row begins with a filter type byte (0=None, 1=Sub, 2=Up, 3=Average, 4=Paeth).
 pub(crate) fn apply_png_predictor(raw: &[u8], bytes_per_row: usize, bpp: usize) -> Option<Vec<u8>> {
     let row_with_filter = bytes_per_row + 1;
-    if raw.is_empty() || raw.len() % row_with_filter != 0 {
+    if raw.is_empty() || !raw.len().is_multiple_of(row_with_filter) {
         // Try to be lenient - PDFs sometimes have extra/missing bytes
         if raw.len() < row_with_filter {
             return None;
@@ -203,8 +203,8 @@ pub(crate) fn build_image_as_jpeg(
         } else {
             bpc as usize
         };
-        let bytes_per_row = (columns * colors * pbpc + 7) / 8;
-        let bpp = ((colors * pbpc) + 7) / 8;
+        let bytes_per_row = (columns * colors * pbpc).div_ceil(8);
+        let bpp = (colors * pbpc).div_ceil(8);
         match apply_png_predictor(&raw_decompressed, bytes_per_row, bpp) {
             Some(unfiltered) => {
                 crate::log_step!(

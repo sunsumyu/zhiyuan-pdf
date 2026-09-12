@@ -56,6 +56,7 @@ pub fn read_viewer_session() -> JsValue {
 }
 
 #[wasm_bindgen(js_name = "getViewerSession")]
+#[allow(deprecated)]
 #[deprecated(since = "0.2.0", note = "Use read_viewer_session instead")]
 pub fn get_viewer_session() -> JsValue {
     read_viewer_session()

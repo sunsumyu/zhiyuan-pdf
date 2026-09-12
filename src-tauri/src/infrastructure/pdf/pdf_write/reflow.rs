@@ -115,7 +115,7 @@ pub(crate) fn compute_micro_fit(
         let nat_w = initial_layout.lines[0].width;
         if nat_w > 0.1 && (nat_w - target_wrap).abs() > 0.5 {
             let ratio = target_wrap / nat_w;
-            if ratio >= 0.85 && ratio <= 1.15 {
+            if (0.85..=1.15).contains(&ratio) {
                 h_scaling *= ratio;
             } else {
                 let char_count = new_text.chars().count();
@@ -318,7 +318,7 @@ pub(crate) fn patch_content_recursive(
             }
             "Tj" | "TJ" => {
                 *obj_counter += 1;
-                if target_index.map_or(true, |t| *obj_counter == t) {
+                if target_index.is_none_or(|t| *obj_counter == t) {
                     let decoded = if let Some(ref font) = current_font {
                         if op.operator == "Tj" {
                             resolve_glyph_geom(
@@ -507,7 +507,7 @@ pub(crate) fn patch_atomic_reflow_recursive(
                         for (idx, line) in layout.lines.iter().enumerate() {
                             let ly = ay + patch.displacement_y.unwrap_or(0.0)
                                 - ((line.baseline_y - first_base) * psy);
-                            let lx = ax + (line.offset_x as f32 * psx);
+                            let lx = ax + (line.offset_x * psx);
                             deferred_lines.push(PersistedTextLinePlan {
                                 font_alias: font_info.font_alias.clone(),
                                 font_size: state.text.font_size * psy,
@@ -639,7 +639,7 @@ mod reflow_tests {
     fn run_ops(ops: &[(&str, &[lopdf::Object])]) -> PdfTextState {
         let operations = ops
             .iter()
-            .map(|(op, operands)| Operation::new(*op, operands.to_vec()))
+            .map(|(op, operands)| Operation::new(op, operands.to_vec()))
             .collect();
         let mut content = Content { operations };
         let mut doc = Document::with_version("1.4");

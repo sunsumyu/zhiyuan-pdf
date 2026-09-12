@@ -116,7 +116,7 @@ fn is_decorative_run_text(text: &str) -> bool {
     }
     trimmed
         .chars()
-        .all(|ch| crate::text::glyph_layout::is_decorative_glyph(ch))
+        .all(crate::text::glyph_layout::is_decorative_glyph)
 }
 
 fn line_selection_range(

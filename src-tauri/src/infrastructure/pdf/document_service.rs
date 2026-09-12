@@ -273,7 +273,7 @@ impl PdfDocumentService {
             for reflow in effective_text_reflows {
                 by_page
                     .entry(reflow.page_index as u32 + 1)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(reflow);
             }
 
@@ -384,7 +384,7 @@ fn transfer_snapshot(
 ) -> Option<std::sync::Arc<Document>> {
     let popped = from.get_mut(path)?.pop()?;
     if let Some(current) = current {
-        let history = to.entry(path.to_string()).or_insert_with(Vec::new);
+        let history = to.entry(path.to_string()).or_default();
         history.push(current);
         if history.len() > crate::app_state::HISTORY_LIMIT {
             history.remove(0);

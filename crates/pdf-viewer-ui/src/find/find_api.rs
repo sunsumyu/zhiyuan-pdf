@@ -68,7 +68,8 @@ impl FindSession {
     }
 
     #[wasm_bindgen(js_name = "getState")]
-    #[deprecated(since = "0.2.0", note = "Use readState instead")]
+    #[allow(deprecated)]
+#[deprecated(since = "0.2.0", note = "Use readState instead")]
     pub fn get_state(&self) -> JsValue {
         self.read_state()
     }

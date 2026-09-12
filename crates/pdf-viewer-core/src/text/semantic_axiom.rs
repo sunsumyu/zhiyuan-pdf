@@ -49,7 +49,7 @@ impl AxiomEngine {
             {
                 return SemanticRole::Amount;
             }
-            if value.starts_with('¥')
+            if (value.starts_with('¥')
                 || value.starts_with('$')
                 || (value.contains('.')
                     && value.chars().all(|c: char| {
@@ -59,12 +59,10 @@ impl AxiomEngine {
                             || c == ' '
                             || c == '¥'
                             || c == '$'
-                    }))
-            {
-                if !value.is_empty() {
+                    })))
+                && !value.is_empty() {
                     return SemanticRole::Amount;
                 }
-            }
 
             // 模式匹配：联系方式 (Contact)
             if label.contains("电话")

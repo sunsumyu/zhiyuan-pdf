@@ -1319,7 +1319,7 @@ mod tests {
         let full_text_plan = build_editor_session_text_plan(&session);
         let paragraph = paragraph_from_session(session.clone());
 
-        let split = resolve_marker_split(&paragraph, &session, &full_source_text, &full_text_plan);
+        let split = resolve_marker_split(&paragraph, &session, full_source_text, &full_text_plan);
         let marker = split.marker.expect("numbering marker should split");
         let body_text = split
             .body_session

@@ -65,6 +65,12 @@ pub struct TileScheduler {
     current_frame_token: u32,
 }
 
+impl Default for TileScheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TileScheduler {
     pub fn new() -> Self {
         Self {
@@ -234,6 +240,6 @@ impl TileScheduler {
     /// Check if animation frame should trigger incremental render
     pub fn should_render_incremental(&self) -> bool {
         self.animation.is_animating
-            && self.animation.frame_count % self.animation.render_interval == 0
+            && self.animation.frame_count.is_multiple_of(self.animation.render_interval)
     }
 }

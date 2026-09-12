@@ -32,11 +32,10 @@ pub fn get_character_width_pdf_units(family_name: &str, ch: char) -> Option<f32>
     // [V3] Normalization: Many PDF PSNames (e.g. MicrosoftYaHei) lack spaces
     // that system font family names expect (e.g. Microsoft YaHei).
     let mut matching_names = vec![normalized_family.to_string()];
-    if !normalized_family.contains(' ') {
-        if normalized_family.starts_with("Microsoft") {
+    if !normalized_family.contains(' ')
+        && normalized_family.starts_with("Microsoft") {
             matching_names.push(format!("Microsoft {}", &normalized_family[9..]));
         }
-    }
 
     let mut resolved_width = None;
     for name in matching_names {

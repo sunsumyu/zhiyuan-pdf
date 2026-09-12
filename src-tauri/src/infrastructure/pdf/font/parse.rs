@@ -194,12 +194,12 @@ pub fn resolve_glyph_geom(
             unicode = cmap_hit.unwrap_or_else(|| {
                 char::from_u32(code)
                     .map(|c| c.to_string())
-                    .unwrap_or_else(|| "".to_string())
+                    .unwrap_or_default()
             });
 
             // Symbol Patching: patch when no CMap, CMap result is ASCII, or CMap result is PUA (U+E000-U+F8FF)
             let cp = unicode.chars().next().map(|c| c as u32).unwrap_or(0);
-            if is_symbol && (unicode.is_empty() || cp <= 127 || (cp >= 0xE000 && cp <= 0xF8FF)) {
+            if is_symbol && (unicode.is_empty() || cp <= 127 || (0xE000..=0xF8FF).contains(&cp)) {
                 let patched = match code {
                     0x7A | 0x6C | 0x6A | 0x6B | 0xB7 => "●",
                     0xA7 => "●",
@@ -220,7 +220,7 @@ pub fn resolve_glyph_geom(
         // Secondary Patching for CID-mapped symbols (0xF000/0xE000 range)
         if unicode.chars().count() == 1 {
             let cp = unicode.chars().next().unwrap() as u32;
-            if (cp >= 0xF000 && cp <= 0xF0FF) || (cp >= 0xE000 && cp <= 0xE0FF) {
+            if (0xF000..=0xF0FF).contains(&cp) || (0xE000..=0xE0FF).contains(&cp) {
                 let patched = match cp & 0xFF {
                     0x6A | 0x6B | 0x6C | 0xB7 => Some("●"),
                     0x6E => Some("■"),
@@ -292,7 +292,7 @@ pub fn read_cmap(data: &[u8]) -> CMap {
     while let Some(line) = lines.next() {
         let line = line.trim();
         if line.contains("beginbfchar") {
-            while let Some(mapping_line) = lines.next() {
+            for mapping_line in lines.by_ref() {
                 let mapping_line = mapping_line.trim();
                 if mapping_line.contains("endbfchar") {
                     break;
@@ -308,7 +308,7 @@ pub fn read_cmap(data: &[u8]) -> CMap {
                 }
             }
         } else if line.contains("beginbfrange") {
-            while let Some(mapping_line) = lines.next() {
+            for mapping_line in lines.by_ref() {
                 let mapping_line = mapping_line.trim();
                 if mapping_line.contains("endbfrange") {
                     break;
@@ -378,10 +378,8 @@ fn hex_to_string(hex: &str) -> String {
         // ToUnicode targets are UTF-16BE: decode surrogate pairs instead of
         // mapping each unit independently (which yields lone-surrogate garbage
         // for chars outside the BMP).
-        for c in std::char::decode_utf16(u16_units.iter().copied()) {
-            if let Ok(ch) = c {
-                res.push(ch);
-            }
+        for ch in std::char::decode_utf16(u16_units.iter().copied()).flatten() {
+            res.push(ch);
         }
     }
     if res.is_empty() && !hex.is_empty() {
@@ -406,6 +404,12 @@ pub struct ParsedImage {
 pub struct ResourceCache {
     pub fonts: HashMap<lopdf::ObjectId, Arc<ParsedFont>>,
     pub images: HashMap<lopdf::ObjectId, Arc<ParsedImage>>,
+}
+
+impl Default for ResourceCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResourceCache {

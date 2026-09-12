@@ -148,6 +148,12 @@ pub struct TileCache {
     current_timestamp: u64,
 }
 
+impl Default for TileCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TileCache {
     pub fn new() -> Self {
         Self {

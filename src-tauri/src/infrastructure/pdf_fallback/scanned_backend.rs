@@ -28,6 +28,12 @@ struct LoadedScannedDocument {
     load: std::time::Duration,
     total: std::time::Duration,
 }
+impl Default for ScannedReadBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScannedReadBackend {
     pub fn new() -> Self {
         Self
