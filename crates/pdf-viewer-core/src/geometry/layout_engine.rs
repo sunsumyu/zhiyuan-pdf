@@ -424,11 +424,12 @@ mod tests {
 
     #[test]
     fn test_cjk_no_start_rule() {
-        let mut runs = Vec::new();
-        // Width 10.0 per run. Total width 40.0.
-        runs.push(mock_run("Hello", 25.0));
-        runs.push(mock_run("世界", 10.0));
-        runs.push(mock_run("。", 5.0)); // Total 40.0.
+        let runs = vec![
+            // Width 10.0 per run. Total width 40.0.
+            mock_run("Hello", 25.0),
+            mock_run("世界", 10.0),
+            mock_run("。", 5.0), // Total 40.0.
+        ];
 
         let paragraph = LayoutParagraph {
             runs,
@@ -454,15 +455,16 @@ mod tests {
 
     #[test]
     fn test_justified_alignment() {
-        let mut runs = Vec::new();
-        // 5 runs, 10.0 width each.
-        // Line 1: 3 runs (30.0). Wrap 40.0. Gap 10.0. 2 gaps -> 5.0 each.
-        // Line 2: 2 runs.
-        runs.push(mock_run("A", 10.0));
-        runs.push(mock_run("B", 10.0));
-        runs.push(mock_run("C", 10.0));
-        runs.push(mock_run("D", 10.0));
-        runs.push(mock_run("E", 10.0));
+        let runs = vec![
+            // 5 runs, 10.0 width each.
+            // Line 1: 3 runs (30.0). Wrap 40.0. Gap 10.0. 2 gaps -> 5.0 each.
+            // Line 2: 2 runs.
+            mock_run("A", 10.0),
+            mock_run("B", 10.0),
+            mock_run("C", 10.0),
+            mock_run("D", 10.0),
+            mock_run("E", 10.0),
+        ];
 
         let paragraph = LayoutParagraph {
             runs,

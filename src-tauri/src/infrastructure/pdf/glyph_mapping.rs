@@ -180,25 +180,31 @@ mod tests {
 
     #[test]
     fn real_font_size_prefers_large_scale_y() {
-        let mut t = NativeTextModel::default();
-        t.scale_y = 8.0;
-        t.font_size = 12.0;
+        let t = NativeTextModel {
+            scale_y: 8.0,
+            font_size: 12.0,
+            ..Default::default()
+        };
         assert_eq!(real_font_size(&t), 8.0);
     }
 
     #[test]
     fn real_font_size_uses_font_size_for_small_scale() {
-        let mut t = NativeTextModel::default();
-        t.scale_y = 0.5;
-        t.font_size = 12.0;
+        let t = NativeTextModel {
+            scale_y: 0.5,
+            font_size: 12.0,
+            ..Default::default()
+        };
         assert_eq!(real_font_size(&t), 12.0);
     }
 
     #[test]
     fn real_font_size_takes_absolute_negative_scale() {
-        let mut t = NativeTextModel::default();
-        t.scale_y = -6.0;
-        t.font_size = 12.0;
+        let t = NativeTextModel {
+            scale_y: -6.0,
+            font_size: 12.0,
+            ..Default::default()
+        };
         assert_eq!(real_font_size(&t), 6.0);
     }
 
@@ -259,8 +265,10 @@ mod tests {
     #[test]
     fn prefers_direct_codes_for_simple_subtypes() {
         for subtype in ["TrueType", "/OpenType", "TYPE1", " type1 "] {
-            let mut t = NativeTextModel::default();
-            t.font_subtype = Some(subtype.to_string());
+            let t = NativeTextModel {
+                font_subtype: Some(subtype.to_string()),
+                ..Default::default()
+            };
             assert!(prefers_pdf_code_glyph_mapping(&t), "subtype {subtype}");
         }
     }
@@ -268,8 +276,10 @@ mod tests {
     #[test]
     fn rejects_composite_subtypes_and_missing_subtype() {
         for subtype in [Some("CIDFontType2"), Some("Type3"), None] {
-            let mut t = NativeTextModel::default();
-            t.font_subtype = subtype.map(|s| s.to_string());
+            let t = NativeTextModel {
+                font_subtype: subtype.map(|s| s.to_string()),
+                ..Default::default()
+            };
             assert!(!prefers_pdf_code_glyph_mapping(&t));
         }
     }

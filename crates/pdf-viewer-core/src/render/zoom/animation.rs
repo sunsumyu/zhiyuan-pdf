@@ -475,11 +475,12 @@ mod tests {
     use crate::render::zoom::state::HostZoomState;
 
     fn make_state(initial_zoom: f32) -> HostZoomState {
-        let mut s = HostZoomState::default();
-        s.target_zoom = initial_zoom;
-        s.visual_zoom = initial_zoom;
-        s.last_rendered_zoom = initial_zoom;
-        s
+        HostZoomState {
+            target_zoom: initial_zoom,
+            visual_zoom: initial_zoom,
+            last_rendered_zoom: initial_zoom,
+            ..Default::default()
+        }
     }
 
     #[test]

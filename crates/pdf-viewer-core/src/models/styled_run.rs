@@ -314,6 +314,7 @@ pub struct NativePathObject {}
 #[serde(rename_all = "camelCase")]
 pub struct NativeImageObject {}
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum NativePageObject {

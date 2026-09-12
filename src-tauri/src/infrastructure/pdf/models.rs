@@ -203,6 +203,7 @@ pub struct TextPatch {
     pub target_index: Option<usize>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum RenderObject {

@@ -27,6 +27,7 @@ use crate::render::viewport_culling::{
 pub use crate::render::source_suppression::SuppressedVectorTextRuns;
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum EffectiveVectorRenderEntry {
     Object {
         object_index: usize,
@@ -44,6 +45,7 @@ pub struct GlyphParagraphRef {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum EffectiveGlyphRenderEntry {
     Paragraph(GlyphParagraphRef),
     ParagraphOverlay(ParagraphRenderOverlay),
@@ -848,17 +850,22 @@ mod tests {
     }
 
     fn active_overlay_for_body(body_bbox: BoundingBox) -> ParagraphRenderOverlay {
-        let mut target = ActiveEditorTarget::default();
-        target.paragraph_id = "p-1".to_string();
-        target.scene.shell_bbox = BoundingBox {
-            left: 40.0,
-            top: 96.0,
-            right: 360.0,
-            bottom: 116.0,
-        };
-        target.scene.body_session = ParagraphEditContext {
-            anchor_bbox: body_bbox,
-            paragraph: LayoutParagraph::default(),
+        let target = ActiveEditorTarget {
+            paragraph_id: "p-1".to_string(),
+            scene: EditorScene {
+                shell_bbox: BoundingBox {
+                    left: 40.0,
+                    top: 96.0,
+                    right: 360.0,
+                    bottom: 116.0,
+                },
+                body_session: ParagraphEditContext {
+                    anchor_bbox: body_bbox,
+                    paragraph: LayoutParagraph::default(),
+                },
+                ..Default::default()
+            },
+            ..Default::default()
         };
 
         ParagraphRenderOverlay {

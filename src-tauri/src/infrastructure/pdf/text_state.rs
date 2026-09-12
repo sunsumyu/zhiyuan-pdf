@@ -156,8 +156,10 @@ mod tests {
 
     #[test]
     fn op_t_star_uses_tl() {
-        let mut s = TextState::default();
-        s.tl = 14.0;
+        let s = TextState {
+            tl: 14.0,
+            ..Default::default()
+        };
         s.op_t_star();
         // T* translates by (0, -tl) = (0, -14)
         assert_eq!(s.tm()[5], -14.0);
@@ -215,9 +217,11 @@ mod tests {
 
     #[test]
     fn clone_is_independent() {
-        let mut s = TextState::default();
-        s.font_size = 16.0;
-        s.tl = 20.0;
+        let mut s = TextState {
+            font_size: 16.0,
+            tl: 20.0,
+            ..Default::default()
+        };
         let mut d = s.clone();
         d.font_size = 8.0;
         d.tl = 10.0;
@@ -229,8 +233,10 @@ mod tests {
 
     #[test]
     fn field_direct_access() {
-        let mut s = TextState::default();
-        s.char_spacing = 1.5;
+        let mut s = TextState {
+            char_spacing: 1.5,
+            ..Default::default()
+        };
         s.word_spacing = 2.0;
         s.horizontal_scaling = 80.0;
         s.render_mode = 2;

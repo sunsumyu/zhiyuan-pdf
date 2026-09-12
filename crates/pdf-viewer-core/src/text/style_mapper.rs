@@ -361,9 +361,11 @@ mod tests {
     fn create_test_mapper(segments: &[(&str, bool)]) -> StyleMapper {
         let mut spans = Vec::new();
         for (text, bold) in segments {
-            let mut style = RunStyle::default();
-            style.is_bold = *bold;
-            style.font_size = 12.0;
+            let style = RunStyle {
+                is_bold: *bold,
+                font_size: 12.0,
+                ..Default::default()
+            };
             spans.push(StyleSpan {
                 text: text.to_string(),
                 style,

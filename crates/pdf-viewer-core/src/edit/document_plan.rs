@@ -11,7 +11,7 @@ use crate::edit::source_text::session_source_text;
 use crate::geometry::source_geometry::source_visual_bbox_from_runs;
 use crate::models::{
     BoundingBox, GlyphPaintParagraph, GlyphPaintRun, GraphicType, LayoutParagraph, LayoutRun,
-    ParagraphEditContext, VectorPageModel, VectorRenderObject, VisualMarker,
+    ParagraphEditContext, RunStyle, VectorPageModel, VectorRenderObject, VisualMarker,
 };
 use crate::text::glyph_layout::{
     build_editor_session_text_plan, infer_run_advance, is_decorative_text, EditorSessionTextPlan,
@@ -439,10 +439,14 @@ fn select_draft_template_run(
         return normalize_draft_template_run(run);
     }
 
-    let mut run = LayoutRun::default();
-    run.id = format!("editor-draft-template-{}", session.paragraph.id);
-    run.style.font_size = 12.0;
-    run
+    LayoutRun {
+        id: format!("editor-draft-template-{}", session.paragraph.id),
+        style: RunStyle {
+            font_size: 12.0,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
 }
 
 fn split_editor_session(
