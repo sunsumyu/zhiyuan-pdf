@@ -384,11 +384,24 @@ export async function renderVectorPageWithPlan(
         };
     }
 
+    // Canvas CSS box: computed by WASM (resolveCanvasCssBox) — single source
+    // for the "canvas at baseRenderZoom units inside the display-zoom
+    // container" geometry. If WASM is unavailable, degrade to the display box.
+    const canvasBox =
+        renderApi.resolveCanvasCssBox({
+            displayWidth,
+            displayHeight,
+            displayZoom: plan.displayZoom,
+            baseRenderZoom: plan.baseRenderZoom,
+        }) ?? { domWidth: displayWidth, domHeight: displayHeight };
+
     applyViewportCanvasFrame(refs, {
         displayZoom: plan.displayZoom,
         baseRenderZoom: plan.baseRenderZoom,
         displayWidth,
         displayHeight,
+        domBoxWidth: canvasBox.domWidth,
+        domBoxHeight: canvasBox.domHeight,
         viewportLeft,
         viewportTop,
         viewportWidth,

@@ -115,6 +115,52 @@ pub fn resolve_fit_to_width(viewport_width: f32, page_width: f32) -> FitToWidthR
     }
 }
 
+// ─── Canvas CSS box ─────────────────────────────────────────────────────────
+//
+// Single source for the vector-canvas element box geometry. The TS side
+// (vector_canvas_host) consumes this via WASM instead of inlining the
+// formula (ADR-0002 leftover: "第二处计算" is how the cssScale-split bug
+// class was born).
+
+/// Inputs for [`resolve_canvas_css_box`]. f64 throughout so the arithmetic
+/// is bit-identical to the TS caller's float math.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasCssBoxRequest {
+    pub display_width: f64,
+    pub display_height: f64,
+    pub display_zoom: f64,
+    pub base_render_zoom: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasCssBox {
+    pub dom_width: f64,
+    pub dom_height: f64,
+}
+
+/// Element CSS box for the vector canvases inside the container: the canvas
+/// carries the base layer at `base_render_zoom` resolution, so its CSS box is
+/// the display box rescaled from display_zoom to base_render_zoom. Degenerate
+/// zooms fall back to the display box (matches the historical TS formula,
+/// including its 0.0001 guard).
+pub fn resolve_canvas_css_box(request: CanvasCssBoxRequest) -> CanvasCssBox {
+    let zooms_valid = request.display_zoom > 0.0001 && request.base_render_zoom > 0.0001;
+    if zooms_valid {
+        let scale = request.base_render_zoom / request.display_zoom;
+        CanvasCssBox {
+            dom_width: request.display_width * scale,
+            dom_height: request.display_height * scale,
+        }
+    } else {
+        CanvasCssBox {
+            dom_width: request.display_width,
+            dom_height: request.display_height,
+        }
+    }
+}
+
 // ─── Immediate mutation check ─────────────────────────────────────────────
 
 /// Check if a render reason indicates an immediate (non-preview) mutation.
@@ -162,6 +208,49 @@ mod tests {
         });
         assert!((f.dom_width - 595.0).abs() < 0.01);
         assert!((f.css_scale - 1.0).abs() < 0.001);
+    }
+
+    // ─── resolve_canvas_css_box ───────────────────────────────────────────
+
+    fn canvas_box_request(
+        display_zoom: f64,
+        base_render_zoom: f64,
+    ) -> CanvasCssBoxRequest {
+        CanvasCssBoxRequest {
+            display_width: 595.0 * display_zoom,
+            display_height: 842.0 * display_zoom,
+            display_zoom,
+            base_render_zoom,
+        }
+    }
+
+    #[test]
+    fn canvas_css_box_identity_when_base_matches_display() {
+        let r = resolve_canvas_css_box(canvas_box_request(1.25, 1.25));
+        assert!((r.dom_width - 595.0 * 1.25).abs() < 1e-9);
+        assert!((r.dom_height - 842.0 * 1.25).abs() < 1e-9);
+    }
+
+    #[test]
+    fn canvas_css_box_rescales_to_base_render_zoom() {
+        let r = resolve_canvas_css_box(canvas_box_request(2.0, 1.5));
+        assert!((r.dom_width - 595.0 * 1.5).abs() < 1e-9);
+        assert!((r.dom_height - 842.0 * 1.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn canvas_css_box_falls_back_to_display_box_on_degenerate_zoom() {
+        let r = resolve_canvas_css_box(canvas_box_request(0.0, 1.5));
+        assert!((r.dom_width - 0.0).abs() < 1e-9);
+
+        let r = resolve_canvas_css_box(CanvasCssBoxRequest {
+            display_width: 100.0,
+            display_height: 200.0,
+            display_zoom: 1.0,
+            base_render_zoom: f64::NAN,
+        });
+        assert!((r.dom_width - 100.0).abs() < 1e-9);
+        assert!((r.dom_height - 200.0).abs() < 1e-9);
     }
 
     // ─── resolve_fit_to_width ────────────────────────────────────────────

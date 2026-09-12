@@ -42,12 +42,23 @@ use crate::zoom::zoom_controller::read_zoom_state;
 use crate::zoom::zoom_controller::step_zoom_frame_plan as inner_step_zoom_frame_plan;
 use pdf_viewer_core::render::progressive::resolve_progressive_render_policy_request;
 use pdf_viewer_core::render::zoom_host::resolve_render_follow_up_decision;
+use pdf_viewer_core::render::zoom::{
+    resolve_canvas_css_box as resolve_canvas_css_box_inner, CanvasCssBoxRequest,
+};
 use pdf_viewer_core::render::zoom_host::{
     is_immediate_mutation_frame as is_immediate_mutation_frame_inner,
     resolve_fit_to_width as resolve_fit_to_width_inner,
     resolve_layout_fallback as resolve_layout_fallback_inner, LayoutFallbackRequest, MAX_ZOOM,
     MIN_ZOOM,
 };
+
+// ─── Canvas CSS box ─────────────────────────────────────────────────────────
+
+#[wasm_bindgen(js_name = "resolveCanvasCssBox")]
+pub fn resolve_canvas_css_box(request_js: JsValue) -> JsValue {
+    let request: CanvasCssBoxRequest = from_value(request_js).unwrap_or_default();
+    to_value(&resolve_canvas_css_box_inner(request)).unwrap_or(JsValue::NULL)
+}
 
 // ─── Frame plan ─────────────────────────────────────────────────────────────
 

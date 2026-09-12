@@ -66,6 +66,7 @@ export type RenderWasmApi = {
     resolveLayoutFallback: (request: Record<string, number>) => { domWidth: number; domHeight: number; displayWidth: number; displayHeight: number; hostWidth: number; hostHeight: number; contentLeft: number; contentTop: number; cssScale: number } | null;
     // cssScale is always 1.0 post-ADR-0006 (no CSS transform); kept in the
     // shape so fallback and syncHostLayout consumers stay uniform.
+    resolveCanvasCssBox: (request: { displayWidth: number; displayHeight: number; displayZoom: number; baseRenderZoom: number }) => { domWidth: number; domHeight: number } | null;
     resolveFitToWidth: (viewportWidth: number, pageWidth: number) => { fitZoom: number; shouldFit: boolean } | null;
     isImmediateMutationFrame: (renderReason: string) => boolean;
     scheduleRenderFollowUp: (renderedDisplayZoom: number, frameRequest: Record<string, unknown>) => RustRenderFrame | null;
@@ -161,6 +162,9 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
         },
         resolveLayoutFallback(request) {
             return getWasmApi().resolveLayoutFallback?.(request) ?? null;
+        },
+        resolveCanvasCssBox(request) {
+            return getWasmApi().resolveCanvasCssBox?.(request) ?? null;
         },
         resolveFitToWidth(viewportWidth, pageWidth) {
             return getWasmApi().resolveFitToWidth?.(viewportWidth, pageWidth) ?? null;
