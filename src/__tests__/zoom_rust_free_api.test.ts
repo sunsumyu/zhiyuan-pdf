@@ -69,12 +69,13 @@ describe('free_api.rs WASM export contract', () => {
     });
 
     it('raf_loop.rs start_zoom_raf_loop is idempotent', () => {
-        // Must check RAF_HANDLE before starting
+        // Must early-return if already running. The guard is the named helper
+        // is_raf_loop_running() (checks RAF_HANDLE.is_some() internally).
         const startFn = rafLoop.substring(
             rafLoop.indexOf('pub fn start_zoom_raf_loop()'),
-            rafLoop.indexOf('pub fn start_zoom_raf_loop()') + 300,
+            rafLoop.indexOf('pub fn start_zoom_raf_loop()') + 500,
         );
-        expect(startFn).toMatch(/is_some/); // early return if already running
+        expect(startFn).toMatch(/is_raf_loop_running\(\)/); // early return if already running
     });
 
     it('raf_loop.rs commit_rendered_frame handles idle loop', () => {

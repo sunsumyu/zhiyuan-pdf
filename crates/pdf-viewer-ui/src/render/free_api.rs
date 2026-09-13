@@ -41,10 +41,10 @@ use crate::viewer::viewer_controller::set_zoom;
 use crate::zoom::zoom_controller::read_zoom_state;
 use crate::zoom::zoom_controller::step_zoom_frame_plan as inner_step_zoom_frame_plan;
 use pdf_viewer_core::render::progressive::resolve_progressive_render_policy_request;
-use pdf_viewer_core::render::zoom_host::resolve_render_follow_up_decision;
 use pdf_viewer_core::render::zoom::{
     resolve_canvas_css_box as resolve_canvas_css_box_inner, CanvasCssBoxRequest,
 };
+use pdf_viewer_core::render::zoom_host::resolve_render_follow_up_decision;
 use pdf_viewer_core::render::zoom_host::{
     is_immediate_mutation_frame as is_immediate_mutation_frame_inner,
     resolve_fit_to_width as resolve_fit_to_width_inner,
