@@ -147,12 +147,12 @@ pub fn render_page_offscreen(canvas_js: JsValue, image_cache: JsValue, dpr: f32)
             renderer.render_page(state, &image_provider, prepared_scene.as_ref());
             on_debug(
                 "RENDER_PAGE_OFFSCREEN".into(),
-                format!("Executing Offscreen Render"),
+                "Executing Offscreen Render".to_string(),
             );
         } else {
             on_debug(
                 "RENDER_PAGE_OFFSCREEN".into(),
-                format!("Offscreen Canvas initialization failed"),
+                "Offscreen Canvas initialization failed".to_string(),
             );
         }
     });

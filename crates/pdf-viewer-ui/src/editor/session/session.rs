@@ -101,19 +101,6 @@ pub fn active_editor_state() -> Option<LiveEditorParagraphState> {
     EDITOR_MODE_STATE.with(|mode| mode.borrow().live_state.clone())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn starts_disabled() {
-        reset_editor_mode();
-        assert!(!is_text_edit_enabled());
-
-        set_text_edit_enabled(true);
-        assert!(is_text_edit_enabled());
-    }
-}
 
 pub fn active_editor_target() -> Option<ActiveEditorTarget> {
     active_editor_state().map(|state| state.target)
@@ -352,9 +339,7 @@ pub fn undo_active_editor() -> Option<ActiveEditorInputSyncResult> {
     EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let mode_ref = &mut *mode;
-        let Some(live_state) = mode_ref.live_state.as_mut() else {
-            return None;
-        };
+        let live_state = mode_ref.live_state.as_mut()?;
         let prev = mode_ref.history.undo(live_state)?;
         *live_state = prev;
 
@@ -372,9 +357,7 @@ pub fn redo_active_editor() -> Option<ActiveEditorInputSyncResult> {
     EDITOR_MODE_STATE.with(|mode| {
         let mut mode = mode.borrow_mut();
         let mode_ref = &mut *mode;
-        let Some(live_state) = mode_ref.live_state.as_mut() else {
-            return None;
-        };
+        let live_state = mode_ref.live_state.as_mut()?;
         let next = mode_ref.history.redo(live_state)?;
         *live_state = next;
 
@@ -417,4 +400,18 @@ pub fn render_scene_key() -> String {
             ),
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn starts_disabled() {
+        reset_editor_mode();
+        assert!(!is_text_edit_enabled());
+
+        set_text_edit_enabled(true);
+        assert!(is_text_edit_enabled());
+    }
 }

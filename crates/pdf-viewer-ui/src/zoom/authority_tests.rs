@@ -91,7 +91,7 @@ fn i4_instant_zoom_snaps_visual_and_commit_lands_at_scale_one() {
     );
     assert!(
         (state.visual_zoom - 0.48).abs() < 0.001,
-        "visual_zoom must remain at 0.48 after commit",
+        "visual_zoom must remain at 0.48 after commit: {}",
         state.visual_zoom
     );
 

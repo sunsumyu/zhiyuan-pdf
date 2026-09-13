@@ -45,6 +45,9 @@ pub struct CanvasRenderer {
     pub transparent_surface: bool,
 }
 
+// Canvas primitives arrive individually by design; grouping them into a
+// params struct would hurt the direct mapping to the 2D context API.
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn render_run_standalone(
     ctx: CanvasRenderingContext2d,
@@ -208,7 +211,6 @@ impl CanvasRenderer {
 
     /// （原 new_with_size 已移除：canvas 由外部创建并直接传入。）
     // Unused new_with_size() purged
-
     /// 根据当前容器尺寸同步 Canvas 大小
     pub fn sync_size(&self, width: f32, height: f32, zoom: f32) {
         if self.is_hijacked {
@@ -216,8 +218,8 @@ impl CanvasRenderer {
             return;
         }
         self.canvas_height.set(height);
-        let _ = self.canvas.set_width((width * self.dpr) as u32);
-        let _ = self.canvas.set_height((height * self.dpr) as u32);
+        self.canvas.set_width((width * self.dpr) as u32);
+        self.canvas.set_height((height * self.dpr) as u32);
         let style = self.canvas.style();
         let _ = style.set_property("width", &format!("{}px", width));
         let _ = style.set_property("height", &format!("{}px", height));
@@ -263,6 +265,7 @@ impl CanvasRenderer {
 
     // Unused snap_to_pixel() purged
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_text_run(
         &self,
         text: &str,
@@ -481,7 +484,7 @@ impl CanvasRenderer {
             ],
         );
         let img_val = image_provider.get(&JsValue::from_str(&image.id));
-        if let Some(img_js) = img_val.clone().dyn_into::<HtmlImageElement>().ok() {
+        if let Ok(img_js) = img_val.clone().dyn_into::<HtmlImageElement>() {
             self.ctx.save();
             let _ = self.ctx.draw_image_with_html_image_element_and_dw_and_dh(
                 &img_js,
@@ -491,7 +494,7 @@ impl CanvasRenderer {
                 image.height as f64,
             );
             self.ctx.restore();
-        } else if let Some(img_js) = img_val.dyn_into::<ImageBitmap>().ok() {
+        } else if let Ok(img_js) = img_val.dyn_into::<ImageBitmap>() {
             self.ctx.save();
             let _ = self.ctx.draw_image_with_image_bitmap_and_dw_and_dh(
                 &img_js,
@@ -645,7 +648,7 @@ impl CanvasRenderer {
                         ParagraphRenderOverlayOwner::ActiveEditorShell => {
                             draw_active_editor_shell_overlay_page(
                                 self,
-                                &overlay,
+                                overlay,
                                 Some(vector_model),
                                 image_provider,
                                 overlay.marker_text_override.as_deref(),
@@ -1037,6 +1040,7 @@ impl PdfRenderer for CanvasRenderer {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_text_run_core(
     ctx: &CanvasRenderingContext2d,
     dpr: f32,
@@ -1081,7 +1085,7 @@ pub(crate) fn draw_text_run_core(
     let _ = ctx.translate(snapped_x, snapped_baseline_y);
 
     if let Some(origins) = char_origins {
-        let _ = ctx.save();
+        ctx.save();
         let _ = ctx.scale(1.0, y_scale);
         for (index, ch) in text.chars().enumerate() {
             let mut glyph_buf = [0_u8; 4];
@@ -1095,9 +1099,9 @@ pub(crate) fn draw_text_run_core(
                 let _ = ctx.fill_text(glyph, origin_x, 0.0);
             }
         }
-        let _ = ctx.restore();
+        ctx.restore();
     } else {
-        let _ = ctx.save();
+        ctx.save();
         let _ = ctx.scale(scale_x as f64, y_scale);
         if render_mode == 1 || render_mode == 2 {
             let _ = ctx.stroke_text(text, 0.0, 0.0);
@@ -1105,7 +1109,7 @@ pub(crate) fn draw_text_run_core(
         if render_mode == 0 || render_mode == 2 {
             let _ = ctx.fill_text(text, 0.0, 0.0);
         }
-        let _ = ctx.restore();
+        ctx.restore();
     }
 
     if is_underline {

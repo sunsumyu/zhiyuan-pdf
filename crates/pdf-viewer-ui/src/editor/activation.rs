@@ -286,12 +286,11 @@ pub fn activate_editor_from_client_point(
         return primary;
     }
 
-    let fallback = open_editor_at_page_point(
+    open_editor_at_page_point(
         &resolved_paragraph_id,
         fallback_page_point.0,
         fallback_page_point.1,
-    );
-    fallback
+    )
 }
 
 pub fn activate_region_editor(

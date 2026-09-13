@@ -304,7 +304,7 @@ pub fn build_active_editor_patch(new_text: String) -> Option<PersistableRegionPa
             } else {
                 None
             };
-        patch.new_marker_text = resolve_active_marker_text(&active_state, &page_state);
+        patch.new_marker_text = resolve_active_marker_text(&active_state, page_state);
         crate::chain_trace!(
             "commit.marker",
             "resolved" => patch.new_marker_text.as_deref().unwrap_or(""),

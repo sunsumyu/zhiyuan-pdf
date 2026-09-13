@@ -4,12 +4,14 @@ use std::sync::{Arc, Mutex};
 
 use crate::infrastructure::pdf::models::{RenderObject, StyledRun};
 
+type ResolvedPageData = Arc<(Vec<RenderObject>, Vec<StyledRun>, f32, f32)>;
+
 lazy_static! {
     pub static ref PDF_IMAGE_CACHE: Arc<Mutex<HashMap<String, Arc<[u8]>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     pub static ref PDF_FONT_PROGRAM_CACHE: Arc<Mutex<HashMap<String, Arc<Vec<u8>>>>> =
         Arc::new(Mutex::new(HashMap::new()));
-    pub static ref PDF_RESOLVE_PATHS_CACHE: Arc<Mutex<HashMap<String, Arc<(Vec<RenderObject>, Vec<StyledRun>, f32, f32)>>>> =
+    pub static ref PDF_RESOLVE_PATHS_CACHE: Arc<Mutex<HashMap<String, ResolvedPageData>>> =
         Arc::new(Mutex::new(HashMap::new()));
 }
 

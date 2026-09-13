@@ -32,13 +32,13 @@ use super::raf_settle::cancel_settle_cleanup;
 
 thread_local! {
     /// The currently scheduled RAF handle (non-zero means loop is active).
-    static RAF_HANDLE: RefCell<Option<i32>> = RefCell::new(None);
+    static RAF_HANDLE: RefCell<Option<i32>> = const { RefCell::new(None) };
 
     /// The stored RAF closure.
-    static RAF_CLOSURE: RefCell<Option<JsValue>> = RefCell::new(None);
+    static RAF_CLOSURE: RefCell<Option<JsValue>> = const { RefCell::new(None) };
 
     /// Timestamp of the last mid-animation render knock (throttle window).
-    static LAST_PREVIEW_KNOCK: RefCell<f64> = RefCell::new(0.0);
+    static LAST_PREVIEW_KNOCK: RefCell<f64> = const { RefCell::new(0.0) };
 }
 
 // ─── Animation constants ──────────────────────────────────────────
@@ -53,13 +53,14 @@ const SETTLE_DRAWING_DELAY_MS: f64 = 30.0;
 pub fn start_zoom_raf_loop() {
     cancel_settle_cleanup();
 
-    RAF_HANDLE.with(|handle| {
-        if handle.borrow().is_some() {
-            return;
-        }
-    });
+// No-op if already running: the previous closure-based guard never exited
+    // the function (its `return` only left the closure), so the documented
+    // contract was broken. Use the shared handle directly.
+    if is_raf_loop_running() {
+        return;
+    }
 
-    init_dom_cache();
+init_dom_cache();
 
     // Hide raster sibling, show vector container (ADR-0002 I3)
     let raster_visible = with_dom_cache(|dom| {

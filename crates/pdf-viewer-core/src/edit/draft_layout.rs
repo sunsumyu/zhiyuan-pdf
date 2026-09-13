@@ -850,7 +850,10 @@ where
                     index: start_index,
                     left: run_origin_x + first_origin,
                 });
-                for (glyph_index, _) in chars.iter().enumerate().take(glyph_count) {
+                // Indexes three parallel glyph arrays; glyph_count (glyph count) can exceed
+                // chars.len() for multi-glyph characters, so iterator conversion is unsafe here.
+                #[allow(clippy::needless_range_loop)]
+                for glyph_index in 0..glyph_count {
                     let origin = run
                         .char_origins
                         .get(glyph_index)

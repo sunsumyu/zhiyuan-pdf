@@ -53,7 +53,7 @@ pub fn measure_editor_layout_text_width(
         // ── multi-origin diagnostic (first 5 cases) ──
         {
             use std::cell::Cell;
-            thread_local! { static MULTI_COUNT: Cell<u32> = Cell::new(0); }
+            thread_local! { static MULTI_COUNT: Cell<u32> = const { Cell::new(0) }; }
             MULTI_COUNT.with(|c| {
                 let n = c.get();
                 if n < 5 {
@@ -78,7 +78,7 @@ pub fn measure_editor_layout_text_width(
     let result = (measured_width * run.style.scale_x.max(0.01)) + spacing;
     // ── width diagnostic (first 10 runs only) ──
     use std::cell::Cell;
-    thread_local! { static MW_COUNT: Cell<u32> = Cell::new(0); }
+    thread_local! { static MW_COUNT: Cell<u32> = const { Cell::new(0) }; }
     MW_COUNT.with(|c| {
         let n = c.get();
         if n < 10 {

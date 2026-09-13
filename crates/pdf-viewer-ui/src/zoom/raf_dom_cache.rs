@@ -27,15 +27,17 @@ pub(super) const RASTER_TARGET_ID: &str = "pdf-render-target";
 
 thread_local! {
     /// Cached DOM element references — resolved once on first use per loop session.
-    static DOM_CACHE: RefCell<Option<DomCache>> = RefCell::new(None);
+    static DOM_CACHE: RefCell<Option<DomCache>> = const { RefCell::new(None) };
 }
 
 pub(super) fn with_dom_cache<R>(f: impl FnOnce(Option<&DomCache>) -> R) -> R {
     DOM_CACHE.with(|c| f(c.borrow().as_ref()))
 }
 
+// Mutation seam reserved for cache invalidation paths; not yet wired.
+#[allow(dead_code)]
 pub(super) fn with_dom_cache_mut<R>(f: impl FnOnce(&mut Option<DomCache>) -> R) -> R {
-    DOM_CACHE.with(|c| f(&mut *c.borrow_mut()))
+    DOM_CACHE.with(|c| f(&mut c.borrow_mut()))
 }
 
 pub(super) fn clear_dom_cache() {

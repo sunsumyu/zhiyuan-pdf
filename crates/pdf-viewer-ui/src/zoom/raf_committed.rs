@@ -32,7 +32,7 @@ pub struct CommittedFrame {
 
 // Queue of committed frames waiting to be applied.
 thread_local! {
-    static COMMITTED_FRAME_QUEUE: RefCell<Vec<CommittedFrame>> = RefCell::new(Vec::new());
+    static COMMITTED_FRAME_QUEUE: RefCell<Vec<CommittedFrame>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Push a committed frame into the queue. Called from the render pipeline.
@@ -105,10 +105,10 @@ pub fn apply_committed_frame(frame: CommittedFrame) {
         };
 
         // Always set scroll position
-        let _ = dom
+        dom
             .scroll_container
             .set_scroll_left(frame.scroll_left as i32);
-        let _ = dom.scroll_container.set_scroll_top(frame.scroll_top as i32);
+        dom.scroll_container.set_scroll_top(frame.scroll_top as i32);
 
         // During an active wheel gesture, on_wheel_event already positioned
         // the container using target_zoom. The render pipeline renders at
@@ -124,9 +124,7 @@ pub fn apply_committed_frame(frame: CommittedFrame) {
         }
     });
 
-    if settled {
-        if with_dom_cache(|d| d.is_some()) {
-            schedule_settle_cleanup();
-        }
+    if settled && with_dom_cache(|d| d.is_some()) {
+        schedule_settle_cleanup();
     }
 }

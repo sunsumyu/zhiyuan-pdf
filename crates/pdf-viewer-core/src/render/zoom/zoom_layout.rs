@@ -108,7 +108,10 @@ pub fn resolve_fit_to_width(viewport_width: f32, page_width: f32) -> FitToWidthR
         };
     }
     let raw = vp / pw;
-    let fit_zoom = raw.clamp(MIN_ZOOM, MAX_ZOOM);
+    // .max().min() deliberately (not clamp): it maps NaN to MIN_ZOOM, while
+    // clamp propagates NaN into fit_zoom.
+    #[allow(clippy::manual_clamp)]
+    let fit_zoom = raw.max(MIN_ZOOM).min(MAX_ZOOM);
     FitToWidthResult {
         fit_zoom,
         should_fit: true,

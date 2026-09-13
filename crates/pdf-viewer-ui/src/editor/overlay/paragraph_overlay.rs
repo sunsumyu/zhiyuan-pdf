@@ -7,6 +7,8 @@ use crate::editor::debug_trace::{
 };
 use crate::editor::edit_target::edit_target_base_paragraph_id;
 use crate::editor::list_format::{collect_marker_overrides, resolve_active_marker_text};
+#[cfg(test)]
+use pdf_viewer_core::edit::paragraph_scene::ParagraphEditorScene;
 use crate::editor::mode::read_active_editor_state;
 use crate::editor::replacement_snapshot::replacement_target_from_patch_snapshot;
 use crate::editor::session::ActiveEditorTarget;
@@ -259,24 +261,28 @@ mod persisted_overlay_tests {
     use wasm_bindgen_test::wasm_bindgen_test;
 
     fn make_active_editor_target(paragraph_id: &str) -> ActiveEditorTarget {
-        let mut target = ActiveEditorTarget::default();
-        target.paragraph_id = paragraph_id.to_string();
-        target.scene.shell_bbox = BoundingBox {
-            left: 40.0,
-            top: 96.0,
-            right: 360.0,
-            bottom: 116.0,
-        };
-        target.scene.body_session = ParagraphEditContext {
-            anchor_bbox: BoundingBox {
-                left: 90.0,
-                top: 100.0,
-                right: 330.0,
-                bottom: 112.0,
+        ActiveEditorTarget {
+            paragraph_id: paragraph_id.to_string(),
+            scene: ParagraphEditorScene {
+                shell_bbox: BoundingBox {
+                    left: 40.0,
+                    top: 96.0,
+                    right: 360.0,
+                    bottom: 116.0,
+                },
+                body_session: ParagraphEditContext {
+                    anchor_bbox: BoundingBox {
+                        left: 90.0,
+                        top: 100.0,
+                        right: 330.0,
+                        bottom: 112.0,
+                    },
+                    paragraph: LayoutParagraph::default(),
+                },
+                ..Default::default()
             },
-            paragraph: LayoutParagraph::default(),
-        };
-        target
+            ..Default::default()
+        }
     }
 
     fn make_glyph_plan(page_index: u16) -> GlyphPaintPlan {

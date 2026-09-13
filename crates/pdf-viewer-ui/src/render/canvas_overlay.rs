@@ -84,6 +84,8 @@ fn count_overlay_underline_runs(
         .count()
 }
 
+// Retained as a rendering seam for editor-marker overlays; not yet wired.
+#[allow(dead_code)]
 fn draw_editor_marker_page(
     renderer: &CanvasRenderer,
     active_target: &ActiveEditorTarget,
@@ -390,9 +392,9 @@ pub(crate) fn draw_persisted_paragraph_overlay_page(
             dbg_field("lineSummary", summarize_overlay_render_plan(&render_plan)),
         ],
     );
-    for (_line_idx, line) in render_plan.layout.lines.iter().enumerate() {
+    for line in render_plan.layout.lines.iter() {
         let baseline_y = session.anchor_bbox.top + line.baseline_y;
-        for (_run_idx, run) in line.runs.iter().enumerate() {
+        for run in line.runs.iter() {
             let run_x = session.anchor_bbox.left + line.offset_x + run.origin_x;
             renderer.draw_text_run(
                 &run.text,

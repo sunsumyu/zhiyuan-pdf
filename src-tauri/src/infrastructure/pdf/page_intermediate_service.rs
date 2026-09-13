@@ -293,6 +293,9 @@ mod tests {
         }
     }
 
+    // The log-mutex guard is deliberately held for the whole test body to
+    // isolate the shared PDF event log from concurrently running tests.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn uses_seeded_display_list() {
         let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX

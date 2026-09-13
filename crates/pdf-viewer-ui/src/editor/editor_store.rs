@@ -5,17 +5,17 @@ use crate::editor::editor_types::SessionState;
 // ── Thread-local state ──────────────────────────────────────────
 
 thread_local! {
-    static SESSION_STATE: Cell<SessionState> = Cell::new(SessionState::Viewing);
-    static ACTIVE_BLOCK_ID: RefCell<Option<String>> = RefCell::new(None);
+    static SESSION_STATE: Cell<SessionState> = const { Cell::new(SessionState::Viewing) };
+    static ACTIVE_BLOCK_ID: RefCell<Option<String>> = const { RefCell::new(None) };
 
     // ── §14.7 event callbacks ───────────────────────────────────
     // `STATE_CHANGE_CB` fires only on `SessionState` transitions.
     // `CHANGE_CB` fires on any session-relevant mutation (state OR active block).
     // Both are optional and replace any previously registered callback.
     #[cfg(target_arch = "wasm32")]
-    static STATE_CHANGE_CB: RefCell<Option<js_sys::Function>> = RefCell::new(None);
+    static STATE_CHANGE_CB: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
     #[cfg(target_arch = "wasm32")]
-    static CHANGE_CB: RefCell<Option<js_sys::Function>> = RefCell::new(None);
+    static CHANGE_CB: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
 }
 
 // ── Public accessors ────────────────────────────────────────────

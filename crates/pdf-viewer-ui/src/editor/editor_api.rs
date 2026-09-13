@@ -65,6 +65,12 @@ struct CommitRequest {
 #[wasm_bindgen]
 pub struct EditorSession;
 
+impl Default for EditorSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[wasm_bindgen]
 impl EditorSession {
     #[wasm_bindgen(constructor)]

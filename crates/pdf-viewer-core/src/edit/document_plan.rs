@@ -833,7 +833,10 @@ fn resolve_marker_split(
 
 /// Emit the verbose `open-caret.resolved` trace used when the editor is opened at a click point.
 /// Kept separate from `build_plan_for_target_session` so the business logic reads linearly;
-/// this is pure observability (cross-cutting concern).
+/// this is pure observability (cross-cutting concern). The 12-parameter signature is
+/// deliberate: a parameter struct would obscure the direct key->value mapping of the
+/// emitted trace fields.
+#[allow(clippy::too_many_arguments)]
 fn trace_open_caret_resolved(
     paragraph: &GlyphPaintParagraph,
     target_id: &str,

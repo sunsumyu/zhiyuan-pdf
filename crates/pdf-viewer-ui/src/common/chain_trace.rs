@@ -27,7 +27,7 @@
 use std::cell::Cell;
 
 thread_local! {
-    static CHAIN_ENABLED: Cell<bool> = Cell::new(true);
+    static CHAIN_ENABLED: Cell<bool> = const { Cell::new(true) };
 }
 
 /// 运行时开关。默认 ON。生产环境可调用关闭。

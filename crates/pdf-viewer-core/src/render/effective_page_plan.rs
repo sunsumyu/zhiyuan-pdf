@@ -812,6 +812,7 @@ mod tests {
         EffectiveGlyphRenderEntry, EffectiveVectorRenderEntry,
     };
     use crate::edit::active_target::ActiveEditorTarget;
+use crate::edit::paragraph_scene::ParagraphEditorScene;
     use crate::edit::paragraph_overlay::{ParagraphRenderOverlay, ParagraphRenderOverlayOwner};
     use crate::models::{
         BoundingBox, EditorControlStyle, GlyphPaintParagraph, GlyphPaintPlan, GlyphPaintRegion,
@@ -852,7 +853,7 @@ mod tests {
     fn active_overlay_for_body(body_bbox: BoundingBox) -> ParagraphRenderOverlay {
         let target = ActiveEditorTarget {
             paragraph_id: "p-1".to_string(),
-            scene: EditorScene {
+            scene: ParagraphEditorScene {
                 shell_bbox: BoundingBox {
                     left: 40.0,
                     top: 96.0,

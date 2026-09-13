@@ -33,6 +33,10 @@ pub trait PdfDocExt {
         target_index: Option<usize>,
         offset_x: Option<f32>,
     ) -> Result<(), String>;
+    // 11 params are all Option-wrapped layout properties of one atomic reflow
+    // patch; a parameter struct would ripple across every PdfWriteEngine
+    // implementor for no readability gain here.
+    #[allow(clippy::too_many_arguments)]
     fn apply_atomic_reflow_to_doc(
         &mut self,
         page_num: u32,

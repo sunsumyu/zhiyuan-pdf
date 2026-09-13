@@ -30,6 +30,9 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    // The log-mutex guard is deliberately held for the whole test body to
+    // isolate the shared PDF event log from concurrently running tests.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn waits_for_inflight_key() {
         let _log_guard = crate::infrastructure::pdf::log_service::PDF_EVENT_LOG_MUTEX

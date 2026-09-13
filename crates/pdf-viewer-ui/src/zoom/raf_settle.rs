@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 thread_local! {
     /// Handle + closure for the settle cleanup RAF.
-    static SETTLE_CLEANUP: RefCell<Option<(i32, JsValue)>> = RefCell::new(None);
+    static SETTLE_CLEANUP: RefCell<Option<(i32, JsValue)>> = const { RefCell::new(None) };
 }
 
 pub(super) fn cancel_settle_cleanup() {

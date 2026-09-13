@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn op_t_star_uses_tl() {
-        let s = TextState {
+        let mut s = TextState {
             tl: 14.0,
             ..Default::default()
         };
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn clone_is_independent() {
-        let mut s = TextState {
+        let s = TextState {
             font_size: 16.0,
             tl: 20.0,
             ..Default::default()
