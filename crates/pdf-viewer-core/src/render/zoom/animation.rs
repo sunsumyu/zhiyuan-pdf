@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use crate::render::plan_builder::{AnchorViewportLayoutResult, FramePlanRequest, FramePlanResult};
+use crate::render::plan_builder::{FramePlanRequest, FramePlanResult};
 use crate::render::present_plan::preview_is_settled;
 use crate::render::preview::{resolve_preview_present_plan, PreviewPresentPlan};
 use crate::render::zoom_state::{
-    HostZoomState, VisualLayoutState, ZoomAnchorState, ZoomAnimationStep,
+    HostZoomState, VisualLayoutState, ZoomAnimationStep,
 };
 
 /// Gap below which |visual_zoom - target_zoom| counts as settled. The UI-side
@@ -45,26 +45,6 @@ pub struct WheelZoomResult {
     pub anchor_viewport_y: f32,
     pub transform_origin_x: f32,
     pub transform_origin_y: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct AnchorScrollRequest {
-    pub display_width: f32,
-    pub display_height: f32,
-    pub viewport_width: f32,
-    pub viewport_height: f32,
-    pub anchor_pdf_x: f32,
-    pub anchor_pdf_y: f32,
-    pub viewport_x: f32,
-    pub viewport_y: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct AnchorScrollResult {
-    pub scroll_left: f32,
-    pub scroll_top: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -133,138 +113,18 @@ pub fn centered_offset(content_size: f32, viewport_size: f32) -> f32 {
     ((viewport_size - content_size).max(0.0)) * 0.5
 }
 
-pub fn compute_anchor_scroll_result(
-    display_width: f32,
-    display_height: f32,
-    viewport_width: f32,
-    viewport_height: f32,
-    anchor_page_x: f32,
-    anchor_page_y: f32,
-    page_width: f32,
-    page_height: f32,
-    viewport_x: f32,
-    viewport_y: f32,
-) -> AnchorScrollResult {
-    let display_width = sanitize_positive(display_width, 1.0);
-    let display_height = sanitize_positive(display_height, 1.0);
-    let viewport_width = sanitize_non_negative(viewport_width, 0.0);
-    let viewport_height = sanitize_non_negative(viewport_height, 0.0);
-    let page_width = sanitize_positive(page_width, 1.0);
-    let page_height = sanitize_positive(page_height, 1.0);
-    let viewport_x = if viewport_x.is_finite() {
-        viewport_x
-    } else {
-        0.0
-    };
-    let viewport_y = if viewport_y.is_finite() {
-        viewport_y
-    } else {
-        0.0
-    };
-    let offset_x = centered_offset(display_width, viewport_width);
-    let offset_y = centered_offset(display_height, viewport_height);
-    let viewport_content_x = viewport_x - offset_x;
-    let viewport_content_y = viewport_y - offset_y;
-    let anchor_display_x = if page_width > 0.0 {
-        clamp_f32(anchor_page_x, 0.0, page_width) * (display_width / page_width)
-    } else {
-        0.0
-    };
-    let anchor_display_y = if page_height > 0.0 {
-        clamp_f32(anchor_page_y, 0.0, page_height) * (display_height / page_height)
-    } else {
-        0.0
-    };
-    AnchorScrollResult {
-        scroll_left: (anchor_display_x - viewport_content_x).max(0.0),
-        scroll_top: (anchor_display_y - viewport_content_y).max(0.0),
-    }
-}
-
-/// Reverse-map the cursor viewport position back to page coordinates.
-///
-/// Without CSS transforms, the visible content position is simply
-/// (scroll + viewport) minus the content offset, divided by display zoom.
-pub fn resolve_anchor_from_visible_preview_state(
-    layout: &VisualLayoutState,
-    scroll_left: f32,
-    scroll_top: f32,
-    viewport_x: f32,
-    viewport_y: f32,
-    page_width: f32,
-    page_height: f32,
-) -> (f32, f32) {
-    let display_zoom = sanitize_positive(layout.display_zoom, 1.0);
-    let content_left = sanitize_non_negative(layout.content_left, 0.0);
-    let content_top = sanitize_non_negative(layout.content_top, 0.0);
-    let visible_content_x = (scroll_left + viewport_x - content_left) / display_zoom;
-    let visible_content_y = (scroll_top + viewport_y - content_top) / display_zoom;
-    let anchor_page_x = clamp_f32(visible_content_x, 0.0, page_width);
-    let anchor_page_y = clamp_f32(visible_content_y, 0.0, page_height);
-    (anchor_page_x, anchor_page_y)
-}
-
-/// Compute the container layout for zoom — always centers the content.
-///
-/// This eliminates the discontinuity that occurred when display size crossed
-/// the viewport size (previously: centered when smaller, anchored-to-cursor
-/// when larger). The jump at the threshold was the primary cause of the
-/// "page jumps during zoom" bug.
-///
-/// Centered zoom matches PDF.js behavior and user expectation: the viewport
-/// center stays fixed on the same page point throughout the gesture.
-pub fn compute_anchor_viewport_layout_result(
-    display_width: f32,
-    display_height: f32,
-    viewport_width: f32,
-    viewport_height: f32,
-    _anchor_page_x: f32,
-    _anchor_page_y: f32,
-    _page_width: f32,
-    _page_height: f32,
-    _cursor_x: f32,
-    _cursor_y: f32,
-) -> AnchorViewportLayoutResult {
-    let display_width = sanitize_positive(display_width, 1.0);
-    let display_height = sanitize_positive(display_height, 1.0);
-    let viewport_width = sanitize_positive(viewport_width, 1.0);
-    let viewport_height = sanitize_positive(viewport_height, 1.0);
-    // Always center the content — matches centered_offset() exactly so there
-    // is no discontinuity between the wheel-event path and the committed-frame
-    // path.  The .max(0.0) prevents negative offsets when display > viewport
-    // (content would otherwise jump off-screen to the left/top).
-    let content_left = (viewport_width - display_width).max(0.0) * 0.5;
-    let content_top = (viewport_height - display_height).max(0.0) * 0.5;
-    // host must be at least the viewport size so scrollable area is never smaller
-    // than what the user can see.
-    let host_width = display_width.max(viewport_width);
-    let host_height = display_height.max(viewport_height);
-    AnchorViewportLayoutResult {
-        host_width,
-        host_height,
-        content_left,
-        content_top,
-        scroll_left: 0.0,
-        scroll_top: 0.0,
-    }
-}
-
 pub fn resolve_wheel_zoom_request(
     request: &WheelZoomRequest,
-    visual_layout: Option<&VisualLayoutState>,
-) -> (WheelZoomResult, ZoomAnchorState) {
-    let content_width = sanitize_positive(request.content_width, 1.0);
-    let content_height = sanitize_positive(request.content_height, 1.0);
-    let page_width = sanitize_positive(request.page_width, 1.0);
-    let page_height = sanitize_positive(request.page_height, 1.0);
+    _visual_layout: Option<&VisualLayoutState>,
+) -> WheelZoomResult {
+    let _content_width = sanitize_positive(request.content_width, 1.0);
+    let _content_height = sanitize_positive(request.content_height, 1.0);
+    let _page_width = sanitize_positive(request.page_width, 1.0);
+    let _page_height = sanitize_positive(request.page_height, 1.0);
     let zoom_factor = 2.0_f32.powf(-request.delta_y / 800.0);
     let min_zoom = sanitize_positive(request.min_zoom, 0.1).max(0.1);
     let max_zoom = sanitize_positive(request.max_zoom, min_zoom).max(min_zoom);
     let next_zoom = clamp_zoom(request.target_zoom * zoom_factor, min_zoom, max_zoom);
-    let viewport_width = sanitize_non_negative(request.viewport_width, 0.0);
-    let viewport_height = sanitize_non_negative(request.viewport_height, 0.0);
-    let scroll_left = sanitize_non_negative(request.scroll_left, 0.0);
-    let scroll_top = sanitize_non_negative(request.scroll_top, 0.0);
     let viewport_x = if request.viewport_x.is_finite() {
         request.viewport_x
     } else {
@@ -275,71 +135,22 @@ pub fn resolve_wheel_zoom_request(
     } else {
         0.0
     };
-    let offset_x = centered_offset(content_width, viewport_width);
-    let offset_y = centered_offset(content_height, viewport_height);
-    let viewport_content_x = viewport_x - offset_x;
-    let viewport_content_y = viewport_y - offset_y;
-    let layout_anchor = visual_layout.map(|layout| {
-        resolve_anchor_from_visible_preview_state(
-            layout,
-            scroll_left,
-            scroll_top,
-            viewport_x,
-            viewport_y,
-            page_width,
-            page_height,
-        )
-    });
-    let fallback_anchor_page_x = layout_anchor
-        .map(|(x, _)| x)
-        .unwrap_or(clamp_unit((scroll_left + viewport_content_x) / content_width) * page_width);
-    let fallback_anchor_page_y = layout_anchor
-        .map(|(_, y)| y)
-        .unwrap_or(clamp_unit((scroll_top + viewport_content_y) / content_height) * page_height);
-    let anchor_page_x = request
-        .anchor_page_x
-        .filter(|value: &f32| value.is_finite())
-        .or_else(|| {
-            request
-                .page_ratio_x
-                .filter(|value: &f32| value.is_finite())
-                .map(|ratio: f32| clamp_unit(ratio) * page_width)
-        })
-        .unwrap_or(fallback_anchor_page_x)
-        .max(0.0)
-        .min(page_width);
-    let anchor_page_y = request
-        .anchor_page_y
-        .filter(|value: &f32| value.is_finite())
-        .or_else(|| {
-            request
-                .page_ratio_y
-                .filter(|value: &f32| value.is_finite())
-                .map(|ratio: f32| clamp_unit(ratio) * page_height)
-        })
-        .unwrap_or(fallback_anchor_page_y)
-        .max(0.0)
-        .min(page_height);
-    let anchor_pdf_x = clamp_unit(anchor_page_x / page_width);
-    let anchor_pdf_y = clamp_unit(anchor_page_y / page_height);
-    let result = WheelZoomResult {
+    // Zoom always centers content — anchor fields are retained for the Wasm
+    // contract (TS passes viewport_x/y for transform-origin reporting) but the
+    // anchor page-point computation is no longer needed.
+    let viewport_width = sanitize_non_negative(request.viewport_width, 0.0);
+    let viewport_height = sanitize_non_negative(request.viewport_height, 0.0);
+    let anchor_pdf_x = clamp_unit(viewport_x / viewport_width.max(1.0));
+    let anchor_pdf_y = clamp_unit(viewport_y / viewport_height.max(1.0));
+    WheelZoomResult {
         target_zoom: next_zoom,
         anchor_pdf_x,
         anchor_pdf_y,
         anchor_viewport_x: viewport_x,
         anchor_viewport_y: viewport_y,
-        transform_origin_x: anchor_pdf_x * content_width,
-        transform_origin_y: anchor_pdf_y * content_height,
-    };
-    let pending_anchor = ZoomAnchorState {
-        anchor_page_x,
-        anchor_page_y,
-        page_width,
-        page_height,
-        viewport_x: result.anchor_viewport_x,
-        viewport_y: result.anchor_viewport_y,
-    };
-    (result, pending_anchor)
+        transform_origin_x: anchor_pdf_x * request.content_width,
+        transform_origin_y: anchor_pdf_y * request.content_height,
+    }
 }
 
 pub fn resolve_zoom_limits_result(request: &ZoomLimitsRequest) -> ZoomLimitsResult {
@@ -469,7 +280,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::compute_anchor_viewport_layout_result;
     use super::*;
     use crate::render::plan_builder::compute_viewport_layout_result;
     use crate::render::zoom::state::HostZoomState;
@@ -593,7 +403,7 @@ mod tests {
             max_zoom: 30.0,
         };
 
-        let (result, _anchor) = resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
+        let result = resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
 
         assert!(
             result.target_zoom > 1.0,
@@ -631,11 +441,9 @@ mod tests {
                 min_zoom: 0.1,
                 max_zoom: 30.0,
             };
-            let (result, anchor) =
-                resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
+            let result = resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
             state.target_zoom = result.target_zoom;
             state.last_animation_timestamp_ms = 0.0;
-            state.pending_anchor = Some(anchor);
             let ts = 1000.0 + (i as f64) * 16.67;
             let _step = advance_zoom_animation_state(&mut state, Some(ts));
         }
@@ -703,7 +511,7 @@ mod tests {
             min_zoom: 0.1,
             max_zoom: 30.0,
         };
-        let (result, _anchor) = resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
+        let result = resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
         assert!(
             result.target_zoom < 2.0,
             "zoom-out should decrease target: {}",
@@ -739,7 +547,7 @@ mod tests {
             min_zoom: 0.1,
             max_zoom: 30.0,
         };
-        let (result, _anchor) = resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
+        let result = resolve_wheel_zoom_request(&request, state.visual_layout.as_ref());
         state.target_zoom = result.target_zoom;
         state.last_animation_timestamp_ms = 0.0;
         let session_current_zoom = state.target_zoom;
@@ -767,12 +575,10 @@ mod tests {
     }
 
     #[test]
-    fn centers_at_all_zoom_levels() {
+    fn viewport_layout_centers_at_all_zoom_levels() {
         // When display > viewport: content_left clamps to 0 (not negative),
         // host expands to display size.
-        let result = compute_anchor_viewport_layout_result(
-            1000.0, 1200.0, 800.0, 900.0, 200.0, 300.0, 595.0, 842.0, 420.0, 500.0,
-        );
+        let result = compute_viewport_layout_result(1000.0, 1200.0, 800.0, 900.0);
         assert!(
             (result.content_left - 0.0).abs() < 0.001,
             "content_left must not go negative: {}",
@@ -788,75 +594,16 @@ mod tests {
     }
 
     #[test]
-    fn centers_when_display_smaller_than_viewport() {
+    fn viewport_layout_centers_when_display_smaller_than_viewport() {
         // When display < viewport, content is centered.
-        let result = compute_anchor_viewport_layout_result(
-            595.0, 842.0, 800.0, 900.0, 320.0, 450.0, 595.0, 842.0, 420.0, 500.0,
-        );
+        let result = compute_viewport_layout_result(595.0, 842.0, 800.0, 900.0);
         assert!((result.content_left - (800.0 - 595.0) * 0.5).abs() < 0.001);
         assert!((result.content_top - (900.0 - 842.0) * 0.5).abs() < 0.001);
-        assert!((result.scroll_left - 0.0).abs() < 0.001);
-        assert!((result.scroll_top - 0.0).abs() < 0.001);
     }
 
-    /// CRITICAL: Verify the two layout functions produce IDENTICAL results.
-    /// During wheel zoom, `on_wheel_event` uses compute_anchor_viewport_layout_result
-    /// to position the DOM, while `build_frame_plan_result` (via compute_viewport_layout_result)
-    /// computes the committed frame geometry. If these differ, the page jumps when
-    /// the committed frame is applied.
-    #[test]
-    fn anchor_and_viewport_layout_functions_match() {
-        let test_cases = [
-            // (display_w, display_h, viewport_w, viewport_h)
-            // display < viewport: both center
-            (595.0, 842.0, 1000.0, 800.0),
-            // display == viewport: boundary
-            (800.0, 600.0, 800.0, 600.0),
-            // display > viewport: both clamp to 0
-            (1200.0, 900.0, 800.0, 600.0),
-            // display slightly > viewport (most common jump threshold)
-            (801.0, 601.0, 800.0, 600.0),
-            // display slightly < viewport
-            (799.0, 599.0, 800.0, 600.0),
-            // extreme zoom in
-            (5000.0, 7000.0, 800.0, 600.0),
-            // extreme zoom out
-            (100.0, 140.0, 1920.0, 1080.0),
-        ];
-
-        for (dw, dh, vw, vh) in &test_cases {
-            let anchor = compute_anchor_viewport_layout_result(
-                *dw, *dh, *vw, *vh, 0.0, 0.0, 595.0, 842.0, 400.0, 300.0,
-            );
-            let viewport = compute_viewport_layout_result(*dw, *dh, *vw, *vh);
-
-            assert!(
-                (anchor.host_width - viewport.host_width).abs() < 0.001,
-                "host_width mismatch at display={dw}x{dh} viewport={vw}x{vh}: anchor={} viewport={}",
-                anchor.host_width, viewport.host_width
-            );
-            assert!(
-                (anchor.host_height - viewport.host_height).abs() < 0.001,
-                "host_height mismatch at display={dw}x{dh} viewport={vw}x{vh}: anchor={} viewport={}",
-                anchor.host_height, viewport.host_height
-            );
-            assert!(
-                (anchor.content_left - viewport.content_left).abs() < 0.001,
-                "content_left JUMP at display={dw}x{dh} viewport={vw}x{vh}: anchor={} viewport={}",
-                anchor.content_left,
-                viewport.content_left
-            );
-            assert!(
-                (anchor.content_top - viewport.content_top).abs() < 0.001,
-                "content_top JUMP at display={dw}x{dh} viewport={vw}x{vh}: anchor={} viewport={}",
-                anchor.content_top,
-                viewport.content_top
-            );
-        }
-    }
-
-    /// CRITICAL: Verify continuity across the display==viewport boundary.
-    /// content_left must change smoothly (not jump) as display_width crosses viewport_width.
+    /// CRITICAL: Verify content_left continuity across the display==viewport
+    /// boundary. content_left must change smoothly (not jump) as display_width
+    /// crosses viewport_width.
     #[test]
     fn content_left_continuous_across_viewport_boundary() {
         let viewport_w = 800.0;
@@ -867,8 +614,8 @@ mod tests {
         for i in 0..100 {
             let display_w = 750.0 + (i as f32) * 1.0; // 750 to 850, crossing 800
             let display_h = 562.5 + (i as f32) * 0.75; // maintain aspect ratio
-            let result = compute_anchor_viewport_layout_result(
-                display_w, display_h, viewport_w, viewport_h, 0.0, 0.0, 595.0, 842.0, 400.0, 300.0,
+            let result = compute_viewport_layout_result(
+                display_w, display_h, viewport_w, viewport_h,
             );
             if let Some(prev) = prev_left {
                 let delta = (result.content_left - prev).abs();

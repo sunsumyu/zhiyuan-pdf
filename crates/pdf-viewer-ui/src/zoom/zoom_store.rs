@@ -72,7 +72,6 @@ pub fn reset_zoom_state(initial_zoom: f32) {
             visual_zoom: zoom,
             last_rendered_zoom: zoom,
             last_animation_timestamp_ms: 0.0,
-            pending_anchor: None,
             visual_layout: None,
             preview_host: PreviewHostState::default(),
             drawing_delay: DrawingDelayState::default(),

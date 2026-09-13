@@ -37,7 +37,6 @@ pub fn with_present_state<R>(f: impl FnOnce(&HostPresentState) -> R) -> R {
 
 pub fn build_frame_plan_result(
     request: &FramePlanRequest,
-    consume_anchor: bool,
 ) -> FramePlanResult {
     // Read the viewer session BEFORE borrowing ZOOM_STATE mutably.
     // read_viewer_session() reads ZOOM_STATE.target_zoom (ADR-0001), so it
@@ -52,14 +51,13 @@ pub fn build_frame_plan_result(
                 &viewer_session,
                 &present_state.borrow(),
                 &render_scene_key(),
-                consume_anchor,
             )
         })
     })
 }
 
 pub fn resolve_viewport_refresh(request: &FramePlanRequest) -> ViewportRefreshDecision {
-    let frame_plan = build_frame_plan_result(request, false);
+    let frame_plan = build_frame_plan_result(request);
     VIEWPORT_REFRESH_STATE.with(|state| {
         inner_resolve_viewport_refresh(&state.borrow(), &frame_plan, request.timestamp_ms)
     })
@@ -98,7 +96,7 @@ pub fn reset_present_runtime(reset_cache: bool, reset_refresh: bool) {
 }
 
 pub fn schedule_render_frame_request(request: &FramePlanRequest) -> Option<RenderFrameEnvelope> {
-    let frame_plan = build_frame_plan_result(request, false);
+    let frame_plan = build_frame_plan_result(request);
     // Editor-driven renders carry a fresh scene_revision per keystroke, so any
     // pending in-flight frame is stale and will never be committed by JS (the
     // active token is overwritten before progressive completes). To avoid

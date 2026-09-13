@@ -17,9 +17,9 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
 use pdf_viewer_core::render::zoom::animation::{
-    advance_zoom_animation_state, compute_anchor_viewport_layout_result,
-    resolve_wheel_zoom_request, WheelZoomRequest,
+    advance_zoom_animation_state, resolve_wheel_zoom_request, WheelZoomRequest,
 };
+use pdf_viewer_core::render::plan_builder::compute_viewport_layout_result;
 
 use crate::zoom::zoom_store::ZOOM_STATE;
 
@@ -184,29 +184,22 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
             max_zoom,
         };
 
-        let (result, pending_anchor) =
-            resolve_wheel_zoom_request(&request, s.visual_layout.as_ref());
+        let result = resolve_wheel_zoom_request(&request, s.visual_layout.as_ref());
 
         s.target_zoom = result.target_zoom;
         s.last_animation_timestamp_ms = 0.0;
 
         // ── Virtual zoom: immediately apply target layout ──
-        // Compute container dimensions at target zoom and scroll position
-        // to keep the anchor under the cursor. This gives instant visual
-        // feedback — the browser stretches/compresses the existing canvas.
+        // Compute container dimensions at target zoom — always centers content.
+        // This gives instant visual feedback — the browser stretches/compresses
+        // the existing canvas.
         let display_width = input.page_width * result.target_zoom;
         let display_height = input.page_height * result.target_zoom;
-        let layout = compute_anchor_viewport_layout_result(
+        let layout = compute_viewport_layout_result(
             display_width,
             display_height,
             input.viewport_width,
             input.viewport_height,
-            pending_anchor.anchor_page_x,
-            pending_anchor.anchor_page_y,
-            input.page_width,
-            input.page_height,
-            input.viewport_x,
-            input.viewport_y,
         );
 
         // Update visual_layout to match the virtual zoom state
@@ -216,12 +209,7 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
             content_top: layout.content_top,
         });
 
-        // Store the anchor for render-time scroll computation
-        s.pending_anchor = Some(pending_anchor);
-
         // Apply to DOM immediately for instant visual feedback.
-        // Anchor preservation is done purely via content_left/top — scroll is
-        // never written during the gesture, so nothing fights the browser.
         with_dom_cache(|dom| {
             if let Some(dom) = dom {
                 let style = dom.container.style();
@@ -303,33 +291,31 @@ fn tick(timestamp_ms: f64) {
     // apply_committed_frame then overwrites the container geometry and the
     // page jumps. Skip re-renders entirely while the gesture is active.
     if !settled && !in_gesture {
-        let (blur, anchor_active) = ZOOM_STATE.with(|state| {
+        // Re-render when the blur between visual_zoom and last_rendered_zoom
+        // exceeds the threshold — knocks the TS render pipeline to pick up
+        // the mid-animation visual state.
+        let blur = ZOOM_STATE.with(|state| {
             let s = state.borrow();
             let base = if s.last_rendered_zoom > 0.0 {
                 s.last_rendered_zoom
             } else {
                 1.0
             };
-            (
-                (s.visual_zoom / base - 1.0).abs(),
-                s.pending_anchor.is_some(),
-            )
+            (s.visual_zoom / base - 1.0).abs()
         });
-        if anchor_active {
-            let render_in_flight = crate::render::render_store::RENDER_STATE
-                .with(|state| state.borrow().in_flight_frame_token != 0);
-            let elapsed_ms = LAST_PREVIEW_KNOCK.with(|t| timestamp_ms - *t.borrow());
-            use pdf_viewer_core::render::zoom::decision::{
-                should_reknock_preview_render, PreviewReknockRequest,
-            };
-            if should_reknock_preview_render(PreviewReknockRequest {
-                blur,
-                elapsed_ms,
-                render_in_flight,
-            }) {
-                LAST_PREVIEW_KNOCK.with(|t| *t.borrow_mut() = timestamp_ms);
-                dispatch_settle_envelope();
-            }
+        let render_in_flight = crate::render::render_store::RENDER_STATE
+            .with(|state| state.borrow().in_flight_frame_token != 0);
+        let elapsed_ms = LAST_PREVIEW_KNOCK.with(|t| timestamp_ms - *t.borrow());
+        use pdf_viewer_core::render::zoom::decision::{
+            should_reknock_preview_render, PreviewReknockRequest,
+        };
+        if should_reknock_preview_render(PreviewReknockRequest {
+            blur,
+            elapsed_ms,
+            render_in_flight,
+        }) {
+            LAST_PREVIEW_KNOCK.with(|t| *t.borrow_mut() = timestamp_ms);
+            dispatch_settle_envelope();
         }
     }
 

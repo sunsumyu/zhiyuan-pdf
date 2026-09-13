@@ -97,17 +97,6 @@ pub struct ViewportTileResult {
     pub tile_height: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct AnchorViewportLayoutResult {
-    pub host_width: f32,
-    pub host_height: f32,
-    pub content_left: f32,
-    pub content_top: f32,
-    pub scroll_left: f32,
-    pub scroll_top: f32,
-}
-
 pub fn clamp_f32(value: f32, min_value: f32, max_value: f32) -> f32 {
     let min_value = if min_value.is_finite() {
         min_value
@@ -230,62 +219,6 @@ pub fn resolve_tile_overscan(viewport_width: f32, viewport_height: f32, display_
         viewport_extent * 0.65
     };
     adaptive.clamp(220.0, 960.0)
-}
-
-pub fn compute_anchor_viewport_layout_result(
-    display_width: f32,
-    display_height: f32,
-    viewport_width: f32,
-    viewport_height: f32,
-    anchor_page_x: f32,
-    anchor_page_y: f32,
-    page_width: f32,
-    page_height: f32,
-    viewport_x: f32,
-    viewport_y: f32,
-) -> AnchorViewportLayoutResult {
-    let display_width = sanitize_positive(display_width, 1.0);
-    let display_height = sanitize_positive(display_height, 1.0);
-    let viewport_width = sanitize_positive(viewport_width, 1.0);
-    let viewport_height = sanitize_positive(viewport_height, 1.0);
-    let page_width = sanitize_positive(page_width, 1.0);
-    let page_height = sanitize_positive(page_height, 1.0);
-    let viewport_x = if viewport_x.is_finite() {
-        viewport_x
-    } else {
-        0.0
-    };
-    let viewport_y = if viewport_y.is_finite() {
-        viewport_y
-    } else {
-        0.0
-    };
-    let point_x = if page_width > 0.0 {
-        clamp_f32(anchor_page_x, 0.0, page_width) * (display_width / page_width)
-    } else {
-        0.0
-    };
-    let point_y = if page_height > 0.0 {
-        clamp_f32(anchor_page_y, 0.0, page_height) * (display_height / page_height)
-    } else {
-        0.0
-    };
-    let content_left = (viewport_x - point_x).max(0.0);
-    let content_top = (viewport_y - point_y).max(0.0);
-    let scroll_left = (content_left + point_x - viewport_x).max(0.0);
-    let scroll_top = (content_top + point_y - viewport_y).max(0.0);
-    AnchorViewportLayoutResult {
-        host_width: (content_left + display_width)
-            .max(scroll_left + viewport_width)
-            .max(viewport_width),
-        host_height: (content_top + display_height)
-            .max(scroll_top + viewport_height)
-            .max(viewport_height),
-        content_left,
-        content_top,
-        scroll_left,
-        scroll_top,
-    }
 }
 
 pub fn compute_visible_content_rect(

@@ -23,13 +23,12 @@ pub fn resolve_present_policy(
     target_zoom: f32,
     visual_zoom: f32,
     use_viewport_tile: bool,
-    has_pending_anchor: bool,
     has_reusable_base_layer: bool,
     has_reusable_detail_tile: bool,
 ) -> PresentPolicy {
     let preview_settled = (target_zoom - visual_zoom).abs() < PREVIEW_SETTLED_EPSILON;
     let preview_active = !preview_settled;
-    let snap_visual_zoom = has_pending_anchor && !preview_settled;
+    let snap_visual_zoom = false;
     let reuse_active_base_layer = has_reusable_base_layer || preview_active;
     let render_base_layer = !reuse_active_base_layer && preview_settled;
     let reuse_active_detail_tile = use_viewport_tile && has_reusable_detail_tile;

@@ -10,54 +10,12 @@ use crate::render::tile_cache::{
 use crate::viewer::viewer_store::HostViewerSession;
 use crate::zoom::zoom_store::HostZoomState;
 
-fn resolve_anchor_layout_from_zoom_state(
-    zoom_state: &mut HostZoomState,
-    display_width: f32,
-    display_height: f32,
-    viewport_width: f32,
-    viewport_height: f32,
-    consume_anchor: bool,
-) -> Option<AnchorViewportLayoutResult> {
-    if consume_anchor {
-        zoom_state.pending_anchor.take().map(|anchor| {
-            compute_anchor_viewport_layout_result(
-                display_width,
-                display_height,
-                viewport_width,
-                viewport_height,
-                anchor.anchor_page_x,
-                anchor.anchor_page_y,
-                anchor.page_width,
-                anchor.page_height,
-                anchor.viewport_x,
-                anchor.viewport_y,
-            )
-        })
-    } else {
-        zoom_state.pending_anchor.as_ref().map(|anchor| {
-            compute_anchor_viewport_layout_result(
-                display_width,
-                display_height,
-                viewport_width,
-                viewport_height,
-                anchor.anchor_page_x,
-                anchor.anchor_page_y,
-                anchor.page_width,
-                anchor.page_height,
-                anchor.viewport_x,
-                anchor.viewport_y,
-            )
-        })
-    }
-}
-
 pub fn build_frame_plan_result(
     request: &FramePlanRequest,
     zoom_state: &mut HostZoomState,
     viewer_session: &HostViewerSession,
     present_state: &HostPresentState,
     render_scene_key: &str,
-    consume_anchor: bool,
 ) -> FramePlanResult {
     log::info!(
         "[PAGE-SIZE] plan_builder: build_frame_plan_result called. Width={}, Height={}",
@@ -83,56 +41,24 @@ pub fn build_frame_plan_result(
     let viewport_width = request.viewport_width.max(0.0);
     let viewport_height = request.viewport_height.max(0.0);
 
-    let (host_width, host_height, content_left, content_top, scroll_left, scroll_top) =
-        if let Some(anchor_layout) = resolve_anchor_layout_from_zoom_state(
-            zoom_state,
-            display_width,
-            display_height,
-            viewport_width,
-            viewport_height,
-            consume_anchor,
-        ) {
-            (
-                anchor_layout.host_width,
-                anchor_layout.host_height,
-                anchor_layout.content_left,
-                anchor_layout.content_top,
-                anchor_layout.scroll_left,
-                anchor_layout.scroll_top,
-            )
-        } else {
-            // During wheel zoom, on_wheel_event positions the container at
-            // target_zoom. The render pipeline renders at visualZoom
-            // (interpolated), so display_width differs from what on_wheel_event
-            // used. We must call compute_anchor_viewport_layout_result with the
-            // *render-time* display dimensions to get the matching content_left.
-            //
-            // Previously this path had a stale-check: it reused visual_layout's
-            // content offsets only when |vl.display_zoom - target_zoom| < 0.01.
-            // During rapid wheel events, target_zoom advances faster than the
-            // check threshold, causing the fallback centered computation to
-            // produce slightly different offsets → visible jump.
-            //
-            // Fix: always call compute_anchor_viewport_layout_result (which now
-            // always centers) with the current display dimensions. This uses
-            // the identical formula as on_wheel_event, eliminating the
-            // discontinuity regardless of how stale visual_layout.display_zoom
-            // is.
-            let layout = compute_viewport_layout_result(
-                display_width,
-                display_height,
-                viewport_width,
-                viewport_height,
-            );
-            (
-                layout.host_width,
-                layout.host_height,
-                layout.content_left,
-                layout.content_top,
-                request.scroll_left.max(0.0),
-                request.scroll_top.max(0.0),
-            )
-        };
+    // Zoom always centers content — compute the layout from render-time
+    // display dimensions using the shared compute_viewport_layout_result
+    // (identical to what on_wheel_event uses), eliminating any discontinuity
+    // between the wheel-event path and the committed-frame path.
+    let layout = compute_viewport_layout_result(
+        display_width,
+        display_height,
+        viewport_width,
+        viewport_height,
+    );
+    let (host_width, host_height, content_left, content_top) = (
+        layout.host_width,
+        layout.host_height,
+        layout.content_left,
+        layout.content_top,
+    );
+    let scroll_left = request.scroll_left.max(0.0);
+    let scroll_top = request.scroll_top.max(0.0);
 
     let target_zoom = sanitize_positive(zoom_state.target_zoom, render.display_zoom);
     let visual_zoom = sanitize_positive(zoom_state.visual_zoom, render.display_zoom);
@@ -236,7 +162,6 @@ pub fn build_frame_plan_result(
         target_zoom,
         visual_zoom,
         render.use_viewport_tile,
-        zoom_state.pending_anchor.is_some(),
         has_displayed_base_layer,
         reusable_detail_tile.is_some(),
     );

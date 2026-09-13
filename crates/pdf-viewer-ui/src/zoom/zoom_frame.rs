@@ -29,7 +29,6 @@ pub fn step_zoom_frame_plan(request: &FramePlanRequest) -> ZoomPreviewFrame {
                     &viewer_session,
                     present_state,
                     &render_scene_key(),
-                    false,
                 )
             })
         })

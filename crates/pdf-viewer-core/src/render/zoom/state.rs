@@ -2,17 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct ZoomAnchorState {
-    pub anchor_page_x: f32,
-    pub anchor_page_y: f32,
-    pub page_width: f32,
-    pub page_height: f32,
-    pub viewport_x: f32,
-    pub viewport_y: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
 pub struct VisualLayoutState {
     pub display_zoom: f32,
     pub content_left: f32,
@@ -58,7 +47,6 @@ pub struct HostZoomState {
     pub visual_zoom: f32,
     pub last_rendered_zoom: f32,
     pub last_animation_timestamp_ms: f64,
-    pub pending_anchor: Option<ZoomAnchorState>,
     pub visual_layout: Option<VisualLayoutState>,
     pub preview_host: PreviewHostState,
     pub drawing_delay: DrawingDelayState,
@@ -66,12 +54,12 @@ pub struct HostZoomState {
 
 impl Default for HostZoomState {
     fn default() -> Self {
+        let zoom = 1.0_f32;
         Self {
-            target_zoom: 1.0,
-            visual_zoom: 1.0,
-            last_rendered_zoom: 1.0,
+            target_zoom: zoom,
+            visual_zoom: zoom,
+            last_rendered_zoom: zoom,
             last_animation_timestamp_ms: 0.0,
-            pending_anchor: None,
             visual_layout: None,
             preview_host: PreviewHostState::default(),
             drawing_delay: DrawingDelayState::default(),

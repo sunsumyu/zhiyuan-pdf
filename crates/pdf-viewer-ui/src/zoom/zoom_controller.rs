@@ -2,14 +2,12 @@
 //!
 //! Sub-modules:
 //! - `zoom_authority`: Core zoom state mutations (ADR-0001 single write entry)
-//! - `zoom_anchor`: Anchor management (scroll/layout from pending anchors)
 //! - `zoom_preview`: Preview host state (flags, transforms)
 //! - `zoom_frame`: Animation frame stepping + committed frame queue
 //!
 //! This module re-exports everything from sub-modules so existing import
 //! paths (`crate::zoom::zoom_controller::*`) continue to work.
 
-pub use super::zoom_anchor::*;
 pub use super::zoom_authority::*;
 pub use super::zoom_frame::*;
 pub use super::zoom_preview::*;
@@ -58,7 +56,7 @@ pub fn execute_wheel_zoom(request: WheelZoomHostRequest) -> WheelZoomHostResult 
     let zoom_state = read_zoom_state();
     let mut frame_request = request.frame;
     frame_request.display_zoom = zoom_state.visual_zoom;
-    let frame_plan = present_build_frame_plan_result(&frame_request, false);
+    let frame_plan = present_build_frame_plan_result(&frame_request);
     let render_decision = resolve_wheel_render_decision(WheelRenderDecisionRequest {
         target_zoom: zoom_state.target_zoom,
         visual_zoom: zoom_state.visual_zoom,
@@ -93,7 +91,7 @@ pub fn step_preview_host(request: PreviewHostStepRequest) -> PreviewHostStepResu
 }
 
 pub fn resolve_wheel_zoom(request: &WheelZoomRequest) -> WheelZoomResult {
-    let (result, pending_anchor) = crate::zoom::zoom_store::ZOOM_STATE.with(|state| {
+    let result = crate::zoom::zoom_store::ZOOM_STATE.with(|state| {
         let s = state.borrow();
         pdf_viewer_core::render::zoom_interaction::resolve_wheel_zoom_request(
             request,
@@ -107,7 +105,6 @@ pub fn resolve_wheel_zoom(request: &WheelZoomRequest) -> WheelZoomResult {
         }
         s.target_zoom = result.target_zoom;
         s.last_animation_timestamp_ms = 0.0;
-        s.pending_anchor = Some(pending_anchor);
     });
     set_zoom(result.target_zoom);
     result
@@ -122,22 +119,18 @@ pub fn tick_zoom_state(
     })
 }
 
-/// Clear preview host state with optional anchor clearing (orchestration).
+/// Clear preview host state (orchestration).
 ///
-/// This is the entry point for callers that need to clear preview state
-/// and optionally the pending anchor. The preview module only handles
-/// its own state; this function coordinates the cross-module operation.
+/// This is the entry point for callers that need to clear preview state.
+/// The preview module handles its own state.
 pub fn clear_preview_host_with_anchor(do_clear_anchor: bool) {
     super::zoom_preview::clear_zoom_preview_host_state();
-    if do_clear_anchor {
-        super::zoom_anchor::clear_pending_anchor();
-    }
+    let _ = do_clear_anchor; // anchor state no longer exists post-ADR-0007
 }
 
-/// Settle zoom to target and clear all preview/anchor state (orchestration).
+/// Settle zoom to target and clear all preview state (orchestration).
 pub fn settle_zoom_preview_at_target() {
     super::zoom_preview::clear_preview_settle_state();
-    super::zoom_anchor::clear_pending_anchor();
 }
 
 /// Reset zoom preview host: mark rendered zoom + clear preview state.

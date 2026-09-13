@@ -50,11 +50,6 @@ pub fn mark_rendered_zoom(rendered_zoom: f32) {
     zoom_controller::mark_rendered_zoom(rendered_zoom);
 }
 
-#[wasm_bindgen(js_name = "clearPendingAnchor")]
-pub fn clear_pending_anchor() {
-    zoom_controller::clear_pending_anchor();
-}
-
 #[wasm_bindgen(js_name = "applyZoomSelection")]
 pub fn apply_zoom_selection(zoom: f32) -> JsValue {
     let result = crate::host::command::apply_zoom_selection(zoom);

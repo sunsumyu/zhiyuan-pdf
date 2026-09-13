@@ -19,8 +19,8 @@
 
 ### 布局计算
 
-- **Anchor (锚点)** — 缩放中心点（页面坐标）。用于保持缩放时内容位置稳定。
-- **Viewport Layout** — 基于 anchor 计算容器尺寸和滚动位置：`host_width = display_width`，`scroll_left = content_left + anchor_x - viewport_x`。
+- **Anchor (锚点)** — 缩放中心点（页面坐标）。Post-ADR-0007: zoom always centers content — anchor computation is dead code.
+- **Viewport Layout** — 容器尺寸和滚动位置：`host_width = max(display_width, viewport_width)`，`content_left = (viewport_width - display_width) * 0.5`（居中）。
 - **Display Width/Height** — 页面在当前缩放下的像素尺寸：`page_width × display_zoom`。
 
 ## 瓦片渲染 (Tile Rendering)
@@ -49,7 +49,7 @@
 
 ### 帧管理
 
-- **Frame Plan** — 渲染计划：display_zoom + host_width/height + scroll_left/top + anchor。
+- **Frame Plan** — 渲染计划：display_zoom + host_width/height + scroll_left/top。
 - **Frame Token** — 乐观并发控制版本号，用于丢弃过时的渲染请求。
 - **Committed Frame** — 已提交的渲染帧，携带几何信息供 DOM 应用。
 
@@ -70,7 +70,7 @@
 ### 职责分离
 
 - **effective_page_plan** — 协调器模式：委托 viewport culling、source suppression、path suppression 到子模块。
-- **zoom/animation.rs** — 包含 wheel zoom、anchor 计算、zoom limits、animation state 推进（建议重命名为 zoom_core）。
+- **zoom/animation.rs** — 包含 wheel zoom、zoom limits、animation state 推进（建议重命名为 zoom_core）。
 - **zoom_layout** — 布局几何：layout fallback、zoom bounds、fit-to-width、mutation frame 判断。
 
 ### 渲染流程

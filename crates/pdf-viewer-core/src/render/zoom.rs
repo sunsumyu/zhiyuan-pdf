@@ -6,7 +6,7 @@
 //! - `zoom_layout`: Layout fallback, fit-to-width, render-reason classification
 //! - `zoom_render`: Render timing engine, blur thresholds, reknock gating
 //! - `zoom_tick`: State machine orchestrator (tick_zoom_state_core)
-//! - `animation`: Animation interpolation and anchor computation
+//! - `animation`: Animation interpolation and wheel zoom resolution
 //! - `decision`: Re-export hub for backward compatibility
 
 pub mod animation;

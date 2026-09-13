@@ -78,13 +78,6 @@ pub fn apply_committed_frame(frame: CommittedFrame) {
         } else {
             display_zoom
         };
-        let (ap, cur) = match s.pending_anchor.as_ref() {
-            Some(a) => (
-                (a.anchor_page_x, a.anchor_page_y),
-                (a.viewport_x, a.viewport_y),
-            ),
-            None => ((0.0, 0.0), (0.0, 0.0)),
-        };
         // Only update visual_layout when settled — during gesture, on_wheel_event
         // owns visual_layout and the RAF loop must not overwrite it with
         // visualZoom-based layout (different zoom → different content_left → jump).
@@ -95,7 +88,6 @@ pub fn apply_committed_frame(frame: CommittedFrame) {
                 content_top: frame.content_top,
             });
         }
-        let _ = (ap, cur); // anchor available for future scroll computation
     });
 
     with_dom_cache(|dom| {
@@ -113,7 +105,7 @@ pub fn apply_committed_frame(frame: CommittedFrame) {
         // During an active wheel gesture, on_wheel_event already positioned
         // the container using target_zoom. The render pipeline renders at
         // visualZoom (interpolated), so its width/height/content_left/content_top
-        // would use a different zoom and fight the anchor position — observed as
+        // would use a different zoom and conflict — observed as
         // the page jumping mid-gesture. Skip ALL geometry writes during gesture.
         if settled || !in_gesture {
             let style = dom.container.style();

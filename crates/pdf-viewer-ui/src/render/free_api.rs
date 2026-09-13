@@ -65,13 +65,13 @@ pub fn resolve_canvas_css_box(request_js: JsValue) -> JsValue {
 #[wasm_bindgen(js_name = "resolveFramePlan")]
 pub fn resolve_frame_plan(request_js: JsValue) -> JsValue {
     let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
-    to_value(&build_frame_plan_result(&request, false)).unwrap_or(JsValue::NULL)
+    to_value(&build_frame_plan_result(&request)).unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = "takeFramePlan")]
 pub fn take_frame_plan(request_js: JsValue) -> JsValue {
     let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
-    to_value(&build_frame_plan_result(&request, true)).unwrap_or(JsValue::NULL)
+    to_value(&build_frame_plan_result(&request)).unwrap_or(JsValue::NULL)
 }
 
 // ─── Schedule / commit / settle ─────────────────────────────────────────────

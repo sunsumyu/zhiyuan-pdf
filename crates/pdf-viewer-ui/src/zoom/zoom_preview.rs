@@ -24,7 +24,6 @@ pub fn clear_preview_settle_state() {
         };
         s.visual_zoom = target_zoom;
         s.last_animation_timestamp_ms = 0.0;
-        s.pending_anchor = None;
         s.preview_host = Default::default();
     });
 }
