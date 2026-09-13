@@ -240,6 +240,9 @@ impl TileScheduler {
     /// Check if animation frame should trigger incremental render
     pub fn should_render_incremental(&self) -> bool {
         self.animation.is_animating
-            && self.animation.frame_count.is_multiple_of(self.animation.render_interval)
+            && self
+                .animation
+                .frame_count
+                .is_multiple_of(self.animation.render_interval)
     }
 }

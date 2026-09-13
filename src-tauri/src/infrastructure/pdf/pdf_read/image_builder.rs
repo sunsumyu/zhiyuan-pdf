@@ -105,8 +105,8 @@ pub(crate) fn manual_flate_decompress(compressed: &[u8]) -> Option<Vec<u8>> {
     use std::io::Read;
     // Try zlib (with header) first, then raw deflate
     if let Ok(decoder) = std::io::BufReader::new(flate2::read::ZlibDecoder::new(compressed))
-            .bytes()
-            .collect::<Result<Vec<u8>, _>>()
+        .bytes()
+        .collect::<Result<Vec<u8>, _>>()
     {
         if !decoder.is_empty() {
             return Some(decoder);

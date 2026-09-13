@@ -60,9 +60,10 @@ impl AxiomEngine {
                             || c == '¥'
                             || c == '$'
                     })))
-                && !value.is_empty() {
-                    return SemanticRole::Amount;
-                }
+                && !value.is_empty()
+            {
+                return SemanticRole::Amount;
+            }
 
             // 模式匹配：联系方式 (Contact)
             if label.contains("电话")

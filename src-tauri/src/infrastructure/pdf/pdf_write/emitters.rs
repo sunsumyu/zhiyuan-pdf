@@ -148,18 +148,9 @@ pub(crate) fn emit_deferred_text_block(
                 Object::Real(page_height),
             ],
         ),
-        lopdf::content::Operation::new(
-            "Tc",
-            vec![Object::Real(0.0)],
-        ),
-        lopdf::content::Operation::new(
-            "Tw",
-            vec![Object::Real(0.0)],
-        ),
-        lopdf::content::Operation::new(
-            "Tz",
-            vec![Object::Real(100.0)],
-        ),
+        lopdf::content::Operation::new("Tc", vec![Object::Real(0.0)]),
+        lopdf::content::Operation::new("Tw", vec![Object::Real(0.0)]),
+        lopdf::content::Operation::new("Tz", vec![Object::Real(100.0)]),
         lopdf::content::Operation::new("BT", vec![]),
     ];
 

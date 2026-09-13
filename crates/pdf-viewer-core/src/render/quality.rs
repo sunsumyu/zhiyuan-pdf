@@ -37,7 +37,6 @@ pub enum RenderQuality {
     High = 2,
 }
 
-
 impl RenderQuality {
     /// Get DPI multiplier for this quality level
     pub fn dpi_multiplier(&self) -> f32 {
@@ -135,11 +134,10 @@ impl QualityStateMachine {
 
         if is_animating {
             // During animation, progress from low to medium
-            if self.frame_count >= self.transition_threshold
-                && self.current == RenderQuality::Low {
-                    self.current = RenderQuality::Medium;
-                    self.frame_count = 0;
-                }
+            if self.frame_count >= self.transition_threshold && self.current == RenderQuality::Low {
+                self.current = RenderQuality::Medium;
+                self.frame_count = 0;
+            }
         }
 
         self.current

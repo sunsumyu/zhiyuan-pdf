@@ -114,10 +114,9 @@ impl LayoutGraphAnalyzer {
         }
 
         // 2. 标题模式 (Header Pattern)
-        if (first.style.font_size > 15.0 || first.style.is_bold)
-            && trimmed.chars().count() < 20 {
-                return (LayoutRole::SectionHeader, LayoutMode::Fixed);
-            }
+        if (first.style.font_size > 15.0 || first.style.is_bold) && trimmed.chars().count() < 20 {
+            return (LayoutRole::SectionHeader, LayoutMode::Fixed);
+        }
 
         // 3. 列表项模式 (List Pattern)
         if trimmed.starts_with('•')

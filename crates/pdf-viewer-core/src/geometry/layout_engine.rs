@@ -261,15 +261,14 @@ fn finish_line(
         LayoutAlignment::Right => {
             offset_x = remaining_space;
         }
-        LayoutAlignment::Justify if
-!is_last_line && runs.len() > 1 && remaining_space > 0.0 => {
-                let extra_gap = remaining_space / (runs.len() - 1) as f32;
-                let mut current_extra = 0.0;
-                for run in runs.iter_mut().skip(1) {
-                    current_extra += extra_gap;
-                    run.origin_x += current_extra;
-                }
+        LayoutAlignment::Justify if !is_last_line && runs.len() > 1 && remaining_space > 0.0 => {
+            let extra_gap = remaining_space / (runs.len() - 1) as f32;
+            let mut current_extra = 0.0;
+            for run in runs.iter_mut().skip(1) {
+                current_extra += extra_gap;
+                run.origin_x += current_extra;
             }
+        }
         _ => {}
     }
 

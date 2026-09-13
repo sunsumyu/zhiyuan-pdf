@@ -286,7 +286,10 @@ pub fn build_vector_page_model_from_display_list(
                     || clean_text.starts_with('路')
                     || clean_text.starts_with('-')
                     || (clean_text.len() > 2
-                        && clean_text.chars().next().is_some_and(|c| c.is_ascii_digit())
+                        && clean_text
+                            .chars()
+                            .next()
+                            .is_some_and(|c| c.is_ascii_digit())
                         && clean_text.contains('.'))
                 {
                     role = LayoutRole::ListItem;

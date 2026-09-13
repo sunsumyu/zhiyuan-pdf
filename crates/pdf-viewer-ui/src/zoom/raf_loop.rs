@@ -16,10 +16,10 @@ use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
+use pdf_viewer_core::render::plan_builder::compute_viewport_layout_result;
 use pdf_viewer_core::render::zoom::animation::{
     advance_zoom_animation_state, resolve_wheel_zoom_request, WheelZoomRequest,
 };
-use pdf_viewer_core::render::plan_builder::compute_viewport_layout_result;
 
 use crate::zoom::zoom_store::ZOOM_STATE;
 
@@ -53,14 +53,14 @@ const SETTLE_DRAWING_DELAY_MS: f64 = 30.0;
 pub fn start_zoom_raf_loop() {
     cancel_settle_cleanup();
 
-// No-op if already running: the previous closure-based guard never exited
+    // No-op if already running: the previous closure-based guard never exited
     // the function (its `return` only left the closure), so the documented
     // contract was broken. Use the shared handle directly.
     if is_raf_loop_running() {
         return;
     }
 
-init_dom_cache();
+    init_dom_cache();
 
     // Hide raster sibling, show vector container (ADR-0002 I3)
     let raster_visible = with_dom_cache(|dom| {

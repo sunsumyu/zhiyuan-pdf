@@ -404,7 +404,10 @@ pub fn parse_content_stream(
                     );
                     objects.push(RenderObject::Path(NativePathModel {
                         id: format!("path_{}", *obj_counter),
-                        segments: simplify_path_segments(std::mem::take(&mut current_segments), 0.1),
+                        segments: simplify_path_segments(
+                            std::mem::take(&mut current_segments),
+                            0.1,
+                        ),
                         fill_color: if fill { final_fill_color } else { None },
                         stroke_color: if stroke { final_stroke_color } else { None },
                         fill,

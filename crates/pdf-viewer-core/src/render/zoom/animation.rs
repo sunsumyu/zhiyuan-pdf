@@ -3,9 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::render::plan_builder::{FramePlanRequest, FramePlanResult};
 use crate::render::present_plan::preview_is_settled;
 use crate::render::preview::{resolve_preview_present_plan, PreviewPresentPlan};
-use crate::render::zoom_state::{
-    HostZoomState, VisualLayoutState, ZoomAnimationStep,
-};
+use crate::render::zoom_state::{HostZoomState, VisualLayoutState, ZoomAnimationStep};
 
 /// Gap below which |visual_zoom - target_zoom| counts as settled. The UI-side
 /// committed-frame path must use the same value so both sides agree on when
@@ -614,9 +612,8 @@ mod tests {
         for i in 0..100 {
             let display_w = 750.0 + (i as f32) * 1.0; // 750 to 850, crossing 800
             let display_h = 562.5 + (i as f32) * 0.75; // maintain aspect ratio
-            let result = compute_viewport_layout_result(
-                display_w, display_h, viewport_w, viewport_h,
-            );
+            let result =
+                compute_viewport_layout_result(display_w, display_h, viewport_w, viewport_h);
             if let Some(prev) = prev_left {
                 let delta = (result.content_left - prev).abs();
                 assert!(

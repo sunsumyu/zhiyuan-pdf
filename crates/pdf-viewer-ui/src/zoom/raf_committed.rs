@@ -97,8 +97,7 @@ pub fn apply_committed_frame(frame: CommittedFrame) {
         };
 
         // Always set scroll position
-        dom
-            .scroll_container
+        dom.scroll_container
             .set_scroll_left(frame.scroll_left as i32);
         dom.scroll_container.set_scroll_top(frame.scroll_top as i32);
 

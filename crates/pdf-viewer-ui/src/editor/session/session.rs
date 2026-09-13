@@ -101,7 +101,6 @@ pub fn active_editor_state() -> Option<LiveEditorParagraphState> {
     EDITOR_MODE_STATE.with(|mode| mode.borrow().live_state.clone())
 }
 
-
 pub fn active_editor_target() -> Option<ActiveEditorTarget> {
     active_editor_state().map(|state| state.target)
 }

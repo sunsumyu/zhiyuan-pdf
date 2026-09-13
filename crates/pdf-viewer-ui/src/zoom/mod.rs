@@ -15,10 +15,9 @@ mod authority_tests;
 
 // Backward-compatible re-exports
 pub use zoom_controller::{
-    execute_wheel_zoom, is_preview_active, is_wheel_render_pending,
-    queue_committed_frame, reset_zoom_preview_host, resolve_wheel_zoom,
-    set_cancel_pending_render, set_preview_active, set_wheel_render_pending,
-    settle_zoom_preview_at_target, step_preview_host, take_cancel_pending_render,
-    take_ready_committed_frame, PreviewHostStepRequest, PreviewHostStepResult,
-    WheelZoomHostRequest, WheelZoomHostResult,
+    execute_wheel_zoom, is_preview_active, is_wheel_render_pending, queue_committed_frame,
+    reset_zoom_preview_host, resolve_wheel_zoom, set_cancel_pending_render, set_preview_active,
+    set_wheel_render_pending, settle_zoom_preview_at_target, step_preview_host,
+    take_cancel_pending_render, take_ready_committed_frame, PreviewHostStepRequest,
+    PreviewHostStepResult, WheelZoomHostRequest, WheelZoomHostResult,
 };

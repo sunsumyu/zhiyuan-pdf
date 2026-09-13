@@ -27,9 +27,7 @@ pub fn resolve_render_queue_action(
         COMMIT_SUPPRESS_MS
     };
 
-    if normalized_source == "scroll"
-        && (0.0..COMMIT_SUPPRESS_MS).contains(&since_commit_ms)
-    {
+    if normalized_source == "scroll" && (0.0..COMMIT_SUPPRESS_MS).contains(&since_commit_ms) {
         return RenderQueueAction {
             action: "suppress".to_string(),
             source: normalized_source,

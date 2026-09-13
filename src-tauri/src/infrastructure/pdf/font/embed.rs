@@ -241,7 +241,8 @@ fn page_resources(
 fn page_resource_dictionary(doc: &Document, page_dict: &Dictionary) -> Result<Dictionary, String> {
     if let Ok(Object::Reference(id)) = page_dict.get(b"Resources") {
         return doc
-            .get_dictionary(*id).cloned()
+            .get_dictionary(*id)
+            .cloned()
             .map_err(|err| err.to_string());
     }
     Ok(page_dict

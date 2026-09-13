@@ -35,9 +35,7 @@ pub fn with_present_state<R>(f: impl FnOnce(&HostPresentState) -> R) -> R {
     PRESENT_STATE.with(|state| f(&state.borrow()))
 }
 
-pub fn build_frame_plan_result(
-    request: &FramePlanRequest,
-) -> FramePlanResult {
+pub fn build_frame_plan_result(request: &FramePlanRequest) -> FramePlanResult {
     // Read the viewer session BEFORE borrowing ZOOM_STATE mutably.
     // read_viewer_session() reads ZOOM_STATE.target_zoom (ADR-0001), so it
     // cannot run inside with_zoom_state_mut — that would double-borrow the

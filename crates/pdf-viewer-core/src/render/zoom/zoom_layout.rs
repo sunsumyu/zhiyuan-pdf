@@ -215,10 +215,7 @@ mod tests {
 
     // ─── resolve_canvas_css_box ───────────────────────────────────────────
 
-    fn canvas_box_request(
-        display_zoom: f64,
-        base_render_zoom: f64,
-    ) -> CanvasCssBoxRequest {
+    fn canvas_box_request(display_zoom: f64, base_render_zoom: f64) -> CanvasCssBoxRequest {
         CanvasCssBoxRequest {
             display_width: 595.0 * display_zoom,
             display_height: 842.0 * display_zoom,

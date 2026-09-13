@@ -7,8 +7,6 @@ use crate::editor::debug_trace::{
 };
 use crate::editor::edit_target::edit_target_base_paragraph_id;
 use crate::editor::list_format::{collect_marker_overrides, resolve_active_marker_text};
-#[cfg(test)]
-use pdf_viewer_core::edit::paragraph_scene::ParagraphEditorScene;
 use crate::editor::mode::read_active_editor_state;
 use crate::editor::replacement_snapshot::replacement_target_from_patch_snapshot;
 use crate::editor::session::ActiveEditorTarget;
@@ -16,6 +14,8 @@ use crate::editor::source_identity::collect_target_source_object_indices;
 use crate::page::page_store::PAGE_STATE;
 use crate::ui_state_store::read_patch_state;
 use pdf_viewer_core::edit::bridge::build_paragraph_render_target;
+#[cfg(test)]
+use pdf_viewer_core::edit::paragraph_scene::ParagraphEditorScene;
 
 // 数据结构已迁至 pdf_viewer_core::edit::paragraph_overlay。
 pub use pdf_viewer_core::edit::paragraph_overlay::{
