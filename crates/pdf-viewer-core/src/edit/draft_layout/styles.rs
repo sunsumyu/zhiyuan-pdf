@@ -10,7 +10,7 @@ use crate::text::style_mapper::should_preserve_editor_underline;
 use crate::typography::font_resolver::looks_like_symbolic_font;
 
 use super::text_mapping::{
-    build_source_to_runs_index_map, body_runs_match_source_text, body_runs_text, compute_text_diff,
+    body_runs_match_source_text, body_runs_text, build_source_to_runs_index_map, compute_text_diff,
 };
 
 pub(super) fn shell_width(session: &ParagraphEditContext) -> f32 {
@@ -28,7 +28,10 @@ pub(super) fn resolve_draft_template_run(document_plan: &EditorDocumentPlan) -> 
     )
 }
 
-pub(super) fn resolve_template(document_plan: &EditorDocumentPlan, preserve_underline: bool) -> LayoutRun {
+pub(super) fn resolve_template(
+    document_plan: &EditorDocumentPlan,
+    preserve_underline: bool,
+) -> LayoutRun {
     let mut run = if !document_plan.draft_template_run.id.is_empty()
         || !document_plan.draft_template_run.style.font_name.is_empty()
         || document_plan.draft_template_run.style.font_size > 0.0

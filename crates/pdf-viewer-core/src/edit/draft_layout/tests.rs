@@ -159,11 +159,10 @@ fn renders_compact_runs() {
         ..Default::default()
     };
 
-    let plan = build_persisted_overlay_render_plan(
-        &document_plan,
-        "编程语言: Rust",
-        |text, run| text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5,
-    );
+    let plan =
+        build_persisted_overlay_render_plan(&document_plan, "编程语言: Rust", |text, run| {
+            text.chars().count() as f32 * run.style.font_size.max(1.0) * 0.5
+        });
     let rendered_text = plan
         .layout
         .lines
@@ -222,8 +221,7 @@ fn preserves_origins() {
     // 旧实现因 body_runs_match_source_text==false 直接走 reconstructed-fallback，
     // 整段单 run 无 char_origins，触发字体漂移。
     // 新实现通过 source→runs 索引映射继续走 slicing，保留前后缀 PDF 度量。
-    let raw_runs_text =
-        "智能合约:AnchorFramework,SolanaProgramLibrary(SPL),ERC-20/721".to_string();
+    let raw_runs_text = "智能合约:AnchorFramework,SolanaProgramLibrary(SPL),ERC-20/721".to_string();
     let runs = vec![test_run_with_origins("r1", &raw_runs_text, 10.0, false)];
     let body_session = ParagraphEditContext {
         anchor_bbox: BoundingBox {

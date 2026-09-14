@@ -11,7 +11,8 @@ use crate::models::{LayoutParagraph, LayoutRun};
 use super::caret_plan::build_editor_draft_caret_plan_from_layout;
 use super::source_layout::{build_source_layout, source_baseline_y};
 use super::styles::{
-    build_styles, paragraph_preserve_underline, resolve_draft_template_run, resolve_template, shell_width,
+    build_styles, paragraph_preserve_underline, resolve_draft_template_run, resolve_template,
+    shell_width,
 };
 use super::text_mapping::{body_runs_match_source_text, remap_caret_indices_to_draft_space};
 use super::{DraftCaretLine, DraftCaretStop, EditorDraftRenderPlan};

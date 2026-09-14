@@ -1,14 +1,18 @@
 //! 未编辑态的 source 布局重建。
 
-use crate::geometry::layout_engine::{ParagraphLayout, VisualLine};
 use crate::edit::document_plan::EditorDocumentPlan;
+use crate::geometry::layout_engine::{ParagraphLayout, VisualLine};
 use crate::models::LayoutRun;
 
 use super::styles::{
     paragraph_preserve_underline, resolve_draft_template_run, sanitize_draft_run_style,
 };
 
-pub(super) fn same_existing_layout_line(reference_baseline_y: f32, run: &LayoutRun, anchor_top: f32) -> bool {
+pub(super) fn same_existing_layout_line(
+    reference_baseline_y: f32,
+    run: &LayoutRun,
+    anchor_top: f32,
+) -> bool {
     let baseline_y = (run.origin_y - anchor_top).max(0.0);
     let tolerance = (run.style.font_size * 0.45).max(2.0);
     (reference_baseline_y - baseline_y).abs() <= tolerance
