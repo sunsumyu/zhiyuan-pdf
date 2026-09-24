@@ -13,6 +13,9 @@ pub mod zoom_store;
 #[cfg(test)]
 mod authority_tests;
 
+#[cfg(test)]
+mod frame_tests;
+
 // Backward-compatible re-exports
 pub use zoom_controller::{
     execute_wheel_zoom, is_preview_active, is_wheel_render_pending, queue_committed_frame,

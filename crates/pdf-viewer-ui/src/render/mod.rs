@@ -14,3 +14,6 @@ pub mod tile_cache;
 pub mod tile_host;
 pub mod wasm_facade;
 pub mod workflow;
+
+#[cfg(test)]
+mod render_store_tests;

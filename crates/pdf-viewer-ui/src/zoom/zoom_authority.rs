@@ -9,6 +9,7 @@ use crate::zoom::zoom_store::{reset_zoom_state, HostZoomState, VisualLayoutState
 use pdf_viewer_core::render::zoom::animation::commit_rendered_zoom;
 
 pub fn reset_zoom_runtime(initial_zoom: f32) {
+    super::raf_loop::stop_zoom_raf_loop();
     reset_zoom_state(initial_zoom);
     reset_render_state();
     reset_present_runtime(true, false);

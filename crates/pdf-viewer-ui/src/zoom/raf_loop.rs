@@ -202,11 +202,26 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
             input.viewport_height,
         );
 
+        // Use anchor-preserving offset when available (non-zero), otherwise
+        // fall back to centered layout. The anchor offset keeps the page point
+        // under the cursor fixed during zoom, preventing the left-shift seen
+        // in Video 2 where the page drifted left on zoom-in.
+        let content_left = if result.anchor_content_left != 0.0 {
+            result.anchor_content_left
+        } else {
+            layout.content_left
+        };
+        let content_top = if result.anchor_content_top != 0.0 {
+            result.anchor_content_top
+        } else {
+            layout.content_top
+        };
+
         // Update visual_layout to match the virtual zoom state
         s.visual_layout = Some(crate::zoom::zoom_store::VisualLayoutState {
             display_zoom: result.target_zoom,
-            content_left: layout.content_left,
-            content_top: layout.content_top,
+            content_left,
+            content_top,
         });
 
         // Apply to DOM immediately for instant visual feedback.
@@ -218,8 +233,8 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
                 let host_height = layout.host_height.max(input.viewport_height);
                 let _ = style.set_property("width", &format!("{}px", host_width));
                 let _ = style.set_property("height", &format!("{}px", host_height));
-                let _ = style.set_property("left", &format!("{}px", layout.content_left));
-                let _ = style.set_property("top", &format!("{}px", layout.content_top));
+                let _ = style.set_property("left", &format!("{}px", content_left));
+                let _ = style.set_property("top", &format!("{}px", content_top));
             }
         });
 

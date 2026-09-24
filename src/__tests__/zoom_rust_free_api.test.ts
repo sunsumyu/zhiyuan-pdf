@@ -44,6 +44,27 @@ function readRafCommitted(): string {
     );
 }
 
+/**
+ * Extract a function's full body by matching braces, so assertions do not
+ * depend on how many comment lines the function happens to carry.
+ */
+function extractFnBody(source: string, signature: string): string {
+    const start = source.indexOf(signature);
+    if (start < 0) return '';
+    const open = source.indexOf('{', start);
+    if (open < 0) return '';
+    let depth = 0;
+    for (let i = open; i < source.length; i += 1) {
+        const ch = source[i];
+        if (ch === '{') depth += 1;
+        else if (ch === '}') {
+            depth -= 1;
+            if (depth === 0) return source.slice(open, i + 1);
+        }
+    }
+    return source.slice(open);
+}
+
 describe('free_api.rs WASM export contract', () => {
     const freeApi = readFreeApi();
     const rafLoop = readRafLoop();
@@ -79,13 +100,14 @@ describe('free_api.rs WASM export contract', () => {
     });
 
     it('raf_loop.rs commit_rendered_frame handles idle loop', () => {
-        // When RAF loop is not running, must apply frame directly.
-        // The function body is in raf_committed.rs (extracted from raf_loop).
-        const fn = rafCommitted.substring(
-            rafCommitted.indexOf('pub fn commit_rendered_frame('),
-            rafCommitted.indexOf('pub fn commit_rendered_frame(') + 400,
-        );
+        // When RAF loop is not running and no wheel gesture owns the geometry,
+        // the frame must be applied directly. The function body is in
+        // raf_committed.rs (extracted from raf_loop).
+        const fn = extractFnBody(rafCommitted, 'pub fn commit_rendered_frame(');
         expect(fn).toMatch(/is_raf_loop_running/);
         expect(fn).toMatch(/apply_committed_frame/);
+        // …but a live wheel gesture keeps geometry ownership: the frame is
+        // queued instead, which is how the wheel path avoids a settle jump.
+        expect(fn).toMatch(/is_wheel_gesture_active\(\)/);
     });
 });

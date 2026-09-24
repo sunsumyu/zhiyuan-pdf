@@ -17,8 +17,19 @@
 
 ### 参考
 
+- **[CONTRACTS.md](CONTRACTS.md)** — 当前有效的跨模块契约、状态所有权与修改联动规则。
+- **[ARCHITECTURE_VARIANTS.md](ARCHITECTURE_VARIANTS.md)** — 运行时变体、模块特征树与外部参考映射。
+- **[ARCHITECTURE_REFINING_LOOP.md](ARCHITECTURE_REFINING_LOOP.md)** — 精化闭环、验证分层、性能预算与并行规则。
+- **[ZOOM_ARCHITECTURE_SPEC.md](ZOOM_ARCHITECTURE_SPEC.md)** — 缩放模块、方法、变量、跨模块契约与测试驱动实施规格。
+- **[ZOOM_TEST_EVIDENCE.md](ZOOM_TEST_EVIDENCE.md)** — 缩放测试说明、结构化日志与运行结果记录。
 - **[origin/](origin/)** — 从 nushell-enhanced 复制的原始权威文档（保留作为来源）。
 - **[origin/pdf-engine-naming-guide.md](origin/pdf-engine-naming-guide.md)** — Rust/TS 命名规范。
+
+### 架构细化时的阅读顺序
+
+1. 先读 **[CONTRACTS.md](CONTRACTS.md)**，确认当前不变量和唯一 owner。
+2. 再读 **[ARCHITECTURE_VARIANTS.md](ARCHITECTURE_VARIANTS.md)**，确定变更属于哪个合法运行时变体。
+3. 按 **[ARCHITECTURE_REFINING_LOOP.md](ARCHITECTURE_REFINING_LOOP.md)** 选择验证范围，并记录每轮证据。
 
 ---
 

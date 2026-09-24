@@ -1,6 +1,8 @@
 # 架构总览
 
 > v1 · 2026-05-06 · 与 `docs/api-contract.md` 配套阅读
+>
+> 当前跨模块不变量见 [CONTRACTS.md](CONTRACTS.md)；运行时变体见 [ARCHITECTURE_VARIANTS.md](ARCHITECTURE_VARIANTS.md)；架构改动的验证流程见 [ARCHITECTURE_REFINING_LOOP.md](ARCHITECTURE_REFINING_LOOP.md)。本文负责运行时导览，不重复维护契约细节。
 
 ## 1. 三层运行时
 

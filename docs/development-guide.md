@@ -1,6 +1,8 @@
 # 开发指南
 
 > v1 · 2026-05-06 · 与 `architecture-overview.md` 配套阅读
+>
+> 开始跨模块改动前，先查 [CONTRACTS.md](CONTRACTS.md) 和 [ARCHITECTURE_VARIANTS.md](ARCHITECTURE_VARIANTS.md)；验证范围与精化步骤按 [ARCHITECTURE_REFINING_LOOP.md](ARCHITECTURE_REFINING_LOOP.md) 执行。
 
 ## 1. 环境准备
 
