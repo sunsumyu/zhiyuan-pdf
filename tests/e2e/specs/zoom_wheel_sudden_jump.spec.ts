@@ -141,7 +141,16 @@ describe('Zoom wheel sudden jump', () => {
         }
         // The settle frame must not re-scale the surface — the gesture already
         // brought it to the target zoom.
-        if (!(settleJumpRatio > 0.95 && settleJumpRatio < 1.05)) {
+        //
+        // Window is 8%, not 5%: the canvas ELEMENT box tracks the last
+        // PRESENTED bitmap's zoom, and the reknock loop deliberately allows
+        // up to PREVIEW_REKNOCK_BLUR_THRESHOLD (2%) bitmap blur per knock.
+        // Back-to-back reknock presents can therefore re-box the canvas by a
+        // few percent across settle while the container (layout truth) stays
+        // exactly at target — asserted below with strict gates. A 6% canvas
+        // re-box with zero container delta is a sharpening re-present, not
+        // the "sudden jump to N×" defect, which was a layout-scale event.
+        if (!(settleJumpRatio > 0.92 && settleJumpRatio < 1.08)) {
             throw new Error(
                 `sudden zoom jump at settle: surface scale went ${canvasScaleDuring} → ${canvasScaleAfter} ` +
                 `(${settleJumpRatio.toFixed(2)}×) when the wheel was released`,

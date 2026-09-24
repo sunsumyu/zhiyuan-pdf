@@ -259,6 +259,13 @@ export function applyViewportCanvasFrame(
     if (!deferVisibleFrame) {
         applyCanvasCssBox(refs.mainCanvas, 0, 0, frame.domBoxWidth, frame.domBoxHeight);
         applyCanvasCssBox(refs.backCanvas, frame.viewportLeft, frame.viewportTop, frame.viewportWidth, frame.viewportHeight);
+        // Atomic transform reset: the canvas box now matches THIS frame's
+        // bitmap zoom, so any gesture-scale left by the zoom RAF tick is
+        // stale. Resetting here (same frame as the re-box) keeps the canvas
+        // visually continuous — same on-screen size before and after the
+        // swap — while the RAF tick re-drives the scale from the new
+        // lastRenderedZoom on its next frame.
+        refs.mainCanvas.style.transform = 'none';
     }
 
     const baseScale =
@@ -308,6 +315,9 @@ export function presentViewportCanvas(
     refs.container.style.pointerEvents = '';
     refs.mainCanvas.style.visibility = 'visible';
     refs.mainCanvas.style.opacity = '1';
+    // The visible canvas was re-boxed to the presented frame's bitmap zoom —
+    // any gesture-scale transform from the zoom RAF tick is stale now.
+    refs.mainCanvas.style.transform = 'none';
 
     if (options.showDetailOverlay || options.retainDetailOverlay) {
         refs.backCanvas.style.visibility = 'visible';

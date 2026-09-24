@@ -118,6 +118,70 @@ pub fn schedule_render_frame_request(request: &FramePlanRequest) -> Option<Rende
             let _ = settle_render_frame(stale_token, None);
         }
     }
+    // A settled zoom render at target_zoom supersedes every queued mid-gesture
+    // reknock frame: those render at interpolated visual zooms and must never
+    // commit AFTER the settled frame, or they overwrite the settled geometry
+    // with stale zoom (observed as the page sliding right + shrinking when the
+    // wheel was released). Drop queued zoom frames whose render zoom differs
+    // from the settled target.
+    if frame_plan.render_reason == "zoom" {
+        use pdf_viewer_core::render::zoom::animation::ZOOM_SETTLED_THRESHOLD as ZOOM_SETTLED_EPSILON;
+        let zoom_settled = zoom_store::with_zoom_state(|zoom_state| {
+            (zoom_state.visual_zoom - zoom_state.target_zoom).abs() < ZOOM_SETTLED_EPSILON
+        });
+        if zoom_settled {
+            let target_zoom = zoom_store::with_zoom_state(|zoom_state| zoom_state.target_zoom);
+            let (queued_stale, in_flight_stale) =
+                crate::render::render_store::RENDER_STATE.with(|state| {
+                    let s = state.borrow();
+                    let queued_zoom = s
+                        .queued_frame_plan
+                        .as_ref()
+                        .and_then(|v| v.get("render_zoom"))
+                        .and_then(serde_json::Value::as_f64)
+                        .unwrap_or(f64::NAN);
+                    let in_flight_zoom = s
+                        .in_flight_frame_plan
+                        .as_ref()
+                        .and_then(|v| v.get("render_zoom"))
+                        .and_then(serde_json::Value::as_f64)
+                        .unwrap_or(f64::NAN);
+                    (
+                        s.queued_frame_token != 0
+                            && (queued_zoom as f32 - target_zoom).abs() > ZOOM_SETTLED_EPSILON,
+                        s.in_flight_frame_token != 0
+                            && (in_flight_zoom as f32 - target_zoom).abs() > ZOOM_SETTLED_EPSILON,
+                    )
+                });
+            if queued_stale {
+                crate::render::render_store::RENDER_STATE.with(|state| {
+                    let token = state.borrow().queued_frame_token;
+                    if token != 0
+                        && crate::render::render_store::drop_queued_render_frame::<
+                            serde_json::Value,
+                        >(token)
+                    {
+                        crate::chain_trace!(
+                            "schedule.drop-stale-queued-zoom-frame",
+                            "token" => token,
+                        );
+                    }
+                });
+            }
+            if in_flight_stale {
+                crate::render::render_store::RENDER_STATE.with(|state| {
+                    let token = state.borrow().in_flight_frame_token;
+                    if token != 0 {
+                        crate::chain_trace!(
+                            "schedule.drop-stale-in-flight-zoom-frame",
+                            "token" => token,
+                        );
+                        let _ = settle_render_frame(token, None);
+                    }
+                });
+            }
+        }
+    }
     let envelope: Option<HostRenderFrameEnvelope<FramePlanResult>> = schedule_render_frame(
         &frame_plan,
         frame_plan_requires_render,

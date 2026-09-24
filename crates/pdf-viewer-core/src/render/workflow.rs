@@ -40,6 +40,11 @@ pub fn frame_plan_needs_viewport_refresh(frame_plan: &FramePlanResult) -> bool {
     frame_plan.use_viewport_tile && frame_plan.render_detail_layer
 }
 
+/// Zooms below this difference are treated as the same render target. Matches
+/// the E2E convergence epsilon (|target − lastRendered| < 0.001): a commit at
+/// a zoom within this distance of another plan's is visually equivalent.
+const SHARE_WORK_ZOOM_EPSILON: f32 = 0.001;
+
 pub fn frame_plans_share_render_work(left: &FramePlanResult, right: &FramePlanResult) -> bool {
     left.render_reason == right.render_reason
         && left.render_base_layer == right.render_base_layer
@@ -47,6 +52,12 @@ pub fn frame_plans_share_render_work(left: &FramePlanResult, right: &FramePlanRe
         && left.use_viewport_tile == right.use_viewport_tile
         && left.base_cache_key == right.base_cache_key
         && left.detail_cache_key == right.detail_cache_key
+        // Quantized cache keys intentionally bin nearby zooms together, so two
+        // frames can share every key yet carry different render_zoom values.
+        // Dropping the later frame then loses its commit — the only write that
+        // moves last_rendered_zoom to target at settle — and zoom never
+        // converges. Treat different render zooms as different work.
+        && (left.render_zoom - right.render_zoom).abs() < SHARE_WORK_ZOOM_EPSILON
 }
 
 pub fn progressive_start_result(start: ProgressiveRenderStart) -> ProgressiveRenderStartResult {

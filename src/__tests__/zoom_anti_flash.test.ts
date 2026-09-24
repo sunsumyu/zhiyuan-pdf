@@ -69,9 +69,14 @@ describe('zoom Rust RAF loop architecture', () => {
     const hasRaf = /request_animation_frame/.test(rafLoop);
     expect(hasRaf).toBe(true);
 
-    // Must NOT set a CSS transform (SetBox only — ADR-0006)
-    const hasCssTransform = /set_property.*transform/.test(rafLoop + rafCommitted);
-    expect(hasCssTransform).toBe(false);
+    // Must NOT set a CSS transform on the CONTAINER (SetBox only — ADR-0006).
+    // The canvas element DOES carry a compositor-only gesture scale
+    // (visual/lastRendered, cleared at settle and on every reknock present):
+    // without it the page scales only in reknock-sized steps, which is the
+    // "zoom is not smooth" defect. The forbidden thing is transforming the
+    // layout container, not the canvas content layer.
+    const hasContainerTransform = /container\s*\n?\s*\.style\(\)\s*\n?\s*\.set_property\(\s*"transform"/.test(rafLoop + rafCommitted);
+    expect(hasContainerTransform).toBe(false);
 
     // Must use web-sys for scroll (in raf_committed)
     const hasScroll = /set_scroll_left/.test(rafCommitted);

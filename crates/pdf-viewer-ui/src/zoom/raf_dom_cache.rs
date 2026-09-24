@@ -13,17 +13,23 @@ pub(super) struct DomCache {
     /// Raster/preview sibling surface (`pdf-render-target`) — hidden at
     /// gesture start per ADR-0002 (I3 single active surface).
     pub raster: Option<web_sys::HtmlElement>,
+    /// Main vector canvas (`pdf-vector-main-canvas`) — carries the base
+    /// bitmap. The RAF tick drives a compositor-only CSS scale on it during
+    /// gestures for continuous visual zoom between reknock presents.
+    pub main_canvas: Option<web_sys::HtmlElement>,
 }
 
 // ─── DOM element IDs ──────────────────────────────────────────────
 //
 // Must match the TS bridge exactly:
 //   - vector_canvas_host.ts creates the page container with id "pdf-page-container"
+//     and the main vector canvas with id "pdf-vector-main-canvas"
 //   - index.html declares the static scroll container "pdf-scroll-container"
 //     and the raster sibling canvas "pdf-render-target"
 pub(super) const VECTOR_CONTAINER_ID: &str = "pdf-page-container";
 pub(super) const SCROLL_CONTAINER_ID: &str = "pdf-scroll-container";
 pub(super) const RASTER_TARGET_ID: &str = "pdf-render-target";
+pub(super) const VECTOR_MAIN_CANVAS_ID: &str = "pdf-vector-main-canvas";
 
 thread_local! {
     /// Cached DOM element references — resolved once on first use per loop session.
@@ -63,14 +69,22 @@ pub(super) fn init_dom_cache() {
             .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok());
         let raster = get_element_by_id(RASTER_TARGET_ID)
             .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok());
+        let main_canvas = get_element_by_id(VECTOR_MAIN_CANVAS_ID)
+            .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok());
 
         if let (Some(container), Some(scroll_container)) = (container, scroll_container) {
             // Set transform-origin once — it never changes
             let _ = container.style().set_property("transform-origin", "0 0");
+            if let Some(canvas) = main_canvas.as_ref() {
+                // Canvas scale grows from the container's top-left, matching
+                // the layout-origin of the content box.
+                let _ = canvas.style().set_property("transform-origin", "0 0");
+            }
             *cache.borrow_mut() = Some(DomCache {
                 container,
                 scroll_container,
                 raster,
+                main_canvas,
             });
         }
     });

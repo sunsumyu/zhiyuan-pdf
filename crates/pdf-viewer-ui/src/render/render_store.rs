@@ -141,3 +141,23 @@ pub fn settle_render_frame<TPlan: Clone>(
         }
     })
 }
+
+/// Drop the queued frame without promoting or committing it. Used when a
+/// superseding render makes the queued frame stale: unlike
+/// [`settle_render_frame`], which only accepts the in-flight token, this
+/// clears the queue slot directly and leaves the in-flight frame untouched.
+pub fn drop_queued_render_frame<TPlan: Clone>(frame_token: u32) -> bool {
+    if frame_token == 0 {
+        return false;
+    }
+    RENDER_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if state.queued_frame_token == frame_token {
+            state.queued_frame_token = 0;
+            state.queued_frame_plan = None;
+            true
+        } else {
+            false
+        }
+    })
+}

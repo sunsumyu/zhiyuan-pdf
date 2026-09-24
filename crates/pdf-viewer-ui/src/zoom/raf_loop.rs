@@ -39,6 +39,21 @@ thread_local! {
 
     /// Timestamp of the last mid-animation render knock (throttle window).
     static LAST_PREVIEW_KNOCK: RefCell<f64> = const { RefCell::new(0.0) };
+
+    /// Whether a wheel gesture owns the container geometry. The only writer
+    /// is this module: set on every wheel event, cleared when the RAF loop
+    /// stops. The commit path reads it through the narrow accessor below to
+    /// decide between queueing and applying a frame.
+    static WHEEL_GESTURE_ACTIVE: RefCell<bool> = const { RefCell::new(false) };
+}
+
+/// Read-only gesture-ownership probe for the commit path (raf_committed).
+pub(super) fn is_wheel_gesture_active() -> bool {
+    WHEEL_GESTURE_ACTIVE.with(|flag| *flag.borrow())
+}
+
+fn set_wheel_gesture_active(active: bool) {
+    WHEEL_GESTURE_ACTIVE.with(|flag| *flag.borrow_mut() = active);
 }
 
 // ─── Animation constants ──────────────────────────────────────────
@@ -92,6 +107,8 @@ pub fn start_zoom_raf_loop() {
 /// Stop the zoom RAF loop immediately.
 pub fn stop_zoom_raf_loop() {
     cancel_settle_cleanup();
+
+    set_wheel_gesture_active(false);
 
     RAF_HANDLE.with(|handle| {
         if let Some(_h) = handle.borrow_mut().take() {
@@ -159,6 +176,9 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
     let output = ZOOM_STATE.with(|state| {
         let mut s = state.borrow_mut();
 
+        // A real wheel event means a gesture owns the geometry from now on.
+        set_wheel_gesture_active(true);
+
         let request = WheelZoomRequest {
             delta_y: input.delta_y,
             viewport_x: input.viewport_x,
@@ -202,26 +222,11 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
             input.viewport_height,
         );
 
-        // Use anchor-preserving offset when available (non-zero), otherwise
-        // fall back to centered layout. The anchor offset keeps the page point
-        // under the cursor fixed during zoom, preventing the left-shift seen
-        // in Video 2 where the page drifted left on zoom-in.
-        let content_left = if result.anchor_content_left != 0.0 {
-            result.anchor_content_left
-        } else {
-            layout.content_left
-        };
-        let content_top = if result.anchor_content_top != 0.0 {
-            result.anchor_content_top
-        } else {
-            layout.content_top
-        };
-
         // Update visual_layout to match the virtual zoom state
         s.visual_layout = Some(crate::zoom::zoom_store::VisualLayoutState {
             display_zoom: result.target_zoom,
-            content_left,
-            content_top,
+            content_left: layout.content_left,
+            content_top: layout.content_top,
         });
 
         // Apply to DOM immediately for instant visual feedback.
@@ -233,8 +238,8 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
                 let host_height = layout.host_height.max(input.viewport_height);
                 let _ = style.set_property("width", &format!("{}px", host_width));
                 let _ = style.set_property("height", &format!("{}px", host_height));
-                let _ = style.set_property("left", &format!("{}px", content_left));
-                let _ = style.set_property("top", &format!("{}px", content_top));
+                let _ = style.set_property("left", &format!("{}px", layout.content_left));
+                let _ = style.set_property("top", &format!("{}px", layout.content_top));
             }
         });
 
@@ -253,6 +258,43 @@ pub fn ensure_raf_loop_after_wheel() {
 }
 
 // ─── RAF tick implementation ──────────────────────────────────────
+
+/// Drive the canvas CSS scale for continuous visual zoom.
+///
+/// scale = visual_zoom / last_rendered_zoom: the bitmap on screen grows
+/// continuously with the animation while the bitmap underneath stays at the
+/// last committed render zoom. A scale of ~1 or a missing canvas is a no-op.
+/// When the animation settles the transform is cleared — the committed frames
+/// at settle carry target-zoom geometry and the presenter re-boxes the canvas
+/// atomically, so no stale transform may remain.
+fn apply_canvas_visual_scale(visual_zoom: f32) {
+    let (scale, rendered) = ZOOM_STATE.with(|state| {
+        let s = state.borrow();
+        let rendered = if s.last_rendered_zoom > 0.0 {
+            s.last_rendered_zoom
+        } else {
+            1.0
+        };
+        (visual_zoom / rendered, s.last_rendered_zoom)
+    });
+    if rendered <= 0.0 || !scale.is_finite() || scale <= 0.0 {
+        return;
+    }
+    let settled = ZOOM_STATE.with(|state| {
+        (state.borrow().visual_zoom - state.borrow().target_zoom).abs() < GESTURE_THRESHOLD
+    });
+    let transform = if settled {
+        // Settled: clear — presenter-owned canvas box already matches target.
+        "none".to_string()
+    } else {
+        format!("scale({})", scale)
+    };
+    with_dom_cache(|dom| {
+        if let Some(canvas) = dom.and_then(|d| d.main_canvas.as_ref()) {
+            let _ = canvas.style().set_property("transform", &transform);
+        }
+    });
+}
 
 fn schedule_next_frame() {
     let window = match web_sys::window() {
@@ -292,20 +334,35 @@ fn tick(timestamp_ms: f64) {
 
     // ── 1. Advance animation (for render timing only — visual feedback
     //       comes from the virtual zoom layout applied in on_wheel_event) ──
-    let (settled, _, in_gesture) = ZOOM_STATE.with(|state| {
+    let (settled, visual, in_gesture) = ZOOM_STATE.with(|state| {
         let mut s = state.borrow_mut();
         let step = advance_zoom_animation_state(&mut s, Some(timestamp_ms));
         let gap = (s.visual_zoom - s.target_zoom).abs();
         (step.settled, step.visual_zoom, gap > GESTURE_THRESHOLD)
     });
 
+    // ── 1b. Continuous visual zoom: compositor-only CSS scale on the canvas ──
+    // The canvas bitmap only refreshes when a reknock frame presents (~every
+    // 60ms + render time), so without this the page scales in visible steps.
+    // Scaling the canvas element by visual/last_rendered each RAF frame gives
+    // 60fps continuous zoom; when a reknock presents, the presenter re-boxes
+    // the canvas to the new bitmap zoom and resets the transform to exactly
+    // visual/newRendered in the same frame — visually continuous (identical
+    // on-screen size before and after the swap).
+    apply_canvas_visual_scale(visual);
+
     // ── 2. Mid-animation re-render when blur exceeds threshold ──
-    // During an active wheel gesture, on_wheel_event owns the container
-    // geometry (using target_zoom). Re-rendering at visualZoom (interpolated)
-    // would produce a frame whose dimensions don't match the container —
-    // apply_committed_frame then overwrites the container geometry and the
-    // page jumps. Skip re-renders entirely while the gesture is active.
-    if !settled && !in_gesture {
+    // Re-knocks fire during the gesture too (not just after it): without them
+    // the visible canvas keeps its pre-gesture bitmap until settle, which is
+    // exactly the "page suddenly jumps to N× on wheel release" defect. The
+    // gesture-safe guards are:
+    //   - apply_committed_frame skips container geometry writes while
+    //     in_gesture (step 3), so the frame cannot fight on_wheel_event;
+    //   - the TS presenter re-boxes only the canvas element (base-layer
+    //     bitmap), which is what produces live zoom feedback.
+    // The frame renders at visualZoom, so its renderZoom tracks the
+    // interpolated state and the presenter can commit it seamlessly.
+    if !settled {
         // Re-render when the blur between visual_zoom and last_rendered_zoom
         // exceeds the threshold — knocks the TS render pipeline to pick up
         // the mid-animation visual state.

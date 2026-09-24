@@ -649,6 +649,27 @@ export function createRenderFlow(deps: RenderFlowDeps) {
                 reuseActiveDetailTile: plan.reuseActiveDetailTile,
             });
         }
+
+        // Settled-zoom state convergence: when the pipeline declines to render
+        // (the committed base layer is within its 2% reuse tolerance of the
+        // target), the plan still carries target-zoom geometry and the zoom
+        // state must converge to target. Without this, lastRenderedZoom and
+        // the container box stay at the last reknock zoom forever (no further
+        // frames are scheduled after settle).
+        if (
+            !scheduled &&
+            renderReason === 'zoom' &&
+            plan &&
+            plan.previewSettled &&
+            Math.abs(plan.displayZoom - effectiveZoom) < 0.001
+        ) {
+            logRenderFlow('render-current-page.zoom-state-commit', {
+                zoom: effectiveZoom,
+                planDisplayZoom: plan.displayZoom,
+                planRenderZoom: plan.renderZoom,
+            });
+            deps.commitRenderedFrame(plan);
+        }
         lastVisibleSurface = null;
         lastRenderedPageIndex = null;
         await runRenderLoop(scheduled);

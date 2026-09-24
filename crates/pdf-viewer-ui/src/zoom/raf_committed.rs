@@ -36,13 +36,27 @@ thread_local! {
 }
 
 /// Push a committed frame into the queue. Called from the render pipeline.
+///
+/// Latest-wins semantics: the queue holds at most one frame. The RAF tick
+/// applies only the most recent committed render, so an older frame queued
+/// behind a newer one would, if applied later, overwrite fresh geometry with
+/// stale zoom (observed as the page snapping back to an earlier zoom when the
+/// wheel was released). Every newer frame fully supersedes the older one
+/// visually, so dropping it is safe.
 pub fn commit_rendered_frame(frame: CommittedFrame) {
-    if !super::raf_loop::is_raf_loop_running() {
+    // A live wheel gesture owns the geometry: queue the frame for the RAF tick
+    // instead of applying it inline, which is how the wheel path avoids a
+    // settle jump (apply_committed_frame also gates geometry writes itself).
+    if !super::raf_loop::is_raf_loop_running() && !super::raf_loop::is_wheel_gesture_active() {
         init_dom_cache();
         apply_committed_frame(frame);
         return;
     }
-    COMMITTED_FRAME_QUEUE.with(|q| q.borrow_mut().push(frame));
+    COMMITTED_FRAME_QUEUE.with(|q| {
+        let mut queue = q.borrow_mut();
+        queue.clear();
+        queue.push(frame);
+    });
 }
 
 /// Pop the next pending committed frame from the queue (called by RAF tick).
@@ -106,7 +120,8 @@ pub fn apply_committed_frame(frame: CommittedFrame) {
         // visualZoom (interpolated), so its width/height/content_left/content_top
         // would use a different zoom and conflict — observed as
         // the page jumping mid-gesture. Skip ALL geometry writes during gesture.
-        if settled || !in_gesture {
+        let wheel_gesture_active = super::raf_loop::is_wheel_gesture_active();
+        if !wheel_gesture_active && (settled || !in_gesture) {
             let style = dom.container.style();
             let _ = style.set_property("width", &format!("{}px", frame.host_width));
             let _ = style.set_property("height", &format!("{}px", frame.host_height));
