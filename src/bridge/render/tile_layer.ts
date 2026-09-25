@@ -42,10 +42,19 @@ const ZOOM_EPS = 0.001;
  * of filling in one-by-one afterwards.
  */
 const NEAR_SETTLE_EPS = 0.02;
-/** Scroll events throttled to at most one viewport reschedule per window. */
-const SCROLL_THROTTLE_MS = 120;
-/** Viewport movement below this many display px does not reschedule. */
-const VIEWPORT_MOVE_EPS = 24;
+/**
+ * Scroll events throttled to at most one viewport reschedule per window.
+ * Kept close to a single RAF frame (16ms): the tile pump itself is RAF-based
+ * and cannot run faster than the display refresh, so a tighter throttle just
+ * lets every scroll event wake the pump instead of dropping 80% of them.
+ */
+const SCROLL_THROTTLE_MS = 16;
+/**
+ * Viewport movement below this many display px does not reschedule.
+ * Lowered from 24 to 4 so short scrolls (a few px of scroll-bounce, a
+ * single-step trackpad flick) still trigger a tile refresh.
+ */
+const VIEWPORT_MOVE_EPS = 4;
 /** Retry delay while the scroll container has not mounted yet. */
 const BIND_RETRY_MS = 250;
 
