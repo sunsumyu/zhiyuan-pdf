@@ -210,9 +210,9 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
         s.last_animation_timestamp_ms = 0.0;
 
         // ── Virtual zoom: immediately apply target layout ──
-        // Compute container dimensions at target zoom — always centers content.
-        // This gives instant visual feedback — the browser stretches/compresses
-        // the existing canvas.
+        // Cursor-anchored: the page point under the cursor stays put, so zoom
+        // does not slide the content. Falls back to centered when there is no
+        // prior layout (first gesture) or the page is smaller than the view.
         let display_width = input.page_width * result.target_zoom;
         let display_height = input.page_height * result.target_zoom;
         let layout = compute_viewport_layout_result(
@@ -221,12 +221,14 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
             input.viewport_width,
             input.viewport_height,
         );
+        let content_left = result.anchor_content_left;
+        let content_top = result.anchor_content_top;
 
         // Update visual_layout to match the virtual zoom state
         s.visual_layout = Some(crate::zoom::zoom_store::VisualLayoutState {
             display_zoom: result.target_zoom,
-            content_left: layout.content_left,
-            content_top: layout.content_top,
+            content_left,
+            content_top,
         });
 
         // Apply to DOM immediately for instant visual feedback.
@@ -238,8 +240,8 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
                 let host_height = layout.host_height.max(input.viewport_height);
                 let _ = style.set_property("width", &format!("{}px", host_width));
                 let _ = style.set_property("height", &format!("{}px", host_height));
-                let _ = style.set_property("left", &format!("{}px", layout.content_left));
-                let _ = style.set_property("top", &format!("{}px", layout.content_top));
+                let _ = style.set_property("left", &format!("{}px", content_left));
+                let _ = style.set_property("top", &format!("{}px", content_top));
             }
         });
 

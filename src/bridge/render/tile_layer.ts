@@ -34,6 +34,14 @@ const MAX_ACTIVE_TILES = 12;
 const MAX_POOL_SIZE = 12;
 /** Zoom values closer than this are considered equal (tile key + settle). */
 const ZOOM_EPS = 0.001;
+/**
+ * Zoom gap below which the tile layer starts rendering the target zoom,
+ * instead of waiting for full settle. Tiles are rasterized at targetZoom, so
+ * they are already sharp when the animation closes the remaining gap; starting
+ * ~2% early lets the first tiles arrive before the wheel is released instead
+ * of filling in one-by-one afterwards.
+ */
+const NEAR_SETTLE_EPS = 0.02;
 /** Scroll events throttled to at most one viewport reschedule per window. */
 const SCROLL_THROTTLE_MS = 120;
 /** Viewport movement below this many display px does not reschedule. */
@@ -197,10 +205,6 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
         } else {
             entry.canvas.remove();
         }
-    }
-
-    function isAnimating(zs: TileZoomState): boolean {
-        return Math.abs(zs.visualZoom - zs.targetZoom) > ZOOM_EPS;
     }
 
     function scheduleViewportTiles(zs: TileZoomState, page: number): void {
@@ -392,12 +396,14 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
         const zs = deps.getZoomState();
         const page = deps.getCurrentPage();
         const revision = deps.getDocumentRevision();
+        const zoomGap = Math.abs(zs.visualZoom - zs.targetZoom);
+        const settled = zoomGap <= ZOOM_EPS;
 
         // Stale presentation — a commit landed at a different zoom, the page
         // turned, or the document mutated: drop DOM tiles before scheduling.
         // Only clear when the SCHEDULED zoom changed (tiles were rendered at
         // scheduledZoom), not when lastRenderedZoom changed (that's just
-        //簿记 from the render pipeline and doesn't invalidate existing tiles).
+        // 簿记 from the render pipeline and doesn't invalidate existing tiles).
         if (presentedPage !== null && presentedPage !== page) {
             tileFacade.clearPage(presentedPage);
             clearDom();
@@ -407,14 +413,20 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
         } else if (
             scheduledZoom !== null &&
             presentedZoom !== null &&
-            Math.abs(scheduledZoom - presentedZoom) > ZOOM_EPS
+            Math.abs(scheduledZoom - presentedZoom) > ZOOM_EPS &&
+            // Keep the old zoom's tiles on screen while the new zoom is still
+            // animating: wiping them here would blank the viewport before the
+            // new tiles have rendered. New tiles displace old ones one-by-one
+            // through the canvas LRU budget instead.
+            settled
         ) {
             clearDom();
         }
 
         let animJustEnded = false;
-        if (isAnimating(zs)) {
-            // Mid-gesture: mark state only; rendering waits for settle.
+        if (zoomGap > NEAR_SETTLE_EPS) {
+            // Far from settle: mark state only; rendering waits until the
+            // animation is close enough that targetZoom tiles stay valid.
             if (!animStarted) {
                 animStarted = true;
                 tileFacade.startAnimation(zs.targetZoom);
@@ -422,6 +434,10 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
             scheduleTick();
             return;
         }
+        // Near-settle: the animation is within ~2% of target, so targetZoom
+        // tiles will still be valid when they present. Begin scheduling and
+        // bumping the epoch here so the first tiles arrive BEFORE the user
+        // sees settle, not after.
         if (animStarted) {
             animStarted = false;
             animJustEnded = true;

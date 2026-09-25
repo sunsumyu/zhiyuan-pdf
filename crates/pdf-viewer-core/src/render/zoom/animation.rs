@@ -43,6 +43,12 @@ pub struct WheelZoomResult {
     pub anchor_viewport_y: f32,
     pub transform_origin_x: f32,
     pub transform_origin_y: f32,
+    /// Anchor-aware container offset: keeps the page point that was under
+    /// the cursor at gesture start fixed under the cursor at the new zoom.
+    /// Equals the centered offset when no prior layout exists or the page
+    /// is smaller than the viewport.
+    pub anchor_content_left: f32,
+    pub anchor_content_top: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -111,14 +117,49 @@ pub fn centered_offset(content_size: f32, viewport_size: f32) -> f32 {
     ((viewport_size - content_size).max(0.0)) * 0.5
 }
 
+/// Compute the container offset that keeps the page point under the cursor
+/// fixed during a zoom change.
+///
+/// `cursor_viewport` is the cursor position in viewport (display) space.
+/// `old_content_left` is the current container offset (page-space origin
+/// relative to viewport origin). `old_zoom` and `new_zoom` are the zoom
+/// values before and after the change. `display_width` is the page size at
+/// the new zoom. When the page is smaller than the viewport the result is
+/// the centered offset; when the cursor position is outside the content
+/// range (e.g. first wheel event without a prior layout) the result also
+/// falls back to the centered offset.
+pub fn anchor_content_offset(
+    cursor_viewport: f32,
+    old_content_left: f32,
+    old_zoom: f32,
+    new_zoom: f32,
+    display_width: f32,
+    viewport_width: f32,
+) -> f32 {
+    if display_width <= viewport_width {
+        return centered_offset(display_width, viewport_width);
+    }
+    if old_zoom <= 0.0 {
+        return centered_offset(display_width, viewport_width);
+    }
+    // Clamp the cursor's page-space position to the content range in the
+    // OLD layout: a click in the margin (outside the page) would otherwise
+    // push content_left out of scroll range, which browsers snap to 0 with
+    // a visible jump.
+    let page_max = (display_width / new_zoom).max(0.0);
+    let cursor_page = ((cursor_viewport - old_content_left) / old_zoom).clamp(0.0, page_max);
+    let desired = cursor_viewport - cursor_page * new_zoom;
+    desired.clamp(0.0, (display_width - viewport_width).max(0.0))
+}
+
 pub fn resolve_wheel_zoom_request(
     request: &WheelZoomRequest,
-    _visual_layout: Option<&VisualLayoutState>,
+    visual_layout: Option<&VisualLayoutState>,
 ) -> WheelZoomResult {
-    let _content_width = sanitize_positive(request.content_width, 1.0);
-    let _content_height = sanitize_positive(request.content_height, 1.0);
-    let _page_width = sanitize_positive(request.page_width, 1.0);
-    let _page_height = sanitize_positive(request.page_height, 1.0);
+    let content_width = sanitize_positive(request.content_width, 1.0);
+    let content_height = sanitize_positive(request.content_height, 1.0);
+    let page_width = sanitize_positive(request.page_width, 1.0);
+    let page_height = sanitize_positive(request.page_height, 1.0);
     let zoom_factor = 2.0_f32.powf(-request.delta_y / 800.0);
     let min_zoom = sanitize_positive(request.min_zoom, 0.1).max(0.1);
     let max_zoom = sanitize_positive(request.max_zoom, min_zoom).max(min_zoom);
@@ -133,21 +174,51 @@ pub fn resolve_wheel_zoom_request(
     } else {
         0.0
     };
-    // Zoom always centers content — anchor fields are retained for the Wasm
-    // contract (TS passes viewport_x/y for transform-origin reporting) but the
-    // anchor page-point computation is no longer needed.
     let viewport_width = sanitize_non_negative(request.viewport_width, 0.0);
     let viewport_height = sanitize_non_negative(request.viewport_height, 0.0);
     let anchor_pdf_x = clamp_unit(viewport_x / viewport_width.max(1.0));
     let anchor_pdf_y = clamp_unit(viewport_y / viewport_height.max(1.0));
+
+    // Cursor-anchored layout: keep the page point under the cursor fixed while
+    // zooming. Falls back to the centered offset when there is no prior
+    // layout (first gesture) — see `anchor_content_offset`.
+    let display_width = page_width * next_zoom;
+    let display_height = page_height * next_zoom;
+    let (anchor_content_left, anchor_content_top) = match visual_layout {
+        Some(prior) if prior.display_zoom > 0.0 => (
+            anchor_content_offset(
+                viewport_x,
+                prior.content_left,
+                prior.display_zoom,
+                next_zoom,
+                display_width,
+                viewport_width,
+            ),
+            anchor_content_offset(
+                viewport_y,
+                prior.content_top,
+                prior.display_zoom,
+                next_zoom,
+                display_height,
+                viewport_height,
+            ),
+        ),
+        _ => (
+            centered_offset(display_width, viewport_width),
+            centered_offset(display_height, viewport_height),
+        ),
+    };
+
     WheelZoomResult {
         target_zoom: next_zoom,
         anchor_pdf_x,
         anchor_pdf_y,
         anchor_viewport_x: viewport_x,
         anchor_viewport_y: viewport_y,
-        transform_origin_x: anchor_pdf_x * request.content_width,
-        transform_origin_y: anchor_pdf_y * request.content_height,
+        transform_origin_x: anchor_pdf_x * content_width,
+        transform_origin_y: anchor_pdf_y * content_height,
+        anchor_content_left,
+        anchor_content_top,
     }
 }
 
@@ -627,5 +698,136 @@ mod tests {
             }
             prev_left = Some(result.content_left);
         }
+    }
+
+    /// Cursor-anchored zoom: the page point under the cursor must stay at the
+    /// same viewport position after the zoom change.
+    #[test]
+    fn anchor_keeps_cursor_page_point_fixed() {
+        let viewport_w = 1000.0;
+        let page_w = 600.0;
+        let old_zoom = 1.0;
+        let new_zoom = 2.0;
+        // Page at old zoom is 600 wide, centered in 1000 → content_left = 200.
+        // (display 600 <= viewport 1000 → centered: (1000-600)/2 = 200.)
+        let old_left = 200.0;
+        let cursor = 300.0; // 100px into the page at old zoom → page coord 100
+        let display_w = page_w * new_zoom; // 1200 > viewport → anchor active
+        let new_left =
+            anchor_content_offset(cursor, old_left, old_zoom, new_zoom, display_w, viewport_w);
+
+        // Page coord under cursor before: (300 - 200) / 1 = 100
+        // After: (300 - new_left) / 2 should equal 100 → new_left = 100.
+        let page_coord_after = (cursor - new_left) / new_zoom;
+        assert!(
+            (page_coord_after - 100.0).abs() < 0.01,
+            "cursor page point drifted: {page_coord_after} (content_left={new_left})"
+        );
+    }
+
+    #[test]
+    fn anchor_falls_back_to_centered_when_page_smaller_than_viewport() {
+        let viewport_w = 1000.0;
+        let display_w = 400.0; // smaller than viewport
+        let left = anchor_content_offset(500.0, 300.0, 1.0, 0.5, display_w, viewport_w);
+        assert!(
+            (left - 300.0).abs() < 0.01,
+            "expected centered offset 300, got {left}"
+        );
+    }
+
+    #[test]
+    fn anchor_clamps_to_scrollable_range() {
+        let viewport_w = 800.0;
+        let display_w = 1600.0; // scrollable range 0..800
+                                // Cursor far left would want negative content_left → clamp to 0.
+        let left = anchor_content_offset(10.0, 0.0, 1.0, 0.5, display_w, viewport_w);
+        assert!(
+            (0.0..=viewport_w).contains(&left),
+            "content_left out of range: {left}"
+        );
+        // Cursor far right would want > max → clamp to 800.
+        let right = anchor_content_offset(790.0, 0.0, 1.0, 0.5, display_w, viewport_w);
+        assert!(
+            (0.0..=viewport_w).contains(&right),
+            "content_left out of range: {right}"
+        );
+    }
+
+    #[test]
+    fn wheel_request_with_visual_layout_produces_anchor_offset() {
+        // Zoom-out from 2.0 to 1.5 with the cursor inside a scrolled page.
+        // delta_y = 332 → factor 2^(-332/800) = 0.75 → 2.0 * 0.75 = 1.5.
+        let request = WheelZoomRequest {
+            delta_y: 332.0,
+            viewport_x: 300.0,
+            viewport_y: 250.0,
+            viewport_width: 500.0,
+            viewport_height: 800.0,
+            page_width: 600.0,
+            page_height: 600.0,
+            anchor_page_x: None,
+            anchor_page_y: None,
+            page_ratio_x: None,
+            page_ratio_y: None,
+            scroll_left: 0.0,
+            scroll_top: 0.0,
+            content_width: 1200.0,
+            content_height: 1200.0,
+            target_zoom: 2.0,
+            min_zoom: 0.1,
+            max_zoom: 30.0,
+        };
+        let prior = VisualLayoutState {
+            display_zoom: 2.0,
+            content_left: 200.0,
+            content_top: 0.0,
+        };
+        let result = resolve_wheel_zoom_request(&request, Some(&prior));
+        assert!(
+            (result.target_zoom - 1.5).abs() < 0.01,
+            "expected 1.5, got {}",
+            result.target_zoom
+        );
+        // Page point under cursor before: (300 - 200) / 2 = 50 → after:
+        // 300 - 50 * 1.5 = 225. Centered fallback would be 0 (page > viewport).
+        let centered = centered_offset(600.0 * result.target_zoom, 500.0);
+        assert!(
+            (result.anchor_content_left - 225.0).abs() < 0.5,
+            "expected anchored offset 225, got {} (centered {})",
+            result.anchor_content_left,
+            centered
+        );
+    }
+
+    #[test]
+    fn wheel_request_without_visual_layout_falls_back_to_centered() {
+        let request = WheelZoomRequest {
+            delta_y: -100.0,
+            viewport_x: 300.0,
+            viewport_y: 150.0,
+            viewport_width: 1000.0,
+            viewport_height: 800.0,
+            page_width: 600.0,
+            page_height: 600.0,
+            anchor_page_x: None,
+            anchor_page_y: None,
+            page_ratio_x: None,
+            page_ratio_y: None,
+            scroll_left: 0.0,
+            scroll_top: 0.0,
+            content_width: 600.0,
+            content_height: 600.0,
+            target_zoom: 1.0,
+            min_zoom: 0.1,
+            max_zoom: 30.0,
+        };
+        let result = resolve_wheel_zoom_request(&request, None);
+        let expected = centered_offset(600.0 * result.target_zoom, 1000.0);
+        assert!(
+            (result.anchor_content_left - expected).abs() < 0.01,
+            "expected centered {expected}, got {}",
+            result.anchor_content_left
+        );
     }
 }

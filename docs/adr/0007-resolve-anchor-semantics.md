@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-0008](0008-restore-cursor-anchored-zoom.md) (cursor-anchored
+zoom restored). The dead-code cleanup described here stands; the "always
+centers content" decision no longer does.
 
 ## Context
 

@@ -19,8 +19,8 @@
 
 ### 布局计算
 
-- **Anchor (锚点)** — 缩放中心点（页面坐标）。Post-ADR-0007: zoom always centers content — anchor computation is dead code.
-- **Viewport Layout** — 容器尺寸和滚动位置：`host_width = max(display_width, viewport_width)`，`content_left = (viewport_width - display_width) * 0.5`（居中）。
+- **Anchor (锚点)** — 缩放中心点。光标锚定缩放：`new_content_left = cursor_viewport − (cursor_viewport − old_content_left) / old_zoom × new_zoom`，再 clamp 到 `[0, display_width − viewport_width]`。页面小于视口或无 prior layout 时回退居中。见 `animation.rs::anchor_content_offset`（此前的 ADR-0007「永远居中」决策已被取代）。
+- **Viewport Layout** — 容器尺寸和滚动位置：`host_width = max(display_width, viewport_width)`；`content_left` 优先取光标锚点值，无锚点时 `(viewport_width − display_width) × 0.5`（居中）。
 - **Display Width/Height** — 页面在当前缩放下的像素尺寸：`page_width × display_zoom`。
 
 ## 瓦片渲染 (Tile Rendering)

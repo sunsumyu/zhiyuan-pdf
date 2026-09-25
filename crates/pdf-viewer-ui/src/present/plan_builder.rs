@@ -41,22 +41,28 @@ pub fn build_frame_plan_result(
     let viewport_width = request.viewport_width.max(0.0);
     let viewport_height = request.viewport_height.max(0.0);
 
-    // Zoom always centers content — compute the layout from render-time
-    // display dimensions using the shared compute_viewport_layout_result
-    // (identical to what on_wheel_event uses), eliminating any discontinuity
-    // between the wheel-event path and the committed-frame path.
+    // Container offset: cursor-anchored when a wheel gesture wrote a matching
+    // visual layout (on_wheel_event stores the anchor offset with the target
+    // zoom). Falling back to the centered compute keeps non-zoom renders and
+    // first-open unchanged, and guarantees the committed frame at settle
+    // writes exactly the geometry the wheel path already put on screen.
     let layout = compute_viewport_layout_result(
         display_width,
         display_height,
         viewport_width,
         viewport_height,
     );
-    let (host_width, host_height, content_left, content_top) = (
-        layout.host_width,
-        layout.host_height,
-        layout.content_left,
-        layout.content_top,
-    );
+    let anchored = zoom_state
+        .visual_layout
+        .as_ref()
+        .filter(|visual| (visual.display_zoom - render.display_zoom).abs() < 0.001);
+    let content_left = anchored
+        .map(|visual| visual.content_left)
+        .unwrap_or(layout.content_left);
+    let content_top = anchored
+        .map(|visual| visual.content_top)
+        .unwrap_or(layout.content_top);
+    let (host_width, host_height) = (layout.host_width, layout.host_height);
     let scroll_left = request.scroll_left.max(0.0);
     let scroll_top = request.scroll_top.max(0.0);
 
