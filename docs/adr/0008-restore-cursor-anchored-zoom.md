@@ -58,17 +58,27 @@ wheel event put on screen.
 ## Changes
 
 - `crates/pdf-viewer-core/src/render/zoom/animation.rs`:
-  - `WheelZoomResult` gains `anchor_content_left` and `anchor_content_top`.
-  - New `anchor_content_offset` helper.
+  - `WheelZoomResult` gains `anchor_content_left/top` and
+    `anchor_scroll_left/top`.
+  - New `anchor_content_offset` (content offset only) and `anchor_layout`
+    (content offset + scroll compensation) helpers.
   - `resolve_wheel_zoom_request` reads the prior `visual_layout` and produces
     anchored offsets (falls back to `centered_offset`).
 - `crates/pdf-viewer-ui/src/zoom/raf_loop.rs`:
   - `on_wheel_event` writes `result.anchor_content_left/top` into `visual_layout`
     and the DOM, falling back to centered for the first gesture.
+  - It also assigns the scroller's `scrollLeft`/`scrollTop` from
+    `result.anchor_scroll_left/top`, so the cursor's page point is preserved
+    when `content_left` is clamped (page overflowing the viewport).
 - `crates/pdf-viewer-ui/src/present/plan_builder.rs`:
   - `build_frame_plan_result` uses `zoom_state.visual_layout` content offsets
     when `display_zoom` matches the plan's render `display_zoom`, so the
     committed frame at settle writes exactly the anchor geometry.
+- `src/index.css`: `#pdf-scroll-container` changed from `display:flex;
+  justify-content:center` to `display:block` — flex centering of overflowing
+  content makes the overflow portion unreachable by scroll, defeating the
+  anchor scroll compensation. Small-page centering is handled by the
+  container's explicit `left` offset.
 - `docs/CONTEXT.md`: anchor entry updated with the restored formula.
 - `docs/adr/0007-resolve-anchor-semantics.md`: kept as-is; this ADR supersedes
   the "always centers" decision documented there.
@@ -82,6 +92,15 @@ wheel event put on screen.
   change, matching user expectation (PDF.js, Adobe Reader, SumatraPDF).
 - The committed frame at settle preserves the same geometry the wheel event
   wrote, so the page does not shift when the settle frame applies.
+- When the page overflows the viewport (zoom > fit-width), the anchor is
+  preserved via `scrollLeft`/`scrollTop` adjustment — without this, the
+  cursor's page point would drift by whatever `content_left` clamping ate.
+- `#pdf-scroll-container` is now `display:block` instead of `display:flex;
+  justify-content:center`. Flex centering of an overflowing child pushes it
+  symmetrically off-screen and makes the left/top portion unreachable by
+  scroll; the new layout uses the container's explicit `left`/`top` offset
+  for centering (still correct when display < viewport) and keeps overflow
+  fully reachable.
 
 ### Negative
 

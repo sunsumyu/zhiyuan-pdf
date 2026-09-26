@@ -12,6 +12,7 @@
 | `5266a48` | settle 收敛 + canvas 平滑缩放 + 手势标志 + committed 队列 latest-wins（问题一~七） |
 | `5055589` | 光标锚点缩放（ADR-0008）+ 瓦片 near-settle 提前渲染 |
 | `ac88fd2` | 滚动瓦片节流放宽（120→16ms、移动阈值 24→4px） |
+| `f4f66cc` | 锚点 × 溢出：scroll 补偿 + flex→block 布局 |
 
 ## 问题与修复
 
@@ -70,29 +71,54 @@ canvas 内容从新原点缩放。ADR-0007 删掉的锚点代码未恢复。
 - `SCROLL_THROTTLE_MS` 120→16（一个 RAF 帧）：原来 10 个滚动事件丢 8 个
 - `VIEWPORT_MOVE_EPS` 24→4：小幅触摸板滚动也触发重排
 
-## Test Results (final, after ac88fd2)
+### 十一：锚点 × 溢出滚动（commit f4f66cc）
+
+锚点公式把 `content_left` clamp 到 `[0, display−viewport]`，当页面溢出
+视口时 clamping 吃掉的偏移会让光标页面点漂移。本提交补上 `scroll_left/top`
+补偿：wheel 事件在写 `content_left` 的同时，把 clamping 的剩余写入
+`scrollLeft/scrollTop`。
+
+同步发现：`#pdf-scroll-container` 的 `display:flex;justify-content:center`
+会把溢出的内容对称挤出，左侧部分因 `scrollLeft` 不能为负而永远不可达。
+改为 `display:block` —— 小页面的居中仍由容器的显式 `left` 偏移负责
+（`compute_viewport_layout_result` 居中，写入 `visual_layout`），溢出时
+偏移落在 `[0, display-viewport]` 内，`scrollLeft` 可达。
+
+`anchor_layout` 辅助函数同时返回 `(content_left, scroll_left)`；
+`WheelZoomResult` 新增 `anchor_scroll_left/top`；`raf_loop::on_wheel_event`
+直接写入 scroller DOM。
+
+## Test Results (final, after f4f66cc)
 
 | 套件 | 结果 |
 |---|---|
-| `cargo test -p pdf-viewer-core` | **264 passed**（含 5 个新锚点单测） |
+| `cargo test -p pdf-viewer-core` | **265 passed**（含 6 个锚点单测） |
 | `npx wasm-pack test --node crates/pdf-viewer-ui` | **12 passed** |
 | `npx vitest run src/__tests__/` | **17 files / 104 tests passed** |
-| E2E zoom 套件（4 spec）× 多轮 | **4/4 全绿**；`settle jump ratio ≈ 1`，`position delta {0,0}` |
+| E2E zoom 套件（4 spec）× 2 轮 | **4/4 × 2 全绿**；`settle jump ratio ≈ 1.006`，`position delta {0,0}` |
 | E2E 其余 6 spec | **全过**（tile_layer/load_pdf/page_presentation/editor_bugs/diag_doubled_page/hello） |
 | clippy native + wasm32 | **0 warnings** |
 
+## 改动文件（本轮）
+
+- `crates/pdf-viewer-core/src/render/zoom/animation.rs` — `anchor_layout`
+  (content_left + scroll_left 联合计算)、`WheelZoomResult` 新增
+  `anchor_scroll_left/top`、1 个新单测
+- `crates/pdf-viewer-ui/src/zoom/raf_loop.rs` — `on_wheel_event` 写
+  `anchor_scroll_left/top` 到 scroller DOM
+- `src/index.css` — `#pdf-scroll-container` 从 `display:flex;
+  justify-content:center` 改为 `display:block`
+
 ## 未决事项 / 后续建议
 
-1. **#4 手势中滚动失灵** — `apply_committed_frame` 手势期跳过所有几何写入，
-   缩放动画进行中滚动不生效。需要给滚动输入单独开一条不抢容器所有权的
-   路径，与 ADR-0002 有轻微摩擦。**未做，需先取证**（滚轮事件是否到达、
-   卡在哪一层）。
-2. **锚点 × 滚动滚动条** — 当前只写 `content_left`，放大到页面溢出视口时
-   clamp 到 0，真正的锚点需要写 `scrollLeft`。属于 #4 的范畴。
-3. **resize 期间锚点重置** — `syncHostLayout` 仍写居中 offset，缩放中
+1. **#4 手势中滚动失灵 — 假设已被探针否证**。探针（缩放动画中设 `scrollTop=300`）
+   显示滚动位置从头到尾保持 300 不被覆盖，收敛也正常。原描述缺乏证据；
+   若现象真实存在，更可能是主线程/合成器性能问题而非逻辑问题，需重新取证
+   （录视频逐帧对齐时间戳）。
+2. **resize 期间锚点重置** — `syncHostLayout` 仍写居中 offset，缩放中
    resize 会把锚点重置到居中（ADR-0008 Negative 已记录）。
-4. **瓦片并行渲染** — `pumpRequest` 仍是单飞行（`inFlight` 一次一张），
-   一屏瓦片串行填充。若 #1 后仍觉慢，可允许 2-3 张并行。
+3. **瓦片并行渲染** — `pumpRequest` 仍是单飞行（`inFlight` 一次一张），
+   一屏瓦片串行填充。若滚动仍觉慢，可允许 2-3 张并行。
 
 ## 重要工程约束（踩过的坑）
 
@@ -103,6 +129,10 @@ canvas 内容从新原点缩放。ADR-0007 删掉的锚点代码未恢复。
   不重建会失败——属预期。
 - `cargo fmt` 会顺带改动两个无关文件（`layout_engine.rs`、
   `editor_api/mod.rs` 的 import 排序），提交前需 `git checkout --` 还原。
+- **E2E 并发 4 worker，偶发假失败**：同一 spec 重跑即过（本会话
+  `zoom_wheel_raf_behavior` 遇到一次）。判定失败前先单独重跑该 spec。
+- 写 E2E 探针时把输出落到仓库内的文件（如 `e2e_probe.log`），
+  `/tmp` 在 Git Bash 下不可靠；用完记得删。
 
 ## Commands
 
