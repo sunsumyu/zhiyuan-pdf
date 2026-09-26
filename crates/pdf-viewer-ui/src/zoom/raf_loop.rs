@@ -242,6 +242,20 @@ pub fn on_wheel_event(input: WheelEventInput) -> WheelEventOutput {
                 let _ = style.set_property("height", &format!("{}px", host_height));
                 let _ = style.set_property("left", &format!("{}px", content_left));
                 let _ = style.set_property("top", &format!("{}px", content_top));
+                // Anchor scroll: when content_left is clamped (page overflows
+                // the viewport), the cursor's page point is preserved via
+                // scroll instead. `anchor_scroll_left/top` are ABSOLUTE scroll
+                // positions for the new layout, so assign them directly.
+                // Without this the cursor's page point drifts by whatever the
+                // content_left clamp ate (HANDOFF: "anchor × overflow scroll").
+                let scroll_left = result.anchor_scroll_left;
+                let scroll_top = result.anchor_scroll_top;
+                if (scroll_left - dom.scroll_container.scroll_left() as f32).abs() > 0.5 {
+                    dom.scroll_container.set_scroll_left(scroll_left as i32);
+                }
+                if (scroll_top - dom.scroll_container.scroll_top() as f32).abs() > 0.5 {
+                    dom.scroll_container.set_scroll_top(scroll_top as i32);
+                }
             }
         });
 

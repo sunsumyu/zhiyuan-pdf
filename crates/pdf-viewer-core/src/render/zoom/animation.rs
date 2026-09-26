@@ -43,12 +43,17 @@ pub struct WheelZoomResult {
     pub anchor_viewport_y: f32,
     pub transform_origin_x: f32,
     pub transform_origin_y: f32,
-    /// Anchor-aware container offset: keeps the page point that was under
-    /// the cursor at gesture start fixed under the cursor at the new zoom.
-    /// Equals the centered offset when no prior layout exists or the page
-    /// is smaller than the viewport.
+    /// Container offset that keeps the page point under the cursor fixed.
+    /// Equals the centered offset when no prior layout exists or the cursor
+    /// falls inside the unclamped content range.
     pub anchor_content_left: f32,
     pub anchor_content_top: f32,
+    /// Scroll position (alongside `anchor_content_left/top`) that the wheel
+    /// handler should apply so the cursor's page point stays fixed when
+    /// `anchor_content_left/top` are clamped. Zero when the page fits the
+    /// viewport or the cursor is inside the clamped content range.
+    pub anchor_scroll_left: f32,
+    pub anchor_scroll_top: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -128,6 +133,51 @@ pub fn centered_offset(content_size: f32, viewport_size: f32) -> f32 {
 /// the centered offset; when the cursor position is outside the content
 /// range (e.g. first wheel event without a prior layout) the result also
 /// falls back to the centered offset.
+/// Compute the layout offsets that keep the page point under the cursor
+/// fixed across a zoom change.
+///
+/// Returns `(content_left, scroll_left)`. The first is the container offset
+/// within its layout host, clamped so the container stays inside the
+/// scrollable range. The second is the scroll position that absorbs whatever
+/// offset the clamping ate, so the cursor's page point is still visually
+/// under the cursor.
+///
+/// When the page is smaller than the viewport (centering layout),
+/// `scroll_left` is left unchanged — the container already centers
+/// horizontally.
+fn anchor_layout(
+    cursor_viewport: f32,
+    old_content_left: f32,
+    old_scroll_left: f32,
+    old_zoom: f32,
+    new_zoom: f32,
+    display_width: f32,
+    viewport_width: f32,
+) -> (f32, f32) {
+    if display_width <= viewport_width {
+        return (centered_offset(display_width, viewport_width), old_scroll_left);
+    }
+    if old_zoom <= 0.0 {
+        return (0.0, old_scroll_left);
+    }
+    // Page point under the cursor before the zoom. `old_scroll_left` is the
+    // scroll offset before the change — the cursor is in viewport space so
+    // subtracting both gives the page-space coordinate.
+    let page_max = (display_width / new_zoom).max(0.0);
+    let cursor_page = ((cursor_viewport - old_content_left + old_scroll_left) / old_zoom)
+        .clamp(0.0, page_max);
+    // Where the container's content origin should land in viewport space.
+    let desired_origin = cursor_viewport - cursor_page * new_zoom;
+    // content_left is clamped to the scrollable range. The clamp eats part of
+    // the desired origin — that remainder is absorbed by scroll_left.
+    let new_content_left =
+        desired_origin.clamp(0.0, (display_width - viewport_width).max(0.0));
+    let new_scroll_left = new_content_left - desired_origin;
+    (new_content_left, new_scroll_left)
+}
+
+/// Public wrapper used by the older `resolve_wheel_zoom_request` path that
+/// only returns `content_left`.
 pub fn anchor_content_offset(
     cursor_viewport: f32,
     old_content_left: f32,
@@ -136,20 +186,16 @@ pub fn anchor_content_offset(
     display_width: f32,
     viewport_width: f32,
 ) -> f32 {
-    if display_width <= viewport_width {
-        return centered_offset(display_width, viewport_width);
-    }
-    if old_zoom <= 0.0 {
-        return centered_offset(display_width, viewport_width);
-    }
-    // Clamp the cursor's page-space position to the content range in the
-    // OLD layout: a click in the margin (outside the page) would otherwise
-    // push content_left out of scroll range, which browsers snap to 0 with
-    // a visible jump.
-    let page_max = (display_width / new_zoom).max(0.0);
-    let cursor_page = ((cursor_viewport - old_content_left) / old_zoom).clamp(0.0, page_max);
-    let desired = cursor_viewport - cursor_page * new_zoom;
-    desired.clamp(0.0, (display_width - viewport_width).max(0.0))
+    anchor_layout(
+        cursor_viewport,
+        old_content_left,
+        0.0,
+        old_zoom,
+        new_zoom,
+        display_width,
+        viewport_width,
+    )
+    .0
 }
 
 pub fn resolve_wheel_zoom_request(
@@ -181,31 +227,43 @@ pub fn resolve_wheel_zoom_request(
 
     // Cursor-anchored layout: keep the page point under the cursor fixed while
     // zooming. Falls back to the centered offset when there is no prior
-    // layout (first gesture) — see `anchor_content_offset`.
+    // layout (first gesture) — see `anchor_layout`.
     let display_width = page_width * next_zoom;
     let display_height = page_height * next_zoom;
-    let (anchor_content_left, anchor_content_top) = match visual_layout {
-        Some(prior) if prior.display_zoom > 0.0 => (
-            anchor_content_offset(
+    let scroll_left = sanitize_non_negative(request.scroll_left, 0.0);
+    let scroll_top = sanitize_non_negative(request.scroll_top, 0.0);
+    let (
+        anchor_content_left,
+        anchor_content_top,
+        anchor_scroll_left,
+        anchor_scroll_top,
+    ) = match visual_layout {
+        Some(prior) if prior.display_zoom > 0.0 => {
+            let (left, scroll_l) = anchor_layout(
                 viewport_x,
                 prior.content_left,
+                scroll_left,
                 prior.display_zoom,
                 next_zoom,
                 display_width,
                 viewport_width,
-            ),
-            anchor_content_offset(
+            );
+            let (top, scroll_t) = anchor_layout(
                 viewport_y,
                 prior.content_top,
+                scroll_top,
                 prior.display_zoom,
                 next_zoom,
                 display_height,
                 viewport_height,
-            ),
-        ),
+            );
+            (left, top, scroll_l, scroll_t)
+        }
         _ => (
             centered_offset(display_width, viewport_width),
             centered_offset(display_height, viewport_height),
+            scroll_left,
+            scroll_top,
         ),
     };
 
@@ -219,6 +277,8 @@ pub fn resolve_wheel_zoom_request(
         transform_origin_y: anchor_pdf_y * content_height,
         anchor_content_left,
         anchor_content_top,
+        anchor_scroll_left,
+        anchor_scroll_top,
     }
 }
 
@@ -752,6 +812,56 @@ mod tests {
             (0.0..=viewport_w).contains(&right),
             "content_left out of range: {right}"
         );
+    }
+
+    #[test]
+    fn anchor_layout_compensates_with_scroll_when_clamped() {
+        // Page 600 at old_zoom=1 fills 600 in a 1000 viewport → centered at 200.
+        // Cursor at viewport x=100 → page coord = (100-200)/1 = -100 (off-page,
+        // clamped to 0). Zoom to 3.0: display=1800, viewport=1000.
+        // Desired origin = 100 - 0*3 = 100, but content_left must be in [0,800].
+        // content_left=100, scroll_left=0 → cursor page point preserved.
+        let viewport_w = 1000.0;
+        let old_left = 200.0;
+        let old_scroll = 0.0;
+        let old_zoom = 1.0;
+        let new_zoom = 3.0;
+        let display_w = 600.0 * new_zoom; // 1800
+        let cursor = 100.0;
+        let (left, scroll) =
+            anchor_layout(cursor, old_left, old_scroll, old_zoom, new_zoom, display_w, viewport_w);
+        let page_coord_after = (cursor - left + scroll) / new_zoom;
+        assert!(
+            (page_coord_after - 0.0).abs() < 0.01,
+            "cursor page point drifted: {page_coord_after} (left={left}, scroll={scroll})"
+        );
+        assert!(
+            left >= 0.0 && (left + (display_w - viewport_w)).is_finite(),
+            "content_left out of range"
+        );
+
+        // Second scenario: cursor near the right edge → desired_origin < 0,
+        // content_left clamped to 0 and scroll_left absorbs the remainder.
+        let cursor_far = 900.0; // near right edge of 1000 viewport
+        let (left2, scroll2) = anchor_layout(
+            cursor_far,
+            old_left,
+            old_scroll,
+            old_zoom,
+            new_zoom,
+            display_w,
+            viewport_w,
+        );
+        // Page coord under cursor before: (900-200)/1 = 700, clamped to page_max=600.
+        // Desired origin = 900 - 600*3 = -900. content_left clamped to 0.
+        // scroll_left = 0 - (-900) = 900 → cursor's page point now at
+        // (900 - 0 + 900)/3 = 600 ✓
+        let page_coord_after_far = (cursor_far - left2 + scroll2) / new_zoom;
+        assert!(
+            (page_coord_after_far - 600.0).abs() < 0.01,
+            "cursor page point drifted at far cursor: {page_coord_after_far} (left={left2}, scroll={scroll2})"
+        );
+        assert!(scroll2 > 0.0, "expected positive scroll_left when origin clamped, got {scroll2}");
     }
 
     #[test]

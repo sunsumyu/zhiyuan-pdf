@@ -321,8 +321,14 @@ body, html {
 #pdf-scroll-container {
   flex: 1;
   overflow: auto;
-  display: flex;
-  justify-content: center;
+  /* Flex centering would cause the wrapper (wider than the scroller when the
+     page overflows) to be pushed symmetrically off-screen, and the left half
+     becomes unreachable by scrollLeft — see HANDOFF §"Anchor × 溢出滚动".
+     Centering for small pages is handled by the container's explicit `left`
+     offset (compute_viewport_layout_result → on_wheel_event / committed frame),
+     which always puts content_left in the reachable [0, display−viewport]
+     range. */
+  display: block;
   background-color: #1a1a1a;
   position: relative;
 }
