@@ -17,6 +17,8 @@ Tauri 桌面 PDF 查看器/编辑器。Rust workspace（`pdf-viewer-core` 纯计
 2. 【单写者铁律】每项几何/状态能力只有一个 writer，新增写路径前先查
    docs/adr/，不得旁路：
    - canvas transform → `CanvasTransformOwner`（ADR-0010）
+   - backCanvas（视口补丁）left/top/transform 视觉映射 →
+     `DetailOverlayOwner`（ADR-0024）
    - 页面表面 display/visibility → `PresentationSurfaceOwner`（ADR-0011）
    - viewport 几何读 → `ViewportGeometry`（ADR-0014）
    - 缩放权威 → `ZOOM_STATE` 单入口；渲染侧 actor/follow-up 只读，

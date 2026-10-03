@@ -23,6 +23,7 @@ import {
 import { logPdfLayoutTrace } from './layout_trace';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 import { getMainCanvasTransformOwner } from './canvas_transform_owner';
+import { getDetailOverlayOwner } from './detail_overlay_owner';
 import { createRenderWasmApi, type RenderExecutionPlan, type RenderLayerRuntimePlan } from './render_wasm_api';
 import type { VectorWorkerRequest, VectorWorkerResponse } from './vector_worker';
 
@@ -276,6 +277,32 @@ export function commitVectorRenderResult(result: VectorRenderResult, options: Ve
         owner.presentFrame(options.displayZoom);
         const visual = options.getVisualZoom?.();
         if (visual != null) owner.sync(visual);
+    }
+
+    // ADR-0024: the detail overlay is a zoom-driven surface too. Whenever a
+    // viewport-tile (detail) present landed, record its rect in the frame's
+    // displayZoom space and write the visual-space mapping in this same turn —
+    // the third surface under the ADR-0009 unified present formula. Without
+    // this, a patch rendered at a mid-gesture band freezes at its commit-time
+    // box while the visual keeps moving (the 2026-10-03 stale-patch video).
+    let detailRect: { left: number; top: number; width: number; height: number } | null = null;
+    for (const pending of pendingPresents) {
+        if (pending.useViewportTile) {
+            detailRect = {
+                left: pending.viewportLeft,
+                top: pending.viewportTop,
+                width: pending.viewportWidth,
+                height: pending.viewportHeight,
+            };
+        }
+    }
+    if (detailRect && options.displayZoom != null) {
+        const visual = options.getVisualZoom?.();
+        getDetailOverlayOwner(refs.backCanvas).present(
+            detailRect,
+            options.displayZoom,
+            visual != null ? visual : options.displayZoom,
+        );
     }
 
     logRenderChain('ts.deferred-present.commit', {

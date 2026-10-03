@@ -32,6 +32,7 @@ import {
 import { logPdfLayoutTrace } from './layout_trace';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 import { getMainCanvasTransformOwner } from './canvas_transform_owner';
+import { getDetailOverlayOwner } from './detail_overlay_owner';
 import { getViewportGeometry } from '../viewer/viewport_geometry';
 
 /** Max tile canvases kept in the DOM at once (memory budget). */
@@ -92,6 +93,8 @@ export type TileLayerDeps = {
     getVectorContainer: () => HTMLElement | null;
     /** Main vector canvas — the element CanvasTransformOwner drives. */
     getMainCanvas: () => HTMLCanvasElement | null;
+    /** Detail overlay (backCanvas) — the element DetailOverlayOwner drives. */
+    getDetailCanvas: () => HTMLCanvasElement | null;
 };
 
 export type TileLayer = {
@@ -545,6 +548,15 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
         const mainCanvas = deps.getMainCanvas();
         if (mainCanvas) {
             getMainCanvasTransformOwner(mainCanvas).sync(zs.visualZoom);
+        }
+        // ADR-0024: the detail overlay is the third zoom-driven surface and
+        // must share the same per-tick visual zoom as the canvas and tiles —
+        // otherwise a viewport-tile patch presented at an old band freezes at
+        // its commit-time box (the 2026-10-03 stale-patch video). No-op until
+        // the first present has recorded the patch's base rect.
+        const detailCanvas = deps.getDetailCanvas();
+        if (detailCanvas) {
+            getDetailOverlayOwner(detailCanvas).sync(zs.visualZoom);
         }
         refreshTileTransforms(zs);
     }

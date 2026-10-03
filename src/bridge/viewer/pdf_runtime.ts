@@ -250,6 +250,8 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         getVectorContainer,
         getMainCanvas: () =>
             document.getElementById('pdf-vector-main-canvas') as HTMLCanvasElement | null,
+        getDetailCanvas: () =>
+            document.getElementById('pdf-vector-detail-canvas') as HTMLCanvasElement | null,
     });
 
     const zoomController = createZoomController({

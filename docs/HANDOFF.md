@@ -4,20 +4,39 @@
 > 存于 git 历史（b6a4920 / 8f119fc 之前的版本）；细节以 docs/adr/ 与
 > docs/bug-postmortems/ 为准。仓库宪法见根目录 **AGENTS.md**。
 
-## 最新会话 2026-10-03（晚）— 知识链入库 + 记忆层收拢
+## 最新会话 2026-10-04 — P1 修复：DetailOverlayOwner（ADR-0024）
+
+- backCanvas 陈旧视口补丁（前会话录屏定位的 P1/P3）已按红灯契约流程修复：
+  - 红灯先行：`src/__tests__/detail_overlay_owner.test.ts` 7 例（模块不存在
+    → 红），实现 `src/bridge/render/detail_overlay_owner.ts` 后 7/7 绿。
+  - 接线三处：present 在 `commitVectorRenderResult`（detail present 落地时
+    记 rect/displayZoom + 同 turn 写视觉映射）；sync 在 tile_layer 的
+    `syncVisualTransforms`（新增 `getDetailCanvas` dep，pdf_runtime 注入）；
+    reset 在 `hideDetailCanvas` / `presentViewportCanvas` hide 分支 /
+    `clearVectorCanvasHost`。
+  - 公式与 ADR-0009 瓦片、ADR-0010 主 canvas 完全一致：
+    `left = rect.left × (visual/displayZoom)`，`transform = scale(s)`，
+    width/height 留 base 空间 → 三个 zoom 驱动表面同一页面坐标不变量
+    `q → q × visualZoom`。静止态"白色假页面"与手势中几何错位同时消解
+    （P1 永久变体：settle skip-render 后补丁仍被逐帧对齐）。
+  - 全文 → `docs/adr/0024-detail-overlay-unified-geometry.md`；
+    AGENTS.md 死门禁 2 单写者表已补 backCanvas → DetailOverlayOwner 行。
+  - 门禁：tsc 0 err；vitest 145/146（唯一失败 = wasm mtime>1h 哨兵，预期）；
+    core 269/269。E2E 未跑（需 e2e:build 产物 + GUI；P4 的新契约形态待补）。
+
+## 会话 2026-10-03（晚）— 知识链入库 + 记忆层收拢
 
 - 用户录屏（13:20，**已含 ADR-0023 修复的最新构建**）逐帧取证：缩放双重
   曝光/静止态重影的根因 = **backCanvas 陈旧视口补丁**（detail overlay 无
   几何补偿、手势结束无人隐藏、settle 复用跳渲染时存在永不消失变体）。
-  全文 → `docs/bug-postmortems/2026-10-03-backcanvas-stale-patch.md`
-  （P1~P4 + 修复方向，**尚未修复**）。
+  全文 → `docs/bug-postmortems/2026-10-03-backcanvas-stale-patch.md`。
 - 三笔提交：`b6a4920`（backfill ADR-0009~0022 + 09-27 postmortem）、
   `8f119fc`（ADR 时期源码 + 3 个 Rust 契约测试 + 8 个 vitest 契约 +
   11 个 E2E spec + CDP 工具 + HANDOFF，59 文件）、`5e282d9`（新 postmortem）。
 - 提交前复跑：core 269/269 ✓；vitest 138/139（唯一失败 = wasm mtime>1h
   新鲜度哨兵，预期）。
-- 本提交：AGENTS.md 宪法层落地；.cursorrules/.windsurfrules 收敛为指针；
-  HANDOFF 修剪为索引。
+- 另一笔：AGENTS.md 宪法层落地；.cursorrules/.windsurfrules 收敛为指针；
+  HANDOFF 修剪为索引（cbeb419）。
 
 ## 会话 2026-10-03（日）— 缩放后持续模糊（ADR-0023）
 
@@ -32,17 +51,17 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
 
 ## 未决事项 / 后续建议
 
-1. **P1~P4 backCanvas 陈旧补丁**（本分支下一个修复目标）：含"settle 合法
-   复用跳渲染时补丁永不消失"的永久变体。修复方向与契约设计见 postmortem；
-   按红灯契约流程在新窗口进行。
-2. resize 期间锚点重置 — `syncHostLayout` 仍写居中 offset（ADR-0008 Negative）。
-3. 瓦片并行渲染 — `pumpRequest` 单飞行，一屏瓦片串行填充；若滚动仍慢可
+1. **P4 验证缺口（backCanvas 修复的 E2E 契约）**：快速缩小（≥3 档）后静止
+   2s，逐帧断言"页面框外无白色表面、页面框内无两档位几何叠加"。单元契约
+   （detail_overlay_owner）已绿，E2E 帧级契约待补（需 e2e:build）。
+2. P2 残余：reknock 节流 60ms + 串行 worker → 手势中补丁内容仍落后 visual
+   1–3 档（几何已对齐，只剩内容档位差，设计内）。若仍嫌糊可调
+   `PREVIEW_REKNOCK_INTERVAL_MS` / 允许瓦片 2-3 并行（见 #3）。
+3. resize 期间锚点重置 — `syncHostLayout` 仍写居中 offset（ADR-0008 Negative）。
+4. 瓦片并行渲染 — `pumpRequest` 单飞行，一屏瓦片串行填充；若滚动仍慢可
    允许 2-3 张并行（HANDOFF 历史未决 #3）。
-4. vello-wasm + WebGPU prototype（GPU 矢量逐帧金标准，ADR-0009 引用段）。
-5. "手势中滚动失灵" — 假设已被探针否证（09-28 会话）；如再现需重新取证。
+5. vello-wasm + WebGPU prototype（GPU 矢量逐帧金标准，ADR-0009 引用段）。
 6. E2E 并发 4 worker 偶发假失败 — 判定失败前先单独重跑该 spec。
-7. E2E 帧级/静止态缺陷盲区 — 现有契约抓不到 backCanvas 类缺陷，postmortem
-   P4 提出了需新增的契约形态（快速缩小后静止逐帧采样）。
 
 ## 运维：E2E 必须对打包产物跑（否则 boot 闪烁）
 
@@ -105,6 +124,7 @@ npm run e2e -- --spec "tests/e2e/specs/zoom_*.spec.ts"
 | 0021 | peek 与 scheduleRender 背靠背各 buildRequest → 单次构建共享 |
 | 0022 | `stale frame` 假 ERROR 污染错误流 → abort 判定单一所有者，降级 DEBUG（免 IPC） |
 | 0023 | 幻影 base 缓存条目 → settle 持续模糊（R=0.812 不恢复）→ 条目 ⇔ 真实位图，复用校验 TS frame cache |
+| 0024 | backCanvas 视口补丁无几何补偿 → 静止态"白色假页面"+手势双重曝光 → DetailOverlayOwner（第三表面纳入 ADR-0009 统一公式） |
 
 更早（ADR 编号前）：2026-09-27 瓦片遮蔽根因（旧 zoom 瓦片盖住 canvas）→
 `docs/bug-postmortems/zoom-frame-analysis-2026-09-27.md`；2026-09-28 双重

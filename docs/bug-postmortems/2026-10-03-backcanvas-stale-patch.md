@@ -1,7 +1,8 @@
 # 缩放双重曝光 / 静止态重影 — backCanvas 陈旧视口补丁（2026-10-03）
 
-会话：sess_b28adc61（用户录屏 → 逐帧取证 → 代码归因）。**只分析未修复**——本文
-是外化产物，修复应在新窗口按红灯契约流程进行。
+会话：sess_b28adc61（用户录屏 → 逐帧取证 → 代码归因）。取证完成于 2026-10-03
+（当时只分析未修复）；**修复已于 2026-10-04 落地 → ADR-0024
+（DetailOverlayOwner，修复方向 1），P1/P3 关闭；P4（E2E 帧级契约）待补**。
 
 ## 素材
 
@@ -79,16 +80,19 @@ ADR-0023 的"settle 后持续模糊"在本次录屏**未复现**（各 settle �
   契约（瓦片网格对齐、canvas 宽度漂移）抓不到此类帧级/静止态缺陷，需新增
   "快速缩小后静止 N 秒逐帧采样"契约。
 
-## 修复方向（未实施，供红灯契约讨论）
+## 修复方向（2026-10-04 已实施方向 1 → ADR-0024）
 
-1. backCanvas 纳入统一几何：present 时记 boxZoom 语义，每帧随
-   `syncVisualTransforms` 补偿（与 ADR-0010 主 canvas 同构）；
-2. 或动画结束/settle 转换点主动 `hideDetail`（gesture end 语义归
-   PresentationSurfaceOwner）；
-3. settle 复用跳渲染分支若 detail overlay 可见，强制一次 hide 或 present
-   （封死 P1 永久变体）；
-4. 新 E2E 契约：快速缩小（≥3 档）后静止 2s，逐帧断言"页面框外无白色
-   表面、页面框内无两档位内容叠加"。
+1. ✅ **backCanvas 纳入统一几何**：`DetailOverlayOwner`
+   （`src/bridge/render/detail_overlay_owner.ts`）记录补丁 base rect +
+   displayZoom，present 同 turn 与每 tick 重写
+   `left = rect.left × (visual/zoom)` + `scale(s)`——与 ADR-0010 主 canvas
+   同构。P1/P2/P3 一并消解。
+2. 手势结束主动 hideDetail —— **未采用**：会破坏 settle `retainDetailOverlay`
+   的合法复用路径，且对齐修复后已无必要。
+3. settle 复用跳渲染分支强制 hide/present —— **未采用**：方向 1 落地后
+   补丁逐帧对齐，永久变体自然消解（不需要在 skip-render 分支加特判）。
+4. ⬜ P4 新 E2E 契约：快速缩小（≥3 档）后静止 2s，逐帧断言"页面框外无白色
+   表面、页面框内无两档位内容叠加"——**待补**（HANDOFF 未决 #1）。
 
 ## 非问题确认
 

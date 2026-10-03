@@ -1,6 +1,7 @@
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 import { logPdfLayoutTrace } from './layout_trace';
 import { getMainCanvasTransformOwner } from './canvas_transform_owner';
+import { getDetailOverlayOwner, resetDetailOverlayOwner } from './detail_overlay_owner';
 import { getPresentationSurfaceOwner } from './presentation_surface_owner';
 
 export const VECTOR_CONTAINER_ID = 'pdf-page-container';
@@ -129,9 +130,12 @@ function clearDetailCanvasBitmap(refs: VectorHostRefs): void {
 }
 
 /** Hide + clear the detail overlay. Visibility is the owner's job (ADR-0011);
- *  clearing the pixels is the host's. */
+ *  clearing the pixels is the host's; dropping the geometry tracking is
+ *  DetailOverlayOwner's (ADR-0024) — a hidden patch must not be resurrected by
+ *  a later stale per-tick sync. */
 function hideDetailCanvas(refs: VectorHostRefs): void {
     getPresentationSurfaceOwner().hideDetail();
+    resetDetailOverlayOwner(refs.backCanvas);
     clearDetailCanvasBitmap(refs);
 }
 
@@ -145,6 +149,12 @@ export function clearVectorCanvasHost(): void {
     // hidden here only as part of a full document teardown, so the owner must
     // end in the `none` state. Do not write display/visibility directly.
     getPresentationSurfaceOwner().hideAll();
+
+    // ADR-0024: document teardown — drop the detail overlay's geometry
+    // tracking too (the back canvas element outlives the document, so a stale
+    // tracked rect would otherwise survive into the next document).
+    const backCanvas = document.getElementById(VECTOR_BACK_CANVAS_ID) as HTMLCanvasElement | null;
+    if (backCanvas) resetDetailOverlayOwner(backCanvas);
 
     const img = document.getElementById('pdf-render-target') as HTMLElement | null;
     if (img) {
@@ -337,6 +347,9 @@ export function presentViewportCanvas(
     }
 
     surface.hideDetail();
+    // ADR-0024: the detail patch is no longer shown — drop its geometry
+    // tracking so a later stale per-tick sync can never re-apply an old box.
+    resetDetailOverlayOwner(refs.backCanvas);
     emitPdfDiagnostic('present', 'canvas.visibility', {
         mainVisible: true,
         detailVisible: false,
