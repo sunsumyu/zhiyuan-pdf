@@ -192,14 +192,26 @@ export function emitPdfDiagnostic(
                 layer,
                 message
             });
-            if (win.__PDF_DIAGNOSTICS_HISTORY.length > 1000) {
+            // Cap at 5000 — the original 1000 is easily blown by layout
+            // traces during a render iteration, which drops older events
+            // (2026-09-28 perf probe showed wheel-event-timing evicted).
+            if (win.__PDF_DIAGNOSTICS_HISTORY.length > 5000) {
                 win.__PDF_DIAGNOSTICS_HISTORY.shift();
             }
         } catch {
             // ignore
         }
     }
-    void targetInvokeV3('terminal_log', {
-        message: terminalMessage,
-    }).catch(() => undefined);
+    // Terminal sink is for human-visible events only — DEBUG/TRACE flood the
+    // IPC channel during zoom gestures, and the in-page history above remains
+    // the authoritative probe source. PROF is a probe channel too
+    // (plan-build/render timings): its consumers read the in-page history.
+    // NOTE (ADR-0015, reverted): batching these into one IPC wedged the page
+    // under verbose tracing (unbounded queue growth between flushes); see the
+    // ADR before re-attempting.
+    if (level !== 'DEBUG' && level !== 'TRACE' && layer !== 'PROF') {
+        void targetInvokeV3('terminal_log', {
+            message: terminalMessage,
+        }).catch(() => undefined);
+    }
 }

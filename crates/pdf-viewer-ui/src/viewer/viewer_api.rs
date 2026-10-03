@@ -28,13 +28,14 @@ impl ViewerSession {
     }
 
     /// Read the current viewer-session snapshot (path / pages / zoom / page dims).
+    ///
+    /// Hottest read path in the app (render flow, tile layer, zoom controller
+    /// read it every frame) — ADR-0013 forbids unconditional logging here; a
+    /// leftover "read() is called" print flooded ~2245 console writes into one
+    /// 16-step zoom gesture (506ms of wasm→JS bridge self time).
     #[wasm_bindgen(js_name = "read")]
     pub fn read(&self) -> JsValue {
         let session = viewer_store::read_viewer_session();
-        web_sys::console::log_1(&JsValue::from_str(&format!(
-            "[WASM-ViewerSession] read() is called. path={:?}, page_count={}",
-            session.path, session.page_count
-        )));
         to_value(&session).unwrap_or(JsValue::NULL)
     }
 

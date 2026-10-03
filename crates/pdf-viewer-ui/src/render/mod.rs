@@ -16,4 +16,8 @@ pub mod wasm_facade;
 pub mod workflow;
 
 #[cfg(test)]
+mod follow_up_tests;
+#[cfg(test)]
 mod render_store_tests;
+#[cfg(test)]
+mod workflow_tests;

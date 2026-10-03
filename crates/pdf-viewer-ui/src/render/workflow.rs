@@ -37,7 +37,15 @@ pub fn settle_render_frame_inner(
         }
         note_viewport_render_commit(viewport_refresh_state, js_sys::Date::now());
         if let Some(frame_plan) = settled_frame_plan {
-            if frame_plan.render_base_layer || frame_plan.reuse_active_base_layer {
+            // ADR-0023: a base-layer cache entry means "a bitmap rendered at
+            // this zoom exists". Remember ONLY when this frame really rendered
+            // the base. Reuse frames (`reuse_active_base_layer`) keep the
+            // already-active entry — and mid-gesture frames must NOT register
+            // `quantize(visual)` for a bitmap that was never rendered: those
+            // phantom entries then match at settle, suppress the settle render
+            // entirely, and leave the initial-zoom bitmap CSS-upscaled on
+            // screen (persistent blur after zoom).
+            if frame_plan.render_base_layer {
                 remember_base_layer(
                     present_state,
                     BaseLayerCacheEntry {

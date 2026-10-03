@@ -100,15 +100,32 @@ describe('zoom Rust RAF loop architecture', () => {
     expect(cssTextMatch![1]).toContain("'overflow: visible'");
   });
 
-  it('presentViewportCanvas sets container visible', async () => {
+  it('presentViewportCanvas shows the container through the surface owner', async () => {
+    // ADR-0011: page-surface visibility has ONE writer. presentViewportCanvas
+    // no longer writes container.style directly — it delegates to
+    // PresentationSurfaceOwner.showVector(), which is where the
+    // container-visible write now lives.
     const fs = await import('fs');
     const path = await import('path');
     const canvasHost = fs.readFileSync(
       path.resolve(__dirname, '../bridge/render/vector_canvas_host.ts'),
       'utf8',
     );
+    const owner = fs.readFileSync(
+      path.resolve(__dirname, '../bridge/render/presentation_surface_owner.ts'),
+      'utf8',
+    );
 
-    const setsVisible = /container\.style\.visibility\s*=\s*['"]visible['"]/.test(canvasHost);
+    // The presenter routes through the owner...
+    const presentFn = canvasHost.match(
+      /export function presentViewportCanvas\([\s\S]*?\n\}/,
+    );
+    expect(presentFn).not.toBeNull();
+    expect(presentFn![0]).toMatch(/getPresentationSurfaceOwner\(\)/);
+    expect(presentFn![0]).toMatch(/\.showVector\(\)/);
+
+    // ...and the owner is the single place that writes container visibility.
+    const setsVisible = /setStyle\(els\.container,\s*'visibility',\s*'visible'\)/.test(owner);
     expect(setsVisible).toBe(true);
   });
 

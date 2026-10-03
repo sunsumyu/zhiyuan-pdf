@@ -5,7 +5,8 @@ use crate::common::sanitize::sanitize_positive;
 use crate::present::plan::{preview_is_settled, quantize_cache_zoom, resolve_present_policy};
 use crate::render::tile_cache::{
     build_base_cache_key, build_detail_cache_key, find_reusable_base_layer,
-    find_reusable_detail_tile, reusable_base_layer_is_displayed, HostPresentState,
+    find_reusable_detail_tile, reusable_base_layer_is_displayed, HostFrameCacheState,
+    HostPresentState,
 };
 use crate::viewer::viewer_store::HostViewerSession;
 use crate::zoom::zoom_store::HostZoomState;
@@ -16,18 +17,42 @@ pub fn build_frame_plan_result(
     viewer_session: &HostViewerSession,
     present_state: &HostPresentState,
     render_scene_key: &str,
+    frame_cache: &HostFrameCacheState,
 ) -> FramePlanResult {
-    log::info!(
-        "[PAGE-SIZE] plan_builder: build_frame_plan_result called. Width={}, Height={}",
-        request.page_width,
-        request.page_height
-    );
+    // ADR-0013: peek/schedule/followUp each build a plan per render, so an
+    // unconditional log here fires several times per wheel step. Page-size
+    // changes belong to the document-open/page-turn events, not this path.
     let render_reason = if request.render_reason.trim().is_empty() {
         "default".to_string()
     } else {
         request.render_reason.clone()
     };
     let stable_document_frame = is_stable_document_frame(&render_reason);
+    // ADR-0012: the reknock dispatches at `visual_zoom` while the animation
+    // keeps moving, so by plan-build time `preview_settled` may already be
+    // true and cannot distinguish "mid-gesture refresh" from "final render".
+    // The request's captured display_zoom vs the live target can: they differ
+    // while the gesture is still running, and are equal at the final render.
+    let gesture_refresh = {
+        use pdf_viewer_core::render::zoom::animation::ZOOM_SETTLED_THRESHOLD;
+        let live_target = sanitize_positive(zoom_state.target_zoom, request.display_zoom);
+        (request.display_zoom - live_target).abs() > ZOOM_SETTLED_THRESHOLD
+    };
+    // ADR-0016: cost budget for the full-page base bitmap. Two viewports'
+    // worth of device pixels is the empirical ceiling — the visible region is
+    // covered at native resolution by the detail tile anyway, so the base only
+    // needs to stay cheap to allocate and copy. Derived here (not in TS) so the
+    // budget adapts to screen size and DPR with no bridge change.
+    let dpr = if request.device_pixel_ratio.is_finite() && request.device_pixel_ratio > 0.0 {
+        request.device_pixel_ratio
+    } else {
+        1.0
+    };
+    let viewport_px = request.viewport_width.max(0.0)
+        * request.viewport_height.max(0.0)
+        * dpr
+        * dpr;
+    let max_render_pixels = (viewport_px * 2.0).max(1_000_000.0);
     let render = resolve_render_zoom_result(&RenderZoomRequest {
         display_zoom: request.display_zoom,
         page_width: request.page_width,
@@ -35,6 +60,8 @@ pub fn build_frame_plan_result(
         device_pixel_ratio: request.device_pixel_ratio,
         max_zoom: request.max_zoom,
         max_canvas_dim: request.max_canvas_dim,
+        prefer_viewport_tile: gesture_refresh,
+        max_render_pixels,
     });
     let display_width = request.page_width.max(1.0) * render.display_zoom.max(0.1);
     let display_height = request.page_height.max(1.0) * render.display_zoom.max(0.1);
@@ -103,7 +130,12 @@ pub fn build_frame_plan_result(
         render_scene_key,
         base_cache_zoom,
         preview_settled,
-    );
+    )
+    // ADR-0023: a cached entry only counts if its bitmap actually exists in
+    // the TS frame cache. Phantom entries (remembered for zooms whose base was
+    // never rendered) used to match at settle, suppress the settle render, and
+    // leave the initial-zoom bitmap CSS-upscaled on screen (persistent blur).
+    .filter(|layer| frame_cache.stored_base_frame_keys.contains(&layer.key));
 
     let requires_preview_base_refresh = !preview_settled
         && !render.use_viewport_tile

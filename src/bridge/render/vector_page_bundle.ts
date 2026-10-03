@@ -22,6 +22,17 @@ type VectorPageBundleResolution = {
     bundleChanged: boolean;
 };
 
+/**
+ * ADR-0022: single owner of "which render errors are design-internal aborts".
+ * Band/epoch advancement intentionally orphans in-flight bundle loads and tile
+ * renders; the pipeline resolves them as `aborted` and re-requests at the new
+ * band. Callers (vector_host, tile_layer) must treat these as recovery, not
+ * failure — no ERROR reporting, no fault counters.
+ */
+export function isAbortedRenderRequest(message: string): boolean {
+    return message === 'stale frame' || message.includes('stale page asset request');
+}
+
 const PAGE_CACHE_MAX = 15;
 const pageBundleCache: VectorPageBundle[] = [];
 let pagePresentationRuntime: PagePresentationRuntimeAdapter = createPagePresentationRuntimeAdapter({

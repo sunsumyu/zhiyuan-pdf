@@ -1,5 +1,6 @@
 import { hideVectorCanvasHostForPreview } from '../render/vector_canvas_host';
 import { clearVectorHost } from '../render/vector_host';
+import { getPresentationSurfaceOwner } from '../render/presentation_surface_owner';
 import { readDecodedRasterImage, warmRasterImage } from '../render/raster_image_cache';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 
@@ -114,16 +115,11 @@ export function createPagePresenter(deps: PagePresenterDeps) {
         if (!bitmap) return false;
 
         const commitStartedAt = performance.now();
-        if (options.hideVectorOnly) {
-            hideVectorCanvasHostForPreview();
-        } else {
-            clearVectorHost();
-        }
-        deps.clearEditorOverlay();
 
-        canvas.style.display = 'block';
-        
-        // Match internal resolution to bitmap
+        // Prepare the raster pixels FIRST, then hand the surface swap to the
+        // owner (ADR-0011). Painting the target before hiding the source means
+        // the page area is never unpainted — no full-page blank between the
+        // vector and raster surfaces.
         if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
             canvas.width = bitmap.width;
             canvas.height = bitmap.height;
@@ -134,7 +130,15 @@ export function createPagePresenter(deps: PagePresenterDeps) {
             ctx.drawImage(bitmap, 0, 0);
         }
 
-        wrapper.style.display = 'block';
+        if (options.hideVectorOnly) {
+            // Atomic vector→raster swap (raster shown before vector hidden).
+            hideVectorCanvasHostForPreview();
+        } else {
+            // Full teardown (caches + surfaces), then show the raster surface.
+            clearVectorHost();
+            getPresentationSurfaceOwner().showRaster();
+        }
+        deps.clearEditorOverlay();
         if (emptyState) emptyState.style.display = 'none';
 
         logPresent('raster.commit', {

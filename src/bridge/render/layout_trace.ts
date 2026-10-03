@@ -183,18 +183,21 @@ function formatDetails(details: Record<string, unknown>): string {
 }
 
 export function logPdfLayoutTrace(node: string, details: Record<string, unknown> = {}): void {
-    const snapshot = readPdfLayoutSnapshot();
-    const key = snapshot.key;
+    // Fast path FIRST: the snapshot below forces layout on five elements
+    // (getBoundingClientRect + getComputedStyle each), and on a freshly
+    // written style that is a synchronous reflow. The render hot path calls
+    // this ~30× per render iteration — with the unconditional snapshot that
+    // was 30-60ms of main-thread saturation per zoom reknock even with
+    // tracing disabled (2026-09-28 perf probe, reknock-phase-timing).
     const verbose = (window as any).__PDF_LAYOUT_TRACE_VERBOSE === true;
-    const canvasMismatch =
-        key.pageRect !== 'missing' &&
-        key.canvasCss !== 'missing' &&
-        key.pageRect !== key.canvasCss;
-    const transformed = key.pageTransform !== 'missing' && key.pageTransform !== 'none';
+    // document-refresh.done is the geometry contract checkpoint — always pay
+    // the snapshot for it (once per document refresh).
     const keyNode = node === 'document-refresh.done';
-    if (!verbose && !canvasMismatch && !transformed && !keyNode) {
+    if (!verbose && !keyNode) {
         return;
     }
+    const snapshot = readPdfLayoutSnapshot();
+    const key = snapshot.key;
     const detailText = formatDetails(details);
     emitPdfDiagnostic('layout', node, {
         t: snapshot.t,

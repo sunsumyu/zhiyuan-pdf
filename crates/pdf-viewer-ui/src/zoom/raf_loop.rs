@@ -24,7 +24,7 @@ use pdf_viewer_core::render::zoom::animation::{
 use crate::zoom::zoom_store::ZOOM_STATE;
 
 use super::raf_committed::{apply_committed_frame, pop_committed_frame};
-use super::raf_dispatch::dispatch_settle_envelope;
+use super::raf_dispatch::{dispatch_animation_frame, dispatch_settle_envelope};
 use super::raf_dom_cache::{clear_dom_cache, init_dom_cache, with_dom_cache};
 use super::raf_settle::cancel_settle_cleanup;
 
@@ -77,29 +77,12 @@ pub fn start_zoom_raf_loop() {
 
     init_dom_cache();
 
-    // Hide raster sibling, show vector container (ADR-0002 I3)
-    let raster_visible = with_dom_cache(|dom| {
-        dom.and_then(|d| d.raster.as_ref())
-            .map(|raster| {
-                let display = raster
-                    .style()
-                    .get_property_value("display")
-                    .unwrap_or_default();
-                let visible = display != "none";
-                if visible {
-                    let _ = raster.style().set_property("display", "none");
-                }
-                visible
-            })
-            .unwrap_or(false)
-    });
-    if raster_visible {
-        with_dom_cache(|dom| {
-            if let Some(dom) = dom {
-                let _ = dom.container.style().set_property("display", "block");
-            }
-        });
-    }
+    // Page-surface visibility is owned by the TS PresentationSurfaceOwner
+    // (ADR-0011) — the loop no longer hides the raster sibling or shows the
+    // container. The wheel path presents through the owner, which performs the
+    // raster→vector swap atomically (show target before hiding source). The old
+    // "hide raster, then show container" here was a non-atomic pair and one of
+    // the ≥6 visibility writers that could composite a blank page frame.
 
     schedule_next_frame();
 }
@@ -275,42 +258,11 @@ pub fn ensure_raf_loop_after_wheel() {
 
 // ─── RAF tick implementation ──────────────────────────────────────
 
-/// Drive the canvas CSS scale for continuous visual zoom.
-///
-/// scale = visual_zoom / last_rendered_zoom: the bitmap on screen grows
-/// continuously with the animation while the bitmap underneath stays at the
-/// last committed render zoom. A scale of ~1 or a missing canvas is a no-op.
-/// When the animation settles the transform is cleared — the committed frames
-/// at settle carry target-zoom geometry and the presenter re-boxes the canvas
-/// atomically, so no stale transform may remain.
-fn apply_canvas_visual_scale(visual_zoom: f32) {
-    let (scale, rendered) = ZOOM_STATE.with(|state| {
-        let s = state.borrow();
-        let rendered = if s.last_rendered_zoom > 0.0 {
-            s.last_rendered_zoom
-        } else {
-            1.0
-        };
-        (visual_zoom / rendered, s.last_rendered_zoom)
-    });
-    if rendered <= 0.0 || !scale.is_finite() || scale <= 0.0 {
-        return;
-    }
-    let settled = ZOOM_STATE.with(|state| {
-        (state.borrow().visual_zoom - state.borrow().target_zoom).abs() < GESTURE_THRESHOLD
-    });
-    let transform = if settled {
-        // Settled: clear — presenter-owned canvas box already matches target.
-        "none".to_string()
-    } else {
-        format!("scale({})", scale)
-    };
-    with_dom_cache(|dom| {
-        if let Some(canvas) = dom.and_then(|d| d.main_canvas.as_ref()) {
-            let _ = canvas.style().set_property("transform", &transform);
-        }
-    });
-}
+// Continuous visual zoom is driven by the TS CanvasTransformOwner (ADR-0010):
+// the tile tick calls `sync(visualZoom)` every frame and re-derives
+// `scale(visual / boxZoom)` from the box space the presenter recorded. The
+// Rust RAF loop no longer writes the canvas transform — one writer, one
+// box-space source (ADR-0002). See ADR-0010 for the desync this eliminates.
 
 fn schedule_next_frame() {
     let window = match web_sys::window() {
@@ -350,22 +302,26 @@ fn tick(timestamp_ms: f64) {
 
     // ── 1. Advance animation (for render timing only — visual feedback
     //       comes from the virtual zoom layout applied in on_wheel_event) ──
-    let (settled, visual, in_gesture) = ZOOM_STATE.with(|state| {
+    let (settled, in_gesture) = ZOOM_STATE.with(|state| {
         let mut s = state.borrow_mut();
         let step = advance_zoom_animation_state(&mut s, Some(timestamp_ms));
         let gap = (s.visual_zoom - s.target_zoom).abs();
-        (step.settled, step.visual_zoom, gap > GESTURE_THRESHOLD)
+        (step.settled, gap > GESTURE_THRESHOLD)
     });
 
-    // ── 1b. Continuous visual zoom: compositor-only CSS scale on the canvas ──
-    // The canvas bitmap only refreshes when a reknock frame presents (~every
-    // 60ms + render time), so without this the page scales in visible steps.
-    // Scaling the canvas element by visual/last_rendered each RAF frame gives
-    // 60fps continuous zoom; when a reknock presents, the presenter re-boxes
-    // the canvas to the new bitmap zoom and resets the transform to exactly
-    // visual/newRendered in the same frame — visually continuous (identical
-    // on-screen size before and after the swap).
-    apply_canvas_visual_scale(visual);
+    // ── 1b. Continuous visual zoom ──
+    // Driven by the TS CanvasTransformOwner on the tile tick (ADR-0010). The
+    // Rust RAF loop only advances animation state; it does not touch the
+    // canvas transform.
+    //
+    // ADR-0018: the tile tick is an independent rAF callback and may run
+    // BEFORE this loop within a frame, so a transform written there lags the
+    // visual by one animation step (a full wheel band at gesture reversal →
+    // 4.6–5.3% canvas width drift). Knocking TS here — after the advance, in
+    // the same JS turn — makes the transform causally ordered after the state
+    // it reflects. TS stays the single DOM writer (the owner); Rust only
+    // knocks, exactly like the settle envelope.
+    dispatch_animation_frame();
 
     // ── 2. Mid-animation re-render when blur exceeds threshold ──
     // Re-knocks fire during the gesture too (not just after it): without them

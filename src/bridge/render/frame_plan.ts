@@ -1,5 +1,6 @@
 import { logPdfLayoutTrace } from './layout_trace';
 import { createRenderWasmApi } from './render_wasm_api';
+import { getViewportGeometry } from '../viewer/viewport_geometry';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 
 export type RustFramePlan = {
@@ -113,12 +114,13 @@ export type RenderReason = 'default' | 'navigation' | 'zoom' | 'editorVisibility
 
 export type FramePlanAdapter = {
     buildRenderRequest: (displayZoom: number, renderReason?: RenderReason) => Record<string, number | string | boolean>;
-    peek: (displayZoom: number, renderReason?: RenderReason) => RustFramePlan | null;
+    /** `prebuiltRequest` (ADR-0021): share one request build across back-to-back calls. */
+    peek: (displayZoom: number, renderReason?: RenderReason, prebuiltRequest?: Record<string, number | string | boolean>) => RustFramePlan | null;
     take: (displayZoom: number, renderReason?: RenderReason) => RustFramePlan | null;
     stepPreview: (displayZoom: number, timestampMs?: number) => RustPreviewFrame | null;
     resolveViewportRefresh: (displayZoom: number, timestampMs?: number) => RustViewportRefreshDecision | null;
     resolveHostScrollRefresh: (displayZoom: number, timestampMs?: number) => RustViewportRefreshDecision | null;
-    scheduleRender: (displayZoom: number, renderReason?: RenderReason) => RustRenderFrame | null;
+    scheduleRender: (displayZoom: number, renderReason?: RenderReason, prebuiltRequest?: Record<string, number | string | boolean>) => RustRenderFrame | null;
     settleRender: (frameToken: number | null, renderedZoom: number) => RustRenderTransition | null;
     abortRender: (frameToken: number | null) => RustRenderTransition | null;
     commitRenderResult: (frameToken: number, renderedZoom: number, pageWidth: number, pageHeight: number) => RustRenderCommitResult | null;
@@ -135,13 +137,43 @@ export type FramePlanAdapter = {
 export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAdapter {
     const renderApi = createRenderWasmApi(deps.getWasmApi);
 
+    // Plan-build timing (2026-09-28 perf probe): peek/schedule/follow-up each
+    // run a full wasm plan build plus a layout-forcing request build; during a
+    // zoom gesture they run several times per wheel step. Emit a PROF event
+    // for every call above the noise floor so call counts and durations are
+    // visible without verbose tracing.
+    function timedPlan<T>(label: string, fn: () => T): T {
+        const t0 = performance.now();
+        try {
+            return fn();
+        } finally {
+            const ms = performance.now() - t0;
+            if (ms > 2) {
+                emitPdfDiagnostic('PROF', 'plan-build-timing', {
+                    label,
+                    ms: Math.round(ms * 10) / 10,
+                });
+            }
+        }
+    }
+
     function buildRequest(displayZoom: number, renderReason: RenderReason = 'default'): Record<string, number | string | boolean> {
         const scrollContainer = deps.getScrollContainer();
-        const rect = scrollContainer?.getBoundingClientRect();
-        
-        const vw = scrollContainer?.clientWidth || rect?.width || 0;
-        const vh = scrollContainer?.clientHeight || rect?.height || 0;
-        const dpr = window.devicePixelRatio || 1;
+        // ADR-0014: viewport geometry is read from its single owner. This runs
+        // ~6x per render; measuring here directly forced a synchronous reflow
+        // each time (CDP profile: ~48ms/gesture). The owner caches within a
+        // frame, so this is now at most one layout read per frame.
+        const vp = getViewportGeometry().read();
+        const vw = vp.width;
+        const vh = vp.height;
+        const dpr = vp.dpr;
+        // ADR-0020: read the scroll position ONCE and share it between the
+        // layout-trace log and the returned request. The scroll position is
+        // written by Rust during zoom (raf_loop anchor scroll, raf_committed),
+        // so it is not cached — but reading it twice per call doubled the
+        // forced-layout reads (CDP: 416 scroll reads / 12-step gesture).
+        const scrollLeft = scrollContainer?.scrollLeft || 0;
+        const scrollTop = scrollContainer?.scrollTop || 0;
 
         logPdfLayoutTrace('frame.request.build', {
             displayZoom,
@@ -150,8 +182,8 @@ export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAda
             pageHeight: deps.getPageHeight(),
             viewportWidth: vw,
             viewportHeight: vh,
-            scrollLeft: scrollContainer?.scrollLeft || 0,
-            scrollTop: scrollContainer?.scrollTop || 0,
+            scrollLeft,
+            scrollTop,
             dpr,
         });
 
@@ -162,8 +194,8 @@ export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAda
             pageHeight: deps.getPageHeight(),
             viewportWidth: vw,
             viewportHeight: vh,
-            scrollLeft: scrollContainer?.scrollLeft || 0,
-            scrollTop: scrollContainer?.scrollTop || 0,
+            scrollLeft,
+            scrollTop,
             devicePixelRatio: dpr,
             maxZoom: deps.getMaxZoom(),
             maxCanvasDim: deps.getMaxCanvasDim(),
@@ -179,9 +211,11 @@ export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAda
         return buildRequest(displayZoom, renderReason);
     }
 
-    function peek(displayZoom: number, renderReason: RenderReason = 'default'): RustFramePlan | null {
+    function peek(displayZoom: number, renderReason: RenderReason = 'default', prebuiltRequest?: Record<string, number | string | boolean>): RustFramePlan | null {
         try {
-            return renderApi.resolveFramePlan(buildRequest(displayZoom, renderReason)) as RustFramePlan;
+            return timedPlan('peek', () =>
+                renderApi.resolveFramePlan(prebuiltRequest ?? buildRequest(displayZoom, renderReason)) as RustFramePlan,
+            );
         } catch (err) {
             emitPdfDiagnostic('RENDER', 'peek.error', { error: String(err) }, { level: 'ERROR' });
             return null;
@@ -232,9 +266,11 @@ export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAda
         }
     }
 
-    function scheduleRender(displayZoom: number, renderReason: RenderReason = 'default'): RustRenderFrame | null {
+    function scheduleRender(displayZoom: number, renderReason: RenderReason = 'default', prebuiltRequest?: Record<string, number | string | boolean>): RustRenderFrame | null {
         try {
-            return renderApi.scheduleRenderFrame(buildRequest(displayZoom, renderReason)) as RustRenderFrame;
+            return timedPlan('schedule', () =>
+                renderApi.scheduleRenderFrame(prebuiltRequest ?? buildRequest(displayZoom, renderReason)) as RustRenderFrame,
+            );
         } catch (err) {
             emitPdfDiagnostic('RENDER', 'scheduleRender.error', { error: String(err) }, { level: 'ERROR' });
             return null;
@@ -304,10 +340,12 @@ export function createFramePlanAdapter(deps: FramePlanAdapterDeps): FramePlanAda
 
     function scheduleRenderFollowUp(renderedDisplayZoom: number): RustRenderFrame | null {
         try {
-            return renderApi.scheduleRenderFollowUp(
-                renderedDisplayZoom,
-                buildRequest(renderedDisplayZoom, 'zoom'),
-            ) as RustRenderFrame;
+            return timedPlan('followUp', () =>
+                renderApi.scheduleRenderFollowUp(
+                    renderedDisplayZoom,
+                    buildRequest(renderedDisplayZoom, 'zoom'),
+                ) as RustRenderFrame,
+            );
         } catch {
             return null;
         }

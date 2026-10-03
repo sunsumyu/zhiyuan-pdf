@@ -1,4 +1,6 @@
 import { logPdfLayoutTrace } from '../render/layout_trace';
+import { getPresentationSurfaceOwner } from '../render/presentation_surface_owner';
+import { getViewportGeometry } from './viewport_geometry';
 import {
     getScrollContainer,
     getVectorContainer,
@@ -35,7 +37,9 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
         if (!wrapper || !scrollContainer) return;
 
         const safeDisplayZoom = Math.max(displayZoom, MIN_ZOOM);
-        const rect = scrollContainer.getBoundingClientRect();
+        // ADR-0014: viewport geometry comes from its single owner (cached
+        // within a frame) instead of a fresh getBoundingClientRect here.
+        const vp = getViewportGeometry().read();
         const wasm = deps.getWasmApi();
         logPdfLayoutTrace('layout.sync.before', {
             displayZoom,
@@ -43,8 +47,8 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             safeDisplayZoom,
             pageWidth: deps.getPageWidth(),
             pageHeight: deps.getPageHeight(),
-            viewportWidth: scrollContainer.clientWidth || rect.width || 0,
-            viewportHeight: scrollContainer.clientHeight || rect.height || 0,
+            viewportWidth: vp.width,
+            viewportHeight: vp.height,
             layoutOverride: layoutOverride ?? null,
             zoomState: deps.readZoomState(),
         });
@@ -53,8 +57,8 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
             renderZoom: renderedZoom > 0 ? renderedZoom : safeDisplayZoom,
             pageWidth: deps.getPageWidth(),
             pageHeight: deps.getPageHeight(),
-            viewportWidth: scrollContainer.clientWidth || rect.width || 0,
-            viewportHeight: scrollContainer.clientHeight || rect.height || 0,
+            viewportWidth: vp.width,
+            viewportHeight: vp.height,
             layoutOverride: layoutOverride ? {
                 hostWidth: layoutOverride.hostWidth,
                 hostHeight: layoutOverride.hostHeight,
@@ -81,7 +85,10 @@ export function createLayoutSync(deps: LayoutSyncDeps) {
         const contentLeft = Number.isFinite(layout?.contentLeft) ? layout.contentLeft : (fallback?.contentLeft ?? 0);
         const contentTop = Number.isFinite(layout?.contentTop) ? layout.contentTop : (fallback?.contentTop ?? 0);
 
-        wrapper.style.display = 'block';
+        // Visibility is owned by PresentationSurfaceOwner (ADR-0011): re-assert
+        // that a document is on screen. Geometry below stays here (size ≠
+        // visibility); the owner's show is idempotent and never hides.
+        getPresentationSurfaceOwner().showDocument();
         wrapper.style.position = 'relative';
         wrapper.style.width = `${hostWidth}px`;
         wrapper.style.height = `${hostHeight}px`;

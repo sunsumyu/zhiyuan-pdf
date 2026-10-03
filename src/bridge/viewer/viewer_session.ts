@@ -11,7 +11,7 @@
 // existing callers in `pdf_runtime.ts` etc. — only the implementation changed.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { emitPdfDiagnostic } from '../shared/diagnostics';
+import { emitPdfDiagnostic, verbosePdfDiagnosticsEnabled } from '../shared/diagnostics';
 import type { WasmModule } from '../shared/wasm_loader';
 import type { ViewerSession } from '../../../crates/pdf-viewer-ui/pkg/pdf_viewer_ui';
 
@@ -58,7 +58,12 @@ export function createViewerSessionAdapter(deps: ViewerSessionDeps): ViewerSessi
     function read(): ViewerSessionSnapshot {
         try {
             const snap = session()?.read();
-            emitPdfDiagnostic('VIEW', 'readSnap', { snap: snap ? JSON.stringify(snap) : 'null' }, { verboseOnly: true });
+            // ADR-0013/0014: read() is the hottest read path in the app — the
+            // stringify below must not run for a diagnostic that is dropped
+            // unless verbose tracing is on.
+            if (verbosePdfDiagnosticsEnabled()) {
+                emitPdfDiagnostic('VIEW', 'readSnap', { snap: JSON.stringify(snap ?? null) }, { verboseOnly: true });
+            }
             return {
                 path: snap?.path ?? null,
                 currentPage: snap?.currentPage ?? 0,

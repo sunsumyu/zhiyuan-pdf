@@ -1,5 +1,7 @@
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 import { logPdfLayoutTrace } from './layout_trace';
+import { getMainCanvasTransformOwner } from './canvas_transform_owner';
+import { getPresentationSurfaceOwner } from './presentation_surface_owner';
 
 export const VECTOR_CONTAINER_ID = 'pdf-page-container';
 export const VECTOR_CANVAS_ID = 'pdf-vector-main-canvas';
@@ -38,9 +40,9 @@ type ViewportCanvasFrame = {
 };
 
 export function hideLegacyRasterHost(): void {
-    const img = document.getElementById('pdf-render-target') as HTMLElement | null;
-    if (img) img.style.display = 'none';
-
+    // The raster surface (`pdf-render-target`) visibility is owned by
+    // PresentationSurfaceOwner (ADR-0011) — no write here. Only the legacy
+    // interaction root, which the owner does not manage, is hidden.
     const legacyRoot = document.getElementById('pdf-interaction-root') as HTMLElement | null;
     if (legacyRoot) legacyRoot.style.display = 'none';
 }
@@ -118,14 +120,19 @@ function applyCanvasCssBox(
     canvas.style.height = `${height}px`;
 }
 
-function hideDetailCanvas(refs: VectorHostRefs): void {
-    refs.backCanvas.style.visibility = 'hidden';
-    refs.backCanvas.style.opacity = '0';
+function clearDetailCanvasBitmap(refs: VectorHostRefs): void {
     const ctx = refs.backCanvas.getContext('2d', { alpha: false });
     if (ctx) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, refs.backCanvas.width, refs.backCanvas.height);
     }
+}
+
+/** Hide + clear the detail overlay. Visibility is the owner's job (ADR-0011);
+ *  clearing the pixels is the host's. */
+function hideDetailCanvas(refs: VectorHostRefs): void {
+    getPresentationSurfaceOwner().hideDetail();
+    clearDetailCanvasBitmap(refs);
 }
 
 function getPresentCanvas(refs: VectorHostRefs, useViewportTile: boolean): HTMLCanvasElement {
@@ -134,17 +141,14 @@ function getPresentCanvas(refs: VectorHostRefs, useViewportTile: boolean): HTMLC
 
 export function clearVectorCanvasHost(): void {
     logPdfLayoutTrace('canvas-host.clear.before');
-    const container = document.getElementById(VECTOR_CONTAINER_ID);
-    if (container) {
-        container.style.display = 'none';
-        container.style.visibility = 'hidden';
-        container.style.pointerEvents = 'none';
-    }
+    // Surface visibility has ONE owner (ADR-0011): the vector container is
+    // hidden here only as part of a full document teardown, so the owner must
+    // end in the `none` state. Do not write display/visibility directly.
+    getPresentationSurfaceOwner().hideAll();
 
     const img = document.getElementById('pdf-render-target') as HTMLElement | null;
     if (img) {
         img.removeAttribute('src');
-        img.style.display = 'none';
     }
 
     const legacyRoot = document.getElementById('pdf-interaction-root') as HTMLElement | null;
@@ -225,11 +229,11 @@ export function getExistingVectorCanvasHost(): VectorHostRefs | null {
 }
 
 export function hideVectorCanvasHostForPreview(): void {
-    const container = document.getElementById(VECTOR_CONTAINER_ID) as HTMLElement | null;
-    if (!container) return;
-    container.style.display = 'none';
-    container.style.visibility = 'hidden';
-    container.style.pointerEvents = 'none';
+    // Visibility is owned by PresentationSurfaceOwner (ADR-0011). This is only
+    // ever called on the path that immediately presents the raster surface, so
+    // it delegates to the owner — the raster is painted before the vector chain
+    // is hidden (show-before-hide), never leaving the page area unpainted.
+    getPresentationSurfaceOwner().showRaster();
 }
 
 export function getRenderBufferCanvas(refs: VectorHostRefs, useViewportTile: boolean): HTMLCanvasElement {
@@ -259,13 +263,12 @@ export function applyViewportCanvasFrame(
     if (!deferVisibleFrame) {
         applyCanvasCssBox(refs.mainCanvas, 0, 0, frame.domBoxWidth, frame.domBoxHeight);
         applyCanvasCssBox(refs.backCanvas, frame.viewportLeft, frame.viewportTop, frame.viewportWidth, frame.viewportHeight);
-        // Atomic transform reset: the canvas box now matches THIS frame's
-        // bitmap zoom, so any gesture-scale left by the zoom RAF tick is
-        // stale. Resetting here (same frame as the re-box) keeps the canvas
-        // visually continuous — same on-screen size before and after the
-        // swap — while the RAF tick re-drives the scale from the new
-        // lastRenderedZoom on its next frame.
-        refs.mainCanvas.style.transform = 'none';
+        // Atomic transform handoff (ADR-0010): the main canvas box is now
+        // page × displayZoom (presentViewportCanvasFromSource re-boxes it to
+        // the layer's display-space viewport in the same turn), so the owner
+        // records that box space and re-applies the live visual — same
+        // on-screen size before and after the swap, no other writer.
+        getMainCanvasTransformOwner(refs.mainCanvas).presentFrame(frame.displayZoom);
     }
 
     const baseScale =
@@ -310,18 +313,17 @@ export function presentViewportCanvas(
         options,
     });
     hideLegacyRasterHost();
-    refs.container.style.display = 'block';
-    refs.container.style.visibility = 'visible';
-    refs.container.style.pointerEvents = '';
-    refs.mainCanvas.style.visibility = 'visible';
-    refs.mainCanvas.style.opacity = '1';
-    // The visible canvas was re-boxed to the presented frame's bitmap zoom —
-    // any gesture-scale transform from the zoom RAF tick is stale now.
-    refs.mainCanvas.style.transform = 'none';
+    // Surface visibility is owned by PresentationSurfaceOwner (ADR-0011):
+    // showing the vector chain hides the raster surface atomically. The
+    // container/main-canvas display/visibility writes now live in one place.
+    const surface = getPresentationSurfaceOwner();
+    surface.showVector();
+    // Transform is owned by CanvasTransformOwner (ADR-0010) — the presenter
+    // re-boxed this canvas in the same JS turn, and the commit path records
+    // the new box space + re-applies the live visual. No write here.
 
     if (options.showDetailOverlay || options.retainDetailOverlay) {
-        refs.backCanvas.style.visibility = 'visible';
-        refs.backCanvas.style.opacity = '1';
+        surface.showDetail();
         emitPdfDiagnostic('present', 'canvas.visibility', {
             mainVisible: true,
             detailVisible: true,
@@ -334,7 +336,7 @@ export function presentViewportCanvas(
         return;
     }
 
-    hideDetailCanvas(refs);
+    surface.hideDetail();
     emitPdfDiagnostic('present', 'canvas.visibility', {
         mainVisible: true,
         detailVisible: false,

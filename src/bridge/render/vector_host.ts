@@ -1,5 +1,5 @@
 import { ensureWasmInitialized, getWasmApi } from '../shared/wasm_loader';
-import { invalidateVectorPageCache, resolveVectorPageBundle } from './vector_page_bundle';
+import { invalidateVectorPageCache, isAbortedRenderRequest, resolveVectorPageBundle } from './vector_page_bundle';
 import { updateTextLayer } from './text_layer';
 import {
     applyViewportCanvasFrame,
@@ -22,12 +22,13 @@ import {
 } from './vector_frame_cache';
 import { logPdfLayoutTrace } from './layout_trace';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
+import { getMainCanvasTransformOwner } from './canvas_transform_owner';
 import { createRenderWasmApi, type RenderExecutionPlan, type RenderLayerRuntimePlan } from './render_wasm_api';
 import type { VectorWorkerRequest, VectorWorkerResponse } from './vector_worker';
 
 let vectorWorker: Worker | null = null;
 let msgIdCounter = 0;
-const pendingVectorTasks = new Map<number, { resolve: (bitmap: ImageBitmap) => void; reject: (err: any) => void }>();
+const pendingVectorTasks = new Map<number, { resolve: (bitmap: ImageBitmap, workerMs?: number, recvDelayMs?: number) => void; reject: (err: any) => void }>();
 
 let workerLastPath: string | null = null;
 let workerLastPageIndex: number | null = null;
@@ -42,7 +43,7 @@ function ensureVectorWorker(): Worker {
                 const task = pendingVectorTasks.get(msg.msgId);
                 if (task) {
                     pendingVectorTasks.delete(msg.msgId);
-                    task.resolve(msg.bitmap);
+                    task.resolve(msg.bitmap, msg.workerMs, msg.recvDelayMs);
                 }
             } else if (msg.type === 'ERROR') {
                 const task = pendingVectorTasks.get(msg.msgId as number);
@@ -71,6 +72,23 @@ export type VectorRenderResult = {
 
 export type VectorCommitOptions = {
     beforePresent?: () => void;
+    /**
+     * Display zoom of the frame being committed — the zoom space the presenter
+     * just installed the main canvas box in. Handed to CanvasTransformOwner as
+     * the new box space (ADR-0010). No default: a commit without it leaves the
+     * owner's boxZoom unchanged, which is exactly right for a commit whose
+     * presents were skipped.
+     */
+    displayZoom?: number;
+    /**
+     * Live visual zoom read at commit time. The owner re-derives the canvas
+     * transform as `scale(visual / boxZoom)` from the box space it just
+     * recorded — never from a guess (lastRendered/renderZoom). Without this,
+     * the canvas shows `page × displayZoom` (transform stale) for one
+     * compositor frame while tiles sit at `page × visualZoom` (the 2026-09-30
+     * double-exposure during zoom-in reknock presents).
+     */
+    getVisualZoom?: () => number;
 };
 
 export type VectorLayerPresent = {
@@ -229,6 +247,7 @@ export function commitVectorRenderResult(result: VectorRenderResult, options: Ve
     // 2. presentViewportCanvasFromSource: writes new pixels to canvas + updates mainCanvas CSS box
     // 3. presentViewportCanvas: makes container display:block with correct pixels + correct CSS dims
     prepareVisibleFrame();
+    let basePresented = false;
     for (const pending of pendingPresents) {
         presentViewportCanvasFromSource(
             refs,
@@ -243,6 +262,20 @@ export function commitVectorRenderResult(result: VectorRenderResult, options: Ve
             showDetailOverlay: pending.showDetailOverlay,
             retainDetailOverlay: pending.retainDetailOverlay,
         });
+        // The base layer (useViewportTile=false) is the present that re-boxes
+        // the MAIN canvas — to page × displayZoom. Detail presents only touch
+        // backCanvas, so they must not move the owner's box space.
+        if (!pending.useViewportTile) basePresented = true;
+    }
+    // ADR-0010: hand the presenter's new main-canvas box space to the single
+    // owner, then re-apply the live visual in the same JS turn. This replaces
+    // the old `presentScale` guess (visual/renderZoom) — the box space is the
+    // frame's displayZoom, and the owner is the only writer.
+    if (basePresented && options.displayZoom != null) {
+        const owner = getMainCanvasTransformOwner(refs.mainCanvas);
+        owner.presentFrame(options.displayZoom);
+        const visual = options.getVisualZoom?.();
+        if (visual != null) owner.sync(visual);
     }
 
     logRenderChain('ts.deferred-present.commit', {
@@ -291,8 +324,7 @@ export async function renderVectorPageWithPlan(
     } catch (e: any) {
         const errMsg = typeof e === 'string' ? e : e?.message;
         if (
-            errMsg === 'stale frame' ||
-            (typeof errMsg === 'string' && errMsg.includes('stale page asset request')) ||
+            (typeof errMsg === 'string' && isAbortedRenderRequest(errMsg)) ||
             (frameToken !== undefined && !isFrameCurrent(frameToken))
         ) {
             return {
@@ -804,10 +836,16 @@ async function renderViewportProgressiveIfNeeded(
         return { aborted: true };
     }
 
+    // Phase timing (2026-09-28 perf probe): wasm prep on the main thread vs
+    // the worker round-trip vs the blit. If roundMs >> workerMs the main
+    // thread was blocked between postMessage and the reply — worker-bound if
+    // they match.
+    const tWasm0 = performance.now();
     const start = renderApi.startProgressiveRender() as
         | { started?: boolean; totalItems?: number }
         | null
         | undefined;
+
     const renderTarget = getRenderBufferCanvas(refs, useViewportTile);
 
     if (
@@ -844,6 +882,7 @@ async function renderViewportProgressiveIfNeeded(
     const useProgressive = !!start?.started && !!policy?.useProgressive;
 
     renderApi.cancelProgressiveRender(); // Cancel main thread render, worker will do it.
+    const wasmMs = Math.round((performance.now() - tWasm0) * 10) / 10;
 
     const worker = ensureVectorWorker();
     const msgId = ++msgIdCounter;
@@ -869,8 +908,17 @@ async function renderViewportProgressiveIfNeeded(
         );
     }
 
+    let workerMsObserved = -1;
+    let recvDelayObserved = -1;
     const promise = new Promise<ImageBitmap>((resolve, reject) => {
-        pendingVectorTasks.set(msgId, { resolve, reject });
+        pendingVectorTasks.set(msgId, {
+            resolve: (bitmap, workerMs, recvDelayMs) => {
+                workerMsObserved = workerMs ?? -1;
+                recvDelayObserved = recvDelayMs ?? -1;
+                resolve(bitmap);
+            },
+            reject,
+        });
     });
 
     const dpr = window.devicePixelRatio || 1;
@@ -881,9 +929,11 @@ async function renderViewportProgressiveIfNeeded(
         revision !== undefined &&
         claimWorkerPageContext(path, pageIndex, revision);
 
+    const tRound0 = performance.now();
     worker.postMessage({
         type: 'RENDER_PAGE',
         msgId,
+        postedAt: tRound0,
         isSamePage,
         modelJson: isSamePage ? undefined : JSON.stringify(model ?? {}),
         paintPlanJson: isSamePage ? undefined : JSON.stringify(paintPlan ?? {}),
@@ -908,6 +958,7 @@ async function renderViewportProgressiveIfNeeded(
         console.error('Worker render failed', err);
         return { aborted: true };
     }
+    const roundMs = Math.round((performance.now() - tRound0) * 10) / 10;
 
     if (
         isProgressivePipelineStale() || (
@@ -918,6 +969,7 @@ async function renderViewportProgressiveIfNeeded(
         return { aborted: true };
     }
 
+    const tBlit0 = performance.now();
     const ctx = renderTarget.getContext('2d');
     if (ctx) {
         // clear just in case
@@ -925,6 +977,18 @@ async function renderViewportProgressiveIfNeeded(
         ctx.drawImage(bitmap, 0, 0);
     }
     bitmap.close();
+    const blitMs = Math.round((performance.now() - tBlit0) * 10) / 10;
+    emitPdfDiagnostic('PROF', 'reknock-phase-timing', {
+        wasmMs,
+        roundMs,
+        workerMs: workerMsObserved,
+        recvDelayMs: recvDelayObserved,
+        blitMs,
+        w: renderTarget.width,
+        h: renderTarget.height,
+        prog: useProgressive,
+        tile: useViewportTile,
+    });
 
     return null;
 }

@@ -32,6 +32,9 @@ type Sample = {
      *  relative and moves with scroll). */
     scrollLeft: number;
     scrollTop: number;
+    scrollerLeft?: number;
+    containerStyleLeft?: string;
+    containerStyleTop?: string;
 };
 
 const WHEEL_STEPS = 6;
@@ -53,10 +56,17 @@ describe('Zoom wheel sudden jump', () => {
                     const r = e.getBoundingClientRect();
                     return { width: r.width, height: r.height, left: r.left, top: r.top };
                 };
+                const scroller = document.getElementById('pdf-scroll-container');
+                const container = document.getElementById('pdf-page-container');
                 return {
                     zoom: (window as any).wasmv3?.getZoomState?.(),
                     container: box('pdf-page-container'),
                     mainCanvas: box('pdf-vector-main-canvas'),
+                    scrollLeft: scroller ? scroller.scrollLeft : -1,
+                    scrollTop: scroller ? scroller.scrollTop : -1,
+                    scrollerLeft: scroller ? scroller.getBoundingClientRect().left : -1,
+                    containerStyleLeft: container ? container.style.left : '(none)',
+                    containerStyleTop: container ? container.style.top : '(none)',
                 };
             })) as Sample;
 

@@ -37,7 +37,6 @@ use crate::render::progressive_workflow::{
     step_progressive_render_offscreen as inner_step_progressive_render_offscreen,
 };
 use crate::render::workflow::RenderFrameEnvelope;
-use crate::viewer::viewer_controller::set_zoom;
 use crate::zoom::zoom_controller::read_zoom_state;
 use crate::zoom::zoom_controller::step_zoom_frame_plan as inner_step_zoom_frame_plan;
 use pdf_viewer_core::render::progressive::resolve_progressive_render_policy_request;
@@ -118,7 +117,7 @@ pub fn is_render_frame_current(frame_token: u32) -> bool {
 
 #[wasm_bindgen(js_name = "scheduleRenderFollowUp")]
 pub fn schedule_render_follow_up(rendered_display_zoom: f32, request_js: JsValue) -> JsValue {
-    let request: FramePlanRequest = from_value(request_js).unwrap_or_default();
+    let mut request: FramePlanRequest = from_value(request_js).unwrap_or_default();
     let zoom_state = read_zoom_state();
     let decision = resolve_render_follow_up_decision(
         rendered_display_zoom,
@@ -128,7 +127,19 @@ pub fn schedule_render_follow_up(rendered_display_zoom: f32, request_js: JsValue
     if !decision.schedule_latest_target {
         return JsValue::NULL;
     }
-    set_zoom(decision.target_zoom);
+    // ADR-0019: the follow-up is a render-side actor — it reads the zoom
+    // authority but must never write it. The pre-ADR-0017 `set_zoom` here
+    // wrote `decision.target_zoom`, which mid-gesture equals the CURRENT
+    // VISUAL — overwriting the user's target and truncating the zoom step to
+    // wherever the animation happened to be (a single wheel step landing at
+    // 0.96 instead of 0.9013 in ~1/3 of E2E runs). The authority is written
+    // only by user-gesture paths.
+    // ADR-0017 (still load-bearing): the caller builds the request at the
+    // *already-rendered* zoom; re-using it verbatim re-renders that stale
+    // zoom forever (`needs_render(target, rendered)` never clears — the
+    // hard freeze). The decision is the single authority on the follow-up's
+    // render zoom; the execution adopts it here.
+    request.display_zoom = decision.target_zoom;
     match schedule_render_frame_request(&request) {
         Some(frame) => to_value(&frame).unwrap_or(JsValue::NULL),
         None => JsValue::NULL,

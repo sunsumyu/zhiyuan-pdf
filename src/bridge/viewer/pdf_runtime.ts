@@ -248,6 +248,8 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         getPageHeight: () => getCurrentPageHeightValue(),
         getScrollContainer,
         getVectorContainer,
+        getMainCanvas: () =>
+            document.getElementById('pdf-vector-main-canvas') as HTMLCanvasElement | null,
     });
 
     const zoomController = createZoomController({
@@ -295,6 +297,14 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
         void renderFlow.renderCurrentPage('zoom', readZoomState().visualZoom);
     };
 
+    // ADR-0018: the zoom animation clock (Rust RAF) knocks this once per
+    // animation frame, immediately after advancing visual_zoom. The tile
+    // layer re-syncs the canvas transform + tile present scales in the same
+    // JS turn, so the DOM can never lag the animation by a scheduling offset.
+    // Same fixed-global pattern as the settle knock above: no registrable
+    // callback, Rust only invokes whatever single function sits here.
+    (window as any).__pdfZoomAnimationFrame = () => tileLayer.onZoomAnimationFrame();
+
     renderFlow = createRenderFlow({
         targetInvokeV3,
         viewerSession,
@@ -308,6 +318,7 @@ export function createPdfViewerRuntime(): PdfViewerRuntime {
             });
             zoomController.commitRenderedFrame(frame);
         },
+        getVisualZoom: () => readZoomState().visualZoom,
         getWrapper,
         getRasterTarget,
         getEmptyState,

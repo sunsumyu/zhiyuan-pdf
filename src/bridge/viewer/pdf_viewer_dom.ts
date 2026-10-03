@@ -1,4 +1,5 @@
 import { VECTOR_CONTAINER_ID } from '../render/vector_host';
+import { getPresentationSurfaceOwner } from '../render/presentation_surface_owner';
 
 export const DEFAULT_PAGE_WIDTH = 595;
 export const DEFAULT_PAGE_HEIGHT = 842;
@@ -46,18 +47,20 @@ export function clampZoom(nextZoom: number): number {
 }
 
 export function showDocumentWrapper(): void {
-    const wrapper = getWrapper();
+    // Page-surface visibility has ONE owner (ADR-0011) — revealing the wrapper
+    // and re-asserting the active surface is the owner's job.
     const emptyState = getEmptyState();
-    if (wrapper) wrapper.style.display = 'block';
+    getPresentationSurfaceOwner().showDocument();
     if (emptyState) emptyState.style.display = 'none';
 }
 
 export function showEmptyDocumentState(): void {
-    const wrapper = getWrapper();
     const emptyState = getEmptyState();
     const pageIndicator = getPageIndicator();
+    const wrapper = getWrapper();
+    // Owner hides the wrapper + both surfaces (the `none` state).
+    getPresentationSurfaceOwner().hideAll();
     if (wrapper) {
-        wrapper.style.display = 'none';
         wrapper.style.width = '';
         wrapper.style.height = '';
     }

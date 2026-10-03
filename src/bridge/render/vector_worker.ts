@@ -7,6 +7,9 @@ export type VectorWorkerRequest =
         type: 'RENDER_PAGE';
         msgId: number;
         isSamePage: boolean;
+        /** Main-thread performance.now() before postMessage — lets the worker
+         *  report delivery delay (queue wait) separately from render time. */
+        postedAt?: number;
         modelJson?: string;
         paintPlanJson?: string;
         zoom: number;
@@ -29,9 +32,9 @@ export type VectorWorkerRequest =
       }
     | { type: 'CANCEL_RENDER' };
 
-export type VectorWorkerResponse = 
+export type VectorWorkerResponse =
     | { type: 'INIT_DONE' }
-    | { type: 'RENDER_DONE'; msgId: number; bitmap: ImageBitmap; aborted?: boolean }
+    | { type: 'RENDER_DONE'; msgId: number; bitmap: ImageBitmap; aborted?: boolean; workerMs?: number; recvDelayMs?: number }
     | { type: 'ERROR'; msgId?: number; error: string };
 
 let renderCancelled = false;
@@ -49,6 +52,15 @@ self.onmessage = async (e: MessageEvent<VectorWorkerRequest>) => {
             await ensureWasmInitialized();
             self.postMessage({ type: 'INIT_DONE' });
         } else if (msg.type === 'RENDER_PAGE') {
+            // Phase timing for the 2026-09-28 perf probe: how long the WORKER
+            // thread spends per render (wasm render + bitmap transfer), so the
+            // client can separate worker cost from main-thread blockage.
+            // recvDelayMs = main postMessage → worker handler start (same time
+            // origin), i.e. worker-queue wait + cross-thread delivery.
+            const tWorker0 = performance.now();
+            const recvDelayMs = Number.isFinite(msg.postedAt)
+                ? Math.round((tWorker0 - (msg.postedAt as number)) * 10) / 10
+                : -1;
             renderCancelled = false;
             await ensureWasmInitialized();
             const wasm = createRenderWasmApi(getWasmApi);
@@ -93,7 +105,7 @@ self.onmessage = async (e: MessageEvent<VectorWorkerRequest>) => {
                     while (guard < 4000) {
                         if (renderCancelled) {
                             wasm.cancelProgressiveRender();
-                            (self as any).postMessage({ type: 'RENDER_DONE', msgId: msg.msgId, bitmap: null, aborted: true });
+                            (self as any).postMessage({ type: 'RENDER_DONE', msgId: msg.msgId, bitmap: null, aborted: true, workerMs: Math.round((performance.now() - tWorker0) * 10) / 10 });
                             return;
                         }
                         const step = wasm.stepProgressiveRenderOffscreen(
@@ -120,7 +132,7 @@ self.onmessage = async (e: MessageEvent<VectorWorkerRequest>) => {
             }
             
             const bitmap = canvas.transferToImageBitmap();
-            (self as any).postMessage({ type: 'RENDER_DONE', msgId: msg.msgId, bitmap }, [bitmap]);
+            (self as any).postMessage({ type: 'RENDER_DONE', msgId: msg.msgId, bitmap, workerMs: Math.round((performance.now() - tWorker0) * 10) / 10, recvDelayMs }, [bitmap]);
         }
     } catch (err) {
         console.error('[VectorWorker] Error:', err);

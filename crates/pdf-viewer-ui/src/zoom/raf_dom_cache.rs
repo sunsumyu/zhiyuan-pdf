@@ -10,26 +10,24 @@ use wasm_bindgen::JsCast;
 pub(super) struct DomCache {
     pub container: web_sys::HtmlElement,
     pub scroll_container: web_sys::HtmlElement,
-    /// Raster/preview sibling surface (`pdf-render-target`) — hidden at
-    /// gesture start per ADR-0002 (I3 single active surface).
-    pub raster: Option<web_sys::HtmlElement>,
-    /// Main vector canvas (`pdf-vector-main-canvas`) — carries the base
-    /// bitmap. The RAF tick drives a compositor-only CSS scale on it during
-    /// gestures for continuous visual zoom between reknock presents.
-    pub main_canvas: Option<web_sys::HtmlElement>,
 }
 
 // ─── DOM element IDs ──────────────────────────────────────────────
 //
 // Must match the TS bridge exactly:
 //   - vector_canvas_host.ts creates the page container with id "pdf-page-container"
-//     and the main vector canvas with id "pdf-vector-main-canvas"
 //   - index.html declares the static scroll container "pdf-scroll-container"
-//     and the raster sibling canvas "pdf-render-target"
+//
+// The main vector canvas (`pdf-vector-main-canvas`) is deliberately absent:
+// its CSS transform is owned by the TS CanvasTransformOwner (ADR-0010), so the
+// Rust RAF loop no longer resolves or touches it.
+//
+// Page-surface VISIBILITY (container/raster display) is owned by the TS
+// PresentationSurfaceOwner (ADR-0011). The RAF loop resolves the container here
+// only for its layout box and never writes display/visibility; the raster
+// surface is not resolved at all.
 pub(super) const VECTOR_CONTAINER_ID: &str = "pdf-page-container";
 pub(super) const SCROLL_CONTAINER_ID: &str = "pdf-scroll-container";
-pub(super) const RASTER_TARGET_ID: &str = "pdf-render-target";
-pub(super) const VECTOR_MAIN_CANVAS_ID: &str = "pdf-vector-main-canvas";
 
 thread_local! {
     /// Cached DOM element references — resolved once on first use per loop session.
@@ -67,24 +65,13 @@ pub(super) fn init_dom_cache() {
             .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok());
         let scroll_container = get_element_by_id(SCROLL_CONTAINER_ID)
             .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok());
-        let raster = get_element_by_id(RASTER_TARGET_ID)
-            .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok());
-        let main_canvas = get_element_by_id(VECTOR_MAIN_CANVAS_ID)
-            .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok());
 
         if let (Some(container), Some(scroll_container)) = (container, scroll_container) {
             // Set transform-origin once — it never changes
             let _ = container.style().set_property("transform-origin", "0 0");
-            if let Some(canvas) = main_canvas.as_ref() {
-                // Canvas scale grows from the container's top-left, matching
-                // the layout-origin of the content box.
-                let _ = canvas.style().set_property("transform-origin", "0 0");
-            }
             *cache.borrow_mut() = Some(DomCache {
                 container,
                 scroll_container,
-                raster,
-                main_canvas,
             });
         }
     });

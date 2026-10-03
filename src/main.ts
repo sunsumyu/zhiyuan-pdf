@@ -2,6 +2,7 @@
 
 import { plugin } from './bridge';
 import { getPdfViewerAPI } from './bridge/viewer/pdf_viewer_api';
+import { invalidateViewportGeometry } from './bridge/viewer/viewport_geometry';
 import { invoke } from '@tauri-apps/api/core';
 // 应用内自验证：挂 `window.verifyEditorBugs()` 到全局，DevTools 控制台可直调。
 import './dev/verify_editor_bugs';
@@ -201,6 +202,9 @@ async function init() {
             sidebar.style.minWidth = isCollapsed ? 'var(--sidebar-width)' : '0px';
             icon?.classList.toggle('fa-angle-left', !isCollapsed);
             icon?.classList.toggle('fa-angle-right', isCollapsed);
+            // ADR-0014: this changes the scroll container's width — the cached
+            // viewport geometry must be re-measured.
+            invalidateViewportGeometry();
         }
     });
 

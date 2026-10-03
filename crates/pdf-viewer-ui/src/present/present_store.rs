@@ -35,6 +35,10 @@ pub fn with_present_state<R>(f: impl FnOnce(&HostPresentState) -> R) -> R {
     PRESENT_STATE.with(|state| f(&state.borrow()))
 }
 
+pub fn with_frame_cache_state<R>(f: impl FnOnce(&HostFrameCacheState) -> R) -> R {
+    FRAME_CACHE_STATE.with(|state| f(&state.borrow()))
+}
+
 pub fn build_frame_plan_result(request: &FramePlanRequest) -> FramePlanResult {
     // Read the viewer session BEFORE borrowing ZOOM_STATE mutably.
     // read_viewer_session() reads ZOOM_STATE.target_zoom (ADR-0001), so it
@@ -43,13 +47,16 @@ pub fn build_frame_plan_result(request: &FramePlanRequest) -> FramePlanResult {
     let viewer_session = viewer_store::read_viewer_session();
     zoom_store::with_zoom_state_mut(|zoom_state| {
         PRESENT_STATE.with(|present_state| {
-            inner_build_frame_plan_result(
-                request,
-                zoom_state,
-                &viewer_session,
-                &present_state.borrow(),
-                &render_scene_key(),
-            )
+            FRAME_CACHE_STATE.with(|frame_cache| {
+                inner_build_frame_plan_result(
+                    request,
+                    zoom_state,
+                    &viewer_session,
+                    &present_state.borrow(),
+                    &render_scene_key(),
+                    &frame_cache.borrow(),
+                )
+            })
         })
     })
 }

@@ -13,6 +13,7 @@
  */
 
 import { logPdfLayoutTrace } from '../render/layout_trace';
+import { emitPdfDiagnostic } from '../shared/diagnostics';
 
 type AnchorViewportLayout = {
     hostWidth: number;
@@ -124,11 +125,15 @@ export function createZoomController(deps: ZoomControllerDeps): ZoomController {
             };
 
             // Single WASM call — replaces 4-5 old calls
+            const tW = performance.now();
             const result = deps.onWheelEvent(input);
+            const wasmMs = Math.round((performance.now() - tW) * 10) / 10;
+
             // Wake zoom listeners (tile layer marks animation start/end).
             try { deps.onZoomGesture?.(); } catch {}
 
-            deps.syncZoomSelect();
+            try { deps.syncZoomSelect(); } catch {}
+            emitPdfDiagnostic('PROF', 'wheel-event-timing', { wasmMs });
         }, { passive: false });
 
         wheelZoomBound = true;

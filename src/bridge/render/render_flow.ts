@@ -4,7 +4,7 @@ import type { FramePlanAdapter, RenderReason, RustRenderCommitResult, RustRender
 import type { ViewerSessionAdapter } from '../viewer/viewer_session';
 import type { PagePresentationRuntimeAdapter } from '../viewer/page_presentation_runtime';
 import { logPdfLayoutTrace } from './layout_trace';
-import { emitPdfDiagnostic } from '../shared/diagnostics';
+import { emitPdfDiagnostic, verbosePdfDiagnosticsEnabled } from '../shared/diagnostics';
 
 type RenderFlowDeps = {
     targetInvokeV3: (cmd: string, args: any) => Promise<any>;
@@ -25,6 +25,8 @@ type RenderFlowDeps = {
     scheduleRenderFollowUp: (renderedDisplayZoom: number) => RustRenderFrame | null;
     commitRenderResult: (frameToken: number, renderedZoom: number, pageWidth: number, pageHeight: number) => RustRenderCommitResult | null;
     onRenderCommitted: () => void;
+    /** Live visual zoom (ADR-0009 present-frame continuity scale numerator). */
+    getVisualZoom: () => number;
 };
 
 export type VisibleSurface = 'preview' | 'vector' | 'detail' | 'raster';
@@ -314,7 +316,14 @@ async function strategyVectorRender(ctx: RenderFlowContext): Promise<StrategyRes
                     { frameToken: currentFrame.frameToken, pendingPresentCount: result.pendingPresents?.length ?? 0 },
                 );
 
-                commitVectorRenderResult(result, { beforePresent: beforePresentCb });
+                commitVectorRenderResult(result, {
+                    beforePresent: beforePresentCb,
+                    // ADR-0010: the presenter installs the main canvas box in
+                    // plan.displayZoom units; the owner records that box space
+                    // and re-derives the transform from the live visual zoom.
+                    displayZoom: renderPlan.displayZoom,
+                    getVisualZoom: () => deps.getVisualZoom(),
+                });
 
                 logPdfLayoutTrace(
                     renderPlan.prepareVisibleLayout === false
@@ -465,7 +474,25 @@ export function createRenderFlow(deps: RenderFlowDeps) {
             lastRenderedPageIndex: null as number | null,
         };
 
+        // ADR-0017 defense-in-depth: a follow-up frame must converge to the
+        // target zoom, so this loop terminates in a handful of iterations.
+        // A runaway (a non-converging follow-up, ~200 frames/s) would starve
+        // the main thread and wedge the app. Bound it so a future regression
+        // degrades to a dropped frame instead of a hard freeze.
+        const MAX_RENDER_LOOP_ITERATIONS = 120;
+        let iterations = 0;
+
         while (renderFrame) {
+            if (++iterations > MAX_RENDER_LOOP_ITERATIONS) {
+                emitPdfDiagnostic('render-flow', 'render-loop.runaway-abort', {
+                    iterations,
+                    lastFrameToken: renderFrame.frameToken,
+                    reason: renderFrame.framePlan.renderReason,
+                    displayZoom: renderFrame.framePlan.displayZoom,
+                }, { level: 'ERROR' });
+                deps.framePlanAdapter.abortRender(renderFrame.frameToken);
+                break;
+            }
             const currentFrame = renderFrame;
             const session = deps.viewerSession.read();
 
@@ -623,22 +650,30 @@ export function createRenderFlow(deps: RenderFlowDeps) {
         const effectiveZoom = Number.isFinite(zoomOverride)
             ? (zoomOverride as number)
             : session.currentZoom;
-        const plan = session.path
-            ? deps.framePlanAdapter.peek(effectiveZoom, renderReason)
+        // ADR-0021: peek and scheduleRender take identical inputs back-to-back;
+        // build the request once so the render entry costs one layout-forcing
+        // DOM read instead of two (~190 → ~95 forced layouts per gesture).
+        const request = session.path
+            ? deps.framePlanAdapter.buildRenderRequest(effectiveZoom, renderReason)
             : null;
-        const scheduled = session.path
-            ? deps.framePlanAdapter.scheduleRender(effectiveZoom, renderReason)
+        const plan = request
+            ? deps.framePlanAdapter.peek(effectiveZoom, renderReason, request)
             : null;
-        logRenderFlow('render-current-page.scheduled', {
-            hasPath: !!session.path,
-            page: session.currentPage,
-            pageCount: session.pageCount,
-            zoom: effectiveZoom,
-            scheduled: !!scheduled,
-            reason: renderReason,
-            planJson: JSON.stringify(plan),
-            scheduledJson: JSON.stringify(scheduled),
-        });
+        const scheduled = request
+            ? deps.framePlanAdapter.scheduleRender(effectiveZoom, renderReason, request)
+            : null;
+        if (verbosePdfDiagnosticsEnabled()) {
+            logRenderFlow('render-current-page.scheduled', {
+                hasPath: !!session.path,
+                page: session.currentPage,
+                pageCount: session.pageCount,
+                zoom: effectiveZoom,
+                scheduled: !!scheduled,
+                reason: renderReason,
+                planJson: JSON.stringify(plan),
+                scheduledJson: JSON.stringify(scheduled),
+            });
+        }
         if (plan) {
             logRenderFlow('render-current-page.plan_layers', {
                 renderBaseLayer: plan.renderBaseLayer,

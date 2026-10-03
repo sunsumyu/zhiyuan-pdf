@@ -20,16 +20,19 @@ pub fn step_zoom_animation() -> crate::zoom::zoom_store::ZoomAnimationStep {
 pub fn step_zoom_frame_plan(request: &FramePlanRequest) -> ZoomPreviewFrame {
     let viewer_session = viewer_store::read_viewer_session();
     present_store::with_present_state(|present_state| {
-        ZOOM_STATE.with(|state| {
-            let mut state = state.borrow_mut();
-            build_zoom_preview_frame(request, &mut state, |frame_request, zoom_state| {
-                build_frame_plan_result(
-                    frame_request,
-                    zoom_state,
-                    &viewer_session,
-                    present_state,
-                    &render_scene_key(),
-                )
+        present_store::with_frame_cache_state(|frame_cache| {
+            ZOOM_STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                build_zoom_preview_frame(request, &mut state, |frame_request, zoom_state| {
+                    build_frame_plan_result(
+                        frame_request,
+                        zoom_state,
+                        &viewer_session,
+                        present_state,
+                        &render_scene_key(),
+                        frame_cache,
+                    )
+                })
             })
         })
     })
