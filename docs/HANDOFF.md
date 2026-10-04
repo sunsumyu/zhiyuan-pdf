@@ -4,7 +4,30 @@
 > 存于 git 历史（b6a4920 / 8f119fc 之前的版本）；细节以 docs/adr/ 与
 > docs/bug-postmortems/ 为准。仓库宪法见根目录 **AGENTS.md**。
 
-## 最新会话 2026-10-04 — 瓦片泵并发：实现后否决回滚（ADR-0025）
+## 最新会话 2026-10-04 — P2 内容档位实测：分布双峰，杠杆更正，决策不动
+
+- 用 `zoom_gesture_tilegrid_probe.spec.ts`（**零插桩**：配对诊断历史
+  `ts.layer.rendered(useViewportTile)` ↔ 其前的 `ts.layer-plan`）测得
+  **屏幕上实际呈现**的补丁档位——此前用 `ts.layer-plan.displayZoom` 测的是
+  请求目标 zoom，构造上滞后恒 0，不代表屏幕内容（两个测量陷阱都已记入探针
+  注释）。
+- **4 轮实测**（16 步 ctrl-wheel 1→5.28×）：滞后分布**双峰**——约半数帧 0；
+  瞬态两段（快速爬升段 `render_in_flight` 抑制 reknock + **收敛尾段 ~800ms**
+  RAF `stop_zoom_raf_loop()` 后补丁停在最后成功档），上四分位 11–21 档、
+  峰值 15–27 档（高 zoom 区 **CSS 拉伸 ~13–14%**，可见模糊）。
+- **两个更正**：(1) P2 是**补丁**的内容新鲜度问题，不能映射到瓦片网格
+  （`pdf-tile-layer` DOM 手势中按设计冻结——持开页 settle 瓦片被拉伸，
+  settle 才重排）；(2) 尾段滞后与 reknock 节流（`PREVIEW_REKNOCK_*`）
+  **无关**——RAF 已停，reknock 不参与；真正窗口是「RAF 停止 → settle
+  渲染落地」。
+- **决策：P2 不动**。再优化应从 settle 渲染启动时机入手；结合 ADR-0025
+  （加重渲染负载 → 更多长任务）风险大于收益。postmortem P2 段已写实测
+  数据与结论。
+- 另修：diag 诊断截图 untrack + gitignore（`d289810`，避免每次跑 spec
+  污染工作区）；ADR-0024 契约去 flaky 并在并发全套件验证（`72c961d`/
+  `2beb986`）；全 E2E 22 spec 绿（`458b092`）。
+
+## 会话 2026-10-04 — 瓦片泵并发：实现后否决回滚（ADR-0025）
 
 - 推进 HANDOFF 未决 #3（瓦片并行）。取证：worker 单瓦片 p50=1ms/p90=4.4ms
   （CPU 空闲）、手势队列峰值 52、TS 泵单飞行。**据此假设泵是瓶颈**，
