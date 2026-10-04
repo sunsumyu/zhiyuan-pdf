@@ -151,6 +151,14 @@ outside the displayed page"（首帧 ms=179，rects 记录补丁右/下缘超出
 zoom 全套件 15 spec：并发轮 1 个假失败（4-worker 已知类别），15/15
 单跑全绿（blank/p2/writer/frame/sudden_jump 逐个验证）。
 
+**2026-10-04 契约加固**：初版把 rAF 采样帧数当非空转门槛
+（`frames<60` / rest 窗 `<30`），负载下 rAF 帧率下降（长任务占主线程）
+→ 误报 "sampler captured too few frames: 42-48"，而**几何不变量本身
+从未失败**。改为语义门槛（`frames<15` / rest 窗 `<8`，仅防采样器死亡；
+真正的非空转靠"手势确实缩小 + 补丁确实可见"两条语义断言），与姊妹契约
+`zoom_gesture_frame_contract` 一致（后者不用帧数门槛）。加固后连跑 7 次
+全绿；变异（`s=1`）仍被捕获（"3/43 帧越界"）——证明降门槛未削弱测试牙。
+
 ## References
 
 - docs/bug-postmortems/2026-10-03-backcanvas-stale-patch.md（取证与

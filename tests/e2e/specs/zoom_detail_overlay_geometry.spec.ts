@@ -198,7 +198,12 @@ describe('Detail overlay geometry contract (ADR-0024)', () => {
             );
             frames.push(...(chunk as any[]));
         }
-        if (frames.length < 60) {
+        // Frame count is NOT a correctness signal: rAF is throttled when the
+        // main thread is busy (long tasks during the burst), so a healthy run
+        // can sample anywhere from ~5 to ~60 fps. The gates below are the
+        // semantic ones (gesture fired, patch engaged, rest window covered);
+        // this floor only catches a dead/never-started sampler.
+        if (frames.length < 15) {
             throw new Error(`sampler captured too few frames: ${frames.length}`);
         }
 
@@ -234,7 +239,10 @@ describe('Detail overlay geometry contract (ADR-0024)', () => {
 
         // ── 6. P1 permanent variant: the 2s REST window was sampled and clean ──
         const restFrames = frames.filter((f) => f.ms >= GESTURE_END_MS + 500);
-        if (restFrames.length < 30) {
+        // Same reasoning as the frame floor above — a busy main thread lowers
+        // the rest-window sample rate; require only that the window was
+        // actually covered (>= 8 samples over ~2s), not a specific fps.
+        if (restFrames.length < 8) {
             throw new Error(`rest window under-sampled (${restFrames.length} frames)`);
         }
         const restViolations = restFrames.filter((f) => f.vis === 1 && f.ok !== 1);
