@@ -4,7 +4,24 @@
 > 存于 git 历史（b6a4920 / 8f119fc 之前的版本）；细节以 docs/adr/ 与
 > docs/bug-postmortems/ 为准。仓库宪法见根目录 **AGENTS.md**。
 
-## 最新会话 2026-10-04 — P1 修复：DetailOverlayOwner（ADR-0024）
+## 最新会话 2026-10-04 — 瓦片泵并发：实现后否决回滚（ADR-0025）
+
+- 推进 HANDOFF 未决 #3（瓦片并行）。取证：worker 单瓦片 p50=1ms/p90=4.4ms
+  （CPU 空闲）、手势队列峰值 52、TS 泵单飞行。**据此假设泵是瓶颈**，
+  实现有界并发泵（上限 4 + 重复键守卫），红灯契约 6/6 绿，全量门禁绿。
+- **决定性 A/B（同代码只改 `MAX_INFLIGHT_TILES`）证伪假设**：cap=4 的
+  排空窗口（3630–4393ms）比 cap=1（3315ms）**更慢**、长任务**更多**、
+  rAF 帧数**更低**，而 `cache.ready` **两者都是 36** —— 零吞吐收益 + 增加 jank。
+- **根因修正**：队列深度 52 是手势期持续流式入队的正常 churn（Rust 只在
+  出队时清理陈旧/重复项，`queue_size` 是上界非待办数）；真实工作 ≈36 张，
+  两配置都按时完成，**没有可加速的积压**。60ms reknock 节流是**内容新鲜度**
+  问题（P2 残余），非吞吐问题。
+- **决定：回滚**（`tile_layer.ts` 还原到 ADR-0024 已提交态；删除新增契约）。
+  全文与复盘 → `docs/adr/0025-tile-pump-concurrency-rejected.md`
+  （含"未来重试前置条件"：须先证明真实积压、且 A/B 不劣化）。
+- 无源码净变更；仅 ADR-0025 + 本 HANDOFF 入库。
+
+## 会话 2026-10-04 — P1 修复：DetailOverlayOwner（ADR-0024）
 
 - backCanvas 陈旧视口补丁（前会话录屏定位的 P1/P3）已按红灯契约流程修复：
   - 红灯先行：`src/__tests__/detail_overlay_owner.test.ts` 7 例（模块不存在
@@ -61,15 +78,18 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
 
 ## 未决事项 / 后续建议
 
-1. P2 残余：reknock 节流 60ms + 串行 worker → 手势中补丁**内容**仍落后
-   visual 1–3 档（几何已对齐、E2E 已封，只剩内容档位差，设计内）。若仍
-   嫌糊可调 `PREVIEW_REKNOCK_INTERVAL_MS` / 允许瓦片 2-3 并行（见 #3）。
+1. P2 残余：手势中可见瓦片**内容**落后 visual 1–3 档（几何已对齐、E2E 已封，
+   只剩内容档位差）。真实杠杆是 **reknock 节流**（`PREVIEW_REKNOCK_INTERVAL_MS
+   = 60ms` + `PREVIEW_REKNOCK_BLUR_THRESHOLD = 0.02`），**不是**泵吞吐——
+   ADR-0025 已实测瓦片泵并行无收益（见下 #3）。若仍嫌糊，调这两个常量。
 2. resize 期间锚点重置 — `syncHostLayout` 仍写居中 offset（ADR-0008 Negative）。
-3. 瓦片并行渲染 — `pumpRequest` 单飞行，一屏瓦片串行填充；若滚动仍慢可
-   允许 2-3 张并行（HANDOFF 历史未决 #3）。
+3. ~~瓦片并行渲染~~ — **2026-10-04 实测否决**（ADR-0025）：单飞行非瓶颈
+   （worker 1–4ms/张，CPU 空闲；队列深度是流式 churn 非积压）；并发泵
+   A/B 显示零吞吐收益且增加 jank，已回滚。**不再作为待办**。
 4. vello-wasm + WebGPU prototype（GPU 矢量逐帧金标准，ADR-0009 引用段）。
 5. E2E 并发 4 worker 偶发假失败 — 判定失败前先单独重跑该 spec
-   （2026-10-04 zoom 全套件再现一例：15/15 单跑全绿）。
+   （2026-10-04 zoom 全套件再现一例：15/15 单跑全绿；detail_overlay
+   契约的 rAF 采样帧数亦受并发轮影响，单跑稳定）。
 
 ## 运维：E2E 必须对打包产物跑（否则 boot 闪烁）
 
@@ -133,6 +153,7 @@ npm run e2e -- --spec "tests/e2e/specs/zoom_*.spec.ts"
 | 0022 | `stale frame` 假 ERROR 污染错误流 → abort 判定单一所有者，降级 DEBUG（免 IPC） |
 | 0023 | 幻影 base 缓存条目 → settle 持续模糊（R=0.812 不恢复）→ 条目 ⇔ 真实位图，复用校验 TS frame cache |
 | 0024 | backCanvas 视口补丁无几何补偿 → 静止态"白色假页面"+手势双重曝光 → DetailOverlayOwner（第三表面纳入 ADR-0009 统一公式） |
+| 0025 | 瓦片泵有界并发（上限 4）→ **已否决回滚**：A/B 实测零吞吐收益（ready 均 36）且增加 jank；队列深度是流式 churn 非积压 |
 
 更早（ADR 编号前）：2026-09-27 瓦片遮蔽根因（旧 zoom 瓦片盖住 canvas）→
 `docs/bug-postmortems/zoom-frame-analysis-2026-09-27.md`；2026-09-28 双重
