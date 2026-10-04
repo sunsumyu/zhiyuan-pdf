@@ -99,6 +99,36 @@ describe('Gesture tile-grid probe (P2)', () => {
                         if (bb.width > 0 && bb.height > 0) backVis = 1;
                     }
                 }
+                // The patch's CONTENT band, from the existing diagnostics history.
+                // `ts.layer-plan` fires at render START (its displayZoom is the
+                // request's target, ~current visual — lag 0 by construction), so
+                // it is NOT what's on screen. What IS on screen is the most
+                // recent COMPLETED detail-layer render: pair the newest
+                // `ts.layer.rendered` (useViewportTile=true) with the newest
+                // `ts.layer-plan` at-or-before it, and take that plan's
+                // displayZoom. For use_viewport_tile the detail layer renders at
+                // plan.displayZoom (plan_builder.rs: render_zoom = display_zoom).
+                let patchBand = -1;
+                const hist: any[] = w.__PDF_DIAGNOSTICS_HISTORY || [];
+                const scanFrom = Math.max(0, hist.length - 600);
+                for (let i = hist.length - 1; i >= scanFrom; i--) {
+                    const e = hist[i];
+                    // History `layer` is normalizeLayer()'d (render-chain ->
+                    // RENDER), so match on event names, which are unique.
+                    if (e && e.event === 'ts.layer.rendered' &&
+                        e.fields && e.fields.useViewportTile === true) {
+                        for (let j = i; j >= scanFrom; j--) {
+                            const p = hist[j];
+                            if (p && p.event === 'ts.layer-plan' &&
+                                p.fields && Number.isFinite(p.fields.displayZoom)) {
+                                patchBand = p.fields.displayZoom;
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+                const patchLag = (patchBand > 0 && vis > 0) ? Math.abs(vis - patchBand) / BAND : -1;
                 if (n > 0 && vis > 0) {
                     minBand = Math.min(...bands);
                     maxBand = Math.max(...bands);
@@ -116,6 +146,8 @@ describe('Gesture tile-grid probe (P2)', () => {
                     maxBand: maxBand > 0 ? +maxBand.toFixed(4) : -1,
                     lag: nearestLag >= 0 ? +nearestLag.toFixed(2) : -1,
                     bv: backVis,
+                    pb: patchBand > 0 ? +patchBand.toFixed(4) : -1,
+                    plag: patchLag >= 0 ? +patchLag.toFixed(2) : -1,
                 });
                 requestAnimationFrame(sample);
                 } catch (e: any) {
@@ -154,7 +186,13 @@ describe('Gesture tile-grid probe (P2)', () => {
         }
         const longTasks: Array<{ t: number; d: number }> = await browser.execute(() => (window as any).__cbLT || []);
 
-        const gesture = frames.filter((f) => f.ms <= GESTURE_END_MS + 200 && f.lag >= 0);
+        // The gesture's wall-clock end is NOT BURST_END: visual keeps
+        // converging ~1.5s after the last wheel event, and the patch-lag
+        // spikes live exactly in that convergence window — so the stats below
+        // cover EVERY frame with a measurable patch band, not a fixed window.
+        const gesture = frames.filter((f) => f.plag >= 0);
+        const patchLags = gesture.map((f) => f.plag).sort((a, b) => a - b);
+        const pq = (p: number) => (patchLags.length ? patchLags[Math.min(patchLags.length - 1, Math.floor(patchLags.length * p))] : -1);
         const lags = gesture.map((f) => f.lag).sort((a, b) => a - b);
         const q = (p: number) => (lags.length ? lags[Math.min(lags.length - 1, Math.floor(lags.length * p))] : -1);
         const visSpan = gesture.length ? Math.max(...gesture.map((f) => f.vis)) / Math.min(...gesture.map((f) => f.vis)) : 0;
@@ -164,17 +202,20 @@ describe('Gesture tile-grid probe (P2)', () => {
         console.log(
             `[band-lag] frames=${frames.length} ticks=${ticks} err=${probeErr || 'none'} gestureFrames=${gesture.length} visSpan=${visSpan.toFixed(2)}x ` +
             `tilesPerFrame(max)=${tileCounts.length ? Math.max(...tileCounts) : 0} ` +
-            `lagBands p50=${q(0.5)} p90=${q(0.9)} max=${lags.length ? lags[lags.length - 1] : -1} ` +
+            `PATCH lagBands p50=${pq(0.5)} p90=${pq(0.9)} max=${patchLags.length ? patchLags[patchLags.length - 1] : -1} ` +
+            `GRID lagBands p50=${q(0.5)} p90=${q(0.9)} max=${lags.length ? lags[lags.length - 1] : -1} ` +
             `longtasks=${longTasks.length} ltMax=${ltMax}ms`,
         );
-        // Raw per-frame dump for offline inspection (repo-root; deleted after).
+        // Raw per-frame dump for offline inspection (repo-root; *.log is
+        // gitignored, delete after use per AGENTS.md §四).
         const logFile = cbPath.join(repoRoot, 'e2e_band_probe.log');
         const lines = [
             `# frames=${frames.length} gestureFrames=${gesture.length} visSpan=${visSpan.toFixed(3)} ` +
-            `lag p50=${q(0.5)} p90=${q(0.9)} max=${lags.length ? lags[lags.length - 1] : -1} ` +
+            `PATCH lag p50=${pq(0.5)} p90=${pq(0.9)} max=${patchLags.length ? patchLags[patchLags.length - 1] : -1} ` +
+            `GRID lag p50=${q(0.5)} p90=${q(0.9)} max=${lags.length ? lags[lags.length - 1] : -1} ` +
             `longtasks=${longTasks.length} ltMax=${ltMax}ms`,
-            'ms,vis,n,minBand,maxBand,lagBands,backVis',
-            ...frames.map((f) => `${f.ms},${f.vis},${f.n},${f.minBand},${f.maxBand},${f.lag},${(f as any).bv}`),
+            'ms,vis,n,minBand,maxBand,gridLagBands,backVis,patchBand,patchLagBands',
+            ...frames.map((f) => `${f.ms},${f.vis},${f.n},${f.minBand},${f.maxBand},${f.lag},${(f as any).bv},${(f as any).pb},${(f as any).plag}`),
         ];
         cbFs.writeFileSync(logFile, lines.join('\n') + '\n');
     });
