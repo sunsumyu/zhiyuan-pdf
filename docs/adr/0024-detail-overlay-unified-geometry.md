@@ -131,6 +131,26 @@ width/height 留在 base 空间（scale 负责映射）
 6. 隐藏表面跳过写 + 重现后沿用上次映射（retain 路径）；
 7. 元素键单例 + reset 丢弃单例。
 
+**E2E 帧级契约（2026-10-04 补齐，postmortem P4）**：
+`tests/e2e/specs/zoom_detail_overlay_geometry.spec.ts`。像素无关谓词：
+补丁可见的每一帧，`backCanvas.getBoundingClientRect()` 必须落在
+主 canvas 视觉矩形内（容差 8px = floor/ceil 取整余量；修复前违规量级
+是数百 px）。两例：
+
+1. 检测器非空转：人为把表面推出页面右/下缘 → 必须被标记（同 JS turn
+   还原，不合成中间态）；
+2. 不变量：快速缩小 ≥3 档（12×deltaY120@60ms）+ 静止 2s，rAF 逐帧采样
+   ——手势 sanity（finalTarget<0.8、跨度>1.25×）+ 路径非空转（补丁
+   可见帧 ≥1）+ **全部可见帧含于页面** + 静止窗采样 ≥30 帧且全净
+   （P1 永久变体的帧级封死）。
+
+**变异校验（测试有牙）**：把 `s = visualZoom / baseZoom` 暂改为 `s = 1`
+（补丁冻结 base 空间）→ E2E 红："2/43 visible frames had the patch
+outside the displayed page"（首帧 ms=179，rects 记录补丁右/下缘超出
+页面 7-9px）——正是录屏缺陷的几何特征；还原后 2/2 绿。
+zoom 全套件 15 spec：并发轮 1 个假失败（4-worker 已知类别），15/15
+单跑全绿（blank/p2/writer/frame/sudden_jump 逐个验证）。
+
 ## References
 
 - docs/bug-postmortems/2026-10-03-backcanvas-stale-patch.md（取证与

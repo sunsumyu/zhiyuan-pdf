@@ -19,10 +19,20 @@
     width/height 留 base 空间 → 三个 zoom 驱动表面同一页面坐标不变量
     `q → q × visualZoom`。静止态"白色假页面"与手势中几何错位同时消解
     （P1 永久变体：settle skip-render 后补丁仍被逐帧对齐）。
-  - 全文 → `docs/adr/0024-detail-overlay-unified-geometry.md`；
-    AGENTS.md 死门禁 2 单写者表已补 backCanvas → DetailOverlayOwner 行。
-  - 门禁：tsc 0 err；vitest 145/146（唯一失败 = wasm mtime>1h 哨兵，预期）；
-    core 269/269。E2E 未跑（需 e2e:build 产物 + GUI；P4 的新契约形态待补）。
+- **P4 E2E 帧级契约已补齐**（postmortem P4 闭环，P1~P4 全关）：
+  `tests/e2e/specs/zoom_detail_overlay_geometry.spec.ts`——像素无关谓词
+  "补丁可见帧必含于主 canvas 视觉矩形（8px 容差）"，快速缩小 ≥3 档 +
+  静止 2s 逐帧采样，含检测器非空转（人为位移必须被标记）与路径非空转
+  （补丁可见帧 ≥1，防 fixture 不触发瓦片路径时契约空转）自检。
+  **变异校验**：s=1 冻结公式 → 红（"2/43 帧补丁超出页面"，首帧 ms=179
+  rect 记录右/下缘超出 7-9px——录屏缺陷的几何特征）；还原 → 2/2 绿。
+  zoom 全套件 15 spec：并发轮 1 个假失败（4-worker 已知类别），15/15 单跑
+  全绿（blank/p2/writer/frame/sudden_jump 逐个单跑验证）。
+- 门禁：tsc 0 err；core 269/269；E2E 产物已重建（wasm:pdf-viewer-ui +
+  e2e:build）。vitest 145/146——唯一失败 = wasm mtime>1h 哨兵（wasm 重建后
+  1h 内曾全绿 146/146，时钟推移后老化转红，属预期非回归）。
+- 全文 → `docs/adr/0024-detail-overlay-unified-geometry.md`；
+  AGENTS.md 死门禁 2 单写者表已补 backCanvas → DetailOverlayOwner 行。
 
 ## 会话 2026-10-03（晚）— 知识链入库 + 记忆层收拢
 
@@ -51,17 +61,15 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
 
 ## 未决事项 / 后续建议
 
-1. **P4 验证缺口（backCanvas 修复的 E2E 契约）**：快速缩小（≥3 档）后静止
-   2s，逐帧断言"页面框外无白色表面、页面框内无两档位几何叠加"。单元契约
-   （detail_overlay_owner）已绿，E2E 帧级契约待补（需 e2e:build）。
-2. P2 残余：reknock 节流 60ms + 串行 worker → 手势中补丁内容仍落后 visual
-   1–3 档（几何已对齐，只剩内容档位差，设计内）。若仍嫌糊可调
-   `PREVIEW_REKNOCK_INTERVAL_MS` / 允许瓦片 2-3 并行（见 #3）。
-3. resize 期间锚点重置 — `syncHostLayout` 仍写居中 offset（ADR-0008 Negative）。
-4. 瓦片并行渲染 — `pumpRequest` 单飞行，一屏瓦片串行填充；若滚动仍慢可
+1. P2 残余：reknock 节流 60ms + 串行 worker → 手势中补丁**内容**仍落后
+   visual 1–3 档（几何已对齐、E2E 已封，只剩内容档位差，设计内）。若仍
+   嫌糊可调 `PREVIEW_REKNOCK_INTERVAL_MS` / 允许瓦片 2-3 并行（见 #3）。
+2. resize 期间锚点重置 — `syncHostLayout` 仍写居中 offset（ADR-0008 Negative）。
+3. 瓦片并行渲染 — `pumpRequest` 单飞行，一屏瓦片串行填充；若滚动仍慢可
    允许 2-3 张并行（HANDOFF 历史未决 #3）。
-5. vello-wasm + WebGPU prototype（GPU 矢量逐帧金标准，ADR-0009 引用段）。
-6. E2E 并发 4 worker 偶发假失败 — 判定失败前先单独重跑该 spec。
+4. vello-wasm + WebGPU prototype（GPU 矢量逐帧金标准，ADR-0009 引用段）。
+5. E2E 并发 4 worker 偶发假失败 — 判定失败前先单独重跑该 spec
+   （2026-10-04 zoom 全套件再现一例：15/15 单跑全绿）。
 
 ## 运维：E2E 必须对打包产物跑（否则 boot 闪烁）
 
