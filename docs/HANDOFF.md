@@ -78,10 +78,14 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
 
 ## 未决事项 / 后续建议
 
-1. P2 残余：手势中可见瓦片**内容**落后 visual 1–3 档（几何已对齐、E2E 已封，
-   只剩内容档位差）。真实杠杆是 **reknock 节流**（`PREVIEW_REKNOCK_INTERVAL_MS
-   = 60ms` + `PREVIEW_REKNOCK_BLUR_THRESHOLD = 0.02`），**不是**泵吞吐——
-   ADR-0025 已实测瓦片泵并行无收益（见下 #3）。若仍嫌糊，调这两个常量。
+1. P2 残余（**机制已修正**，2026-10-04 取证）：P2 是 **detail overlay 补丁**
+   的**内容新鲜度**问题（60ms reknock 节流 + 3% 档），**不是**瓦片网格——
+   探针 `zoom_gesture_tilegrid_probe.spec.ts` 实测：手势中 `pdf-tile-layer`
+   DOM 网格**冻结**（4 张开页 settle 瓦片、`renderZoom=1`、被拉伸到 ~5×），
+   settle 才重排（ADR-0009 设计）；手势中新鲜内容来自补丁（`backVis=1`）。
+   补丁内容档位**无法从 DOM 几何反推**，量化需渲染路径插桩。若仍嫌糊，
+   候选杠杆是 reknock 节流常量（`PREVIEW_REKNOCK_INTERVAL_MS=60ms` +
+   `PREVIEW_REKNOCK_BLUR_THRESHOLD=0.02`），但须先插桩取证再动（权衡主线程）。
 2. resize 期间锚点重置 — `syncHostLayout` 仍写居中 offset（ADR-0008 Negative）。
 3. ~~瓦片并行渲染~~ — **2026-10-04 实测否决**（ADR-0025）：单飞行非瓶颈
    （worker 1–4ms/张，CPU 空闲；队列深度是流式 churn 非积压）；并发泵

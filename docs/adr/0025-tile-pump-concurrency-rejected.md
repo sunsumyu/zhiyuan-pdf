@@ -89,10 +89,22 @@ HANDOFF 未决 #3 记「瓦片并行渲染 — `pumpRequest` 单飞行，一屏�
 ## Consequences
 
 1. 瓦片泵维持单飞行（`inFlight` 单槽）。HANDOFF 未决 #3 关闭。
-2. **P2 残余（手势中可见瓦片滞后 1–3 档）的真实杠杆是 reknock 节流**
-   （`PREVIEW_REKNOCK_INTERVAL_MS=60ms` + 2% blur 阈值），不是泵吞吐——
-   见 HANDOFF 未决清单更新。
+2. **P2 残余的机制在 2026-10-04 后续取证中修正**（见下）：P2 描述的是
+   **detail overlay 补丁**的内容档位滞后（60ms reknock 节流 + 3% 档），
+   **不是**瓦片网格——瓦片网格（`pdf-tile-layer` DOM）在手势中本就**冻结**
+   （持开页 settle 瓦片、被拉伸），settle 才重排（ADR-0009 设计）。
+   详见 Consequences #5。
 3. 本次取证确认 `cache.rendering` 在 rAF 采样下几乎恒为 0（1–4ms 渲染
    在两次 ~16ms 采样之间完成），**不可**作为 E2E 并发观测信号；队列
    `queue_size` 因含陈旧/重复项亦非待办数。后续探针须用去重有效数。
 4. 无源码净变更（实现已回滚）；仅本 ADR 与 HANDOFF 入库。
+5. **P2 取证更正（2026-10-04）**：为量化 P2 写了只读探针
+   `tests/e2e/specs/zoom_gesture_tilegrid_probe.spec.ts`，得到决定性事实：
+   - 手势全程 `pdf-tile-layer` 只有 **4 张瓦片且 `renderZoom==1`**（开页
+     settle 瓦片，`scale(visual/1)` 拉伸到 ~5×）；新档位瓦片 **settle 后**
+     才出现（n: 4→5→9→12，档位跳到目标 zoom）。即**瓦片网格手势中冻结**。
+   - 手势中 `backCanvas`（detail overlay 补丁）**可见**（`backVis=1`），
+     是手势中的新鲜内容源；其内容档位**无法从 DOM 几何反推**（CSS box
+     只是视口 rect + ADR-0024 视觉映射，不含渲染档位），需渲染路径插桩。
+   - **故"补丁落后 1–3 档"不能映射到瓦片网格**（后者按设计冻结）。P2 的
+     准确表述是补丁的内容新鲜度问题；本探针的价值正是防止该误映射。
