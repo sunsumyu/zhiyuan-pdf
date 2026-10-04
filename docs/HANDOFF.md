@@ -101,8 +101,12 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
 
 ## 未决事项 / 后续建议
 
-0. **新需求（2026-10-04，用户提出，待 `/grill-with-docs` 新会话打磨）**：
-   **手势过程中也要清晰**——改变设计契约前半（ADR-0009 的核心权衡）。
+0. **手势过程中也要清晰——决策已出（2026-10-05 grill-with-docs 会话）→
+   ADR-0026 主线程直渲（A′）**：精确 visual 每帧直渲 + core 常量重调
+   （INTERVAL 60→16ms，THRESHOLD 0.02 保持为节奏门）+ 跳帧守卫 +
+   env 回滚开关 + scratch canvas 复用；缓存读绕过、写保留；预缓存论证
+   Deferred（ADR-0026 专节）。**待实现**（红灯契约先行，另起实现会话）。
+   探针裁决数据保留供实现期 A/B 对照——原记录：
    **可行性探针已跑**（`zoom_reknock_cost_probe.spec.ts`，零插桩，3 轮复现），
    裁决数据：
    - **视口 reknock 渲染周期 p50=70.9–90.6ms**，其中 **worker 渲染仅
@@ -137,6 +141,9 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
    滞留），分别由 ADR-0023 修复 + ADR-0024 契约 rest-window 断言守护。
    **勿再当缺陷处理**；若未来用户报"settle 后仍模糊"，那才是新缺陷
    （查 ADR-0023 类路径）。
+   **2026-10-05 更新**：ADR-0026 决策后，A′ 落地将消解手势中的模糊签名
+   （E2E 契约：p95 ≤3%）；届时手势中新鲜度由 ADR-0026 契约接管，本条
+   "勿再当缺陷"指引在 A′ 落地前仍有效；"settle 必然清晰"后半不变。
 2. resize 期间锚点重置 — `syncHostLayout` 仍写居中 offset（ADR-0008 Negative）。
 3. ~~瓦片并行渲染~~ — **2026-10-04 实测否决**（ADR-0025）：单飞行非瓶颈
    （worker 1–4ms/张，CPU 空闲；队列深度是流式 churn 非积压）；并发泵
@@ -213,6 +220,7 @@ npm run e2e -- --spec "tests/e2e/specs/zoom_*.spec.ts"
 | 0023 | 幻影 base 缓存条目 → settle 持续模糊（R=0.812 不恢复）→ 条目 ⇔ 真实位图，复用校验 TS frame cache |
 | 0024 | backCanvas 视口补丁无几何补偿 → 静止态"白色假页面"+手势双重曝光 → DetailOverlayOwner（第三表面纳入 ADR-0009 统一公式） |
 | 0025 | 瓦片泵有界并发（上限 4）→ **已否决回滚**：A/B 实测零吞吐收益（ready 均 36）且增加 jank；队列深度是流式 churn 非积压 |
+| 0026 | 手势中模糊 = worker 往返传输延迟（周期 71–91ms，渲染本体仅 ~4%）→ 主线程直渲视口补丁（A′）：精确 visual 每帧 + core 节奏门（INTERVAL 16ms）+ 跳帧守卫 + 回滚开关；预缓存 Deferred |
 
 更早（ADR 编号前）：2026-09-27 瓦片遮蔽根因（旧 zoom 瓦片盖住 canvas）→
 `docs/bug-postmortems/zoom-frame-analysis-2026-09-27.md`；2026-09-28 双重

@@ -65,7 +65,7 @@ Tauri 桌面 PDF 查看器/编辑器。Rust workspace（`pdf-viewer-core` 纯计
 | 文档 | 何时读 |
 |---|---|
 | docs/architecture-principles.md | 动渲染/编辑架构前（铁律全文：单一渲染链、单 owner 表、三层边界） |
-| docs/adr/0009~0023 | 改缩放渲染管线前（必读 0010/0011/0014/0019/0023） |
+| docs/adr/0009~0026 | 改缩放渲染管线前（必读 0010/0011/0014/0019/0023/0026） |
 | docs/bug-postmortems/ | 排渲染类缺陷前（帧级取证方法与案例） |
 | docs/HANDOFF.md | 接手会话时（最新状态 + 运维坑 + 未决事项 + ADR 索引） |
 | CONTEXT.md | 命名/词汇分歧时（zoom authority、SurfaceOp、FrameToken…） |

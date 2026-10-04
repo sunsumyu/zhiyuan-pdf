@@ -26,6 +26,9 @@
 - **已提交布局 (CommittedLayout)** — 渲染管线产出的帧所携带的几何契约：display_zoom + left/top + width/height + scroll_left/scroll_top。提交帧只携带"新布局 zoom + 锚点布局"，呈现状态机统一应用。
 - **帧令牌 (FrameToken)** — 渲染管线的乐观并发控制版本号。单调递增，分配于 schedule_render_frame_request。每个 async await 边界检查 `isRenderFrameCurrent(token)`：若另一帧已调度（token 递增），当前帧过期并中止。5+ 检查点形成完整过期检测链。
 - **可见表面 (VisibleSurface)** — 渲染管线的呈现层选择：`preview`（快速光栅预览）、`vector`（Vello 矢量渲染）、`detail`（高分辨率细节）、`raster`（回退光栅）。决定当前哪一层向用户可见。
+- **视口补丁 (Viewport Patch)** — `use_viewport_tile=true` 时渲染的视口尺寸 detail 位图，present 到 backCanvas（detail overlay）表面。手势期唯一逐帧更新的可见内容层；ADR-0026 起按精确 visualZoom 每帧直渲。
+- **Reknock（补敲）** — 手势中的补渲染敲门：Rust RAF 循环在 blur 超阈时敲 TS 渲染循环，以精确 visualZoom 重渲视口补丁。门条件（决策权威在 core）：blur 阈值 / 间隔节流 / 渲染在飞抑制。
+- **主线程直渲 (Direct Render)** — 在交互线程同步执行 wasm CanvasRenderer 的渲染模式（先例：编辑 overlay；ADR-0026 起手势视口补丁）。对照 **Worker 往返 (Worker Round-Trip)**（异步 worker 渲染 + ImageBitmap 回传）。执行上下文不是渲染链的组成部分：两种模式产出同一条链（core → paint plan → Rust canvas → DOM canvas）的像素。
 
 ## 瓦片渲染
 
