@@ -31,6 +31,10 @@ errors*.txt
 error_count.txt
 check*.txt
 
+# E2E diagnostic screenshots — spec run artifacts (overwritten every run;
+# AGENTS.md §四 "探针输出用完删除"). Never an input to code/docs/specs.
+tests/e2e/diag-*.png
+
 # Temporary work / scratch
 scratch/
 *.bak
