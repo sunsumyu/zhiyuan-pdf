@@ -103,7 +103,9 @@ zoom" 等闪烁——**是二进制/环境问题，不是产品缺陷**。跑 E2
 `npm run e2e:build`（顺带解决 `target/debug/*.exe` 被残留进程占用导致的
 "failed to remove file ... os error 5"：先
 `taskkill //F //IM pdf-viewer-standalone.exe` 再 build）。打包产物 E2E
-**12/12 spec 全绿**（2026-10-02/03 实测），比 dev-server 模式稳。
+**22 spec（21 跑 + 1 骨架）全绿**（2026-10-04 实测：zoom 15/15 并发轮
++ 非 zoom 6/6；`editor_bugs` 2 例为故意 `it.skip` 的编辑器骨架），比
+dev-server 模式稳。
 
 ## 重要工程约束（踩过的坑）
 
