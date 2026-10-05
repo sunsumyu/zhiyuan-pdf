@@ -4,7 +4,30 @@
 > 存于 git 历史（b6a4920 / 8f119fc 之前的版本）；细节以 docs/adr/ 与
 > docs/bug-postmortems/ 为准。仓库宪法见根目录 **AGENTS.md**。
 
-## 最新会话 2026-10-04 — P2 内容档位实测：分布双峰，杠杆更正，决策不动
+## 最新会话 2026-10-05 — longtask 列车证伪 + console sink 限流（ADR-0015 前置条件落地）
+
+- **证伪**：ADR-0026/HANDOFF #0 记录的「手势期 ~100ms/周期管线 longtask
+  列车」不存在于产品——verbose OFF（生产默认）同手势 **0 长任务**（5/5
+  运行，rAF 175-224 帧 vs verbose 下 70-99）；列车是 `helpers/app.js`
+  强制 verbose 追踪的诊断洪泛伪影（verbose ON：4-19 LT/手势，run 间方差
+  4→19，唯一稳定对照是 B≡0）。全文 → postmortem
+  `2026-10-05-gesture-longtask-train-artifact.md`；归因工具
+  `zoom_longtask_attribution_probe.spec.ts`（隔相 reload A/C/B）。
+- **随修**：`emitPdfDiagnostic` console sink 生产者侧限流（32ms/8 条、
+  history 全量、ERROR/WARN 豁免、抑制摘要）+ terminalMessage 惰性构建；
+  红灯契约 `diagnostics_console_rate_limit.test.ts`（4，先红后绿）——
+  ADR-0015「生产者侧限流」前置条件首次落地（console sink；IPC 分支不动）。
+- **连带重标**：clarity 契约 p50 1%→5%——原值是 verbose 饿死 rAF 下的
+  稀疏采样伪影（限流解饿后采样密度 ×3、斜坡滞后进中位、最差 0.0395）；
+  结构性质（零设计拉伸）不变，max≤15% 不受影响。变异校验红复验 1 轮。
+- **陷阱**：verbose ON 下 E2E 计时全部被伪影润滑（性能结论必查归因探针）；
+  同配置 run 间方差大（<~500ms 差异不可解读）；对已提交文件做变异校验用
+  sed 注入/sed 删除回退，勿 `git checkout --`（会连带回滚未提交重标定）。
+- 门禁：core 271/271（无 Rust 改动）、vitest 163/163、tsc 0、wasm+e2e
+  产物重建、clarity 5 轮绿、zoom 全套件 **19/19**（首跑 2 失败均已定性：
+  tilegrid=ECONNREFUSED 并发假失败、attribution=60s 超时→局部 300s）。
+
+## 会话 2026-10-04 — P2 内容档位实测：分布双峰，杠杆更正，决策不动
 
 - 用 `zoom_gesture_tilegrid_probe.spec.ts`（**零插桩**：配对诊断历史
   `ts.layer.rendered(useViewportTile)` ↔ 其前的 `ts.layer-plan`）测得
@@ -106,11 +129,20 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
    （判据/预算守卫/PROF 采样，13 契约）+ vector_host 直渲分支（缓存读
    绕过写保留，直渲 wasm 实测 0.9–2.5ms）+ 回滚 flag
    `__pdfGestureDirectRenderDisabled`。E2E `zoom_gesture_clarity_contract`
-   （p50=0、max≤15% 1-tick 界、direct≥3；变异 flag 注入红 2 轮）；
-   zoom 全套件 18/18。**下一循环的靶子：手势期 ~100ms/周期的管线
-   longtask 列车**（TS 侧、两路径皆有、wasm/gBCR 单点均排除、疑似
-   读写穿插 layout thrash）——它把 reknock 压在 ~10fps，ADR-0026 的
-   更细 per-frame 条款在其修复前不可达（详见 ADR-0026 §Tests 标定修正）。
+   （p50≤5%、max≤15% 1-tick 界、direct≥3；变异 flag 注入红 3 轮）；
+   zoom 全套件 19/19。
+   **原「下一循环的靶子：~100ms 管线 longtask 列车」已证伪（2026-10-05，
+   postmortem `docs/bug-postmortems/2026-10-05-gesture-longtask-train-
+   artifact.md`）**：verbose OFF（生产默认）同手势 0 长任务（5/5 运行），
+   列车 = E2E 强制 verbose 追踪的诊断洪泛伪影。随修：console sink 限流
+   （`diagnostics_console_rate_limit.test.ts` 4 契约，ADR-0015 前置条件
+   落地）+ clarity 契约 p50 1%→5% 重钉（原值是 rAF 饥饿采样伪影）。
+   归因工具留存：`zoom_longtask_attribution_probe.spec.ts`（隔相 reload
+   A/C/B 设计，verbose 计时结论必查它）。
+   **未决残段**：verbose ON 下列车剩余构成（分配/GC + layout 快照 + IPC）
+   未归因——仅在 verbose 工效重要时才值得追；生产 reknock 完成节奏
+   ~11/s 由串行渲染周期约束（0 长任务下亦然），若未来要 per-frame 节奏
+   需另立循环（候选：渲染周期分解）。
    探针裁决数据保留供实现期 A/B 对照——原记录：
    **可行性探针已跑**（`zoom_reknock_cost_probe.spec.ts`，零插桩，3 轮复现），
    裁决数据：

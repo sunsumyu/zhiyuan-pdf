@@ -61,6 +61,12 @@ O(1)/条 放大为 O(队列长度)/窗口，形成正反馈楔死**。E2E（verb
 - 或按通道分级：PROF/DEBUG 永不进终端 sink（已做），INFO 仅
   human-visible 节点进 sink（需要事件白名单，而不是通道级规则）。
 
+> **2026-10-05 后记**：第一条前置条件已首次落地——console sink 生产者侧
+> 限流（32ms/8 条，history 全量，ERROR/WARN 豁免），见
+> `docs/bug-postmortems/2026-10-05-gesture-longtask-train-artifact.md`。
+> 该 postmortem 同时把「verbose ON 页面楔死」的机理补全：console sink +
+> 每事件双份格式化 + 分配压力。IPC 分支仍保持逐条（本文 Decision 不变）。
+
 ## Consequences
 
 1. `fetch`（诊断 IPC）维持 ~79ms/手势的已知成本（占 busy 总量 ~16%）。

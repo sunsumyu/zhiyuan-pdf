@@ -21,6 +21,13 @@ async function waitForApp() {
                         await browser.execute(() => {
                             window.__PDF_DIAGNOSTICS_VERBOSE = true;
                             window.__PDF_LAYOUT_TRACE_VERBOSE = true;
+                            // WARNING (postmortem 2026-10-05): forcing verbose
+                            // tracing floods ~3000 diagnostics per zoom gesture;
+                            // with the console-sink rate limit the manufactured
+                            // long-task train is bounded, but any E2E TIMING
+                            // conclusion must still be checked against
+                            // zoom_longtask_attribution_probe (its verbose-off
+                            // phase is production behavior).
                         });
                         return true;
                     }

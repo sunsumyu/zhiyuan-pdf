@@ -206,14 +206,22 @@ GC 风暴。**实现取优（2026-10-05）**：`CanvasRenderer::new_offscreen` �
    （virtual zoom），visual 逐 tick 跳变（本 fixture 120 deltaY ≈
    10.8%/tick）——任何渲染管线都无法快过 tick 本身，tick 窗口内补丁
    必有一个 tick 的滞后。
-2. **既有的 ~100ms/周期管线 longtask 列车（TS 侧，非直渲引入）**：
-   两路径皆有（worker 13 个/75ms vs 直渲 25 个/126ms；直渲 wasm 本体
-   实测 0.9–2.5ms，wasm 全接口 <5ms，gBCR 无 >5ms 单点）——把 reknock
-   节奏压在 ~10fps。**下一修复循环的靶子**（HANDOFF #0）。
+2. ~~既有的 ~100ms/周期管线 longtask 列车（TS 侧，非直渲引入）~~
+   **【2026-10-05 证伪，见 postmortem
+   `docs/bug-postmortems/2026-10-05-gesture-longtask-train-artifact.md`】**
+   该列车不存在于产品中：verbose OFF（生产默认）下同一手势 **0 长任务**
+   （5/5 次运行）。列车是 E2E harness 强制 verbose 追踪的诊断洪泛伪影
+   （verbose ON 时 4-19 个长任务、run 间波动大；console sink 只是次要
+   分量）。A′ 落地当日随修：console sink 生产者侧限流（ADR-0015 前置
+   条件，4 契约）+ p50 标定重钉（下条）。
 
 两者之上 p95≤3% 不可达，契约改钉物理边界：
 
-- **p50 拉伸 ≤ 1%**——渲染落在精确 visual（结构性零设计拉伸的帧级证据）；
+- **p50 拉伸 ≤ 5%**——渲染落在 knock 时刻的精确 visual（零设计拉伸），
+  残余测量值为斜坡段周期滞后。原定 ≤1% 是 verbose 洪泛饿死 rAF 下的
+  稀疏采样伪影（采样 n≈20-40、收敛尾帧主导 → 恒 0；限流解饿后采样密度
+  ×3、斜坡滞后进入中位，最差实测 0.0395——postmortem 2026-10-05）；
+  该界仍与旧 worker 世界（中位 45-80%）判然分开；
 - **max ≤ 15%**——滞后 ≤ 1 tick（10.8% + 余量）；worker 旧世界为
   4–8 tick（15–27 档 = 45–80%）；
 - **直渲事件 ≥ 3**——路径非空转（`ts.layer.gesture-direct-render`）；
@@ -226,14 +234,18 @@ GC 风暴。**实现取优（2026-10-05）**：`CanvasRenderer::new_offscreen` �
 A/B 对照（同构建、ratio 指标）：直渲 gesture p95 0.049–0.064 /
 max 0.111–0.131 vs worker+16ms 0.057–0.117 / 0.118–0.176——16ms reknock
 间隔使 worker 路径新鲜度同步受益，ratio 维度两者均 ≈1 tick；A′ 的独立
-收益 = worker 卸载（瓦片泵让路）+ 每帧直渲余量（longtask 修复后解锁）
-+ 每渲染零位图分配/零拷贝。
+收益 = worker 卸载（瓦片泵让路）+ 每帧直渲余量 + 每渲染零位图分配/零拷贝。
+（原「longtask 修复后解锁」从句随第 2 点证伪删除。）
 
 ## References
 
 - 探针：`tests/e2e/specs/zoom_reknock_cost_probe.spec.ts`（A′ 成本裁决）
-- ADR-0009（被修订的权衡与统一公式）、0013（热路径）、0016（预算/回滚
-  开关先例）、0018（同帧原子）、0019（zoom 权威只读）、0022（中止分类）、
-  0024（DetailOverlayOwner）、0025（负载-jank 教训）
+- postmortem 2026-10-05（longtask 列车证伪 + p50 重钉 + console 限流）：
+  `docs/bug-postmortems/2026-10-05-gesture-longtask-train-artifact.md`；
+  归因探针 `tests/e2e/specs/zoom_longtask_attribution_probe.spec.ts`
+- ADR-0009（被修订的权衡与统一公式）、0013（热路径）、0015（终端 sink
+  合批否决——本 ADR 落地其「生产者侧限流」前置条件于 console sink）、
+  0016（预算/回滚开关先例）、0018（同帧原子）、0019（zoom 权威只读）、
+  0022（中止分类）、0024（DetailOverlayOwner）、0025（负载-jank 教训）
 - HANDOFF 未决 #0（需求与探针数据）、#1（P2 定性，A′ 落地后由本 ADR
   契约接管手势中新鲜度）

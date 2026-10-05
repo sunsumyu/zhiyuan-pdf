@@ -152,6 +152,67 @@ export function formatPdfDiagnostic(channel: string, event: string, fields: Diag
     return formatLayeredDiagnostic(channel, event, fields);
 }
 
+// ── Console-sink rate limit (postmortem 2026-10-05; ADR-0015 前置条件) ──────
+// Verbose tracing emits ~260 diagnostics per 100ms during a zoom gesture, and
+// the diagnostic flood (console SINK + per-event double formatting +
+// allocation) blocks the main thread in 100ms long tasks — the "pipeline
+// longtask train" ADR-0026 recorded as its next fix target was this flood,
+// not the render pipeline (production, verbose off: zero long tasks on the
+// same gesture, 5/5 runs). ADR-0015 already proved that batching the IPC on
+// an unbounded-rate channel wedges the page; its retry precondition is
+// producer-side rate limiting, applied here to the human-facing console sink
+// only:
+//   - __PDF_DIAGNOSTICS_HISTORY stays complete (authoritative probe source);
+//   - ERROR/WARN never sampled (ADR-0013: the error stream is reserved for
+//     real faults and must always surface);
+//   - the terminal_log IPC branch is untouched (ADR-0015 reverted batching
+//     there — do not route this limiter into it).
+// The flood's full composition is NOT fully attributed (postmortem) — this
+// limiter bounds the sink; it is not claimed to eliminate the verbose-mode
+// train by itself.
+export const CONSOLE_SINK_WINDOW_MS = 32;
+export const CONSOLE_SINK_MAX_PER_WINDOW = 8;
+
+let consoleSinkWindowStart = 0;
+let consoleSinkUsed = 0;
+let consoleSinkSuppressed = 0;
+let consoleSinkEmitted = 0;
+
+/** Test hook: reset the limiter window and counters. */
+export function resetConsoleSinkLimiter(): void {
+    consoleSinkWindowStart = 0;
+    consoleSinkUsed = 0;
+    consoleSinkSuppressed = 0;
+    consoleSinkEmitted = 0;
+}
+
+function consoleSinkAllows(level: DiagnosticLevel): boolean {
+    if (level === 'ERROR' || level === 'WARN') {
+        consoleSinkEmitted++;
+        return true;
+    }
+    const now = Date.now();
+    if (now - consoleSinkWindowStart >= CONSOLE_SINK_WINDOW_MS) {
+        const dropped = consoleSinkSuppressed;
+        consoleSinkWindowStart = now;
+        consoleSinkUsed = 0;
+        consoleSinkSuppressed = 0;
+        if (dropped > 0) {
+            console.log(
+                `[pdf-diagnostics] console sink rate limit: ${dropped} diagnostic(s) suppressed in the last window (in-page history complete)`,
+            );
+            consoleSinkEmitted++;
+        }
+    }
+    if (consoleSinkUsed >= CONSOLE_SINK_MAX_PER_WINDOW) {
+        consoleSinkSuppressed++;
+        return false;
+    }
+    consoleSinkUsed++;
+    consoleSinkEmitted++;
+    return true;
+}
+
 export function emitPdfDiagnostic(
     channel: string,
     event: string,
@@ -163,21 +224,22 @@ export function emitPdfDiagnostic(
     const level = inferLevel(channel, event, options);
     const layer = normalizeLayer(channel, options.layer);
     const message = formatLayeredDiagnostic(channel, event, fields, options);
-    const terminalMessage = formatLayeredDiagnostic(channel, event, fields, options, true);
-    try {
-        const timestamp = nowStamp();
-        const fieldText = formatFields(fields);
-        const consoleMessage = `%c${timestamp} %c${level.padEnd(5)} %c[${layer.padEnd(8)}]%c ${event}${fieldText ? ` ${fieldText}` : ''}`;
-        const logger = level === 'ERROR' ? console.error : level === 'WARN' ? console.warn : console.log;
-        logger(
-            consoleMessage,
-            'color:#8b949e',
-            CONSOLE_LEVEL_STYLE[level],
-            'color:#c084fc;font-weight:700',
-            'color:inherit',
-        );
-    } catch {
-        // Console diagnostics are best-effort only; terminal_log remains the authoritative sink.
+    if (consoleSinkAllows(level)) {
+        try {
+            const timestamp = nowStamp();
+            const fieldText = formatFields(fields);
+            const consoleMessage = `%c${timestamp} %c${level.padEnd(5)} %c[${layer.padEnd(8)}]%c ${event}${fieldText ? ` ${fieldText}` : ''}`;
+            const logger = level === 'ERROR' ? console.error : level === 'WARN' ? console.warn : console.log;
+            logger(
+                consoleMessage,
+                'color:#8b949e',
+                CONSOLE_LEVEL_STYLE[level],
+                'color:#c084fc;font-weight:700',
+                'color:inherit',
+            );
+        } catch {
+            // Console diagnostics are best-effort only; terminal_log remains the authoritative sink.
+        }
     }
     if (typeof window !== 'undefined') {
         try {
@@ -210,6 +272,9 @@ export function emitPdfDiagnostic(
     // under verbose tracing (unbounded queue growth between flushes); see the
     // ADR before re-attempting.
     if (level !== 'DEBUG' && level !== 'TRACE' && layer !== 'PROF') {
+        // Built lazily: the ANSI variant is only consumed by this branch, and
+        // under a verbose flood the per-event format cost is itself measurable.
+        const terminalMessage = formatLayeredDiagnostic(channel, event, fields, options, true);
         void targetInvokeV3('terminal_log', {
             message: terminalMessage,
         }).catch(() => undefined);
