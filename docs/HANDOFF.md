@@ -160,9 +160,23 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
    归因工具留存：`zoom_longtask_attribution_probe.spec.ts`（隔相 reload
    A/C/B 设计，verbose 计时结论必查它）。
    **未决残段**：verbose ON 下列车剩余构成（分配/GC + layout 快照 + IPC）
-   未归因——仅在 verbose 工效重要时才值得追；生产 reknock 完成节奏
-   ~11/s 由串行渲染周期约束（0 长任务下亦然），若未来要 per-frame 节奏
-   需另立循环（候选：渲染周期分解）。
+   未归因——仅在 verbose 工效重要时才值得追。
+   **渲染周期分解已测（2026-10-05，`zoom_cycle_decomposition_probe.spec.ts`，
+   生产配置）**：管线**不是**瓶颈——strategy p50 12.4ms / p90 21.3 / max
+   39.3（直渲 wasm 5.2ms 采样、plan-build 3.5–11ms、knock→complete p50
+   36ms）。节奏真受限的是**策略层**三因：(a) **2% blur 门锯齿**——渲染后
+   lastR=visual → blur≈0 → reknock 抑制，visual 需 ~100–170ms 背离 2% 才
+   再敲（40% 手势帧处于抑制态，呈"突发 1–2 渲 + ~130ms 空窗"）；
+   (b) wheel tick 量子（target 逐 tick 跳 10.8%，visual 指数追赶恒落后）；
+   (c) **收敛尾**（9/s 档）——松手后 ~0.86s 内容才定格（缓动 + RAF 停止
+   后 30ms drawing delay + 最终渲）。
+   **用户视频反馈（2026-10-05）**：手势中仍不清晰（较 ADR-0026 前好转）
+   + 缩放手感慢。定性 = (a)(b)(c)，非管线慢。修复候选（未立项，先分析）：
+   blur 门节奏化/降低、尾段保持 reknock、per-frame reknock（管线有余量但
+   p90 21ms 逼近 16ms 帧预算，需预算守卫）。另：用户视频含**多档带反向
+   手势双影（同尺垂直错位）+ 右缘灰带**——缺陷类（非 P2 模糊），机制候选
+   （补丁 rect 坐标基准过期 / base box·位图配对 / 裁剪越界）已分析，
+   待构建版本确认与复现后另立循环。
    探针裁决数据保留供实现期 A/B 对照——原记录：
    **可行性探针已跑**（`zoom_reknock_cost_probe.spec.ts`，零插桩，3 轮复现），
    裁决数据：
