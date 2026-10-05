@@ -113,3 +113,14 @@ wheel event put on screen.
   anchor to centered. That's the current behavior and matches the prior
   ADR-0007 state; a follow-up can preserve the anchor across resizes if
   needed.
+- **【2026-10-05 验证注记：上一条所述机制已不可达，HANDOFF 未决 #2 就此
+  关闭】** 当前架构中 `syncLayoutBox`/`syncHostLayout` 的唯一调用方是调试
+  探针 `__pdfViewerGeometryProbe`；生产 resize 路径只有 tile_layer 的
+  ViewportGeometry 失效 + 瓦片唤醒（ADR-0014），`visual_layout` 的写者只剩
+  `on_wheel_event`（cursor-anchor）与 `apply_committed_frame`（仅 settle）。
+  实证（`zoom_resize_anchor_contract.spec.ts`，插桩确认 resize 全程
+  `syncHostLayout` 0 次调用、wrapper 0 次 style 变更、scroll 精确保持、
+  zoom 不变；2 轮逐位一致 + 变异校验红）：resize 不再重置锚点，也不改写
+  布局。viewport 变化带来的"视口中心页面点移位"是浏览器滚动保持的标准
+  行为；"resize 保持视口中心点居中"是 ADR-0008 所述的**增强**（未立项），
+  非缺陷。

@@ -4,6 +4,26 @@
 > 存于 git 历史（b6a4920 / 8f119fc 之前的版本）；细节以 docs/adr/ 与
 > docs/bug-postmortems/ 为准。仓库宪法见根目录 **AGENTS.md**。
 
+## 会话 2026-10-05（晚）— 未决 #2 证伪关闭（ADR-0008 Negative 过时）
+
+- **取证**：HANDOFF #2 记录的「resize 期间 syncHostLayout 写居中 offset
+  重置锚点」在当前架构不可达——`syncLayoutBox` 唯一调用方是调试探针
+  `__pdfViewerGeometryProbe`；`visual_layout` 生产写者只剩
+  `on_wheel_event`（cursor-anchor）与 `apply_committed_frame`（仅 settle）；
+  生产 resize 监听只有 tile_layer 的 ViewportGeometry 失效（ADR-0014）。
+- **实证**（`zoom_resize_anchor_contract.spec.ts`）：缩放 2.3× 后
+  shrink+grow 循环，插桩确认 `syncHostLayout` 0 次调用、wrapper 0 次
+  style 变更（其宽度是 CSS 流式布局自然等于 vp−滚动条，无 inline width）、
+  scroll 精确保持 (112,510)、zoom 不变；2 轮逐位一致，变异校验红
+  （注入布局改写+滚动重置 → toBe 红）。
+- **处置**：#2 关闭（同 #3/#6 模式：证伪不再作为待办）；探针升级为守护
+  契约钉住"resize 不改写布局/滚动/缩放"，防止未来把 syncLayoutBox 重新
+  接回 resize 时无声回归。"resize 保持视口中心点居中"记为增强（未立项）。
+- 取证过程中的两个误读（供后续避免）：wrapper 宽度随视口变化曾被当成
+  "有人改写几何"——实为 CSS 流式布局；zoom 2.257→2.297 曾被当成
+  "resize 触发重缩放"——实为收敛尾未完（SETTLE_MS 1800 不够，契约用
+  2500 并断言 A/C 双端 settled）。
+
 ## 最新会话 2026-10-05 — longtask 列车证伪 + console sink 限流（ADR-0015 前置条件落地）
 
 - **证伪**：ADR-0026/HANDOFF #0 记录的「手势期 ~100ms/周期管线 longtask
@@ -181,7 +201,14 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
    **2026-10-05 更新**：ADR-0026 决策后，A′ 落地将消解手势中的模糊签名
    （E2E 契约：p95 ≤3%）；届时手势中新鲜度由 ADR-0026 契约接管，本条
    "勿再当缺陷"指引在 A′ 落地前仍有效；"settle 必然清晰"后半不变。
-2. resize 期间锚点重置 — `syncHostLayout` 仍写居中 offset（ADR-0008 Negative）。
+2. ~~resize 期间锚点重置 — `syncHostLayout` 仍写居中 offset~~ —
+   **2026-10-05 证伪关闭（ADR-0008 Negative 验证注记）**：该机制在当前
+   架构不可达——`syncLayoutBox` 唯一调用方是调试探针
+   `__pdfViewerGeometryProbe`，生产 resize 路径只有 tile_layer 的
+   ViewportGeometry 失效。实证（`zoom_resize_anchor_contract.spec.ts`，
+   插桩 0 次 syncHostLayout / 0 次 wrapper style 变更 / scroll 精确保持 /
+   zoom 不变，2 轮逐位一致 + 变异校验红）。"resize 保持视口中心点居中"
+   是增强非缺陷，未立项。**不再作为待办**。
 3. ~~瓦片并行渲染~~ — **2026-10-04 实测否决**（ADR-0025）：单飞行非瓶颈
    （worker 1–4ms/张，CPU 空闲；队列深度是流式 churn 非积压）；并发泵
    A/B 显示零吞吐收益且增加 jank，已回滚。**不再作为待办**。
