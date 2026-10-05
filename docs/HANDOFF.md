@@ -101,11 +101,16 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
 
 ## 未决事项 / 后续建议
 
-0. **手势过程中也要清晰——决策已出（2026-10-05 grill-with-docs 会话）→
-   ADR-0026 主线程直渲（A′）**：精确 visual 每帧直渲 + core 常量重调
-   （INTERVAL 60→16ms，THRESHOLD 0.02 保持为节奏门）+ 跳帧守卫 +
-   env 回滚开关 + scratch canvas 复用；缓存读绕过、写保留；预缓存论证
-   Deferred（ADR-0026 专节）。**待实现**（红灯契约先行，另起实现会话）。
+0. **手势过程中也要清晰——A′ 已实现（2026-10-05，ADR-0026）**：core
+   reknock 间隔 60→16ms（契约 271/271）+ `gesture_direct_render.ts`
+   （判据/预算守卫/PROF 采样，13 契约）+ vector_host 直渲分支（缓存读
+   绕过写保留，直渲 wasm 实测 0.9–2.5ms）+ 回滚 flag
+   `__pdfGestureDirectRenderDisabled`。E2E `zoom_gesture_clarity_contract`
+   （p50=0、max≤15% 1-tick 界、direct≥3；变异 flag 注入红 2 轮）；
+   zoom 全套件 18/18。**下一循环的靶子：手势期 ~100ms/周期的管线
+   longtask 列车**（TS 侧、两路径皆有、wasm/gBCR 单点均排除、疑似
+   读写穿插 layout thrash）——它把 reknock 压在 ~10fps，ADR-0026 的
+   更细 per-frame 条款在其修复前不可达（详见 ADR-0026 §Tests 标定修正）。
    探针裁决数据保留供实现期 A/B 对照——原记录：
    **可行性探针已跑**（`zoom_reknock_cost_probe.spec.ts`，零插桩，3 轮复现），
    裁决数据：

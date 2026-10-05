@@ -24,11 +24,18 @@ import { logPdfLayoutTrace } from './layout_trace';
 import { emitPdfDiagnostic } from '../shared/diagnostics';
 import { getMainCanvasTransformOwner } from './canvas_transform_owner';
 import { getDetailOverlayOwner } from './detail_overlay_owner';
+import {
+    gestureDirectRenderBudget,
+    isGestureDirectRenderEligible,
+    renderGestureViewportPatchDirect,
+} from './gesture_direct_render';
 import { createRenderWasmApi, type RenderExecutionPlan, type RenderLayerRuntimePlan } from './render_wasm_api';
 import type { VectorWorkerRequest, VectorWorkerResponse } from './vector_worker';
 
 let vectorWorker: Worker | null = null;
 let msgIdCounter = 0;
+/** Monotonic counter of direct-render attempts — drives PROF sampling (ADR-0026). */
+let gestureDirectRenderSeq = 0;
 const pendingVectorTasks = new Map<number, { resolve: (bitmap: ImageBitmap, workerMs?: number, recvDelayMs?: number) => void; reject: (err: any) => void }>();
 
 let workerLastPath: string | null = null;
@@ -201,6 +208,7 @@ export function clearVectorHost(): void {
     clearVectorCanvasHost();
     invalidateVectorPageCache();
     clearVectorFrameCache();
+    gestureDirectRenderBudget.reset();
     workerLastPath = null;
     workerLastPageIndex = null;
     workerLastRevision = null;
@@ -501,6 +509,10 @@ export async function renderVectorPageWithPlan(
         const layerUseViewportTile = !!layerPlan.useDetailLayer;
         const layerCacheKey = layerPlan.cacheKey;
         const layerRenderZoom = layerPlan.renderZoom;
+        // ADR-0026: the gesture reknock patch renders synchronously on the
+        // main thread. Eligibility is the frame plan's decision (core stays
+        // the authority); this is only the wiring.
+        const isGestureDirectRender = isGestureDirectRenderEligible(plan, layerUseViewportTile);
 
         if (isPipelineStale() || abortStaleFrameIfNeeded(frameToken, 'ts.frame.stale.before-layer', {
             pageIndex,
@@ -570,7 +582,12 @@ export async function renderVectorPageWithPlan(
         const isOverlayRender =
             (plan as any).renderReason === 'editorVisibility' ||
             (plan as any).renderReason === 'documentMutation';
-        const cachedFrame = isOverlayRender ? null : readViewportFrameCache(layerCacheKey);
+        // ADR-0026: direct-render frames bypass the READ too — a quantized
+        // band hit would skip a fresh render (reuse = choosing blur). The
+        // WRITE below is kept: settle reuse semantics are unchanged.
+        const cachedFrame = (isOverlayRender || isGestureDirectRender)
+            ? null
+            : readViewportFrameCache(layerCacheKey);
         if (cachedFrame) {
             const cacheKnown = renderApi.touchFrameCacheEntry(
                 layerUseViewportTile,
@@ -649,6 +666,7 @@ export async function renderVectorPageWithPlan(
             layerViewportHeight,
             bundle.documentRevision,
             isOverlayRender,
+            isGestureDirectRender,
         );
 
         if (progressiveResult?.aborted) {
@@ -843,6 +861,7 @@ async function renderViewportProgressiveIfNeeded(
     viewportHeight?: number,
     revision?: number,
     isOverlayRender?: boolean,
+    isGestureDirectRender?: boolean,
 ): Promise<{ aborted?: boolean } | null> {
     const isProgressivePipelineStale = (): boolean => {
         if (path === undefined || pageIndex === undefined) return false;
@@ -861,6 +880,36 @@ async function renderViewportProgressiveIfNeeded(
     if (isProgressivePipelineStale()) {
         renderApi.cancelProgressiveRender();
         return { aborted: true };
+    }
+
+    // ── ADR-0026: gesture direct render ─────────────────────────────────
+    // The reknock viewport patch renders synchronously on the main thread:
+    // no progressive task, no worker round trip, no await (an await would
+    // reopen the stale-frame window ADR-0022's checkpoints exist for). The
+    // pixels still come from the wasm CanvasRenderer into the reused stage
+    // buffer; the caller's store/present flow continues unchanged.
+    if (isGestureDirectRender) {
+        renderApi.cancelProgressiveRender();
+        const directTarget = getRenderBufferCanvas(refs, useViewportTile);
+        const directDpr = window.devicePixelRatio || 1;
+        const directResult = renderGestureViewportPatchDirect({
+            renderTarget: directTarget,
+            imageCacheMap,
+            dpr: directDpr,
+            renderPageOffscreen: (canvas, map, d) => renderApi.renderPageOffscreen(canvas, map, d),
+            budget: gestureDirectRenderBudget,
+            seq: ++gestureDirectRenderSeq,
+            onProf: (fields) => emitPdfDiagnostic('PROF', 'reknock-phase-timing', fields),
+        });
+        logRenderChain(directResult.skipped
+            ? 'ts.layer.gesture-direct-render.skip'
+            : 'ts.layer.gesture-direct-render', {
+            pageIndex,
+            costMs: directResult.costMs,
+            w: directTarget.width,
+            h: directTarget.height,
+        });
+        return null;
     }
 
     // Phase timing (2026-09-28 perf probe): wasm prep on the main thread vs

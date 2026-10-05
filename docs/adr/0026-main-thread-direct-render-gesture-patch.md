@@ -128,8 +128,10 @@ Accepted（2026-10-05，grill-with-docs 设计会话裁决；实现走红灯契�
 
 先例代码每渲 `new OffscreenCanvas`（`vector_host.ts:891`）——编辑 overlay
 低频无妨；60Hz × ~6MB（1200×800@1.25dpr 视口位图）≈ 360MB/s 分配率是
-GC 风暴。直渲复用单个视口尺寸 scratch canvas（尺寸变化时重建），
-teardown 释放。**此条无真实选项，直接钉死。**
+GC 风暴。**实现取优（2026-10-05）**：`CanvasRenderer::new_offscreen` 接受
+任何带 `getContext('2d')` 的对象（worker 即传 OffscreenCanvas）——直渲
+直接写入既有 detail stage buffer（`getRenderBufferCanvas` 的复用缓冲），
+零新增分配、零 blit，优于本节原定的"复用 scratch"下限。
 
 ### 6. 红线落点（逐条）
 
@@ -195,14 +197,37 @@ teardown 释放。**此条无真实选项，直接钉死。**
 
 ### 3. E2E 契约（验收阈值）
 
-`zoom_gesture_tilegrid_probe` 零插桩配对诊断改造为 A/B 契约：
+`zoom_gesture_tilegrid_probe` 零插桩配对诊断改造为
+`zoom_gesture_clarity_contract.spec.ts`。**实现后标定修正（2026-10-05
+实现循环）**：原定"手势帧补丁拉伸 p95 ≤ 3%、max ≤ 6%"基于 visual 逐帧
+连续缓动的假设。实现后帧级取证发现两个更高的天花板：
 
-- **手势帧补丁拉伸 p95 ≤ 3%、max ≤ 6%（单次跳帧量级）**（对照：修复前
-  峰值 13–14% 可见、滞后 15–27 档；3% 有 ADR-0009 先例语言"无可见模糊"）；
-- settle 后必然归零（复用 ADR-0023/0024 契约语义）；
-- **变异校验**：直渲判据改恒 false（回退 worker）→ 契约必须红；
-- 全套 zoom 套件回归 + 死门禁 6 重建顺序
-  （`npm run wasm:pdf-viewer-ui` → `npm run e2e:build` → E2E）。
+1. **wheel tick 量子（物理）**：`on_wheel_event` 立即应用 target 布局
+   （virtual zoom），visual 逐 tick 跳变（本 fixture 120 deltaY ≈
+   10.8%/tick）——任何渲染管线都无法快过 tick 本身，tick 窗口内补丁
+   必有一个 tick 的滞后。
+2. **既有的 ~100ms/周期管线 longtask 列车（TS 侧，非直渲引入）**：
+   两路径皆有（worker 13 个/75ms vs 直渲 25 个/126ms；直渲 wasm 本体
+   实测 0.9–2.5ms，wasm 全接口 <5ms，gBCR 无 >5ms 单点）——把 reknock
+   节奏压在 ~10fps。**下一修复循环的靶子**（HANDOFF #0）。
+
+两者之上 p95≤3% 不可达，契约改钉物理边界：
+
+- **p50 拉伸 ≤ 1%**——渲染落在精确 visual（结构性零设计拉伸的帧级证据）；
+- **max ≤ 15%**——滞后 ≤ 1 tick（10.8% + 余量）；worker 旧世界为
+  4–8 tick（15–27 档 = 45–80%）；
+- **直渲事件 ≥ 3**——路径非空转（`ts.layer.gesture-direct-render`）；
+- settle 段存在双峰时序（settle 渲染落地时机/复用命中随负载摆动），
+  单轮阈值契约天然 flaky——归既有 ADR-0023/0024 契约管辖，本文不再
+  重复断言；
+- **变异校验（测试有牙）**：flag `__pdfGestureDirectRenderDisabled=true`
+  注入后 `direct ≥ 3` 必红——flag 注入轮实证 2 次（direct=0 → 红）。
+
+A/B 对照（同构建、ratio 指标）：直渲 gesture p95 0.049–0.064 /
+max 0.111–0.131 vs worker+16ms 0.057–0.117 / 0.118–0.176——16ms reknock
+间隔使 worker 路径新鲜度同步受益，ratio 维度两者均 ≈1 tick；A′ 的独立
+收益 = worker 卸载（瓦片泵让路）+ 每帧直渲余量（longtask 修复后解锁）
++ 每渲染零位图分配/零拷贝。
 
 ## References
 

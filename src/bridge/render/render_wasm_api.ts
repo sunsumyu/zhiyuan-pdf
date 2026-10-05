@@ -106,7 +106,7 @@ export type RenderWasmApi = {
     storeFrameCacheEntry: (useViewportTile: boolean, cacheKey: string) => FrameCacheStoreResult | null;
     startProgressiveRender: () => ProgressiveRenderStart | null;
     renderPage: (renderTargetId: string, imageCacheMap: Map<string, HTMLImageElement>) => void;
-    renderPageOffscreen: (canvasJs: OffscreenCanvas, imageCacheMap: Map<string, ImageBitmap>, dpr: number) => void;
+    renderPageOffscreen: (canvasJs: HTMLCanvasElement | OffscreenCanvas, imageCacheMap: Map<string, ImageBitmap>, dpr: number) => void;
     resolveProgressiveRenderPolicy: (request: Record<string, unknown>) => ProgressiveRenderPolicy | null;
     stepProgressiveRender: (
         renderTargetId: string,

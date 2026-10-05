@@ -33,8 +33,11 @@ const BLUR_LOW_THRESHOLD: f32 = 0.03; // > 3% blur → render next frame
 /// Blur at or above this triggers a mid-animation re-render. Lowered for
 /// direct-redraw mode where there's no CSS transform visual feedback.
 pub const PREVIEW_REKNOCK_BLUR_THRESHOLD: f32 = 0.02;
-/// Minimum spacing between mid-animation knocks — reduced for snappier zoom.
-pub const PREVIEW_REKNOCK_INTERVAL_MS: f64 = 60.0;
+/// Minimum spacing between mid-animation knocks. ADR-0026: one animation
+/// frame (16ms) — the gesture viewport patch renders every frame via
+/// main-thread direct render, and 16ms (not 0) pins the knock ceiling at
+/// 60Hz so 120Hz displays do not double the knock rate.
+pub const PREVIEW_REKNOCK_INTERVAL_MS: f64 = 16.0;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PreviewReknockRequest {
@@ -135,6 +138,30 @@ mod tests {
         assert!(r);
     }
 
+    // ADR-0026: the interval drops to one animation frame (16ms) so the
+    // gesture viewport patch can render every frame via main-thread direct
+    // render. 16ms (not 0) pins the knock ceiling at 60Hz — on 120Hz displays
+    // the RAF ticks every 8.3ms and the interval must not double the rate.
+    #[test]
+    fn reknock_at_frame_interval_fires() {
+        let r = should_reknock_preview_render(PreviewReknockRequest {
+            blur: 0.06,
+            elapsed_ms: 16.0,
+            render_in_flight: false,
+        });
+        assert!(r);
+    }
+
+    #[test]
+    fn reknock_below_frame_interval_is_suppressed() {
+        let r = should_reknock_preview_render(PreviewReknockRequest {
+            blur: 0.5,
+            elapsed_ms: 15.9,
+            render_in_flight: false,
+        });
+        assert!(!r);
+    }
+
     #[test]
     fn reknock_while_render_in_flight_is_suppressed() {
         let r = should_reknock_preview_render(PreviewReknockRequest {
@@ -149,7 +176,7 @@ mod tests {
     fn reknock_inside_throttle_window_is_suppressed() {
         let r = should_reknock_preview_render(PreviewReknockRequest {
             blur: 0.5,
-            elapsed_ms: 59.0,
+            elapsed_ms: 10.0,
             render_in_flight: false,
         });
         assert!(!r);
