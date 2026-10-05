@@ -30,9 +30,15 @@ const BLUR_LOW_THRESHOLD: f32 = 0.03; // > 3% blur → render next frame
 // renders at visualZoom (C1: render tracks visual), so its renderZoom ==
 // displayZoom and the presenter can commit it seamlessly (I1/I2 hold).
 
-/// Blur at or above this triggers a mid-animation re-render. Lowered for
-/// direct-redraw mode where there's no CSS transform visual feedback.
-pub const PREVIEW_REKNOCK_BLUR_THRESHOLD: f32 = 0.02;
+/// Blur at or above this triggers a mid-animation re-render. ADR-0026
+/// amendment (2026-10-05, postmortem cadence forensics): 0.02 sawtoothed —
+/// after each render blur ≈ 0 and the exponential ease needs ~130ms to
+/// rebuild 2%, leaving ~40% of gesture frames suppressed and a silent
+/// ~500-690ms convergence tail. 0.002 is a rhythm FLOOR: any real movement
+/// re-knocks at the 16ms cadence gate (the pipeline self-limits via
+/// render_in_flight and the direct-render budget guard); only a truly
+/// static visual (<0.2%) stays silent.
+pub const PREVIEW_REKNOCK_BLUR_THRESHOLD: f32 = 0.002;
 /// Minimum spacing between mid-animation knocks. ADR-0026: one animation
 /// frame (16ms) — the gesture viewport patch renders every frame via
 /// main-thread direct render, and 16ms (not 0) pins the knock ceiling at
@@ -118,10 +124,36 @@ mod tests {
 
     // ─── should_reknock_preview_render ────────────────────────────────
 
+    // Postmortem 2026-10-05 (cadence, HANDOFF #0): the 2% blur gate sawtoothed
+    // — after each render blur ≈ 0 and the exponential ease needs ~130ms to
+    // rebuild 2%, leaving ~40% of gesture frames suppressed (renders arrive in
+    // bursts with ~130-600ms gaps) and a silent ~500ms convergence tail. The
+    // gate is a rhythm floor now: any real movement re-knocks at the 16ms
+    // cadence; only a truly static visual stays silent.
+    #[test]
+    fn reknock_small_blur_still_fires_when_moving() {
+        let r = should_reknock_preview_render(PreviewReknockRequest {
+            blur: 0.005,
+            elapsed_ms: 20.0,
+            render_in_flight: false,
+        });
+        assert!(r);
+    }
+
+    #[test]
+    fn reknock_static_visual_is_suppressed() {
+        let r = should_reknock_preview_render(PreviewReknockRequest {
+            blur: 0.001,
+            elapsed_ms: 1000.0,
+            render_in_flight: false,
+        });
+        assert!(!r);
+    }
+
     #[test]
     fn reknock_below_blur_threshold_is_skipped() {
         let r = should_reknock_preview_render(PreviewReknockRequest {
-            blur: 0.01,
+            blur: 0.001,
             elapsed_ms: 1000.0,
             render_in_flight: false,
         });

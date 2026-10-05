@@ -340,7 +340,11 @@ pub fn advance_zoom_animation_state(
         } else if diff.abs() > 0.15 {
             12.0
         } else {
-            9.0
+            // Postmortem 2026-10-05 (cadence): 9/s crawled the last ≤0.15 zoom
+            // for ~550ms — the settle render landed ~860ms after the last
+            // wheel, the dominant part of the "缩放速度慢" feel. 14/s converges
+            // the same band in ~30 frames (~0.5s incl. drawing delay).
+            14.0
         };
         let alpha = 1.0 - (-response * dt).exp();
         state.visual_zoom += diff * alpha;
@@ -420,6 +424,30 @@ mod tests {
             last_rendered_zoom: initial_zoom,
             ..Default::default()
         }
+    }
+
+    // Postmortem 2026-10-05 (cadence, HANDOFF #0): the 9/s tail band crawled
+    // the last ≤0.15 zoom for ~550ms — the settle render landed ~860ms after
+    // the last wheel, the dominant part of the "缩放速度慢" feel. The tail
+    // band must converge within ~30 frames (~0.5s) at 60fps.
+    #[test]
+    fn tail_ease_band_converges_within_30_frames() {
+        let mut state = make_state(1.0);
+        state.target_zoom = 1.14; // stays inside the ≤0.15 tail band
+        state.visual_zoom = 1.0;
+        state.last_animation_timestamp_ms = 0.0;
+
+        let mut settled_at: Option<usize> = None;
+        for i in 0..60 {
+            let ts = 1000.0 + (i as f64) * 16.67;
+            let step = advance_zoom_animation_state(&mut state, Some(ts));
+            if step.settled || (state.target_zoom - state.visual_zoom).abs() < 0.001 {
+                settled_at = Some(i);
+                break;
+            }
+        }
+        let frames = settled_at.expect("tail band must converge");
+        assert!(frames <= 30, "tail converged in {frames} frames (> 30)");
     }
 
     #[test]
