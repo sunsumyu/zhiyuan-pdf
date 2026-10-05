@@ -52,3 +52,4 @@ src/prof/
 # Dynamic Tauri port override config
 src-tauri/tauri.port-override.json
 
+tmp_repro_*.png

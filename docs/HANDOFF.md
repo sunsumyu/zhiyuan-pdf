@@ -175,13 +175,16 @@ cache 真实存在（自愈）。详见 ADR-0023。验证：3 契约红→绿（
    blur 门节奏化/降低、尾段保持 reknock、per-frame reknock（管线有余量但
    p90 21ms 逼近 16ms 帧预算，需预算守卫）。
    **用户截图（2026-10-05，154% 静止态）→ 已实锤并出 postmortem
-   `docs/bug-postmortems/2026-10-05-rest-blur-stale-tiles.md`**：静止态
-   部分模糊 + 接缝 = **旧档瓦片滞留网格**（复现：12 瓦片横跨 5 档
-   1.47–1.682，1.47 档 present scale 1.144 = 14.4% 拉伸；清场规则只看
-   presentedZoom 对 per-tile 陈旧度失明；瓦片层 z=3 在补丁 z=2 之上所以
-   压住原生层）。违反"settle 必然清晰"——与视频双影/灰带（#1）同族，
-   修复应一并覆盖。修复方向见 postmortem（未立项）。
-   （视频双影的早期机制候选由本条取代：同族根因 = per-tile 档位陈旧。）
+   `docs/bug-postmortems/2026-10-05-rest-blur-stale-tiles.md`，同日修复
+   落地**：静止态部分模糊 + 接缝 = **旧档瓦片滞留网格**（复现：12 瓦片
+   横跨 5 档；清场规则只看 presentedZoom 对 per-tile 陈旧度失明；瓦片层
+   z=3 在补丁 z=2 之上压住原生层）。**修复**：tile_layer settle 态
+   per-tile 陈旧扫除（`gridHasStaleTiles` → `clearPage`+`clear()` 重排；
+   只清 DOM 会撞 Rust ready 死锁——契约 populated 守卫抓住）。契约
+   `zoom_tile_band_uniformity`：红（worstDev 0.68，含 1.0 档页开瓦片）→
+   绿（0.0000 单一档位，3 轮稳定）；zoom 全套件 23/23。
+   **#3 关闭；#1（视频手势中双影/灰带）待用户在新构建上复验**——同族
+   根因，静止态部分已消；手势中形态需重新取证。
    探针裁决数据保留供实现期 A/B 对照——原记录：
    **可行性探针已跑**（`zoom_reknock_cost_probe.spec.ts`，零插桩，3 轮复现），
    裁决数据：

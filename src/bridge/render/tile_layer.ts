@@ -255,6 +255,26 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
         presentedRevision = null;
     }
 
+    /**
+     * Postmortem 2026-10-05 (rest-blur stale tiles): the legacy clear rule
+     * inspected only `presentedZoom` — the band of the LAST drawn tile — so a
+     * grid that accumulated gesture-era tiles never cleared once the newest
+     * tile reached the target band. Stale tiles persisted in the TOP layer
+     * (tile layer z=3 above the native detail patch z=2) at REST, stretched by
+     * present scale (measured: bands 1.0…1.682 coexisting at visual 1.682 —
+     * the page-open tiles alone stretch 68%) — a "settle 必然清晰" violation.
+     * The grid is stale when ANY visible tile's band is further than one
+     * quantized step from the settled target.
+     */
+    function gridHasStaleTiles(targetZoom: number): boolean {
+        for (const { renderZoom } of active.values()) {
+            if (Math.abs(targetZoom - renderZoom) > GESTURE_TILE_ZOOM_STEP + ZOOM_EPS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     function clear(): void {
         clearDom();
         scheduledPage = null;
@@ -610,14 +630,27 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
         } else if (
             scheduledZoom !== null &&
             presentedZoom !== null &&
-            Math.abs(scheduledZoom - presentedZoom) > ZOOM_EPS &&
-            // ADR-0009: tiles presented within one quantized band of the new
-            // target stay on screen through settle (their present scale is
-            // ≈ 1 — sharp and aligned). Only a genuinely stale band clears.
-            Math.abs(zs.targetZoom - presentedZoom) > GESTURE_TILE_ZOOM_STEP + ZOOM_EPS &&
-            settled
+            settled &&
+            (
+                (Math.abs(scheduledZoom - presentedZoom) > ZOOM_EPS &&
+                // ADR-0009: tiles presented within one quantized band of the new
+                // target stay on screen through settle (their present scale is
+                // ≈ 1 — sharp and aligned). Only a genuinely stale band clears.
+                Math.abs(zs.targetZoom - presentedZoom) > GESTURE_TILE_ZOOM_STEP + ZOOM_EPS) ||
+                // Postmortem 2026-10-05: presentedZoom only tracks the last
+                // drawn tile, so per-tile staleness slips past the rule above.
+                // A mixed-band grid must re-lay from scratch at the settled
+                // target — clear() (not clearDom()) also invalidates the
+                // schedule so the sweep can never leave the grid empty.
+                gridHasStaleTiles(zs.targetZoom)
+            )
         ) {
-            clearDom();
+            // The Rust TileManager still holds the swept keys as ready —
+            // forget the page's cache state too, or the reschedule finds
+            // every key ready, enqueues nothing, and the pump never refills
+            // the DOM (empty-grid deadlock, found by the uniformity contract).
+            tileFacade.clearPage(page);
+            clear();
         }
 
         let animJustEnded = false;

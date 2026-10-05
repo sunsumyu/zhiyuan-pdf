@@ -61,7 +61,32 @@ per-tile 档位陈旧**在手势中（双影 = 旧档瓦片与新内容错位）
    ≤ STEP（现违约：0.212），加像素无关的"视口内不容许 present scale
    偏离 1 超 X%"断言。
 
+## 修复记录（2026-10-05，方向 1 落地）
+
+`tile_layer.ts`：settle 态清场分支增加 **per-tile 陈旧扫除**
+（`gridHasStaleTiles(target)`：任一可见瓦片档位距 target > 1 量化步即
+清扫），并在清扫时 **`tileFacade.clearPage(page)` + `clear()`** ——实现中
+发现一个隐藏死锁：只清 DOM 不清 Rust 侧，TileManager 仍把被扫键记为
+ready，重调度时队列判定已就绪不再入队，泵空转，网格永远空白（新契约
+`zoom_tile_band_uniformity` 以 populated=0 抓住）。`clearPage` 把 Rust
+缓存状态一并失效，重排才真正入队重渲。
+
+验证（`zoom_tile_band_uniformity.spec.ts`，多档带手势 + 收敛尾中滚动 +
+settle 后 6 采样）：
+
+| 状态 | worstDev | 网格 |
+|---|---|---|
+| 修复前（红灯） | **0.6818**（含页面打开 1.0 档瓦片，比截图的 1.47 更极端） | 10 块跨 2 档 |
+| 修复中（只清 DOM） | — | **0 块（死锁）**——契约 populated 守卫抓住 |
+| 修复后 | **0.0000**，3 轮稳定 | 6 块单一档位 1.6818 |
+
+门禁：tsc 0、vitest 163/163（wasm 重建）、zoom 全套件 **23/23**（含新契约）。
+非空转守卫（手势跨 ≥2 档 + 网格 ≥2 瓦片）防 fixture 空转。清扫只在
+settle 态触发（手势行为不动，ADR-0009 的 1 档容差保留）。
+
 ## 门禁
 
 本 postmortem 为分析产物，无产品代码变更。取证探针
 `zoom_rest_blur_probe.spec.ts` 入库（measurement-only）。
+（2026-10-05 修复后：见上文"修复记录"，产品变更 = tile_layer.ts 清场
+规则 + 新契约。）
