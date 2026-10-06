@@ -4,8 +4,11 @@ import { plugin } from './bridge';
 import { getPdfViewerAPI } from './bridge/viewer/pdf_viewer_api';
 import { invalidateViewportGeometry } from './bridge/viewer/viewport_geometry';
 import { invoke } from '@tauri-apps/api/core';
-// 应用内自验证：挂 `window.verifyEditorBugs()` 到全局，DevTools 控制台可直调。
-import './dev/verify_editor_bugs';
+// 开发期自验证探针：仅 dev 构建加载（挂 `window.verifyEditorBugs()`，DevTools 可直调）；
+// 生产 bundle 中 import.meta.env.DEV 为 false，该分支被整体剔除。
+if (import.meta.env.DEV) {
+    void import('./dev/verify_editor_bugs');
+}
 
 function api() {
     return getPdfViewerAPI();

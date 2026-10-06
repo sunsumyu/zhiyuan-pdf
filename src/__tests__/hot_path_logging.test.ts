@@ -17,8 +17,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const uiSrc = resolve(__dirname, '../../crates/pdf-viewer-ui/src');
+const bridgeRenderSrc = resolve(__dirname, '../../src/bridge/render');
 
 const read = (p: string) => readFileSync(resolve(uiSrc, p), 'utf8');
+const readBridgeRender = (p: string) => readFileSync(resolve(bridgeRenderSrc, p), 'utf8');
 
 /** Extract the `read` method body from the ViewerSession wasm_bindgen impl. */
 function viewerReadBody(): string {
@@ -51,5 +53,25 @@ describe('hot-path logging contract (ADR-0013)', () => {
         const gate = read('common/chain_trace.rs');
         expect(gate).toMatch(/CHAIN_ENABLED/);
         expect(gate).toMatch(/if !is_chain_trace_enabled\(\)/);
+    });
+
+    it('canvas/page.rs paint path does not write to the console (ADR-0013)', () => {
+        // render_page runs once per page render; an unconditional log here
+        // fired on every vector page paint ("[CANVAS-DBG] render_page
+        // finished", found 2026-10-06).
+        const src = read('render/canvas/page.rs');
+        expect(src).not.toMatch(/console::log_1/);
+        expect(src).not.toMatch(/CANVAS-DBG/);
+    });
+
+    it('bridge render-path modules do not log info-level messages (ADR-0022)', () => {
+        // Stale-frame aborts fire per frame during gestures; per ADR-0022 they
+        // degrade to DEBUG via emitPdfDiagnostic (no IPC, no console flood),
+        // never console.log. console.error/warn stay allowed: the error stream
+        // keeps real failures only.
+        for (const file of ['vector_host.ts', 'vector_page_bundle.ts', 'tile_layer.ts', 'render_flow.ts']) {
+            const src = readBridgeRender(file);
+            expect(src, `${file} must not console.log/info/debug`).not.toMatch(/console\.(log|info|debug)\(/);
+        }
     });
 });

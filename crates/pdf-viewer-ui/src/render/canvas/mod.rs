@@ -6,7 +6,7 @@
 //! - `draw`:       draw_text_run_core, TextMetricsSnapshot, render_run_standalone
 //! - `vector`:     draw_vector_object dispatch + path/image/text object drawing
 //! - `page`:       render_page, render_vector_slice (progressive pipeline)
-//! - `renderer`:   impl PdfRenderer trait + primitive draw commands (text/rect/line)
+//! - `renderer`:   editor overlay draw_text_run on the shared CanvasRenderer
 
 mod debug;
 mod draw;

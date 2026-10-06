@@ -12,7 +12,6 @@ pub mod present_plan;
 pub mod preview;
 pub mod progressive;
 pub mod quality;
-pub mod renderer;
 pub mod scheduler;
 pub mod snapshot_paint_plan;
 pub mod source_suppression;

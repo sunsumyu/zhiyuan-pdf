@@ -93,9 +93,3 @@ export function getMainCanvasTransformOwner(canvas: HTMLCanvasElement): CanvasTr
     return mainCanvasOwner.owner;
 }
 
-/** Drop the singleton when the host is cleared (document switch). */
-export function resetMainCanvasTransformOwner(): void {
-    mainCanvasOwner?.owner.reset();
-    mainCanvasOwner = null;
-}
-

@@ -105,15 +105,8 @@ export type RenderWasmApi = {
     touchFrameCacheEntry: (useViewportTile: boolean, cacheKey: string) => boolean | null;
     storeFrameCacheEntry: (useViewportTile: boolean, cacheKey: string) => FrameCacheStoreResult | null;
     startProgressiveRender: () => ProgressiveRenderStart | null;
-    renderPage: (renderTargetId: string, imageCacheMap: Map<string, HTMLImageElement>) => void;
     renderPageOffscreen: (canvasJs: HTMLCanvasElement | OffscreenCanvas, imageCacheMap: Map<string, ImageBitmap>, dpr: number) => void;
     resolveProgressiveRenderPolicy: (request: Record<string, unknown>) => ProgressiveRenderPolicy | null;
-    stepProgressiveRender: (
-        renderTargetId: string,
-        imageCacheMap: Map<string, HTMLImageElement>,
-        budgetMs: number,
-        maxItems: number,
-    ) => ProgressiveRenderStep | null;
     stepProgressiveRenderOffscreen: (
         canvasJs: OffscreenCanvas,
         imageCacheMap: Map<string, ImageBitmap>,
@@ -249,22 +242,11 @@ export function createRenderWasmApi(getWasmApi: GetWasmApi): RenderWasmApi {
         startProgressiveRender() {
             return getWasmApi().startProgressiveRender?.() ?? null;
         },
-        renderPage(renderTargetId, imageCacheMap) {
-            getWasmApi().renderPage?.(renderTargetId, imageCacheMap);
-        },
         renderPageOffscreen(canvasJs, imageCacheMap, dpr) {
             getWasmApi().renderPageOffscreen?.(canvasJs, imageCacheMap, dpr);
         },
         resolveProgressiveRenderPolicy(request) {
             return getWasmApi().resolveProgressiveRenderPolicy?.(request) ?? null;
-        },
-        stepProgressiveRender(renderTargetId, imageCacheMap, budgetMs, maxItems) {
-            return getWasmApi().stepProgressiveRender?.(
-                renderTargetId,
-                imageCacheMap,
-                budgetMs,
-                maxItems,
-            ) ?? null;
         },
         stepProgressiveRenderOffscreen(canvasJs, imageCacheMap, budgetMs, maxItems, dpr) {
             return getWasmApi().stepProgressiveRenderOffscreen?.(

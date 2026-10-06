@@ -117,6 +117,5 @@ describe('Tile bridge (wasm facade)', () => {
 
         expect(tileFacade.nextRequest()).toBeNull();
         expect(tileFacade.stats()).toBeNull();
-        expect(tileFacade.isReady(0, 1, 1, 0, 0)).toBe(false);
     });
 });

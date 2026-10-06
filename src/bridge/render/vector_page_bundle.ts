@@ -320,7 +320,7 @@ export async function resolveVectorPageBundle(
             throw new Error('stale frame');
         }
         if (frameToken !== undefined && !isFrameCurrent(frameToken)) {
-            console.log(`[PDF-DIAG] Aborting bundle load for page ${pageIndex} due to stale frame`);
+            emitPdfDiagnostic('render-bundle', 'load-stale-abort', { pageIndex, frameToken }, { level: 'DEBUG' });
             throw new Error('stale frame');
         }
 
@@ -421,23 +421,10 @@ export function prefetchAdjacentPages(path: string, currentPage: number, pageCou
     }
 }
 
-/**
- * 单页 vector bundle 预热，不重新调用 decideAdjacentPrefetch。
- * 由调用方负责确保页码已通过 Rust 准入决策。
- */
-export function hasVectorPageBundle(path: string, pageIndex: number): boolean {
-    const resolvedBundle = findCachedBundle(path, pageIndex, viewerSession.read().documentRevision);
-    return !!resolvedBundle;
-}
-
 export function prefetchVectorPage(path: string, pageIndex: number): void {
     if (findCachedBundle(path, pageIndex, viewerSession.read().documentRevision)) return;
     // Fire and forget — 不阻塞当前渲染
     resolveVectorPageBundle(path, pageIndex, undefined, 'prefetch').catch(() => {});
-}
-
-export function isPageBundleCached(path: string, pageIndex: number): boolean {
-    return pageBundleCache.some(b => b.path === path && b.pageIndex === pageIndex && b.documentRevision === viewerSession.read().documentRevision);
 }
 
 

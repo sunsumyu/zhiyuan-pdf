@@ -4,6 +4,51 @@
 > 存于 git 历史（b6a4920 / 8f119fc 之前的版本）；细节以 docs/adr/ 与
 > docs/bug-postmortems/ 为准。仓库宪法见根目录 **AGENTS.md**。
 
+## 会话 2026-10-06 — 死门禁违例清除 + 死代码清退（debt-cleanup 第一批）
+
+- **立项**：Fowler《重构》坏味道目录三路审查（Rust/TS/测试基建）→
+  `docs/refactoring-review-2026-10-06.md`（含批次规划与审查误报更正）。
+  分支 `refactor/debt-cleanup`。
+- **热路径违例清除（ADR-0013/0022）**：`canvas/page.rs` render_page 尾部
+  `[CANVAS-DBG]` 无条件日志（连带只服务它的三个 draw_*_count 计数器与
+  VectorRenderObject 孤儿 import）；`vector_host.ts` stale 预中止、
+  `vector_page_bundle.ts` bundle stale 中止 → 转
+  `emitPdfDiagnostic(level:'DEBUG')`（免 IPC）。**红灯契约先行**：
+  hot_path_logging 扩至 src/bridge 渲染路径四文件（禁
+  console.log/info/debug，warn/error 保留给真故障）+ crates page.rs 扫描，
+  +2 契约（修复前红 2 → 绿 5/5）。
+- **死代码清退**（逐项全仓 grep 零调用后删）：core `render/renderer.rs`
+  全文件（PdfRenderer trait + DrawCommand——trait impl 不触发 dead_code
+  lint，故 0-warning 下存活）；`canvas/renderer.rs` 的孤儿 trait impl +
+  3 私有 helper（保留 canvas_overlay 在用的 `draw_text_run`）；TS 侧
+  `renderVectorPage`（私有零调用）、`resetMainCanvasTransformOwner`、
+  `hasVectorPageBundle`/`isPageBundleCached`、`tileFacade.isReady`（仅测试
+  引用，连同断言删）、`renderApi.renderPage`/`stepProgressiveRender`
+  （onscreen 遗留通道；**Offscreen 版 vector_worker 在用，保留**）；
+  `main.ts` 的 verify_editor_bugs 改 `import.meta.env.DEV` 条件动态导入
+  （新增 `src/vite-env.d.ts`；生产 bundle 实测不含、wasm 实测无
+  CANVAS-DBG 字符串）。
+- **审查误报更正（复核价值）**：tile_cache_legacy **非死代码**——活实现经
+  tile_cache.rs shim 被 frame_cache/plan_builder/present_store/workflow 等
+  7 处消费，坏味道是「名字撒谎 + shim」，处置归 tile_v2/legacy 改名批次；
+  `stageViewportCanvasFromSource` 非死代码（vector_host:634/719 在用，
+  同签名纯转发别名，改名合并候选）。
+- **卫生**：根目录 29 份陈旧 log + 2 张 tmp_repro_*.png 按宪法§四「用完
+  删除」清理（全部未跟踪产物）。AGENTS.md 核心单测数字 271→274 并加
+  「以 HANDOFF 最近门禁记录为准」防漂移。
+- 门禁：core 274/274；clippy native+wasm32 `-D warnings` 0；触及文件 fmt
+  干净（plan_builder.rs 存在**既有** fmt 漂移，非本会话引入，未追）；wasm
+  24/24；vitest 165/165（163+2 新契约）；tsc 0 + vite build 绿；wasm+
+  e2e:build 产物重建后 **zoom 套件 24/24**（6m30s）。
+- **未决（后续批次，见立项报告§六）**：第二批 = renderVectorPageWithPlan
+  （508 行）拆解 + 呈现公式 5 份拷贝收拢（含 backCanvas 双写者合一）+
+  RENDER_STATE<serde_json::Value> 类型化；第三批 =
+  ViewportGeometry.readPageViewportOffset()（消 4 处热路径 gBCR 旁路）+
+  ZOOM_STATE 写入口 pub(crate) 化 + 12 shim/zoom 三别名/9 处
+  `#[allow(deprecated)]` 清退（先补哨兵）+ window 全局收拢 + tile_v2/legacy
+  改名。治理项：14 个零断言探针 spec 移出 zoom_* 门禁 glob、CI 补
+  wasm-pack job、msedgedriver 出库。
+
 ## 会话 2026-10-05（晚）— 未决 #2 证伪关闭（ADR-0008 Negative 过时）
 
 - **取证**：HANDOFF #2 记录的「resize 期间 syncHostLayout 写居中 offset

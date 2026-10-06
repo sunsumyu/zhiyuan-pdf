@@ -320,21 +320,6 @@ export function commitVectorRenderResult(result: VectorRenderResult, options: Ve
     });
 }
 
-async function renderVectorPage(path: string, pageIndex: number, zoom: number): Promise<VectorRenderResult> {
-    return renderVectorPageWithPlan(path, pageIndex, {
-        displayZoom: zoom,
-        renderZoom: zoom,
-        baseRenderZoom: zoom,
-        baseCacheZoom: zoom,
-        detailCacheZoom: zoom,
-        baseCacheKey: '',
-        detailCacheKey: '',
-        cssScale: 1.0,
-        useViewportTile: false,
-        preferProgressiveBase: false,
-    });
-}
-
 export async function renderVectorPageWithPlan(
     path: string,
     pageIndex: number,
@@ -408,7 +393,7 @@ export async function renderVectorPageWithPlan(
     };
 
     if (isPipelineStale()) {
-        console.log(`[PDF-DIAG] Pipeline pre-emptively aborted before canvas-frame setup for page ${pageIndex}`);
+        emitPdfDiagnostic('render-chain', 'pipeline-stale-abort', { pageIndex }, { level: 'DEBUG' });
         return {
             width: model.width,
             height: model.height,

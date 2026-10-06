@@ -39,7 +39,7 @@ Tauri 桌面 PDF 查看器/编辑器。Rust workspace（`pdf-viewer-core` 纯计
 
 | 门禁 | 命令 |
 |---|---|
-| 核心单测 | `cargo test -p pdf-viewer-core`（当前 271） |
+| 核心单测 | `cargo test -p pdf-viewer-core`（274 @ 2026-10-06；数字以 HANDOFF 最近门禁记录为准，防漂移） |
 | wasm 契约 | `npx wasm-pack test --node crates/pdf-viewer-ui` |
 | TS 契约 | `npx vitest run src/__tests__/`（含 wasm mtime 哨兵：改 Rust 后不重建必红，属预期） |
 | lint | `cargo clippy`（native + wasm32 双目标，0 warning） |

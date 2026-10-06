@@ -83,10 +83,6 @@ export const tileFacade = {
         api()?.renderFacadeResetTile?.(page, zoom, dpr, x, y);
     },
 
-    isReady(page: number, zoom: number, dpr: number, x: number, y: number): boolean {
-        return !!api()?.renderFacadeIsTileReady?.(page, zoom, dpr, x, y);
-    },
-
     clearPage(page: number): void {
         api()?.renderFacadeClearTileCache?.(page);
     },
