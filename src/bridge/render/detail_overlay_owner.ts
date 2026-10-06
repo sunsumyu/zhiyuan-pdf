@@ -35,12 +35,16 @@
 // re-applies (ADR-0010).
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type DetailOverlayRect = {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-};
+import {
+    createMemoizedStyle,
+    presentScale,
+    visualOffset,
+    visualTransform,
+    type BaseRect,
+} from './present_math';
+
+/** The patch rect in its frame's zoom space — the unified BaseRect shape. */
+export type DetailOverlayRect = BaseRect;
 
 export type DetailOverlayOwner = {
     /**
@@ -62,35 +66,22 @@ export type DetailOverlayOwner = {
 export function createDetailOverlayOwner(canvas: HTMLCanvasElement): DetailOverlayOwner {
     let baseRect: DetailOverlayRect | null = null;
     let baseZoom = 0;
-    let lastWrittenLeft = '';
-    let lastWrittenTop = '';
-    let lastWrittenTransform = '';
+    const leftStyle = createMemoizedStyle(canvas, 'left');
+    const topStyle = createMemoizedStyle(canvas, 'top');
+    const transformStyle = createMemoizedStyle(canvas, 'transform');
 
     function isHidden(): boolean {
         return canvas.style.visibility === 'hidden' || canvas.style.opacity === '0';
     }
 
     function writeMapping(visualZoom: number): void {
-        if (!baseRect || baseZoom <= 0) return;
-        if (!Number.isFinite(visualZoom) || visualZoom <= 0) return;
+        if (!baseRect) return;
+        const s = presentScale(visualZoom, baseZoom);
+        if (s === null) return;
         if (isHidden()) return;
-        const s = visualZoom / baseZoom;
-        if (!Number.isFinite(s) || s <= 0) return;
-        const left = `${baseRect.left * s}px`;
-        const top = `${baseRect.top * s}px`;
-        const transform = `scale(${s})`;
-        if (left !== lastWrittenLeft) {
-            canvas.style.left = left;
-            lastWrittenLeft = left;
-        }
-        if (top !== lastWrittenTop) {
-            canvas.style.top = top;
-            lastWrittenTop = top;
-        }
-        if (transform !== lastWrittenTransform) {
-            canvas.style.transform = transform;
-            lastWrittenTransform = transform;
-        }
+        leftStyle.write(visualOffset(baseRect.left, s));
+        topStyle.write(visualOffset(baseRect.top, s));
+        transformStyle.write(visualTransform(s));
     }
 
     /** The base-space box: written once per present, never re-derived per tick. */
@@ -113,9 +104,9 @@ export function createDetailOverlayOwner(canvas: HTMLCanvasElement): DetailOverl
             writeBaseBox(baseRect);
             // Invalidate the memos so the writes land even if the strings
             // coincide with the previous patch's.
-            lastWrittenLeft = '';
-            lastWrittenTop = '';
-            lastWrittenTransform = '';
+            leftStyle.invalidate();
+            topStyle.invalidate();
+            transformStyle.invalidate();
             if (Number.isFinite(visualZoom) && visualZoom > 0) {
                 writeMapping(visualZoom);
             }
@@ -127,9 +118,9 @@ export function createDetailOverlayOwner(canvas: HTMLCanvasElement): DetailOverl
         reset(): void {
             baseRect = null;
             baseZoom = 0;
-            lastWrittenLeft = '';
-            lastWrittenTop = '';
-            lastWrittenTransform = '';
+            leftStyle.invalidate();
+            topStyle.invalidate();
+            transformStyle.invalidate();
         },
         get tracked(): boolean {
             return baseRect !== null;

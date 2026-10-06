@@ -24,6 +24,7 @@
 
 import { renderTileRegion } from './vector_host';
 import { isAbortedRenderRequest } from './vector_page_bundle';
+import { presentScale, visualOffset, visualTransform } from './present_math';
 import { tileFacade, type TileRenderRequest } from './tile_bridge';
 import {
     tileDisplayRect,
@@ -399,19 +400,20 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
         ctx.drawImage(bitmap, 0, 0, bitmapWidth, bitmapHeight);
 
         // ADR-0009 unified present formula — BOTH the position and the scale
-        // must map the tile's render-space rect into visual space:
-        //   left = rect.left × s,  top = rect.top × s,  transform = scale(s)
-        // with s = visual / renderZoom. A page point p inside the tile lands
-        // at left + (p×Zr − rect.left) × s = p × visual ONLY when the
+        // must map the tile's render-space rect into visual space (shared
+        // implementation: present_math.ts). A page point p inside the tile
+        // lands at left + (p×Zr − rect.left) × s = p × visual ONLY when the
         // translation term is included — without it every tile at x>0/y>0
         // drifts by 512 × (s − 1) px (the 2026-09-30 double-exposure video:
         // second-column content sheared over the first, "(Nacos, S|entineI)").
-        const s = zs.visualZoom / req.tile_key.zoom;
-        canvas.style.left = `${rect.left * s}px`;
-        canvas.style.top = `${rect.top * s}px`;
-        canvas.style.width = `${rect.width}px`;
-        canvas.style.height = `${rect.height}px`;
-        canvas.style.transform = `scale(${s})`;
+        const s = presentScale(zs.visualZoom, req.tile_key.zoom);
+        if (s !== null) {
+            canvas.style.left = visualOffset(rect.left, s);
+            canvas.style.top = visualOffset(rect.top, s);
+            canvas.style.width = `${rect.width}px`;
+            canvas.style.height = `${rect.height}px`;
+            canvas.style.transform = visualTransform(s);
+        }
         canvas.style.display = 'block';
 
         const entry = active.get(key);
@@ -543,10 +545,11 @@ export function createTileLayer(deps: TileLayerDeps): TileLayer {
     function refreshTileTransforms(zs: TileZoomState): void {
         for (const { canvas, renderZoom, baseLeft, baseTop } of active.values()) {
             if (canvas.style.display === 'none') continue;
-            const s = zs.visualZoom / renderZoom;
-            canvas.style.left = `${baseLeft * s}px`;
-            canvas.style.top = `${baseTop * s}px`;
-            canvas.style.transform = `scale(${s})`;
+            const s = presentScale(zs.visualZoom, renderZoom);
+            if (s === null) continue;
+            canvas.style.left = visualOffset(baseLeft, s);
+            canvas.style.top = visualOffset(baseTop, s);
+            canvas.style.transform = visualTransform(s);
         }
     }
 

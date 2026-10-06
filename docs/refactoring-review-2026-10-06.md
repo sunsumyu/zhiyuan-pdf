@@ -25,12 +25,16 @@
 
 ## 二、主要坏味道（按书中目录）
 
-### 重复代码 —— 最重要发现
+### 重复代码 —— 最重要发现（✅ 2026-10-06 第二批已收拢）
 ADR-0009/0010/0024 声称三表面「共享同一呈现公式」，实测**共享的是注释不是
-代码**：`s = visual/zoom; left = rect.left × s; scale(s)` 有 5 份内联拷贝
-（canvas_transform_owner.ts:42-51、detail_overlay_owner.ts:77-93、
-tile_layer.ts:409-415 与 546-549 同文件两份、text_layer.ts:47-53），两个
-Owner 的 lastWritten memo 样板亦各一份。**处置：第二批 Pull Up Method。**
+代码**：`s = visual/zoom; left = rect.left × s; scale(s)` 有 **4 份内联拷贝**
+（canvas_transform_owner.ts、detail_overlay_owner.ts、tile_layer.ts ×2），
+两个 Owner 的 lastWritten memo 样板亦各一份。初判的 text_layer 第 5 份
+**系误报**：它是构建时直接乘 displayZoom 的不同公式形状（无基矩形重缩放），
+不强行收拢。**已处置**：`src/bridge/render/present_math.ts` 收拢为唯一实现
+（presentScale / visualOffset / visualTransform / createMemoizedStyle），4 处
+全部改走共享模块，契约 `present_math.test.ts` 钉住不变量；Owner 契约测试
+零改动全过 = 行为逐字节保持。
 其他：render_flow.ts stale-guard 三行块 ×5；Rust resolveFramePlan/
 takeFramePlan 函数体逐字相同。
 
@@ -105,8 +109,9 @@ Reference + thread_local 归位）。**
 
 - **第一批（本分支已落地）**：热路径违例清除 + 契约补盲 + 死代码清退 + 根
   目录卫生 + 宪法数字修正。
-- **第二批（结构）**：拆 renderVectorPageWithPlan；呈现公式收拢单一模块
-  （含 backCanvas 双写者合一）；RENDER_STATE<serde_json::Value> 类型化。
+- **第二批（结构）**：✅ 呈现公式收拢 present_math（2026-10-06）；⏳ 拆
+  renderVectorPageWithPlan；⏳ RENDER_STATE<serde_json::Value> 类型化；
+  backCanvas left/top 双写者合一（present_math 已铺路，涉及时序契约单独循环）。
 - **第三批（抽象补全）**：ViewportGeometry 补 readPageViewportOffset()；
   ZOOM_STATE 写入口 pub(crate) 化；shim/别名/deprecated 清退（先补哨兵）；
   window 全局收拢；tile_v2/legacy 改名。

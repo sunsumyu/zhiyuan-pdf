@@ -22,6 +22,8 @@
 // The CSS width itself is set by the presenter (applyCanvasCssBox) — NOT here.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { createMemoizedStyle, presentScale, visualTransform } from './present_math';
+
 export type CanvasTransformOwner = {
     /** Record the zoom space of the box the presenter just installed. */
     presentFrame(displayZoom: number): void;
@@ -36,19 +38,12 @@ export type CanvasTransformOwner = {
 export function createCanvasTransformOwner(canvas: HTMLCanvasElement): CanvasTransformOwner {
     let boxZoom = 1;
     let lastVisual = 0;
-    let lastWritten = '';
+    const transformStyle = createMemoizedStyle(canvas, 'transform');
 
     function write(visualZoom: number): void {
-        const s = visualZoom / boxZoom;
-        if (!Number.isFinite(s) || s <= 0) return;
-        // Identity is written as scale(1) — mathematically equal to 'none'
-        // and keeps the writer single-valued (no transform-flapping between
-        // representations).
-        const t = `scale(${s})`;
-        if (t !== lastWritten) {
-            canvas.style.transform = t;
-            lastWritten = t;
-        }
+        const s = presentScale(visualZoom, boxZoom);
+        if (s === null) return;
+        transformStyle.write(visualTransform(s));
     }
 
     return {
@@ -56,7 +51,7 @@ export function createCanvasTransformOwner(canvas: HTMLCanvasElement): CanvasTra
             boxZoom = Number.isFinite(displayZoom) && displayZoom > 0 ? displayZoom : 1;
             // Invalidate the memo: the box changed, the next write must land
             // even if the computed scale string coincides.
-            lastWritten = '';
+            transformStyle.invalidate();
             // Re-apply the last visual immediately: the presenter re-boxed the
             // canvas in the SAME JS turn, so recomputing the transform here
             // (rather than waiting for the next tick) keeps the on-screen size
@@ -70,7 +65,7 @@ export function createCanvasTransformOwner(canvas: HTMLCanvasElement): CanvasTra
         },
         reset(): void {
             boxZoom = 1;
-            lastWritten = '';
+            transformStyle.invalidate();
         },
         get boxZoom(): number {
             return boxZoom;

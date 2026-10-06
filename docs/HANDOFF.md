@@ -4,6 +4,35 @@
 > 存于 git 历史（b6a4920 / 8f119fc 之前的版本）；细节以 docs/adr/ 与
 > docs/bug-postmortems/ 为准。仓库宪法见根目录 **AGENTS.md**。
 
+## 会话 2026-10-06（第二批）— 呈现公式收拢 present_math（ADR-0009/0010/0024 承诺兑现）
+
+- **动机**：立项报告§二最重要的重复代码发现——三表面统一公式以 4 份内联
+  拷贝存活（2026-09-30/10-03 双重曝光 bug 正是拷贝间分歧）。本批收拢为唯一实现。
+- **实现**：`src/bridge/render/present_math.ts`——`presentScale`（zoom 对验证
+  + s 计算）、`visualOffset`/`visualTransform`（字符串化，identity 恒 scale(1)）、
+  `createMemoizedStyle`（两 Owner 重复的 lastWritten 样板收拢；**直写属性赋值**
+  而非 setProperty——vitest 是 node 环境，Owner 契约测试的 Proxy 桩只实现属性
+  set 陷阱，走 setProperty 会当场打碎既有契约）。消费方改写：canvas_transform_owner
+  （transform 单 memo）、detail_overlay_owner（left/top/transform 三 memo；
+  DetailOverlayRect 改为 BaseRect 别名）、tile_layer drawTile +
+  refreshTileTransforms（无 memo，保持原样）。**text_layer 不收拢**：它是构建
+  时直接乘 displayZoom 的不同公式形状，强行统一属牵强抽象（初判「5 份」更正
+  为 4 份，立项报告已更正）。
+- **行为边界**：唯一语义差异 = tile_layer 两处原无验证（visualZoom 非法时会
+  写 NaN 样式），现 s=null 跳过写——该输入被 zoom authority 消毒保证不可达；
+  Owner/tile 契约测试零改动全过。
+- **契约**：`present_math.test.ts` 8 例（s 公式、非法输入拒绝、q → q ×
+  visualZoom 不变量、identity 表示、memo 跳写/失效/按属性独立）。全仓 grep
+  确认代码路径已无内联公式残留（余下命中均为注释）。
+- 门禁：vitest **173/173**（165+8）；tsc 0 + vite build 绿；无 Rust 改动
+  （wasm 不重建）；e2e:build 重建后 zoom 套件 **24/24**——首轮 1 失败
+  （输出被 tail 截断未留 spec 名，重跑 24/24 绿，判定 4-worker 并发假失败，
+  宪法未决 #5 已知类别；教训：E2E 后台跑必须重定向完整日志而非 tail 管道）。
+- **未动**（第二批余项）：renderVectorPageWithPlan（508 行）拆解、
+  RENDER_STATE<serde_json::Value> 类型化、backCanvas left/top 双写者合一
+  （present_math 已铺路——writer 合一属 Move Method 到 DetailOverlayOwner，
+  涉及时序契约，单独循环）。
+
 ## 会话 2026-10-06 — 死门禁违例清除 + 死代码清退（debt-cleanup 第一批）
 
 - **立项**：Fowler《重构》坏味道目录三路审查（Rust/TS/测试基建）→
