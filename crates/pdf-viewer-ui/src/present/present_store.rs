@@ -141,33 +141,24 @@ pub fn schedule_render_frame_request(request: &FramePlanRequest) -> Option<Rende
             let (queued_stale, in_flight_stale) =
                 crate::render::render_store::RENDER_STATE.with(|state| {
                     let s = state.borrow();
-                    let queued_zoom = s
-                        .queued_frame_plan
-                        .as_ref()
-                        .and_then(|v| v.get("render_zoom"))
-                        .and_then(serde_json::Value::as_f64)
-                        .unwrap_or(f64::NAN);
-                    let in_flight_zoom = s
-                        .in_flight_frame_plan
-                        .as_ref()
-                        .and_then(|v| v.get("render_zoom"))
-                        .and_then(serde_json::Value::as_f64)
-                        .unwrap_or(f64::NAN);
+                    let queued_zoom = s.queued_frame_plan.as_ref().map(|plan| plan.render_zoom);
+                    let in_flight_zoom =
+                        s.in_flight_frame_plan.as_ref().map(|plan| plan.render_zoom);
                     (
                         s.queued_frame_token != 0
-                            && (queued_zoom as f32 - target_zoom).abs() > ZOOM_SETTLED_EPSILON,
+                            && queued_zoom.is_some_and(|zoom| {
+                                (zoom - target_zoom).abs() > ZOOM_SETTLED_EPSILON
+                            }),
                         s.in_flight_frame_token != 0
-                            && (in_flight_zoom as f32 - target_zoom).abs() > ZOOM_SETTLED_EPSILON,
+                            && in_flight_zoom.is_some_and(|zoom| {
+                                (zoom - target_zoom).abs() > ZOOM_SETTLED_EPSILON
+                            }),
                     )
                 });
             if queued_stale {
                 crate::render::render_store::RENDER_STATE.with(|state| {
                     let token = state.borrow().queued_frame_token;
-                    if token != 0
-                        && crate::render::render_store::drop_queued_render_frame::<
-                            serde_json::Value,
-                        >(token)
-                    {
+                    if token != 0 && crate::render::render_store::drop_queued_render_frame(token) {
                         crate::chain_trace!(
                             "schedule.drop-stale-queued-zoom-frame",
                             "token" => token,
@@ -193,8 +184,6 @@ pub fn schedule_render_frame_request(request: &FramePlanRequest) -> Option<Rende
         &frame_plan,
         frame_plan_requires_render,
         frame_plans_share_render_work,
-        |plan| serde_json::to_value(plan).unwrap_or(serde_json::Value::Null),
-        |plan_value| serde_json::from_value::<FramePlanResult>(plan_value.clone()).ok(),
     );
     envelope.map(|frame| build_render_frame_envelope(frame.frame_token, frame.frame_plan))
 }

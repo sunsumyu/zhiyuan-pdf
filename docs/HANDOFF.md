@@ -4,6 +4,33 @@
 > 存于 git 历史（b6a4920 / 8f119fc 之前的版本）；细节以 docs/adr/ 与
 > docs/bug-postmortems/ 为准。仓库宪法见根目录 **AGENTS.md**。
 
+## 会话 2026-10-06（第三批）— RENDER_STATE 类型化：消灭热路径 JSON 中转
+
+- **动机**：立项报告§二——`HostRenderState<serde_json::Value>` 强迫帧计划在
+  Rust 内部以 JSON Value 流转：schedule 时 `to_value`、share 检查
+  `from_value(clone)` ×2、settle 再 `from_value`、陈旧 zoom 帧清扫用
+  `.get("render_zoom")` 字符串取值（stringly-typed 调度判定住在呈现层）。
+- **实现**：`render_store.rs` 的 store 与三函数（schedule/settle/drop_queued）
+  收为具体类型 `FramePlanResult`（core plan_builder），直接 `clone()` 进出；
+  to_value/from_value 闭包参数整体删除；`workflow.rs` settle 调用去闭包；
+  `present_store.rs` 陈旧帧清扫改字段访问（`map_or(false,…)` 原样保留「无
+  plan 不判 stale」语义，clippy 要求 `is_some_and`）；RENDER_STATE 全仓唯一
+  实例化点，泛型只服务于旧测试——两份测试改用真实类型（render_store_tests
+  以 `render_zoom` 为区分字段；workflow_tests 的 JSON 夹具经
+  `from_value` 一次解析为类型化 plan，夹具本身保留可读性）。
+- **边界不变**：token 状态机逐行保持（含 queued 提升不更新 active 的注释）；
+  wasm 边界对 TS 的序列化照旧发生在 free_api 导出层——内部存储类型对 TS
+  不可见，E2E 几何契约是行为见证。
+- 门禁：core 274/274；clippy 双目标 `-D warnings` 0；触及文件 fmt 干净
+  （既有漂移文件未追）；wasm **24/24**；wasm+e2e 重建后 zoom 套件
+  23/24 + 单跑定性——失败 spec `zoom_gesture_clarity_contract`（套件轮
+  max 15.5%>15%；单跑 3 轮 2 绿 1 红，红轮 p50 6.05%>5%，两轮命中**不同**
+  断言、超出均 <20%）。定性 = 既有采样方差类别（HANDOFF 2026-10-05 已记
+  「同配置 run 间方差大」且 p50 因同类伪影重钉过；改类型化**前**的批次二
+  套件同样 1 失败），非回归——语义逐路径等价、热路径只减负、reknock
+  cadence 与 direct≥3 断言全绿。证据留存本条；p50=5% 界在本机偏紧，
+  是否放宽属 UX 决策未动。净变化 +64/−94。
+
 ## 会话 2026-10-06（第二批）— 呈现公式收拢 present_math（ADR-0009/0010/0024 承诺兑现）
 
 - **动机**：立项报告§二最重要的重复代码发现——三表面统一公式以 4 份内联

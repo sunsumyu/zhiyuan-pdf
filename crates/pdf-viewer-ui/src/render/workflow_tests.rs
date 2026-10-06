@@ -11,9 +11,15 @@
 // screen, CSS-upscaled (measured R=0.812, edges 2x softer than native).
 
 use super::workflow::settle_render_frame_inner;
+use crate::present::plan_builder::FramePlanResult;
 use crate::render::render_store::{reset_render_state, schedule_render_frame};
 use crate::viewport_refresh::HostViewportRefreshState;
 use crate::zoom::zoom_store::HostZoomState;
+
+fn mid_gesture_plan() -> FramePlanResult {
+    serde_json::from_value::<FramePlanResult>(mid_gesture_plan_json())
+        .expect("mid-gesture plan fixture must parse as FramePlanResult")
+}
 
 fn mid_gesture_plan_json() -> serde_json::Value {
     // A reknock frame mid-gesture: viewport-tile path, base reused (never
@@ -57,11 +63,9 @@ fn mid_gesture_plan_json() -> serde_json::Value {
 fn mid_gesture_commit_must_not_create_phantom_base_cache_entry() {
     reset_render_state();
     let frame = schedule_render_frame(
-        &mid_gesture_plan_json(),
-        |_: &serde_json::Value| true,
-        |_a: &serde_json::Value, _b: &serde_json::Value| false,
-        |v: &serde_json::Value| v.clone(),
-        |v: &serde_json::Value| serde_json::from_value(v.clone()).ok(),
+        &mid_gesture_plan(),
+        |_: &FramePlanResult| true,
+        |_a: &FramePlanResult, _b: &FramePlanResult| false,
     )
     .expect("mid-gesture frame must schedule (detail layer renders)");
 
@@ -93,4 +97,3 @@ fn mid_gesture_commit_must_not_create_phantom_base_cache_entry() {
 fn pdf_viewer_ui_present_state_default() -> crate::render::tile_cache::HostPresentState {
     crate::render::tile_cache::HostPresentState::default()
 }
-
